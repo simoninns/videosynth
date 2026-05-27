@@ -145,8 +145,7 @@ TEST(GenerationStageTimingTest, ProducesDeterministicSampleCounts) {
   std::vector<double> y_pal;
   std::vector<double> c_pal;
   ASSERT_TRUE(generation.Generate(MakeProject(Standard::kPal), &y_pal, &c_pal, &errors));
-  const TimingConstants pal = GetTimingConstants(Standard::kPal);
-  EXPECT_EQ(y_pal.size(), static_cast<std::size_t>(pal.lines_per_frame * pal.samples_per_line_4fsc));
+  EXPECT_EQ(y_pal.size(), static_cast<std::size_t>(SamplesPerFrame4fsc(Standard::kPal)));
   EXPECT_EQ(c_pal.size(), y_pal.size());
 
   std::vector<double> y_ntsc;
@@ -154,8 +153,7 @@ TEST(GenerationStageTimingTest, ProducesDeterministicSampleCounts) {
   ASSERT_TRUE(generation.Generate(MakeProject(Standard::kNtsc), &y_ntsc, &c_ntsc, &errors));
   const TimingConstants ntsc = GetTimingConstants(Standard::kNtsc);
   EXPECT_EQ(ntsc.samples_per_line_4fsc, 910);
-  EXPECT_EQ(y_ntsc.size(),
-            static_cast<std::size_t>(ntsc.lines_per_frame * ntsc.samples_per_line_4fsc));
+  EXPECT_EQ(y_ntsc.size(), static_cast<std::size_t>(SamplesPerFrame4fsc(Standard::kNtsc)));
   EXPECT_EQ(c_ntsc.size(), y_ntsc.size());
 }
 
@@ -187,13 +185,13 @@ TEST(GenerationStageTimingTest, AppliesTwoHalfLinePulsesToEqualizingAndVerticalS
   const TimingConstants pal = GetTimingConstants(Standard::kPal);
   const SignalLevels levels = GetSignalLevels(Standard::kPal);
 
-  const int eq_first_half = CountSyncSamplesInHalfLine(y, 1, 0, pal, levels.sync_tip_mv);
-  const int eq_second_half = CountSyncSamplesInHalfLine(y, 1, 1, pal, levels.sync_tip_mv);
+  const int eq_first_half = CountSyncSamplesInHalfLine(y, 4, 0, pal, levels.sync_tip_mv);
+  const int eq_second_half = CountSyncSamplesInHalfLine(y, 4, 1, pal, levels.sync_tip_mv);
   EXPECT_GT(eq_first_half, 0);
   EXPECT_GT(eq_second_half, 0);
 
-  const int vs_first_half = CountSyncSamplesInHalfLine(y, 6, 0, pal, levels.sync_tip_mv);
-  const int vs_second_half = CountSyncSamplesInHalfLine(y, 6, 1, pal, levels.sync_tip_mv);
+  const int vs_first_half = CountSyncSamplesInHalfLine(y, 1, 0, pal, levels.sync_tip_mv);
+  const int vs_second_half = CountSyncSamplesInHalfLine(y, 1, 1, pal, levels.sync_tip_mv);
   EXPECT_GT(vs_first_half, 0);
   EXPECT_GT(vs_second_half, 0);
 
@@ -201,7 +199,7 @@ TEST(GenerationStageTimingTest, AppliesTwoHalfLinePulsesToEqualizingAndVerticalS
   EXPECT_EQ(h_second_half, 0);
 }
 
-TEST(GenerationStageTimingTest, IncludesEndOfFrameNtscVerticalTransitionBlock) {
+TEST(GenerationStageTimingTest, KeepsEndOfFrameNtscLinesAsHorizontalSync) {
   GenerationStage generation;
   std::vector<std::string> errors;
   std::vector<double> y;
@@ -211,13 +209,35 @@ TEST(GenerationStageTimingTest, IncludesEndOfFrameNtscVerticalTransitionBlock) {
   const TimingConstants ntsc = GetTimingConstants(Standard::kNtsc);
   const SignalLevels levels = GetSignalLevels(Standard::kNtsc);
 
-  const int line522 = CountSyncSamplesOnLine(y, 522, ntsc, levels.sync_tip_mv);
-  const int line523 = CountSyncSamplesOnLine(y, 523, ntsc, levels.sync_tip_mv);
   const int line520 = CountSyncSamplesOnLine(y, 520, ntsc, levels.sync_tip_mv);
+  const int line523 = CountSyncSamplesOnLine(y, 523, ntsc, levels.sync_tip_mv);
+  const int line525 = CountSyncSamplesOnLine(y, 525, ntsc, levels.sync_tip_mv);
 
+  // Frame-tail lines should remain horizontal-like in this line-granular model;
+  // the vertical interval wraps across frame boundaries at sub-line positions.
+  EXPECT_NEAR(line523, line520, 2);
+  EXPECT_NEAR(line525, line520, 2);
+}
+
+TEST(GenerationStageTimingTest, IncludesSecondFieldNtscVerticalTransitionBlock) {
+  GenerationStage generation;
+  std::vector<std::string> errors;
+  std::vector<double> y;
+  std::vector<double> c;
+  ASSERT_TRUE(generation.Generate(MakeProject(Standard::kNtsc), &y, &c, &errors));
+
+  const TimingConstants ntsc = GetTimingConstants(Standard::kNtsc);
+  const SignalLevels levels = GetSignalLevels(Standard::kNtsc);
+
+  const int line263 = CountSyncSamplesOnLine(y, 263, ntsc, levels.sync_tip_mv);
+  const int line264 = CountSyncSamplesOnLine(y, 264, ntsc, levels.sync_tip_mv);
+  const int line522 = CountSyncSamplesOnLine(y, 522, ntsc, levels.sync_tip_mv);
+  const int line267 = CountSyncSamplesOnLine(y, 267, ntsc, levels.sync_tip_mv);
+
+  EXPECT_GT(line263, 0);
+  EXPECT_GT(line264, 0);
+  EXPECT_GT(line267, line264);
   EXPECT_GT(line522, 0);
-  EXPECT_GT(line520, 0);
-  EXPECT_GT(line523, line522);
 }
 
 TEST(GenerationStageTimingTest, NtscBroadSyncKeepsIntervalWithinEachHalfLine) {
@@ -251,8 +271,8 @@ TEST(GenerationStageTimingTest, PalBroadSyncKeepsIntervalWithinEachHalfLine) {
   const SignalLevels levels = GetSignalLevels(Standard::kPal);
   const int half_line_samples = pal.samples_per_line_4fsc / 2;
 
-  const int vs_first_half = CountSyncSamplesInHalfLine(y, 6, 0, pal, levels.sync_tip_mv);
-  const int vs_second_half = CountSyncSamplesInHalfLine(y, 6, 1, pal, levels.sync_tip_mv);
+  const int vs_first_half = CountSyncSamplesInHalfLine(y, 1, 0, pal, levels.sync_tip_mv);
+  const int vs_second_half = CountSyncSamplesInHalfLine(y, 1, 1, pal, levels.sync_tip_mv);
 
   EXPECT_GT(vs_first_half, 0);
   EXPECT_GT(vs_second_half, 0);
@@ -276,10 +296,12 @@ TEST(GenerationStageTimingTest, EmitsBurstOnHorizontalButNotBroadSyncLines) {
   EXPECT_LT(broad_line_mean, 1e-9);
 }
 
-TEST(GenerationStageTimingTest, UsesFixedNtscBurstPhaseAndAlternatingPalBurstPhase) {
+TEST(GenerationStageTimingTest, UsesContinuousSubcarrierAlternatingBurstPhaseForNtscAndPal) {
   GenerationStage generation;
   std::vector<std::string> errors;
 
+  // NTSC: 910 samples/line × π/2 rad/sample = π rad/line. The burst window mean
+  // flips sign on successive lines, confirming the continuous-subcarrier SC-H phase.
   std::vector<double> y_ntsc;
   std::vector<double> c_ntsc;
   ASSERT_TRUE(generation.Generate(MakeProject(Standard::kNtsc), &y_ntsc, &c_ntsc, &errors));
@@ -287,7 +309,7 @@ TEST(GenerationStageTimingTest, UsesFixedNtscBurstPhaseAndAlternatingPalBurstPha
 
   const double ntsc_line20 = BurstWindowMean(c_ntsc, 20, ntsc);
   const double ntsc_line21 = BurstWindowMean(c_ntsc, 21, ntsc);
-  EXPECT_GT(ntsc_line20 * ntsc_line21, 0.0);
+  EXPECT_LT(ntsc_line20 * ntsc_line21, 0.0);
 
   std::vector<double> y_pal;
   std::vector<double> c_pal;
@@ -297,6 +319,115 @@ TEST(GenerationStageTimingTest, UsesFixedNtscBurstPhaseAndAlternatingPalBurstPha
   const double pal_line20 = BurstWindowMean(c_pal, 20, pal);
   const double pal_line21 = BurstWindowMean(c_pal, 21, pal);
   EXPECT_LT(pal_line20 * pal_line21, 0.0);
+}
+
+TEST(GenerationStageTimingTest, ShapesSyncEdgesInsteadOfHardSteps) {
+  GenerationStage generation;
+  std::vector<std::string> errors;
+  std::vector<double> y;
+  std::vector<double> c;
+  ASSERT_TRUE(generation.Generate(MakeProject(Standard::kNtsc), &y, &c, &errors));
+
+  const TimingConstants ntsc = GetTimingConstants(Standard::kNtsc);
+  const SignalLevels levels = GetSignalLevels(Standard::kNtsc);
+  const int line_1based = 20;
+  const int line_start = (line_1based - 1) * ntsc.samples_per_line_4fsc;
+
+  ASSERT_LT(line_start + 3, static_cast<int>(y.size()));
+  EXPECT_DOUBLE_EQ(y[line_start - 1], levels.blanking_mv);
+
+  // SMPTE 170M-2004 specifies finite sync rise/fall times, so the pulse edge
+  // should move through intermediate levels rather than a single hard step.
+  const double first_pulse_sample = y[line_start];
+  const double second_pulse_sample = y[line_start + 1];
+  const double third_pulse_sample = y[line_start + 2];
+  EXPECT_DOUBLE_EQ(first_pulse_sample, levels.blanking_mv);
+  EXPECT_LT(second_pulse_sample, levels.blanking_mv);
+  EXPECT_GT(second_pulse_sample, levels.sync_tip_mv);
+  EXPECT_LT(third_pulse_sample, second_pulse_sample);
+}
+
+TEST(GenerationStageTimingTest, AppliesBurstEnvelopeRampAtBurstWindowEdges) {
+  GenerationStage generation;
+  std::vector<std::string> errors;
+  std::vector<double> y;
+  std::vector<double> c;
+  ASSERT_TRUE(generation.Generate(MakeProject(Standard::kNtsc), &y, &c, &errors));
+
+  const TimingConstants ntsc = GetTimingConstants(Standard::kNtsc);
+  const int line_1based = 20;
+  const int line_start = (line_1based - 1) * ntsc.samples_per_line_4fsc;
+  const int burst_start = line_start + BurstStartSamples(ntsc.sample_rate_4fsc_hz);
+  const int burst_end = line_start + BurstEndSamples(ntsc.sample_rate_4fsc_hz);
+  auto MaxAbsInRange = [&](int start_sample, int end_sample) {
+    double max_abs = 0.0;
+    for (int i = start_sample; i < end_sample; ++i) {
+      max_abs = std::max(max_abs, std::abs(c[i]));
+    }
+    return max_abs;
+  };
+
+  const int burst_width = burst_end - burst_start;
+  ASSERT_GT(burst_width, 6);
+  const int center_start = burst_start + (burst_width / 3);
+  const int center_end = burst_start + ((2 * burst_width) / 3);
+
+  const double edge_start_max = MaxAbsInRange(burst_start, burst_start + 3);
+  const double center_max = MaxAbsInRange(center_start, center_end);
+  const double edge_end_max = MaxAbsInRange(burst_end - 3, burst_end);
+
+  EXPECT_DOUBLE_EQ(c[burst_start], 0.0);
+  EXPECT_DOUBLE_EQ(c[burst_end - 1], 0.0);
+
+  // SMPTE 170M-2004 Table 2 defines a finite burst envelope rise time.
+  EXPECT_LT(edge_start_max, center_max);
+  EXPECT_LT(edge_end_max, center_max);
+  EXPECT_GT(center_max, 100.0);
+}
+
+TEST(GenerationStageTimingTest, ShapesBothPositiveAndNegativeBurstLobesAtEdges) {
+  GenerationStage generation;
+  std::vector<std::string> errors;
+  std::vector<double> y;
+  std::vector<double> c;
+  ASSERT_TRUE(generation.Generate(MakeProject(Standard::kNtsc), &y, &c, &errors));
+
+  const TimingConstants ntsc = GetTimingConstants(Standard::kNtsc);
+  const int line_1based = 20;
+  const int line_start = (line_1based - 1) * ntsc.samples_per_line_4fsc;
+  const int burst_start = line_start + BurstStartSamples(ntsc.sample_rate_4fsc_hz);
+  const int burst_end = line_start + BurstEndSamples(ntsc.sample_rate_4fsc_hz);
+  const int burst_width = burst_end - burst_start;
+  ASSERT_GT(burst_width, 8);
+
+  const int center_start = burst_start + (burst_width / 3);
+  const int center_end = burst_start + ((2 * burst_width) / 3);
+
+  auto PeakPositive = [&](int start_sample, int end_sample) {
+    double peak = 0.0;
+    for (int i = start_sample; i < end_sample; ++i) {
+      peak = std::max(peak, c[i]);
+    }
+    return peak;
+  };
+
+  auto PeakNegativeMagnitude = [&](int start_sample, int end_sample) {
+    double peak = 0.0;
+    for (int i = start_sample; i < end_sample; ++i) {
+      peak = std::max(peak, -c[i]);
+    }
+    return peak;
+  };
+
+  const double edge_pos = PeakPositive(burst_start, burst_start + 4);
+  const double edge_neg = PeakNegativeMagnitude(burst_start, burst_start + 4);
+  const double center_pos = PeakPositive(center_start, center_end);
+  const double center_neg = PeakNegativeMagnitude(center_start, center_end);
+
+  EXPECT_LT(edge_pos, center_pos);
+  EXPECT_LT(edge_neg, center_neg);
+  EXPECT_GT(center_pos, 70.0);
+  EXPECT_GT(center_neg, 70.0);
 }
 
 TEST(GenerationStagePatternTest, ColourBarsProduceMultipleDiscreteLumaLevels) {
@@ -365,13 +496,11 @@ TEST(GenerationStagePatternTest, EachPatternRendersForPalAndNtsc) {
   const std::vector<Standard> standards = {Standard::kPal, Standard::kNtsc};
 
   for (Standard standard : standards) {
-    const TimingConstants timing = GetTimingConstants(standard);
     for (const std::string& pattern : patterns) {
       std::vector<double> y;
       std::vector<double> c;
       ASSERT_TRUE(generation.Generate(MakeProject(standard, pattern), &y, &c, &errors));
-      EXPECT_EQ(y.size(),
-                static_cast<std::size_t>(timing.lines_per_frame * timing.samples_per_line_4fsc));
+      EXPECT_EQ(y.size(), static_cast<std::size_t>(SamplesPerFrame4fsc(standard)));
       EXPECT_EQ(c.size(), y.size());
     }
   }
@@ -387,10 +516,7 @@ TEST(GenerationStagePatternTest, DurationFramesScalesOutputSampleCount) {
                                   &y,
                                   &c,
                                   &errors));
-  const TimingConstants pal = GetTimingConstants(Standard::kPal);
-
-  EXPECT_EQ(y.size(),
-            static_cast<std::size_t>(3 * pal.lines_per_frame * pal.samples_per_line_4fsc));
+  EXPECT_EQ(y.size(), static_cast<std::size_t>(3 * SamplesPerFrame4fsc(Standard::kPal)));
   EXPECT_EQ(c.size(), y.size());
 }
 

@@ -140,8 +140,8 @@ bool OutputStage::Write(const Project& project,
   }
 
   const TimingConstants timing = GetTimingConstants(project.cvbs_presets.video_standard_preset);
-  const std::size_t frame_span =
-      static_cast<std::size_t>(timing.lines_per_frame * timing.samples_per_line_4fsc);
+    const std::size_t frame_span =
+      static_cast<std::size_t>(SamplesPerFrame4fsc(project.cvbs_presets.video_standard_preset));
   if (frame_span == 0U || (y_mv.size() % frame_span) != 0U) {
     errors->push_back("Generated sample count does not align to whole-frame 4fsc timing.");
     return false;

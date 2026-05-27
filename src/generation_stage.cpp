@@ -17,6 +17,7 @@
 #include "videosynth/chroma_encoder.h"
 #include "videosynth/frame_source.h"
 #include "videosynth/signal_timing_model.h"
+#include "videosynth/signal_shaping.h"
 #include "videosynth/timing_constants.h"
 
 namespace videosynth {
@@ -33,6 +34,43 @@ struct ActiveRasterGeometry {
   int active_window_end_samples = 0;
   int active_width_pixels = 720;
 };
+
+struct LinePulseSegment {
+  int offset_samples = 0;
+  SyncPulseKind kind = SyncPulseKind::kHorizontal;
+};
+
+std::vector<int> BuildLineSampleCounts(Standard standard, int lines_per_frame, int nominal_samples) {
+  std::vector<int> counts(static_cast<std::size_t>(lines_per_frame), nominal_samples);
+  if (standard == Standard::kPal) {
+    // EBU Tech. 3280-E Section 1.2: 625-line PAL at 4fsc has 1135.0064
+    // samples/line average, i.e. 709,379 samples/frame. Represent this with
+    // four +1 sample slips distributed across the frame.
+    constexpr int kSlipLines[] = {157, 313, 469, 625};
+    for (int line_1based : kSlipLines) {
+      counts[static_cast<std::size_t>(line_1based - 1)] += 1;
+    }
+  }
+  return counts;
+}
+
+std::vector<int> BuildLineSampleOffsets(const std::vector<int>& line_samples) {
+  std::vector<int> offsets(line_samples.size(), 0);
+  int running = 0;
+  for (std::size_t i = 0; i < line_samples.size(); ++i) {
+    offsets[i] = running;
+    running += line_samples[i];
+  }
+  return offsets;
+}
+
+int MaxLineSamples(const std::vector<int>& line_samples) {
+  int max_samples = 0;
+  for (int samples : line_samples) {
+    max_samples = std::max(max_samples, samples);
+  }
+  return max_samples;
+}
 
 int ClampCode(int code, int lo, int hi) {
   return std::max(lo, std::min(code, hi));
@@ -58,7 +96,7 @@ ActiveRasterGeometry GetActiveRasterGeometry(Standard standard, double sample_ra
 
   return ActiveRasterGeometry{
       .first_active_line_field1 = 22,
-      .first_active_line_field2 = 285,
+      .first_active_line_field2 = 284,
       .active_lines_per_field = 240,
       .active_window_start_samples = active_window_start,
       .active_window_end_samples = active_window_end,
@@ -91,7 +129,9 @@ bool BuildFramePatternSchedule(const Project& project,
   return !out_frame_patterns->empty();
 }
 
-int ActiveFrameLineIndex(const ActiveRasterGeometry& geometry, int line_1based) {
+int ActiveFrameLineIndex(const ActiveRasterGeometry& geometry,
+                         Standard standard,
+                         int line_1based) {
   if (line_1based >= geometry.first_active_line_field1 &&
       line_1based < (geometry.first_active_line_field1 + geometry.active_lines_per_field)) {
     return line_1based - geometry.first_active_line_field1;
@@ -100,6 +140,7 @@ int ActiveFrameLineIndex(const ActiveRasterGeometry& geometry, int line_1based) 
       line_1based < (geometry.first_active_line_field2 + geometry.active_lines_per_field)) {
     return geometry.active_lines_per_field + (line_1based - geometry.first_active_line_field2);
   }
+
   return -1;
 }
 
@@ -137,6 +178,108 @@ int BurstEndSamples(double sample_rate_hz) {
   return std::max(0, static_cast<int>(std::lround(sample_rate_hz * 8.0e-6)));
 }
 
+std::vector<LinePulseSegment> BuildLinePulseSchedule(const LineTimingPrimitive& line,
+                                                     Standard standard,
+                                                     int half_line_samples) {
+  std::vector<LinePulseSegment> schedule;
+
+  if (standard == Standard::kPal) {
+    const int line_1based = line.line_number_1based;
+    if (line_1based == 1 || line_1based == 2 || line_1based == 314 || line_1based == 315) {
+      return {
+          LinePulseSegment{.offset_samples = 0, .kind = SyncPulseKind::kVerticalSync},
+          LinePulseSegment{.offset_samples = half_line_samples, .kind = SyncPulseKind::kVerticalSync},
+      };
+    }
+    if (line_1based == 3) {
+      return {
+          LinePulseSegment{.offset_samples = 0, .kind = SyncPulseKind::kVerticalSync},
+          LinePulseSegment{.offset_samples = half_line_samples, .kind = SyncPulseKind::kEqualizing},
+      };
+    }
+    if (line_1based == 313) {
+      return {
+          LinePulseSegment{.offset_samples = 0, .kind = SyncPulseKind::kEqualizing},
+          LinePulseSegment{.offset_samples = half_line_samples, .kind = SyncPulseKind::kVerticalSync},
+      };
+    }
+    if (line_1based == 6 || line_1based == 318) {
+      return {
+          LinePulseSegment{.offset_samples = 0, .kind = SyncPulseKind::kEqualizing},
+      };
+    }
+    if (line_1based == 4 || line_1based == 5 || line_1based == 311 || line_1based == 312 ||
+        line_1based == 316 || line_1based == 317 || line_1based == 623 || line_1based == 624 ||
+        line_1based == 625) {
+      return {
+          LinePulseSegment{.offset_samples = 0, .kind = SyncPulseKind::kEqualizing},
+          LinePulseSegment{.offset_samples = half_line_samples, .kind = SyncPulseKind::kEqualizing},
+      };
+    }
+  }
+
+  if (standard == Standard::kNtsc && line.line_number_1based == 263) {
+    return {
+        LinePulseSegment{.offset_samples = 0, .kind = SyncPulseKind::kHorizontal},
+        LinePulseSegment{.offset_samples = half_line_samples, .kind = SyncPulseKind::kEqualizing},
+    };
+  }
+
+  if (!line.has_two_half_line_pulses) {
+    schedule.push_back(LinePulseSegment{.offset_samples = 0, .kind = line.sync_pulse_kind});
+    return schedule;
+  }
+
+  schedule.push_back(LinePulseSegment{.offset_samples = 0, .kind = line.sync_pulse_kind});
+  schedule.push_back(
+      LinePulseSegment{.offset_samples = half_line_samples, .kind = line.sync_pulse_kind});
+
+  if (standard == Standard::kNtsc) {
+    // Align the line-granular model with the SMPTE 170M field-2 transition shape
+    // seen in 4fsc reference material, where mixed half-line pulse kinds occur
+    // around frame lines 263/266/269/272.
+    if (line.line_number_1based == 266) {
+      schedule = {
+          LinePulseSegment{.offset_samples = 0, .kind = SyncPulseKind::kEqualizing},
+          LinePulseSegment{.offset_samples = half_line_samples, .kind = SyncPulseKind::kVerticalSync},
+      };
+    } else if (line.line_number_1based == 269) {
+      schedule = {
+          LinePulseSegment{.offset_samples = 0, .kind = SyncPulseKind::kVerticalSync},
+          LinePulseSegment{.offset_samples = half_line_samples, .kind = SyncPulseKind::kEqualizing},
+      };
+    } else if (line.line_number_1based == 272) {
+      schedule = {
+          LinePulseSegment{.offset_samples = 0, .kind = SyncPulseKind::kEqualizing},
+      };
+    }
+  }
+
+  return schedule;
+}
+
+double SyncEdgeRiseTimeSeconds(Standard standard) {
+  if (standard == Standard::kNtsc) {
+    // SMPTE 170M-2004 Table 2 plus Note 1: sync pulse rise/fall 140 ns ± 20 ns
+    // measured 10%-90%.
+    return 140.0e-9;
+  }
+  // ITU-R BT.1700 Table 2 item f and Table 3 item s: 625 PAL sync/equalizing
+  // edge rise/fall 200 ns ± 100 ns measured 10%-90%.
+  return 200.0e-9;
+}
+
+double BurstEnvelopeRiseTimeSeconds(Standard standard) {
+  if (standard == Standard::kNtsc) {
+    // SMPTE 170M-2004 Table 2: burst envelope rise 300 ns (+200/-100) 10%-90%.
+    return 300.0e-9;
+  }
+  // ITU-R BT.1700 Table 2 items g/h define PAL burst placement and duration, and
+  // item e defines line-blanking edge rise of 300 ns ± 100 ns. This model uses
+  // the same time constant to apply a finite PAL burst gate envelope.
+  return 300.0e-9;
+}
+
 }  // namespace
 
 bool GenerationStage::Generate(const Project& project,
@@ -149,13 +292,25 @@ bool GenerationStage::Generate(const Project& project,
 
   const TimingConstants timing = GetTimingConstants(project.cvbs_presets.video_standard_preset);
   const SignalLevels levels = GetSignalLevels(project.cvbs_presets.video_standard_preset);
+  const std::vector<int> line_sample_counts =
+      BuildLineSampleCounts(project.cvbs_presets.video_standard_preset,
+                            timing.lines_per_frame,
+                            timing.samples_per_line_4fsc);
+  const std::vector<int> line_sample_offsets = BuildLineSampleOffsets(line_sample_counts);
+  const int frame_samples = SamplesPerFrame4fsc(project.cvbs_presets.video_standard_preset);
+  const int max_line_samples = MaxLineSamples(line_sample_counts);
   const std::vector<LineTimingPrimitive> lines =
       BuildFrameTimingPrimitives(project.cvbs_presets.video_standard_preset);
   const double subcarrier_hz = timing.sample_rate_4fsc_hz / 4.0;
   const double burst_amplitude_mv = 150.0;
   const int burst_start = BurstStartSamples(timing.sample_rate_4fsc_hz);
   const int burst_end = BurstEndSamples(timing.sample_rate_4fsc_hz);
-  const int half_line_samples = timing.samples_per_line_4fsc / 2;
+  const int sync_rise_samples =
+      RiseTimeToRampSamples(SyncEdgeRiseTimeSeconds(project.cvbs_presets.video_standard_preset),
+                timing.sample_rate_4fsc_hz);
+  const int burst_rise_samples =
+      RiseTimeToRampSamples(BurstEnvelopeRiseTimeSeconds(project.cvbs_presets.video_standard_preset),
+                timing.sample_rate_4fsc_hz);
   const ActiveRasterGeometry active =
       GetActiveRasterGeometry(project.cvbs_presets.video_standard_preset, timing.sample_rate_4fsc_hz);
   const TestPatternFrameSource frame_source;
@@ -176,14 +331,13 @@ bool GenerationStage::Generate(const Project& project,
   }
 
   const std::size_t frame_count = frame_patterns.size();
-  const std::size_t sample_count =
-      frame_count * static_cast<std::size_t>(timing.lines_per_frame * timing.samples_per_line_4fsc);
+    const std::size_t sample_count = frame_count * static_cast<std::size_t>(frame_samples);
 
   const int active_window_start =
-      std::max(0, std::min(active.active_window_start_samples, timing.samples_per_line_4fsc - 1));
+      std::max(0, std::min(active.active_window_start_samples, max_line_samples - 1));
   const int active_window_end =
       std::max(active_window_start + 1,
-           std::min(active.active_window_end_samples, timing.samples_per_line_4fsc));
+         std::min(active.active_window_end_samples, max_line_samples));
   const int active_window_samples = active_window_end - active_window_start;
 
   out_y_mv->assign(sample_count, levels.blanking_mv);
@@ -201,28 +355,43 @@ bool GenerationStage::Generate(const Project& project,
       return false;
     }
 
+    // NTSC: 525 lines/frame × π rad/line = 525π ≡ π (mod 2π) accumulated per frame,
+    // producing the 2-frame SC-H phase pattern defined in SMPTE 170M.
+    const double frame_phase_offset =
+        (project.cvbs_presets.video_standard_preset == Standard::kNtsc)
+            ? static_cast<double>(frame_index % 2) * kPi
+            : 0.0;
+
     for (const LineTimingPrimitive& line : lines) {
       const int line_index = line.line_number_1based - 1;
-      const std::size_t frame_line_offset =
-          (frame_index * static_cast<std::size_t>(timing.lines_per_frame)) +
-          static_cast<std::size_t>(line_index);
-      const int line_base =
-          static_cast<int>(frame_line_offset * static_cast<std::size_t>(timing.samples_per_line_4fsc));
-      const int line_end = line_base + timing.samples_per_line_4fsc;
+      const int frame_base = static_cast<int>(frame_index * static_cast<std::size_t>(frame_samples));
+      const int line_base = frame_base + line_sample_offsets[static_cast<std::size_t>(line_index)];
+      const int line_samples = line_sample_counts[static_cast<std::size_t>(line_index)];
+      const int line_end = line_base + line_samples;
+      const int half_line_samples = (line_samples + 1) / 2;
 
-      const int pulse_width =
-          PulseWidthSamples(line.sync_pulse_kind,
-                            project.cvbs_presets.video_standard_preset,
-                            timing.sample_rate_4fsc_hz);
-      const int pulse_count = line.has_two_half_line_pulses ? 2 : 1;
+      const std::vector<LinePulseSegment> pulse_schedule =
+          BuildLinePulseSchedule(line,
+                                 project.cvbs_presets.video_standard_preset,
+                                 half_line_samples);
 
-      for (int pulse_index = 0; pulse_index < pulse_count; ++pulse_index) {
-        const int pulse_offset = line.has_two_half_line_pulses ? (pulse_index * half_line_samples) : 0;
-        const int pulse_start = line_base + std::min(pulse_offset, timing.samples_per_line_4fsc - 1);
+      for (const LinePulseSegment& segment : pulse_schedule) {
+        const int pulse_width =
+            PulseWidthSamples(segment.kind,
+                              project.cvbs_presets.video_standard_preset,
+                              timing.sample_rate_4fsc_hz);
+        const int pulse_offset = segment.offset_samples;
+        const int pulse_start = line_base + std::min(pulse_offset, line_samples - 1);
         const int pulse_end = std::min(pulse_start + pulse_width, line_end);
+        const int pulse_width_samples = pulse_end - pulse_start;
 
         for (int i = pulse_start; i < pulse_end; ++i) {
-          (*out_y_mv)[i] = levels.sync_tip_mv;
+          const int relative_index = i - pulse_start;
+          (*out_y_mv)[i] = ShapedPulseLevel(relative_index,
+                                           pulse_width_samples,
+                                           sync_rise_samples,
+                                           levels.blanking_mv,
+                                           levels.sync_tip_mv);
         }
       }
 
@@ -230,11 +399,17 @@ bool GenerationStage::Generate(const Project& project,
         const int burst_sample_start =
             std::min(line_base + burst_start, line_end > 0 ? line_end - 1 : line_base);
         const int burst_sample_end = std::min(line_base + burst_end, line_end);
-        const double phase = line.burst_phase_rad;
+        const int burst_width_samples = burst_sample_end - burst_sample_start;
+        const double phase = line.burst_phase_rad + frame_phase_offset;
 
         for (int i = burst_sample_start; i < burst_sample_end; ++i) {
+          const int relative_index = i - burst_sample_start;
+          const double envelope = ShapedGateEnvelope(relative_index,
+                               burst_width_samples,
+                               burst_rise_samples);
           const double t = static_cast<double>(i - line_base) / timing.sample_rate_4fsc_hz;
-          (*out_c_mv)[i] = burst_amplitude_mv * std::sin((2.0 * kPi * subcarrier_hz * t) + phase);
+          (*out_c_mv)[i] =
+              burst_amplitude_mv * envelope * std::sin((2.0 * kPi * subcarrier_hz * t) + phase);
         }
       }
 
@@ -243,7 +418,9 @@ bool GenerationStage::Generate(const Project& project,
         continue;
       }
 
-      const int active_y = ActiveFrameLineIndex(active, line.line_number_1based);
+      const int active_y = ActiveFrameLineIndex(active,
+                    project.cvbs_presets.video_standard_preset,
+                    line.line_number_1based);
       if (active_y < 0) {
         continue;
       }
@@ -262,19 +439,32 @@ bool GenerationStage::Generate(const Project& project,
         int pixel_x = (x_sample * active.active_width_pixels) / active_window_samples;
         pixel_x = std::min(active.active_width_pixels - 1, std::max(0, pixel_x));
 
-        if (pixel_x >= source_frame.width || active_y >= source_frame.height) {
+        // Map from interlaced field-line index to the progressive source row.
+        // Field 1 occupies even rows (0, 2, 4 …) and field 2 occupies odd rows
+        // (1, 3, 5 …) so that when a viewer deinterlaces by interleaving the two
+        // fields, each display row reads from the correct progressive source line.
+        const int field_line = active_y % active.active_lines_per_field;
+        const int source_row = (line.field_index_1based == 1)
+                                   ? (2 * field_line)
+                                   : (2 * field_line + 1);
+
+        if (pixel_x >= source_frame.width || source_row >= source_frame.height) {
           continue;
         }
 
-        const YCbCr444Pixel& pixel = source_frame.PixelAt(pixel_x, active_y);
+        const YCbCr444Pixel& pixel = source_frame.PixelAt(pixel_x, source_row);
         const std::size_t sample_slot = static_cast<std::size_t>(x_sample);
         active_sample_indices[sample_slot] = sample_index;
         line_source_samples[sample_slot] = pixel;
 
-        (*out_y_mv)[sample_index] = LumaMillivoltsFromCode(pixel.y, levels);
+        // Preserve any sync-domain sample already placed for this line; only
+        // paint active luma where the waveform is at/above blanking level.
+        if ((*out_y_mv)[sample_index] >= levels.blanking_mv) {
+          (*out_y_mv)[sample_index] = LumaMillivoltsFromCode(pixel.y, levels);
+        }
 
         const double t = static_cast<double>(sample_index - line_base) / timing.sample_rate_4fsc_hz;
-        carrier_phases_rad[sample_slot] = (2.0 * kPi * subcarrier_hz * t) + line.burst_phase_rad;
+        carrier_phases_rad[sample_slot] = (2.0 * kPi * subcarrier_hz * t) + line.burst_phase_rad + frame_phase_offset;
       }
 
       std::vector<double> encoded_line_chroma;

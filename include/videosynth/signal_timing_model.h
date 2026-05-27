@@ -62,30 +62,28 @@ inline int GetFieldIndex(Standard standard, int line_1based) {
 
 inline SyncPulseKind GetSyncPulseKind(Standard standard, int line_1based) {
   if (standard == Standard::kPal) {
-    // ITU-R BT.1700 Annex 1 Part B (Figures 3-5 and Table 3 l/m/n) defines
-    // the PAL field-sync structure used here (equalizing and broad sync blocks).
-    if (IsLineInRange(line_1based, 1, 5) || IsLineInRange(line_1based, 11, 15) ||
-        IsLineInRange(line_1based, 313, 317) || IsLineInRange(line_1based, 323, 325) ||
-        IsLineInRange(line_1based, 624, 625)) {
+    // ITU-R BT.1700 Annex 1 Part B (Figures 3-5 and Table 3 l/m/n) with
+    // line-granular framing yields the PAL equalizing/sync regions below; mixed
+    // half-line combinations are applied by the generation pulse schedule.
+    if (IsLineInRange(line_1based, 4, 6) || IsLineInRange(line_1based, 311, 313) ||
+        IsLineInRange(line_1based, 316, 318) || IsLineInRange(line_1based, 623, 625)) {
       return SyncPulseKind::kEqualizing;
     }
-    if (IsLineInRange(line_1based, 6, 10) || IsLineInRange(line_1based, 318, 322) ||
-        IsLineInRange(line_1based, 623, 623)) {
+    if (IsLineInRange(line_1based, 1, 3) || IsLineInRange(line_1based, 314, 315)) {
       return SyncPulseKind::kVerticalSync;
     }
     return SyncPulseKind::kHorizontal;
   }
 
   if (standard == Standard::kNtsc) {
-    // SMPTE 170M-2004 Section 13.3 and Table 3 define the NTSC 9-line vertical
-    // sync block (3-line pre-equalizing, 3-line sync, 3-line post-equalizing).
+    // SMPTE 170M-2004 Section 13.3/Table 3 defines a 9-line vertical sync block
+    // per field. With 1-indexed, line-granular framing, the field-1 block is at
+    // lines 1-9, and the field-2 block aligns to lines 264-272.
     if (IsLineInRange(line_1based, 1, 3) || IsLineInRange(line_1based, 7, 9) ||
-        IsLineInRange(line_1based, 263, 265) || IsLineInRange(line_1based, 269, 271) ||
-        IsLineInRange(line_1based, 521, 522)) {
+        IsLineInRange(line_1based, 264, 266) || IsLineInRange(line_1based, 270, 272)) {
       return SyncPulseKind::kEqualizing;
     }
-    if (IsLineInRange(line_1based, 4, 6) || IsLineInRange(line_1based, 266, 268) ||
-        IsLineInRange(line_1based, 523, 525)) {
+    if (IsLineInRange(line_1based, 4, 6) || IsLineInRange(line_1based, 267, 269)) {
       return SyncPulseKind::kVerticalSync;
     }
     return SyncPulseKind::kHorizontal;
@@ -98,16 +96,18 @@ inline LineContentKind GetLineContentKind(Standard standard, int line_1based) {
   if (standard == Standard::kPal) {
     // ITU-R BT.1700 Annex 1 Part B Table 1 item 1a (576 active lines) implies
     // active picture starts at lines 23 and 336 in 625-line PAL.
-    if (IsLineInRange(line_1based, 16, 22) || IsLineInRange(line_1based, 326, 335)) {
+    if (IsLineInRange(line_1based, 16, 22) || IsLineInRange(line_1based, 319, 335)) {
       return LineContentKind::kVbiBlanking;
     }
     return LineContentKind::kActivePicture;
   }
 
   if (standard == Standard::kNtsc) {
-    // SMPTE 170M-2004 Section 13.3 and Table 3 vertical blanking timing yields
-    // active picture start at lines 22 and 285 for the 525-line system.
-    if (IsLineInRange(line_1based, 10, 21) || IsLineInRange(line_1based, 272, 284)) {
+    // SMPTE 170M-2004 Section 13.3/Table 3 defines a 20-line + 1.5 us vertical
+    // blanking interval and notes line-20/282 behavior. In this line-granular
+    // model, field-1 active starts at 22 and field-2 active starts at 284,
+    // leaving line 283 as the field-2 transition line.
+    if (IsLineInRange(line_1based, 10, 21) || IsLineInRange(line_1based, 263, 283)) {
       return LineContentKind::kVbiBlanking;
     }
     return LineContentKind::kActivePicture;
@@ -124,7 +124,13 @@ inline double BurstPhaseRad(Standard standard, int line_1based) {
   constexpr double kPi = 3.14159265358979323846;
 
   if (standard == Standard::kNtsc) {
-    return 0.0;
+    // SMPTE 244M-2003 Section 4.1.1: 910 samples/line at 4fsc.
+    // The subcarrier advances 910 × (2π/4) = 455π ≡ π (mod 2π) per line,
+    // so each successive line starts with a π-radian phase offset relative to
+    // the previous. A +45 deg reference offset avoids the 0/π degenerate case
+    // where one burst polarity would land exactly on the zero-crossing samples.
+    constexpr double kNtscReferencePhase = kPi / 4.0;
+    return kNtscReferencePhase + static_cast<double>((line_1based - 1) % 2) * kPi;
   }
 
   // ITU-R BT.1700 Annex 1 Part B Table 1 item 10f and Figure 8:

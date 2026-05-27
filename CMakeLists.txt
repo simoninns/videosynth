@@ -18,6 +18,7 @@ add_library(videosynth_core
     src/output_stage.cpp
     src/pipeline.cpp
     src/project_validator.cpp
+    src/signal_shaping.cpp
     src/yaml_project_parser.cpp
 )
 

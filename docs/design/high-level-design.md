@@ -134,6 +134,8 @@ Practical interpretation:
 | 40MSPS          | 40,000,000   | 40,000,000    | Oversampling.                    |
 | Custom          | User-defined | User-defined  | Must be > 4fsc.                  |
 
+At `4fsc`, NTSC frame cadence is orthogonal (`910 x 525 = 477,750` samples/frame). PAL is non-orthogonal at `4fsc` and uses `709,379` samples/frame via a distributed one-sample slip pattern (`1135` nominal samples/line with four lines per frame at `1134`).
+
 
 ---
 
@@ -173,9 +175,17 @@ VideoSynth follows a **two-stage architecture** to ensure **separation of concer
 
 ### **Key Principle: Frame-Based Generation**
 
-**All generation is frame-based.** A frame (two sequential fields) is the **smallest unit of output** from the generation stage. The generator has no knowledge of individual fields; it operates entirely at the frame level.
+**All generation is frame-scoped.** A frame (two sequential fields) is the **smallest unit of output** from the generation stage.
 
-The **only field-aware process** is **progressive source ingestion**, which splits an incoming progressive frame into two interlaced fields (Field 1 and Field 2) before handing the complete frame to the generator.
+However, **line timing and source-row addressing inside that frame are field-aware by definition**. This is required to keep interlaced field sequence and active-picture placement compliant with the NTSC/PAL timing models.
+
+For avoidance of doubt, the generator shall apply the following rules:
+
+- **NTSC active-picture line starts (1-indexed frame lines):** field 1 starts at line **22**; field 2 starts at line **284**. Line 21 (field-1 transition) and line 283 (field-2 transition) are not treated as full active-picture lines.
+- **PAL active-picture line starts (1-indexed frame lines):** field 1 starts at line **23**; field 2 starts at line **336**.
+- **Progressive-to-interlaced row mapping:** for a field-local active line index $n$ (starting at 0), field 1 samples source row $2n$ and field 2 samples source row $2n+1$.
+
+The progressive source ingestion stage remains responsible for decoding and colour-space normalisation, but the generation stage is responsible for preserving the correct field sequence geometry when mapping normalised frame data into line-timed CVBS-domain Y/C waveforms.
 
 ---
 
@@ -429,27 +439,17 @@ For **PAL (625-line system)**, the vertical blanking interval (VBI) is defined a
 
 | **Line** | **Half-Line Elements** | **Notes**                                      |
 | -------- | ---------------------- | ---------------------------------------------- |
-| 313      | EQ, EQ                 | Pre-equalizing pulses (5 pulses total, 2.5H).  |
-| 314      | EQ, EQ                 | Pre-equalizing pulses.                         |
-| 315      | EQ, EQ                 | Pre-equalizing pulses.                         |
-| 316      | EQ, EQ                 | Pre-equalizing pulses.                         |
-| 317      | EQ, EQ                 | Pre-equalizing pulses.                         |
-| 318      | VS, VS                 | Vertical sync pulse (start).                   |
-| 319      | VS, VS                 | Vertical sync pulse.                           |
-| 320      | VS, VS                 | Vertical sync pulse.                           |
-| 321      | VS, VS                 | Vertical sync pulse.                           |
-| 322      | VS, VS                 | Vertical sync pulse (end).                     |
-| 323      | EQ, EQ                 | Post-equalizing pulses (5 pulses total, 2.5H). |
-| 324      | EQ, EQ                 | Post-equalizing pulses.                        |
-| 325      | EQ, EQ                 | Post-equalizing pulses.                        |
-| 326-328  | BL, BL                 | VBI (Laserdisc biphase reserved; lines 14–15/327–328 also used for subtitle extra capacity per Amendment 2). |
-| 329-331  | BL, BL                 | VBI (Laserdisc biphase key code lines: programme status on 329, picture stop/chapter on 330, chapter/time code on 331). |
-| 332-333  | BL, BL                 | VBI (VITS; line 326 or 333 per Amendment 2).   |
-| 334      | BL, BL                 | VBI (VITC, subtitle data).                     |
-| 335      | BL, BL                 | VBI (blanked when Laserdisc active for disk noise measurement; CEA-608 otherwise). |
-| 336-623  | Active Video           | Visible content.                               |
-| 624      | EQ, EQ                 | Pre-equalizing pulses (start of next field VBI).|
-| 625      | EQ, EQ                 | Pre-equalizing pulses.                         |
+| 311      | EQ, EQ                 | Pre-equalizing pulses.                         |
+| 312      | EQ, EQ                 | Pre-equalizing pulses.                         |
+| 313      | EQ, VS                 | Transition into broad-sync block (mixed half-line). |
+| 314      | VS, VS                 | Vertical sync pulse.                           |
+| 315      | VS, VS                 | Vertical sync pulse (end).                     |
+| 316      | EQ, EQ                 | Post-equalizing pulses.                        |
+| 317      | EQ, EQ                 | Post-equalizing pulses.                        |
+| 318      | EQ, BL                 | Transition out of sync block (mixed half-line).|
+| 319-335  | BL, BL                 | VBI lines.                                     |
+| 336-622  | Active Video           | Visible content.                               |
+| 623-625  | EQ, EQ                 | Pre-equalizing pulses for next frame boundary. |
 
 
 ---
@@ -492,24 +492,15 @@ For **NTSC (525-line system)**, the vertical blanking interval (VBI) is defined 
 
 | **Line** | **Half-Line Elements** | **Notes**                                    |
 | -------- | ---------------------- | -------------------------------------------- |
-| 263      | EQ, EQ                 | Pre-equalizing pulses (6 pulses total, 3H).  |
-| 264      | EQ, EQ                 | Pre-equalizing pulses.                       |
-| 265      | EQ, EQ                 | Pre-equalizing pulses.                       |
-| 266      | VS, VS                 | Vertical sync pulse (start).                 |
-| 267      | VS, VS                 | Vertical sync pulse.                         |
-| 268      | VS, VS                 | Vertical sync pulse (end).                   |
-| 269      | EQ, EQ                 | Post-equalizing pulses (6 pulses total, 3H). |
-| 270      | EQ, EQ                 | Post-equalizing pulses.                      |
-| 271      | EQ, EQ                 | Post-equalizing pulses.                      |
-| 272      | BL, BL                 | VBI (first line after sync; outside laserdisc reserved range). |
-| 273-274  | BL, BL                 | VBI (Laserdisc 40-bit FM coded signal reserved: FM data on 273, white flag on 274). |
-| 275-278  | BL, BL                 | VBI (Laserdisc biphase reserved; reserved for future applications). |
-| 279      | BL, BL                 | VBI (Laserdisc biphase: programme status / CLV picture number / users code). |
-| 280-281  | BL, BL                 | VBI (Laserdisc biphase: picture number / chapter / programme time code on 280–281). |
-| 282      | BL, BL                 | VBI (VIR signal; mandatory on NTSC laserdisc per IEC 60857 §9.1.3). |
-| 283      | BL, BL                 | VBI (VITS combination test signal; recommended per IEC 60857 §9.1.4). |
-| 284      | BL, BL                 | VBI (CEA-608 / closed caption, first half of line per PBS E7709). |
-| 285-522  | Active Video           | Visible content.                             |
+| 263      | SY, EQ                 | Field-transition lead-in (mixed half-line; horizontal-sync then equalizing).  |
+| 264-265  | EQ, EQ                 | Pre-equalizing pulses.                       |
+| 266      | EQ, VS                 | Transition into broad-sync block (mixed half-line). |
+| 267-268  | VS, VS                 | Vertical sync pulses.                        |
+| 269      | VS, EQ                 | Transition out of broad-sync block (mixed half-line). |
+| 270-271  | EQ, EQ                 | Post-equalizing pulses.                      |
+| 272      | EQ, BL                 | Final transition to blanking (mixed half-line). |
+| 273-282  | BL, BL                 | VBI lines.                                   |
+| 283-525  | Active Video           | Visible content in field 2 tail through end of frame. |
 
 
 ---

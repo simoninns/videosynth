@@ -93,4 +93,19 @@ inline SignalLevels GetSignalLevels(Standard standard) {
   throw std::invalid_argument("Signal levels requested for unknown standard");
 }
 
+inline int SamplesPerFrame4fsc(Standard standard) {
+  if (standard == Standard::kPal) {
+    // EBU Tech. 3280-E Section 1.2: PAL 4fsc has 1135.0064 samples/line,
+    // yielding 709,379 samples/frame over 625 lines.
+    return 709379;
+  }
+
+  if (standard == Standard::kNtsc) {
+    // SMPTE 244M-2003 Section 4.1.1: 910 samples/line over 525 lines.
+    return 910 * 525;
+  }
+
+  throw std::invalid_argument("Frame sample count requested for unknown standard");
+}
+
 }  // namespace videosynth

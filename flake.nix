@@ -47,6 +47,7 @@
             ninja
             pkg-config
             python3
+            python3Packages.numpy
             gcc
             yaml-cpp
             spdlog

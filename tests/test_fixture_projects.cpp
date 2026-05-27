@@ -105,8 +105,8 @@ TEST(ProjectFixturesTest, FixtureProjectsGenerateCompositeOutputWith32Frames) {
 
     const TimingConstants timing =
       GetTimingConstants(project.cvbs_presets.video_standard_preset);
-    const std::size_t frame_span =
-        static_cast<std::size_t>(timing.lines_per_frame * timing.samples_per_line_4fsc);
+    const std::size_t frame_span = static_cast<std::size_t>(
+        SamplesPerFrame4fsc(project.cvbs_presets.video_standard_preset));
     ASSERT_EQ(y_mv.size(), frame_span * 32U) << fixture;
     ASSERT_EQ(c_mv.size(), y_mv.size()) << fixture;
 
@@ -146,8 +146,8 @@ TEST(ProjectFixturesTest, FixtureOutputHashesRemainStable) {
   };
 
   const std::vector<FixtureExpectation> expectations = {
-      {"pal_32f_bars_ramp.yaml", 768884900493598019ULL},
-      {"ntsc_32f_bars_ramp.yaml", 15033061748998735491ULL},
+      {"pal_32f_bars_ramp.yaml", 4497564970412197955ULL},
+      {"ntsc_32f_bars_ramp.yaml", 4872449792023804291ULL},
   };
 
   for (const FixtureExpectation& expectation : expectations) {

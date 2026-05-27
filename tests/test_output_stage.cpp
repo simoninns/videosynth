@@ -47,9 +47,7 @@ std::string ReadTextFile(const std::filesystem::path& path) {
 TEST(OutputStageTest, WritesCompositeSamplesUsingPalQuantizationProfile) {
   OutputStage output;
   Project project = MakeProject(Standard::kPal);
-  const TimingConstants pal = GetTimingConstants(Standard::kPal);
-  const std::size_t frame_span =
-      static_cast<std::size_t>(pal.lines_per_frame * pal.samples_per_line_4fsc);
+  const std::size_t frame_span = static_cast<std::size_t>(SamplesPerFrame4fsc(Standard::kPal));
 
   std::vector<double> y(frame_span, 0.0);
   std::vector<double> c(frame_span, 0.0);
@@ -91,9 +89,7 @@ TEST(OutputStageTest, WritesCompositeSamplesUsingTpg21EncodingPreset) {
   OutputStage output;
   Project project = MakeProject(Standard::kPal);
   project.cvbs_presets.sample_encoding_preset = "CVBS_TPG21_4FSC";
-  const TimingConstants pal = GetTimingConstants(Standard::kPal);
-  const std::size_t frame_span =
-    static_cast<std::size_t>(pal.lines_per_frame * pal.samples_per_line_4fsc);
+  const std::size_t frame_span = static_cast<std::size_t>(SamplesPerFrame4fsc(Standard::kPal));
 
   std::vector<double> y(frame_span, 0.0);
   std::vector<double> c(frame_span, 0.0);
@@ -130,9 +126,7 @@ TEST(OutputStageTest, WritesCompositeSamplesUsingTpg21EncodingPreset) {
 TEST(OutputStageTest, SumsYAndCBeforeQuantizationInNtscProfile) {
   OutputStage output;
   Project project = MakeProject(Standard::kNtsc);
-  const TimingConstants ntsc = GetTimingConstants(Standard::kNtsc);
-  const std::size_t frame_span =
-      static_cast<std::size_t>(ntsc.lines_per_frame * ntsc.samples_per_line_4fsc);
+  const std::size_t frame_span = static_cast<std::size_t>(SamplesPerFrame4fsc(Standard::kNtsc));
 
   std::vector<double> y(frame_span, 0.0);
   std::vector<double> c(frame_span, 0.0);
@@ -162,9 +156,7 @@ TEST(OutputStageTest, SumsYAndCBeforeQuantizationInNtscProfile) {
 TEST(OutputStageTest, ClampsOutOfRangeValuesToLegalCodeSpace) {
   OutputStage output;
   Project project = MakeProject(Standard::kPal);
-  const TimingConstants pal = GetTimingConstants(Standard::kPal);
-  const std::size_t frame_span =
-      static_cast<std::size_t>(pal.lines_per_frame * pal.samples_per_line_4fsc);
+  const std::size_t frame_span = static_cast<std::size_t>(SamplesPerFrame4fsc(Standard::kPal));
 
   std::vector<double> y(frame_span, 0.0);
   std::vector<double> c(frame_span, 0.0);
@@ -216,9 +208,7 @@ TEST(OutputStageTest, RejectsInvalidOutputConstraints) {
 
   errors.clear();
   project.cvbs_presets.sample_encoding_preset = "RAW_S16_40M";
-  const TimingConstants pal = GetTimingConstants(Standard::kPal);
-  const std::size_t frame_span =
-      static_cast<std::size_t>(pal.lines_per_frame * pal.samples_per_line_4fsc);
+  const std::size_t frame_span = static_cast<std::size_t>(SamplesPerFrame4fsc(Standard::kPal));
   y.assign(frame_span, 0.0);
   c.assign(frame_span, 0.0);
   EXPECT_FALSE(output.Write(project, y, c, &errors));
