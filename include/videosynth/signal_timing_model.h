@@ -44,9 +44,13 @@ inline bool IsLineInRange(int line, int start, int end) {
 
 inline int Field1LineCount(Standard standard) {
   if (standard == Standard::kPal) {
+    // ITU-R BT.1700 Annex 1 Part B Table 1 item 1 defines 625 lines/frame.
+    // With 2:1 interlace this model treats lines 1-312 as field 1.
     return 312;
   }
   if (standard == Standard::kNtsc) {
+    // SMPTE 170M-2004 Section 11.3 defines 525 lines/frame.
+    // With 2:1 interlace this model treats lines 1-262 as field 1.
     return 262;
   }
   throw std::invalid_argument("Field line count requested for unknown standard");
@@ -58,6 +62,8 @@ inline int GetFieldIndex(Standard standard, int line_1based) {
 
 inline SyncPulseKind GetSyncPulseKind(Standard standard, int line_1based) {
   if (standard == Standard::kPal) {
+    // ITU-R BT.1700 Annex 1 Part B (Figures 3-5 and Table 3 l/m/n) defines
+    // the PAL field-sync structure used here (equalizing and broad sync blocks).
     if (IsLineInRange(line_1based, 1, 5) || IsLineInRange(line_1based, 11, 15) ||
         IsLineInRange(line_1based, 313, 317) || IsLineInRange(line_1based, 323, 325) ||
         IsLineInRange(line_1based, 624, 625)) {
@@ -71,6 +77,8 @@ inline SyncPulseKind GetSyncPulseKind(Standard standard, int line_1based) {
   }
 
   if (standard == Standard::kNtsc) {
+    // SMPTE 170M-2004 Section 13.3 and Table 3 define the NTSC 9-line vertical
+    // sync block (3-line pre-equalizing, 3-line sync, 3-line post-equalizing).
     if (IsLineInRange(line_1based, 1, 3) || IsLineInRange(line_1based, 7, 9) ||
         IsLineInRange(line_1based, 263, 265) || IsLineInRange(line_1based, 269, 271) ||
         IsLineInRange(line_1based, 521, 522)) {
@@ -88,6 +96,8 @@ inline SyncPulseKind GetSyncPulseKind(Standard standard, int line_1based) {
 
 inline LineContentKind GetLineContentKind(Standard standard, int line_1based) {
   if (standard == Standard::kPal) {
+    // ITU-R BT.1700 Annex 1 Part B Table 1 item 1a (576 active lines) implies
+    // active picture starts at lines 23 and 336 in 625-line PAL.
     if (IsLineInRange(line_1based, 16, 22) || IsLineInRange(line_1based, 326, 335)) {
       return LineContentKind::kVbiBlanking;
     }
@@ -95,6 +105,8 @@ inline LineContentKind GetLineContentKind(Standard standard, int line_1based) {
   }
 
   if (standard == Standard::kNtsc) {
+    // SMPTE 170M-2004 Section 13.3 and Table 3 vertical blanking timing yields
+    // active picture start at lines 22 and 285 for the 525-line system.
     if (IsLineInRange(line_1based, 10, 21) || IsLineInRange(line_1based, 272, 284)) {
       return LineContentKind::kVbiBlanking;
     }
@@ -115,7 +127,8 @@ inline double BurstPhaseRad(Standard standard, int line_1based) {
     return 0.0;
   }
 
-  // PAL burst phase alternates ±135 degrees line-to-line.
+  // ITU-R BT.1700 Annex 1 Part B Table 1 item 10f and Figure 8:
+  // PAL burst phase alternates +135/-135 degrees line-to-line.
   return ((line_1based % 2) == 1) ? (3.0 * kPi / 4.0) : (-3.0 * kPi / 4.0);
 }
 

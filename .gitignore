@@ -1,0 +1,116 @@
+# C/C++ and CMake build directories
+build/
+build-*/
+cmake-build-*/
+out/
+bin/
+lib/
+lib64/
+obj/
+objs/
+
+# CMake and build system generated files
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+compile_commands.json
+CTestTestfile.cmake
+DartConfiguration.tcl
+Testing/
+Makefile
+install_manifest.txt
+build.ninja
+.ninja_deps
+.ninja_log
+
+# Generated binaries and libraries
+*.o
+*.obj
+*.lo
+*.la
+*.a
+*.so
+*.so.*
+*.dylib
+*.dll
+*.lib
+*.exe
+*.out
+*.app
+*.i*
+*.ii
+
+# Debug and profiler output
+*.dSYM/
+*.pdb
+*.idb
+*.stackdump
+*.gcda
+*.gcno
+*.gcov
+*.prof
+*.profraw
+*.profdata
+*.dmp
+
+# Test artifacts and reports
+*.xml
+*.tap
+*.trs
+*.log
+*.tmp
+*.cache
+coverage/
+coverage-*/
+htmlcov/
+*.lcov
+*.info
+
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Python packaging/build artifacts
+.Python
+python-build/
+dist/
+site/
+*.egg
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+
+# Python virtual environments and tooling
+.venv/
+venv/
+env/
+ENV/
+.tox/
+.nox/
+.pytest_cache/
+.mypy_cache/
+.pyre/
+.pytype/
+.ruff_cache/
+.hypothesis/
+.ipynb_checkpoints/
+
+# Python lock and local env files
+.python-version
+.env
+.env.*
+*.env
+
+# Common editor/OS artifacts
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Nix and local results
+result
+result-*

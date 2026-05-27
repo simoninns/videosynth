@@ -84,7 +84,10 @@ Project MakeProject() {
   p.cvbs_presets.sample_rate = "4fsc";
   p.cvbs_presets.subcarrier_lock = true;
   p.sections.push_back(
-      Section{.name = "Valid", .type = "software_generated", .pattern = "colour_bars_75"});
+      Section{.name = "Valid",
+              .type = "software_generated",
+              .pattern = "ebu_colour_bars",
+              .duration_frames = 1});
   return p;
 }
 

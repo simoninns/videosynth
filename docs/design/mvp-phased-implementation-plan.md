@@ -128,7 +128,7 @@ HLD anchor set for this phase:
 ### Exit Criteria
 
 - Invalid configs are rejected with actionable messages.
-- A valid but empty software pattern section can run through the full pipeline scaffold.
+- A valid software-generated section with an explicit supported pattern and positive duration can run through the full pipeline scaffold.
 - Repository builds and runs tests from the flake-based environment pinned to 25.11.
 - GitHub Actions CI workflow succeeds for both build and unit-test jobs.
 

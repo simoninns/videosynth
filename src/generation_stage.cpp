@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <vector>
 
 #include "videosynth/signal_timing_model.h"
 #include "videosynth/timing_constants.h"
@@ -80,28 +81,44 @@ bool ParsePatternKind(const std::string& pattern, PatternKind* out_kind) {
     return false;
   }
 
-  if (pattern == "colour_bars_75") {
+  if (pattern == "ebu_colour_bars" || pattern == "colour_bars_75") {
     *out_kind = PatternKind::kColourBars75;
     return true;
   }
-  if (pattern == "grayscale_ramp") {
+  if (pattern == "grayscale_ramp_horizontal" || pattern == "grayscale_ramp") {
     *out_kind = PatternKind::kGrayscaleRamp;
     return true;
   }
-  if (pattern == "pluge_basic") {
+  if (pattern == "pluge" || pattern == "pluge_basic") {
     *out_kind = PatternKind::kPlugeBasic;
     return true;
   }
   return false;
 }
 
-bool ExtractPatternKind(const Project& project, PatternKind* out_kind) {
+bool BuildFramePatternSchedule(const Project& project,
+                               std::vector<PatternKind>* out_frame_patterns) {
+  if (out_frame_patterns == nullptr) {
+    return false;
+  }
+
+  out_frame_patterns->clear();
   for (const Section& section : project.sections) {
-    if (section.type == "software_generated") {
-      return ParsePatternKind(section.pattern, out_kind);
+    if (section.type != "software_generated") {
+      continue;
+    }
+
+    PatternKind kind = PatternKind::kColourBars75;
+    if (!ParsePatternKind(section.pattern, &kind) || section.duration_frames <= 0) {
+      return false;
+    }
+
+    for (int i = 0; i < section.duration_frames; ++i) {
+      out_frame_patterns->push_back(kind);
     }
   }
-  return false;
+
+  return !out_frame_patterns->empty();
 }
 
 int ActiveFrameLineIndex(const ActiveRasterGeometry& geometry, int line_1based) {
@@ -228,95 +245,110 @@ bool GenerationStage::Generate(const Project& project,
   const SignalLevels levels = GetSignalLevels(project.cvbs_presets.standard);
   const std::vector<LineTimingPrimitive> lines =
       BuildFrameTimingPrimitives(project.cvbs_presets.standard);
-  const std::size_t sample_count =
-      static_cast<std::size_t>(timing.lines_per_frame * timing.samples_per_line_4fsc);
   const double subcarrier_hz = timing.sample_rate_4fsc_hz / 4.0;
   const double burst_amplitude_mv = 150.0;
   const int burst_start = BurstStartSamples(timing.sample_rate_4fsc_hz);
   const int burst_end = BurstEndSamples(timing.sample_rate_4fsc_hz);
   const int half_line_samples = timing.samples_per_line_4fsc / 2;
-    const ActiveRasterGeometry active =
+  const ActiveRasterGeometry active =
       GetActiveRasterGeometry(project.cvbs_presets.standard, timing.sample_rate_4fsc_hz);
-    PatternKind pattern = PatternKind::kColourBars75;
+  std::vector<PatternKind> frame_patterns;
 
-    if (!ExtractPatternKind(project, &pattern)) {
+  if (!BuildFramePatternSchedule(project, &frame_patterns)) {
     errors->push_back(
       "Unsupported or missing software-generated pattern. Supported patterns are "
-      "'colour_bars_75', 'grayscale_ramp', and 'pluge_basic'.");
+        "'ebu_colour_bars', 'grayscale_ramp_horizontal', and 'pluge'.");
     return false;
-    }
+  }
 
-    const int active_window_start =
+  const std::size_t frame_count = frame_patterns.size();
+  const std::size_t sample_count =
+      frame_count * static_cast<std::size_t>(timing.lines_per_frame * timing.samples_per_line_4fsc);
+
+  const int active_window_start =
       std::max(0, std::min(active.active_window_start_samples, timing.samples_per_line_4fsc - 1));
-    const int active_window_end =
+  const int active_window_end =
       std::max(active_window_start + 1,
            std::min(active.active_window_end_samples, timing.samples_per_line_4fsc));
-    const int active_window_samples = active_window_end - active_window_start;
-    const int active_height_lines = active.active_lines_per_field * 2;
+  const int active_window_samples = active_window_end - active_window_start;
+  const int active_height_lines = active.active_lines_per_field * 2;
 
   out_y_mv->assign(sample_count, levels.blanking_mv);
   out_c_mv->assign(sample_count, 0.0);
 
-  for (const LineTimingPrimitive& line : lines) {
-    const int line_index = line.line_number_1based - 1;
-    const int line_base = line_index * timing.samples_per_line_4fsc;
-    const int line_end = line_base + timing.samples_per_line_4fsc;
+  for (std::size_t frame_index = 0; frame_index < frame_count; ++frame_index) {
+    const PatternKind frame_pattern = frame_patterns[frame_index];
 
-    const int pulse_width =
-        PulseWidthSamples(line.sync_pulse_kind,
-                          project.cvbs_presets.standard,
-                          timing.sample_rate_4fsc_hz);
-    const int pulse_count = line.has_two_half_line_pulses ? 2 : 1;
+    for (const LineTimingPrimitive& line : lines) {
+      const int line_index = line.line_number_1based - 1;
+      const std::size_t frame_line_offset =
+          (frame_index * static_cast<std::size_t>(timing.lines_per_frame)) +
+          static_cast<std::size_t>(line_index);
+      const int line_base =
+          static_cast<int>(frame_line_offset * static_cast<std::size_t>(timing.samples_per_line_4fsc));
+      const int line_end = line_base + timing.samples_per_line_4fsc;
 
-    for (int pulse_index = 0; pulse_index < pulse_count; ++pulse_index) {
-      const int pulse_offset = line.has_two_half_line_pulses ? (pulse_index * half_line_samples) : 0;
-      const int pulse_start = line_base + std::min(pulse_offset, timing.samples_per_line_4fsc - 1);
-      const int pulse_end = std::min(pulse_start + pulse_width, line_end);
+      const int pulse_width =
+          PulseWidthSamples(line.sync_pulse_kind,
+                            project.cvbs_presets.standard,
+                            timing.sample_rate_4fsc_hz);
+      const int pulse_count = line.has_two_half_line_pulses ? 2 : 1;
 
-      for (int i = pulse_start; i < pulse_end; ++i) {
-        (*out_y_mv)[i] = levels.sync_tip_mv;
+      for (int pulse_index = 0; pulse_index < pulse_count; ++pulse_index) {
+        const int pulse_offset = line.has_two_half_line_pulses ? (pulse_index * half_line_samples) : 0;
+        const int pulse_start = line_base + std::min(pulse_offset, timing.samples_per_line_4fsc - 1);
+        const int pulse_end = std::min(pulse_start + pulse_width, line_end);
+
+        for (int i = pulse_start; i < pulse_end; ++i) {
+          (*out_y_mv)[i] = levels.sync_tip_mv;
+        }
       }
-    }
 
-    if (line.burst_enabled) {
-      const int burst_sample_start =
-          std::min(line_base + burst_start, line_end > 0 ? line_end - 1 : line_base);
-      const int burst_sample_end = std::min(line_base + burst_end, line_end);
-      const double phase = line.burst_phase_rad;
+      if (line.burst_enabled) {
+        const int burst_sample_start =
+            std::min(line_base + burst_start, line_end > 0 ? line_end - 1 : line_base);
+        const int burst_sample_end = std::min(line_base + burst_end, line_end);
+        const double phase = line.burst_phase_rad;
 
-      for (int i = burst_sample_start; i < burst_sample_end; ++i) {
-        const double t = static_cast<double>(i - line_base) / timing.sample_rate_4fsc_hz;
-        (*out_c_mv)[i] = burst_amplitude_mv * std::sin((2.0 * kPi * subcarrier_hz * t) + phase);
+        for (int i = burst_sample_start; i < burst_sample_end; ++i) {
+          const double t = static_cast<double>(i - line_base) / timing.sample_rate_4fsc_hz;
+          (*out_c_mv)[i] = burst_amplitude_mv * std::sin((2.0 * kPi * subcarrier_hz * t) + phase);
+        }
       }
-    }
 
-    if (line.sync_pulse_kind != SyncPulseKind::kHorizontal ||
-        line.content_kind != LineContentKind::kActivePicture) {
-      continue;
-    }
-
-    const int active_y = ActiveFrameLineIndex(active, line.line_number_1based);
-    if (active_y < 0) {
-      continue;
-    }
-
-    for (int x_sample = 0; x_sample < active_window_samples; ++x_sample) {
-      const int sample_index = line_base + active_window_start + x_sample;
-      if (sample_index < line_base || sample_index >= line_end) {
+      if (line.sync_pulse_kind != SyncPulseKind::kHorizontal ||
+          line.content_kind != LineContentKind::kActivePicture) {
         continue;
       }
 
-      int pixel_x = (x_sample * active.active_width_pixels) / active_window_samples;
-      pixel_x = std::min(active.active_width_pixels - 1, std::max(0, pixel_x));
+      const int active_y = ActiveFrameLineIndex(active, line.line_number_1based);
+      if (active_y < 0) {
+        continue;
+      }
 
-      const PixelYCbCr pixel =
-          MakePatternPixel(pattern, pixel_x, active_y, active.active_width_pixels, active_height_lines);
+      for (int x_sample = 0; x_sample < active_window_samples; ++x_sample) {
+        const int sample_index = line_base + active_window_start + x_sample;
+        if (sample_index < line_base || sample_index >= line_end) {
+          continue;
+        }
 
-      (*out_y_mv)[sample_index] = LumaMillivoltsFromCode(pixel.y, levels);
+        int pixel_x = (x_sample * active.active_width_pixels) / active_window_samples;
+        pixel_x = std::min(active.active_width_pixels - 1, std::max(0, pixel_x));
 
-      const double t = static_cast<double>(sample_index - line_base) / timing.sample_rate_4fsc_hz;
-      const double carrier_phase = (2.0 * kPi * subcarrier_hz * t) + line.burst_phase_rad;
-      (*out_c_mv)[sample_index] += ChromaMillivoltsFromCodes(pixel.cb, pixel.cr, carrier_phase);
+        const PixelYCbCr pixel =
+            MakePatternPixel(frame_pattern,
+                             pixel_x,
+                             active_y,
+                             active.active_width_pixels,
+                             active_height_lines);
+
+        (*out_y_mv)[sample_index] = LumaMillivoltsFromCode(pixel.y, levels);
+
+        const double t = static_cast<double>(sample_index - line_base) / timing.sample_rate_4fsc_hz;
+        const double carrier_phase = (2.0 * kPi * subcarrier_hz * t) + line.burst_phase_rad;
+        (*out_c_mv)[sample_index] +=
+            ChromaMillivoltsFromCodes(pixel.cb, pixel.cr, carrier_phase);
+      }
     }
   }
 

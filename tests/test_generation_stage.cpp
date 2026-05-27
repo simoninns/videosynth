@@ -28,13 +28,18 @@ int BurstEndSamples(double sample_rate_hz) {
   return static_cast<int>(std::lround(sample_rate_hz * 8.0e-6));
 }
 
-Project MakeProject(Standard standard, const std::string& pattern = "colour_bars_75") {
+Project MakeProject(Standard standard,
+                    const std::string& pattern = "ebu_colour_bars",
+                    int duration_frames = 1) {
   Project project;
   project.cvbs_presets.standard = standard;
   project.cvbs_presets.sample_rate = "4fsc";
   project.cvbs_presets.subcarrier_lock = true;
   project.sections.push_back(
-      Section{.name = "SignalTiming", .type = "software_generated", .pattern = pattern});
+      Section{.name = "SignalTiming",
+              .type = "software_generated",
+              .pattern = pattern,
+              .duration_frames = duration_frames});
   return project;
 }
 
@@ -238,7 +243,7 @@ TEST(GenerationStagePatternTest, ColourBarsProduceMultipleDiscreteLumaLevels) {
   std::vector<std::string> errors;
   std::vector<double> y;
   std::vector<double> c;
-  ASSERT_TRUE(generation.Generate(MakeProject(Standard::kPal, "colour_bars_75"), &y, &c, &errors));
+  ASSERT_TRUE(generation.Generate(MakeProject(Standard::kPal, "ebu_colour_bars"), &y, &c, &errors));
 
   const TimingConstants pal = GetTimingConstants(Standard::kPal);
   const std::set<int> levels = UniqueRoundedLumaLevelsInActiveWindow(y, 100, pal);
@@ -251,7 +256,8 @@ TEST(GenerationStagePatternTest, GrayscaleRampRisesAcrossActiveRegion) {
   std::vector<std::string> errors;
   std::vector<double> y;
   std::vector<double> c;
-  ASSERT_TRUE(generation.Generate(MakeProject(Standard::kNtsc, "grayscale_ramp"), &y, &c, &errors));
+  ASSERT_TRUE(
+      generation.Generate(MakeProject(Standard::kNtsc, "grayscale_ramp_horizontal"), &y, &c, &errors));
 
   const TimingConstants ntsc = GetTimingConstants(Standard::kNtsc);
   const int line_start = (60 - 1) * ntsc.samples_per_line_4fsc;
@@ -270,7 +276,7 @@ TEST(GenerationStagePatternTest, PlugePatternStaysNearBlackRange) {
   std::vector<std::string> errors;
   std::vector<double> y;
   std::vector<double> c;
-  ASSERT_TRUE(generation.Generate(MakeProject(Standard::kPal, "pluge_basic"), &y, &c, &errors));
+  ASSERT_TRUE(generation.Generate(MakeProject(Standard::kPal, "pluge"), &y, &c, &errors));
 
   const TimingConstants pal = GetTimingConstants(Standard::kPal);
   const int line_start = (140 - 1) * pal.samples_per_line_4fsc;
@@ -287,6 +293,44 @@ TEST(GenerationStagePatternTest, PlugePatternStaysNearBlackRange) {
 
   EXPECT_GT(max_y - min_y, 10.0);
   EXPECT_LT(max_y, 120.0);
+}
+
+TEST(GenerationStagePatternTest, EachPatternRendersForPalAndNtsc) {
+  GenerationStage generation;
+  std::vector<std::string> errors;
+
+  const std::vector<std::string> patterns = {
+      "ebu_colour_bars", "grayscale_ramp_horizontal", "pluge"};
+  const std::vector<Standard> standards = {Standard::kPal, Standard::kNtsc};
+
+  for (Standard standard : standards) {
+    const TimingConstants timing = GetTimingConstants(standard);
+    for (const std::string& pattern : patterns) {
+      std::vector<double> y;
+      std::vector<double> c;
+      ASSERT_TRUE(generation.Generate(MakeProject(standard, pattern), &y, &c, &errors));
+      EXPECT_EQ(y.size(),
+                static_cast<std::size_t>(timing.lines_per_frame * timing.samples_per_line_4fsc));
+      EXPECT_EQ(c.size(), y.size());
+    }
+  }
+}
+
+TEST(GenerationStagePatternTest, DurationFramesScalesOutputSampleCount) {
+  GenerationStage generation;
+  std::vector<std::string> errors;
+  std::vector<double> y;
+  std::vector<double> c;
+
+  ASSERT_TRUE(generation.Generate(MakeProject(Standard::kPal, "ebu_colour_bars", 3),
+                                  &y,
+                                  &c,
+                                  &errors));
+  const TimingConstants pal = GetTimingConstants(Standard::kPal);
+
+  EXPECT_EQ(y.size(),
+            static_cast<std::size_t>(3 * pal.lines_per_frame * pal.samples_per_line_4fsc));
+  EXPECT_EQ(c.size(), y.size());
 }
 
 }  // namespace

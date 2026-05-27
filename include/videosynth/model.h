@@ -51,6 +51,7 @@ struct Section {
   std::string name;
   std::string type;
   std::string pattern;
+  int duration_frames = 0;
 };
 
 struct Project {

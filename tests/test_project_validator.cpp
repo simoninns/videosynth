@@ -20,7 +20,10 @@ Project MakeValidProject() {
   project.cvbs_presets.sample_rate = "4fsc";
   project.cvbs_presets.subcarrier_lock = true;
   project.sections.push_back(
-      Section{.name = "Bars", .type = "software_generated", .pattern = "colour_bars_75"});
+      Section{.name = "Bars",
+              .type = "software_generated",
+              .pattern = "ebu_colour_bars",
+              .duration_frames = 1});
   return project;
 }
 
@@ -86,6 +89,16 @@ TEST(ProjectValidatorTest, RejectsMissingPatternOnSoftwareSection) {
 TEST(ProjectValidatorTest, RejectsUnsupportedPattern) {
   Project project = MakeValidProject();
   project.sections[0].pattern = "checkerboard_8x8";
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_FALSE(result.is_valid);
+}
+
+TEST(ProjectValidatorTest, RejectsMissingDurationFrames) {
+  Project project = MakeValidProject();
+  project.sections[0].duration_frames = 0;
 
   ProjectValidator validator;
   const ValidationResult result = validator.Validate(project);

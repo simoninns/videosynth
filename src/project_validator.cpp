@@ -14,8 +14,9 @@
 namespace {
 
 bool IsSupportedPattern(const std::string& pattern) {
-  return pattern == "colour_bars_75" || pattern == "grayscale_ramp" ||
-         pattern == "pluge_basic";
+  return pattern == "ebu_colour_bars" || pattern == "grayscale_ramp_horizontal" ||
+         pattern == "pluge" || pattern == "colour_bars_75" ||
+         pattern == "grayscale_ramp" || pattern == "pluge_basic";
 }
 
 }  // namespace
@@ -64,11 +65,18 @@ ValidationResult ProjectValidator::Validate(const Project& project) {
       break;
     }
 
+    if (section.duration_frames <= 0) {
+      result.is_valid = false;
+      result.errors.push_back(
+          "MVP constraint violation: software_generated sections must define duration_frames > 0.");
+      break;
+    }
+
     if (!IsSupportedPattern(section.pattern)) {
       result.is_valid = false;
       result.errors.push_back(
           "MVP constraint violation: unsupported pattern. Supported patterns are "
-          "'colour_bars_75', 'grayscale_ramp', and 'pluge_basic'.");
+          "'ebu_colour_bars', 'grayscale_ramp_horizontal', and 'pluge'.");
       break;
     }
   }
