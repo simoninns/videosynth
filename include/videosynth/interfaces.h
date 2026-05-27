@@ -19,8 +19,6 @@ namespace videosynth {
 
 struct RunOptions {
   std::string project_path;
-  std::string output_path;
-  std::string metadata_path;
   bool validate_only = false;
   bool verbose = false;
 };
@@ -60,8 +58,6 @@ class IOutputStage {
   virtual bool Write(const Project& project,
                      const std::vector<double>& y_mv,
                      const std::vector<double>& c_mv,
-                     const std::string& output_path,
-                     const std::string& metadata_path,
                      std::vector<std::string>* errors) = 0;
 };
 

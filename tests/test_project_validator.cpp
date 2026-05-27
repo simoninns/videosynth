@@ -16,9 +16,11 @@ namespace {
 
 Project MakeValidProject() {
   Project project;
-  project.cvbs_presets.standard = Standard::kPal;
-  project.cvbs_presets.sample_rate = "4fsc";
-  project.cvbs_presets.subcarrier_lock = true;
+  project.cvbs_presets.video_standard_preset = Standard::kPal;
+  project.cvbs_presets.sample_encoding_preset = "CVBS_U10_4FSC";
+  project.cvbs_presets.signal_state_preset = "STANDARD_TBC_LOCKED";
+  project.output.video_path = "/tmp/videosynth_validator_test.composite";
+  project.output.metadata_path = "/tmp/videosynth_validator_test.meta";
   project.sections.push_back(
       Section{.name = "Bars",
               .type = "software_generated",
@@ -37,7 +39,7 @@ TEST(ProjectValidatorTest, AcceptsMvpCompliantProject) {
 
 TEST(ProjectValidatorTest, RejectsInvalidStandard) {
   Project project = MakeValidProject();
-  project.cvbs_presets.standard = Standard::kUnknown;
+  project.cvbs_presets.video_standard_preset = Standard::kUnknown;
 
   ProjectValidator validator;
   const ValidationResult result = validator.Validate(project);
@@ -48,7 +50,7 @@ TEST(ProjectValidatorTest, RejectsInvalidStandard) {
 
 TEST(ProjectValidatorTest, RejectsSampleRateOtherThan4fsc) {
   Project project = MakeValidProject();
-  project.cvbs_presets.sample_rate = "20MSPS";
+  project.cvbs_presets.sample_encoding_preset = "RAW_S16_40M";
 
   ProjectValidator validator;
   const ValidationResult result = validator.Validate(project);
@@ -58,7 +60,7 @@ TEST(ProjectValidatorTest, RejectsSampleRateOtherThan4fsc) {
 
 TEST(ProjectValidatorTest, RejectsSubcarrierLockDisabled) {
   Project project = MakeValidProject();
-  project.cvbs_presets.subcarrier_lock = false;
+  project.cvbs_presets.signal_state_preset = "NONSTANDARD_RAW";
 
   ProjectValidator validator;
   const ValidationResult result = validator.Validate(project);

@@ -42,10 +42,32 @@ inline std::string StandardToString(Standard standard) {
 }
 
 struct CvbsPresets {
-  Standard standard = Standard::kUnknown;
-  std::string sample_rate;
-  bool subcarrier_lock = false;
+  Standard video_standard_preset = Standard::kUnknown;
+  std::string sample_encoding_preset = "CVBS_U10_4FSC";
+  std::string signal_state_preset = "STANDARD_TBC_LOCKED";
 };
+
+inline bool Is4fscSampleEncodingPreset(const std::string& preset) {
+  return preset == "CVBS_U10_4FSC" || preset == "CVBS_U16_4FSC" ||
+         preset == "CVBS_TPG21_4FSC";
+}
+
+inline std::string SampleRateModeFromEncodingPreset(const std::string& preset) {
+  if (Is4fscSampleEncodingPreset(preset)) {
+    return "4fsc";
+  }
+  if (preset == "RAW_S16_28M") {
+    return "28M";
+  }
+  if (preset == "RAW_S16_40M") {
+    return "40M";
+  }
+  return "unknown";
+}
+
+inline bool IsLockedSignalStatePreset(const std::string& preset) {
+  return preset == "STANDARD_TBC_LOCKED";
+}
 
 struct Section {
   std::string name;
@@ -54,10 +76,16 @@ struct Section {
   int duration_frames = 0;
 };
 
+struct OutputTargets {
+  std::string video_path;
+  std::string metadata_path;
+};
+
 struct Project {
   std::string name;
   std::string version;
   CvbsPresets cvbs_presets;
+  OutputTargets output;
   std::vector<Section> sections;
 };
 

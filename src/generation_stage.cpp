@@ -241,17 +241,17 @@ bool GenerationStage::Generate(const Project& project,
     return false;
   }
 
-  const TimingConstants timing = GetTimingConstants(project.cvbs_presets.standard);
-  const SignalLevels levels = GetSignalLevels(project.cvbs_presets.standard);
+    const TimingConstants timing = GetTimingConstants(project.cvbs_presets.video_standard_preset);
+    const SignalLevels levels = GetSignalLevels(project.cvbs_presets.video_standard_preset);
   const std::vector<LineTimingPrimitive> lines =
-      BuildFrameTimingPrimitives(project.cvbs_presets.standard);
+      BuildFrameTimingPrimitives(project.cvbs_presets.video_standard_preset);
   const double subcarrier_hz = timing.sample_rate_4fsc_hz / 4.0;
   const double burst_amplitude_mv = 150.0;
   const int burst_start = BurstStartSamples(timing.sample_rate_4fsc_hz);
   const int burst_end = BurstEndSamples(timing.sample_rate_4fsc_hz);
   const int half_line_samples = timing.samples_per_line_4fsc / 2;
   const ActiveRasterGeometry active =
-      GetActiveRasterGeometry(project.cvbs_presets.standard, timing.sample_rate_4fsc_hz);
+      GetActiveRasterGeometry(project.cvbs_presets.video_standard_preset, timing.sample_rate_4fsc_hz);
   std::vector<PatternKind> frame_patterns;
 
   if (!BuildFramePatternSchedule(project, &frame_patterns)) {
@@ -290,7 +290,7 @@ bool GenerationStage::Generate(const Project& project,
 
       const int pulse_width =
           PulseWidthSamples(line.sync_pulse_kind,
-                            project.cvbs_presets.standard,
+                            project.cvbs_presets.video_standard_preset,
                             timing.sample_rate_4fsc_hz);
       const int pulse_count = line.has_two_half_line_pulses ? 2 : 1;
 

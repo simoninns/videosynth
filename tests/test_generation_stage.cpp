@@ -32,9 +32,9 @@ Project MakeProject(Standard standard,
                     const std::string& pattern = "ebu_colour_bars",
                     int duration_frames = 1) {
   Project project;
-  project.cvbs_presets.standard = standard;
-  project.cvbs_presets.sample_rate = "4fsc";
-  project.cvbs_presets.subcarrier_lock = true;
+  project.cvbs_presets.video_standard_preset = standard;
+  project.cvbs_presets.sample_encoding_preset = "CVBS_U10_4FSC";
+  project.cvbs_presets.signal_state_preset = "STANDARD_TBC_LOCKED";
   project.sections.push_back(
       Section{.name = "SignalTiming",
               .type = "software_generated",

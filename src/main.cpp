@@ -21,12 +21,11 @@ namespace {
 
 void PrintUsage() {
   std::cout << "Usage:\n"
-            << "  videosynth --project <path> --output <path> --metadata <path> [options]\n"
+            << "  videosynth --project <path> [options]\n"
             << "  videosynth --project <path> --validate [options]\n\n"
             << "Options:\n"
             << "  --project   Path to YAML project file (required).\n"
-            << "  --output    Path to output CVBS video file (required unless --validate).\n"
-            << "  --metadata  Path to metadata output file (required unless --validate).\n"
+            << "  Output paths are read from project YAML under output.video_path and output.metadata_path.\n"
             << "  --validate  Validate only; do not generate output.\n"
             << "  --verbose   Enable debug logging.\n";
 }
@@ -41,10 +40,6 @@ int main(int argc, char** argv) {
 
     if (arg == "--project" && i + 1 < argc) {
       options.project_path = argv[++i];
-    } else if (arg == "--output" && i + 1 < argc) {
-      options.output_path = argv[++i];
-    } else if (arg == "--metadata" && i + 1 < argc) {
-      options.metadata_path = argv[++i];
     } else if (arg == "--validate") {
       options.validate_only = true;
     } else if (arg == "--verbose") {
@@ -56,11 +51,6 @@ int main(int argc, char** argv) {
   }
 
   if (options.project_path.empty()) {
-    PrintUsage();
-    return 2;
-  }
-
-  if (!options.validate_only && (options.output_path.empty() || options.metadata_path.empty())) {
     PrintUsage();
     return 2;
   }

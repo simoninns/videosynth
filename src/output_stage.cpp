@@ -74,12 +74,13 @@ int QuantizeCompositeMillivolts(double composite_mv, const QuantizationProfile& 
 bool OutputStage::Write(const Project& project,
                         const std::vector<double>& y_mv,
                         const std::vector<double>& c_mv,
-                        const std::string& output_path,
-                        const std::string& metadata_path,
                         std::vector<std::string>* errors) {
   if (errors == nullptr) {
     return false;
   }
+
+  const std::string& output_path = project.output.video_path;
+  const std::string& metadata_path = project.output.metadata_path;
 
   if (output_path.empty()) {
     errors->push_back("Output path must not be empty.");
@@ -96,18 +97,18 @@ bool OutputStage::Write(const Project& project,
     return false;
   }
 
-  if (project.cvbs_presets.sample_rate != "4fsc") {
-    errors->push_back("Output stage requires sample_rate='4fsc'.");
+  if (!Is4fscSampleEncodingPreset(project.cvbs_presets.sample_encoding_preset)) {
+    errors->push_back("Output stage requires a 4fsc sample_encoding_preset.");
     return false;
   }
 
-  if (!project.cvbs_presets.subcarrier_lock) {
-    errors->push_back("Output stage requires subcarrier_lock=true for 4fsc output.");
+  if (!IsLockedSignalStatePreset(project.cvbs_presets.signal_state_preset)) {
+    errors->push_back("Output stage requires a locked signal_state_preset for 4fsc output.");
     return false;
   }
 
   QuantizationProfile quantization;
-  if (!BuildQuantizationProfile(project.cvbs_presets.standard, &quantization)) {
+  if (!BuildQuantizationProfile(project.cvbs_presets.video_standard_preset, &quantization)) {
     errors->push_back("Output stage received unsupported or unknown video standard.");
     return false;
   }
@@ -117,7 +118,7 @@ bool OutputStage::Write(const Project& project,
     return false;
   }
 
-  const TimingConstants timing = GetTimingConstants(project.cvbs_presets.standard);
+  const TimingConstants timing = GetTimingConstants(project.cvbs_presets.video_standard_preset);
   const std::size_t frame_span =
       static_cast<std::size_t>(timing.lines_per_frame * timing.samples_per_line_4fsc);
   if (frame_span == 0U || (y_mv.size() % frame_span) != 0U) {
@@ -162,14 +163,20 @@ bool OutputStage::Write(const Project& project,
   metadata_stream << "format=videosynth_cvbs\n";
   metadata_stream << "signal_type=composite\n";
   metadata_stream << "video_standard_preset="
-                  << StandardToString(project.cvbs_presets.standard) << "\n";
-  metadata_stream << "sample_encoding_preset=CVBS_U10_4FSC\n";
-  metadata_stream << "signal_state_preset=STANDARD_TBC_LOCKED\n";
-  metadata_stream << "sample_rate_mode=" << project.cvbs_presets.sample_rate << "\n";
+                  << StandardToString(project.cvbs_presets.video_standard_preset) << "\n";
+  metadata_stream << "sample_encoding_preset="
+                  << project.cvbs_presets.sample_encoding_preset << "\n";
+  metadata_stream << "signal_state_preset="
+                  << project.cvbs_presets.signal_state_preset << "\n";
+  metadata_stream << "sample_rate_mode="
+                  << SampleRateModeFromEncodingPreset(project.cvbs_presets.sample_encoding_preset)
+                  << "\n";
   metadata_stream << "sample_rate_hz="
                   << static_cast<std::uint64_t>(std::llround(timing.sample_rate_4fsc_hz)) << "\n";
   metadata_stream << "subcarrier_lock="
-                  << (project.cvbs_presets.subcarrier_lock ? "true" : "false") << "\n";
+                  << (IsLockedSignalStatePreset(project.cvbs_presets.signal_state_preset) ? "true"
+                                                                                           : "false")
+                  << "\n";
   metadata_stream << "lines_per_frame=" << timing.lines_per_frame << "\n";
   metadata_stream << "samples_per_line=" << timing.samples_per_line_4fsc << "\n";
   metadata_stream << "frame_count=" << frame_count << "\n";

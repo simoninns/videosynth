@@ -42,12 +42,18 @@ target_link_libraries(videosynth
 enable_testing()
 
 add_executable(videosynth_tests
+    tests/test_fixture_projects.cpp
     tests/test_generation_stage.cpp
     tests/test_output_stage.cpp
     tests/test_pipeline.cpp
     tests/test_signal_timing_model.cpp
     tests/test_project_validator.cpp
     tests/test_timing_constants.cpp
+)
+
+target_compile_definitions(videosynth_tests
+    PRIVATE
+        VIDEOSYNTH_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
 )
 
 target_link_libraries(videosynth_tests

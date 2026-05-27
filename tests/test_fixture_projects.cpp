@@ -1,0 +1,167 @@
+/*
+ * File:        test_fixture_projects.cpp
+ * Module:      fixture_project_tests
+ * Purpose:     Verifies PAL/NTSC fixture projects through full generation and output checks.
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: 2026 Simon Inns
+ */
+
+#include <filesystem>
+#include <fstream>
+#include <cstdint>
+#include <iterator>
+#include <string>
+#include <vector>
+
+#include <gtest/gtest.h>
+
+#include "videosynth/generation_stage.h"
+#include "videosynth/output_stage.h"
+#include "videosynth/project_validator.h"
+#include "videosynth/timing_constants.h"
+#include "videosynth/yaml_project_parser.h"
+
+namespace videosynth {
+namespace {
+
+std::string FixturePath(const std::string& fixture_name) {
+  return std::string(VIDEOSYNTH_SOURCE_DIR) + "/tests/projects/" + fixture_name;
+}
+
+std::string ReadTextFile(const std::filesystem::path& path) {
+  std::ifstream stream(path);
+  return std::string((std::istreambuf_iterator<char>(stream)),
+                     std::istreambuf_iterator<char>());
+}
+
+std::vector<std::uint8_t> ReadBinaryFile(const std::filesystem::path& path) {
+  std::ifstream stream(path, std::ios::binary);
+  return std::vector<std::uint8_t>((std::istreambuf_iterator<char>(stream)),
+                                   std::istreambuf_iterator<char>());
+}
+
+std::uint64_t Fnv1a64(const std::vector<std::uint8_t>& bytes) {
+  std::uint64_t hash = 1469598103934665603ULL;
+  for (std::uint8_t b : bytes) {
+    hash ^= static_cast<std::uint64_t>(b);
+    hash *= 1099511628211ULL;
+  }
+  return hash;
+}
+
+TEST(ProjectFixturesTest, PalAndNtscProjectsParseAndValidate) {
+  YamlProjectParser parser;
+  ProjectValidator validator;
+
+  const std::vector<std::string> fixtures = {
+      "pal_32f_colour_bars.yaml", "ntsc_32f_grayscale.yaml"};
+
+  for (const std::string& fixture : fixtures) {
+    const ParseResult parsed = parser.ParseFile(FixturePath(fixture));
+    ASSERT_TRUE(parsed.ok) << fixture;
+
+    const ValidationResult validation = validator.Validate(parsed.project);
+    ASSERT_TRUE(validation.is_valid) << fixture;
+
+    ASSERT_EQ(parsed.project.sections.size(), 1U);
+    EXPECT_EQ(parsed.project.sections[0].duration_frames, 32);
+  }
+}
+
+TEST(ProjectFixturesTest, FixtureProjectsGenerateCompositeOutputWith32Frames) {
+  YamlProjectParser parser;
+  ProjectValidator validator;
+  GenerationStage generation;
+  OutputStage output;
+
+  const std::vector<std::string> fixtures = {
+      "pal_32f_colour_bars.yaml", "ntsc_32f_grayscale.yaml"};
+
+  for (const std::string& fixture : fixtures) {
+    const ParseResult parsed = parser.ParseFile(FixturePath(fixture));
+    ASSERT_TRUE(parsed.ok) << fixture;
+    ASSERT_TRUE(validator.Validate(parsed.project).is_valid) << fixture;
+
+    std::vector<double> y_mv;
+    std::vector<double> c_mv;
+    std::vector<std::string> generation_errors;
+    ASSERT_TRUE(
+        generation.Generate(parsed.project, &y_mv, &c_mv, &generation_errors))
+        << fixture;
+
+    const TimingConstants timing =
+      GetTimingConstants(parsed.project.cvbs_presets.video_standard_preset);
+    const std::size_t frame_span =
+        static_cast<std::size_t>(timing.lines_per_frame * timing.samples_per_line_4fsc);
+    ASSERT_EQ(y_mv.size(), frame_span * 32U) << fixture;
+    ASSERT_EQ(c_mv.size(), y_mv.size()) << fixture;
+
+    const std::filesystem::path output_path = parsed.project.output.video_path;
+    const std::filesystem::path metadata_path = parsed.project.output.metadata_path;
+    std::filesystem::remove(output_path);
+    std::filesystem::remove(metadata_path);
+
+    std::vector<std::string> output_errors;
+    ASSERT_TRUE(output.Write(parsed.project, y_mv, c_mv, &output_errors))
+        << fixture;
+
+    const std::string metadata = ReadTextFile(metadata_path);
+    EXPECT_NE(metadata.find("signal_type=composite"), std::string::npos) << fixture;
+    EXPECT_NE(metadata.find("frame_count=32"), std::string::npos) << fixture;
+    EXPECT_NE(metadata.find("sample_count=" + std::to_string(y_mv.size())), std::string::npos)
+        << fixture;
+
+    std::filesystem::remove(output_path);
+    std::filesystem::remove(metadata_path);
+  }
+}
+
+TEST(ProjectFixturesTest, FixtureOutputHashesRemainStable) {
+  YamlProjectParser parser;
+  ProjectValidator validator;
+  GenerationStage generation;
+  OutputStage output;
+
+  struct FixtureExpectation {
+    const char* fixture;
+    std::uint64_t expected_hash;
+  };
+
+  const std::vector<FixtureExpectation> expectations = {
+      {"pal_32f_colour_bars.yaml", 855084759098206595ULL},
+      {"ntsc_32f_grayscale.yaml", 1655772628846765827ULL},
+  };
+
+  for (const FixtureExpectation& expectation : expectations) {
+    const ParseResult parsed = parser.ParseFile(FixturePath(expectation.fixture));
+    ASSERT_TRUE(parsed.ok) << expectation.fixture;
+    ASSERT_TRUE(validator.Validate(parsed.project).is_valid) << expectation.fixture;
+
+    std::vector<double> y_mv;
+    std::vector<double> c_mv;
+    std::vector<std::string> generation_errors;
+    ASSERT_TRUE(
+        generation.Generate(parsed.project, &y_mv, &c_mv, &generation_errors))
+        << expectation.fixture;
+
+    const std::filesystem::path output_path = parsed.project.output.video_path;
+    const std::filesystem::path metadata_path = parsed.project.output.metadata_path;
+    std::filesystem::remove(output_path);
+    std::filesystem::remove(metadata_path);
+
+    std::vector<std::string> output_errors;
+    ASSERT_TRUE(output.Write(parsed.project, y_mv, c_mv, &output_errors))
+        << expectation.fixture;
+
+    const std::vector<std::uint8_t> payload = ReadBinaryFile(output_path);
+    const std::uint64_t hash = Fnv1a64(payload);
+    EXPECT_EQ(hash, expectation.expected_hash) << expectation.fixture;
+
+    std::filesystem::remove(output_path);
+    std::filesystem::remove(metadata_path);
+  }
+}
+
+}  // namespace
+}  // namespace videosynth

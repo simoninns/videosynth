@@ -19,7 +19,7 @@ This document maps Phase 0 implementation artifacts to HLD anchor sections and P
 | Core dependencies wired (yaml-cpp, spdlog, GoogleTest) | [CMakeLists.txt](../../../CMakeLists.txt), [flake.nix](../../../flake.nix) | Section 15 |
 | Baseline test target | [CMakeLists.txt](../../../CMakeLists.txt), [tests/test_project_validator.cpp](../../../tests/test_project_validator.cpp), [tests/test_timing_constants.cpp](../../../tests/test_timing_constants.cpp) | Section 15 |
 | CI build + unit test workflow | [.github/workflows/ci.yml](../../../.github/workflows/ci.yml) | Section 15 |
-| Minimal schema parse support (`standard`, `sample_rate`, `subcarrier_lock`, section `type`) | [src/yaml_project_parser.cpp](../../../src/yaml_project_parser.cpp), [include/videosynth/model.h](../../../include/videosynth/model.h) | Section 7 |
+| Minimal schema parse support (`video_standard_preset`, `sample_encoding_preset`, `signal_state_preset`, section `type`) | [src/yaml_project_parser.cpp](../../../src/yaml_project_parser.cpp), [include/videosynth/model.h](../../../include/videosynth/model.h) | Section 7 |
 | MVP hard-fail validation for out-of-scope options | [src/project_validator.cpp](../../../src/project_validator.cpp) | Section 13 |
 | Canonical PAL/NTSC timing and signal constants | [include/videosynth/timing_constants.h](../../../include/videosynth/timing_constants.h) | Sections 7, 13 |
 | Parse -> validate -> generate -> output pipeline scaffold | [src/pipeline.cpp](../../../src/pipeline.cpp), [src/generation_stage.cpp](../../../src/generation_stage.cpp), [src/output_stage.cpp](../../../src/output_stage.cpp) | Sections 14, 16 |

@@ -23,10 +23,10 @@ jobs:
         uses: DeterminateSystems/magic-nix-cache-action@v7
 
       - name: Configure
-        run: nix develop --command cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+        run: nix develop "path:$PWD" --command cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 
       - name: Build
-        run: nix develop --command cmake --build build
+        run: nix develop "path:$PWD" --command cmake --build build
 
   unit-tests:
     name: Unit Tests
@@ -43,10 +43,10 @@ jobs:
         uses: DeterminateSystems/magic-nix-cache-action@v7
 
       - name: Configure
-        run: nix develop --command cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+        run: nix develop "path:$PWD" --command cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 
       - name: Build tests
-        run: nix develop --command cmake --build build --target videosynth_tests
+        run: nix develop "path:$PWD" --command cmake --build build --target videosynth_tests
 
       - name: Run unit tests
-        run: nix develop --command ctest --test-dir build --output-on-failure
+        run: nix develop "path:$PWD" --command ctest --test-dir build --output-on-failure

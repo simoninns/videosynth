@@ -73,8 +73,8 @@ Minimum HLD sections that must be used for MVP implementation traceability:
 
 ## 3. MVP Functional Requirements
 
-1. The tool shall accept only PAL or NTSC standard selection.
-2. The tool shall accept only sample_rate = 4fsc and subcarrier_lock = true.
+1. The tool shall accept only PAL or NTSC via `video_standard_preset`.
+2. The tool shall accept only `sample_encoding_preset = CVBS_U10_4FSC` and `signal_state_preset = STANDARD_TBC_LOCKED`.
 3. The generator shall produce a full frame structure for each standard with:
    - Valid sync tip, blanking, black, and white reference levels.
    - Correct equalizing and vertical sync pulse timing blocks.
@@ -117,9 +117,9 @@ HLD anchor set for this phase:
   - Trigger policy for pull_request and push to main/default branch.
   - Deterministic environment setup compatible with the Nix flake toolchain.
 - Define minimal project schema:
-  - standard: PAL | NTSC.
-  - sample_rate: 4fsc only.
-  - subcarrier_lock: required true.
+  - video_standard_preset: PAL | NTSC.
+  - sample_encoding_preset: CVBS_U10_4FSC only.
+  - signal_state_preset: STANDARD_TBC_LOCKED only.
   - section type: software_generated only.
 - Implement validator hard-fail rules for all out-of-scope options.
 - Create internal canonical timing and level constants for PAL/NTSC.

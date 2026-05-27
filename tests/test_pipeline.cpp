@@ -59,8 +59,6 @@ class MockOutput final : public IOutputStage {
   bool Write(const Project&,
              const std::vector<double>&,
              const std::vector<double>&,
-             const std::string&,
-             const std::string&,
              std::vector<std::string>* errors) override {
     called = true;
     errors->clear();
@@ -80,9 +78,11 @@ class MockLogger final : public ILogger {
 
 Project MakeProject() {
   Project p;
-  p.cvbs_presets.standard = Standard::kPal;
-  p.cvbs_presets.sample_rate = "4fsc";
-  p.cvbs_presets.subcarrier_lock = true;
+  p.cvbs_presets.video_standard_preset = Standard::kPal;
+  p.cvbs_presets.sample_encoding_preset = "CVBS_U10_4FSC";
+  p.cvbs_presets.signal_state_preset = "STANDARD_TBC_LOCKED";
+  p.output.video_path = "/tmp/videosynth_pipeline_test.composite";
+  p.output.metadata_path = "/tmp/videosynth_pipeline_test.meta";
   p.sections.push_back(
       Section{.name = "Valid",
               .type = "software_generated",
@@ -131,8 +131,6 @@ TEST(PipelineTest, FullRunCallsGenerationAndOutput) {
 
   RunOptions options;
   options.project_path = "project.yaml";
-  options.output_path = "out.cvbs";
-  options.metadata_path = "out.meta";
 
   EXPECT_TRUE(pipeline.Run(options));
   EXPECT_TRUE(generation.called);

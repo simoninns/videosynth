@@ -57,7 +57,12 @@ ParseResult YamlProjectParser::ParseFile(const std::string& path) {
       return result;
     }
 
-    const std::set<std::string> root_keys = {"project", "cvbs_presets", "sections"};
+    if (!root["output"] || !root["output"].IsMap()) {
+      result.errors.push_back("Missing required top-level map: output.");
+      return result;
+    }
+
+    const std::set<std::string> root_keys = {"project", "cvbs_presets", "output", "sections"};
     ValidateAllowedKeys(root, root_keys, "Top-level YAML", &result.errors);
     if (!result.errors.empty()) {
       return result;
@@ -80,17 +85,34 @@ ParseResult YamlProjectParser::ParseFile(const std::string& path) {
     }
 
     const YAML::Node presets = root["cvbs_presets"];
-    const std::set<std::string> preset_keys = {"standard", "sample_rate", "subcarrier_lock"};
+    const std::set<std::string> preset_keys = {
+      "video_standard_preset",
+      "sample_encoding_preset",
+      "signal_state_preset"};
     ValidateAllowedKeys(presets, preset_keys, "cvbs_presets", &result.errors);
     if (!result.errors.empty()) {
       return result;
     }
 
-    result.project.cvbs_presets.standard =
-        StandardFromString(presets["standard"].as<std::string>(""));
-    result.project.cvbs_presets.sample_rate = presets["sample_rate"].as<std::string>("");
-    result.project.cvbs_presets.subcarrier_lock =
-        presets["subcarrier_lock"].as<bool>(false);
+    result.project.cvbs_presets.video_standard_preset =
+      StandardFromString(presets["video_standard_preset"].as<std::string>(""));
+
+    result.project.cvbs_presets.sample_encoding_preset =
+      presets["sample_encoding_preset"].as<std::string>(
+        result.project.cvbs_presets.sample_encoding_preset);
+    result.project.cvbs_presets.signal_state_preset =
+      presets["signal_state_preset"].as<std::string>(
+        result.project.cvbs_presets.signal_state_preset);
+
+    const YAML::Node output = root["output"];
+    const std::set<std::string> output_keys = {"video_path", "metadata_path"};
+    ValidateAllowedKeys(output, output_keys, "output", &result.errors);
+    if (!result.errors.empty()) {
+      return result;
+    }
+
+    result.project.output.video_path = output["video_path"].as<std::string>("");
+    result.project.output.metadata_path = output["metadata_path"].as<std::string>("");
 
     for (const YAML::Node& section_node : root["sections"]) {
       if (!section_node.IsMap()) {

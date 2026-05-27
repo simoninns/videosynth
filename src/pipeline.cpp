@@ -60,8 +60,6 @@ bool VideoSynthPipeline::Run(const RunOptions& options) {
   if (!output_->Write(parse_result.project,
                       y_mv,
                       c_mv,
-                      options.output_path,
-                      options.metadata_path,
                       &output_errors)) {
     for (const std::string& error : output_errors) {
       logger_->Error(error);

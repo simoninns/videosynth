@@ -27,22 +27,49 @@ ValidationResult ProjectValidator::Validate(const Project& project) {
   ValidationResult result;
   result.is_valid = true;
 
-  if (project.cvbs_presets.standard == Standard::kUnknown) {
+  if (project.cvbs_presets.video_standard_preset == Standard::kUnknown) {
     result.is_valid = false;
-    result.errors.push_back("Standard must be 'PAL' or 'NTSC'.");
+    result.errors.push_back("MVP constraint violation: video_standard_preset must be 'PAL' or 'NTSC'.");
   }
 
-  if (project.cvbs_presets.sample_rate != "4fsc") {
+  if (!Is4fscSampleEncodingPreset(project.cvbs_presets.sample_encoding_preset)) {
     result.is_valid = false;
     result.errors.push_back(
-        "MVP constraint violation: sample_rate must be '4fsc'.");
+        "MVP constraint violation: sample_encoding_preset must be a 4fsc preset.");
   }
 
-  if (!project.cvbs_presets.subcarrier_lock) {
+  if (project.cvbs_presets.sample_encoding_preset != "CVBS_U10_4FSC") {
     result.is_valid = false;
     result.errors.push_back(
-        "subcarrier_lock can only be enabled for 4fsc sample rate.");
-    result.errors.push_back("MVP constraint violation: subcarrier_lock must be true.");
+        "MVP constraint violation: sample_encoding_preset must be 'CVBS_U10_4FSC'.");
+  }
+
+  if (project.cvbs_presets.signal_state_preset != "STANDARD_TBC_LOCKED") {
+    result.is_valid = false;
+    result.errors.push_back(
+        "MVP constraint violation: signal_state_preset must be 'STANDARD_TBC_LOCKED'.");
+  }
+
+  if (!IsLockedSignalStatePreset(project.cvbs_presets.signal_state_preset)) {
+    result.is_valid = false;
+    result.errors.push_back("MVP constraint violation: signal_state_preset must indicate locked state.");
+  }
+
+  if (project.output.video_path.empty()) {
+    result.is_valid = false;
+    result.errors.push_back("MVP constraint violation: output.video_path must be set.");
+  }
+
+  if (project.output.metadata_path.empty()) {
+    result.is_valid = false;
+    result.errors.push_back("MVP constraint violation: output.metadata_path must be set.");
+  }
+
+  if (!project.output.video_path.empty() &&
+      !project.output.metadata_path.empty() &&
+      project.output.video_path == project.output.metadata_path) {
+    result.is_valid = false;
+    result.errors.push_back("MVP constraint violation: output.video_path and output.metadata_path must differ.");
   }
 
   if (project.sections.empty()) {

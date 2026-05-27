@@ -24,9 +24,9 @@ namespace {
 
 Project MakeProject(Standard standard) {
   Project project;
-  project.cvbs_presets.standard = standard;
-  project.cvbs_presets.sample_rate = "4fsc";
-  project.cvbs_presets.subcarrier_lock = true;
+  project.cvbs_presets.video_standard_preset = standard;
+  project.cvbs_presets.sample_encoding_preset = "CVBS_U10_4FSC";
+  project.cvbs_presets.signal_state_preset = "STANDARD_TBC_LOCKED";
   return project;
 }
 
@@ -61,16 +61,13 @@ TEST(OutputStageTest, WritesCompositeSamplesUsingPalQuantizationProfile) {
       std::filesystem::temp_directory_path() / "videosynth_output_stage_pal.composite";
   const std::filesystem::path metadata_path =
       std::filesystem::temp_directory_path() / "videosynth_output_stage_pal.meta";
+  project.output.video_path = video_path.string();
+  project.output.metadata_path = metadata_path.string();
   std::filesystem::remove(video_path);
   std::filesystem::remove(metadata_path);
 
   std::vector<std::string> errors;
-  ASSERT_TRUE(output.Write(project,
-                           y,
-                           c,
-                           video_path.string(),
-                           metadata_path.string(),
-                           &errors));
+  ASSERT_TRUE(output.Write(project, y, c, &errors));
 
   const std::vector<std::int16_t> samples = ReadSamples(video_path, 3);
   ASSERT_EQ(samples.size(), 3U);
@@ -104,16 +101,13 @@ TEST(OutputStageTest, SumsYAndCBeforeQuantizationInNtscProfile) {
       std::filesystem::temp_directory_path() / "videosynth_output_stage_ntsc.composite";
   const std::filesystem::path metadata_path =
       std::filesystem::temp_directory_path() / "videosynth_output_stage_ntsc.meta";
+  project.output.video_path = video_path.string();
+  project.output.metadata_path = metadata_path.string();
   std::filesystem::remove(video_path);
   std::filesystem::remove(metadata_path);
 
   std::vector<std::string> errors;
-  ASSERT_TRUE(output.Write(project,
-                           y,
-                           c,
-                           video_path.string(),
-                           metadata_path.string(),
-                           &errors));
+  ASSERT_TRUE(output.Write(project, y, c, &errors));
 
   const std::vector<std::int16_t> samples = ReadSamples(video_path, 2);
   ASSERT_EQ(samples.size(), 2U);
@@ -140,16 +134,13 @@ TEST(OutputStageTest, ClampsOutOfRangeValuesToLegalCodeSpace) {
       std::filesystem::temp_directory_path() / "videosynth_output_stage_clamp.composite";
   const std::filesystem::path metadata_path =
       std::filesystem::temp_directory_path() / "videosynth_output_stage_clamp.meta";
+  project.output.video_path = video_path.string();
+  project.output.metadata_path = metadata_path.string();
   std::filesystem::remove(video_path);
   std::filesystem::remove(metadata_path);
 
   std::vector<std::string> errors;
-  ASSERT_TRUE(output.Write(project,
-                           y,
-                           c,
-                           video_path.string(),
-                           metadata_path.string(),
-                           &errors));
+  ASSERT_TRUE(output.Write(project, y, c, &errors));
 
   const std::vector<std::int16_t> samples = ReadSamples(video_path, 2);
   ASSERT_EQ(samples.size(), 2U);
@@ -176,28 +167,20 @@ TEST(OutputStageTest, RejectsInvalidOutputConstraints) {
       std::filesystem::temp_directory_path() / "videosynth_output_stage_invalid.composite";
   const std::filesystem::path metadata_path =
       std::filesystem::temp_directory_path() / "videosynth_output_stage_invalid.meta";
+  project.output.video_path = video_path.string();
+  project.output.metadata_path = metadata_path.string();
 
-  EXPECT_FALSE(output.Write(project,
-                            y,
-                            c,
-                            video_path.string(),
-                            metadata_path.string(),
-                            &errors));
+  EXPECT_FALSE(output.Write(project, y, c, &errors));
   EXPECT_FALSE(errors.empty());
 
   errors.clear();
-  project.cvbs_presets.sample_rate = "20MSPS";
+  project.cvbs_presets.sample_encoding_preset = "RAW_S16_40M";
   const TimingConstants pal = GetTimingConstants(Standard::kPal);
   const std::size_t frame_span =
       static_cast<std::size_t>(pal.lines_per_frame * pal.samples_per_line_4fsc);
   y.assign(frame_span, 0.0);
   c.assign(frame_span, 0.0);
-  EXPECT_FALSE(output.Write(project,
-                            y,
-                            c,
-                            video_path.string(),
-                            metadata_path.string(),
-                            &errors));
+  EXPECT_FALSE(output.Write(project, y, c, &errors));
   EXPECT_FALSE(errors.empty());
 }
 

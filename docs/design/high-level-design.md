@@ -214,7 +214,7 @@ This is a hard interface contract. The chroma encoder assumes this representatio
 
 - Frame-based content in **10-bit 4:4:4 YCbCr BT.601 studio swing** (test patterns or normalised progressive sources).
 - Line-based injections (VITS, Laserdisc biphase, VITC).
-- CVBS presets (standard, mode, sample rate).
+- CVBS presets (video_standard_preset, sample_encoding_preset, signal_state_preset, mode).
 
 ### **Outputs**
 
@@ -251,7 +251,7 @@ This is a hard interface contract. The chroma encoder assumes this representatio
 The output stage generates **two files** as per the [CVBS File Format Specification](../cvbs-file-format-specification/docs/index.md):
 
 1. **Video File**: Raw samples of the composite signal (Y + C + sync).
-2. **Metadata File**: Header metadata (magic number, version, standard, sample rate, resolution, etc.).
+2. **Metadata File**: Header metadata (magic number, version, video standard preset, sample encoding preset, signal state preset, resolution, etc.).
 
 ### **Inputs**
 
@@ -521,7 +521,7 @@ For **NTSC (525-line system)**, the vertical blanking interval (VBI) is defined 
 ### **Specification Cross-Check (Section 7)**
 
 - Standard-dependent fixed line counts and timing families are grounded in [ITU-R BT.470-6](../analogue-video-specifications/docs/video_formats/BT-470-6-1998/BT-470-6-1998.md), Annex 1, Table 1 and [SMPTE 170M-2004](../analogue-video-specifications/docs/video_formats/SMPTE-170M-2004/SMPTE-170M-2004.md) §1.1/§11.
-- `subcarrier_lock` constraints for `4fsc` are grounded in [SMPTE 244M-2003](../analogue-video-specifications/docs/video_formats/SMPTE-244M-2003/SMPTE-244M-2003.md) §3.1 and [EBU Tech. 3280-E](../analogue-video-specifications/docs/video_formats/EBU-Tech-3280-E/EBU-Tech-3280-E.md) §1.1.1.
+- `signal_state_preset` locked-state constraints for 4fsc encoding are grounded in [SMPTE 244M-2003](../analogue-video-specifications/docs/video_formats/SMPTE-244M-2003/SMPTE-244M-2003.md) §3.1 and [EBU Tech. 3280-E](../analogue-video-specifications/docs/video_formats/EBU-Tech-3280-E/EBU-Tech-3280-E.md) §1.1.1.
 - Laserdisc-specific YAML constraints are grounded in [IEC 60856](../analogue-video-specifications/docs/laserdisc/IEC-60856-1986-Laservision-PAL/IEC-60856-1986-Laservision-PAL.md) §9.1.4/§10.1 and [IEC 60857](../analogue-video-specifications/docs/laserdisc/IEC-60857-1986-Laservision-NTSC/IEC-60857-1986-Laservision-NTSC.md) §9.1.5/§10.1/§10.2.
 - VITC structure, flags, CRC, and line-placement constraints are grounded in [IEC 60461:2010](../analogue-video-specifications/docs/video_metadata/IEC-60461-2010-Time-and-control-code/IEC-60461-2010-Time-and-control-code.md) §9.2.3, §9.2.5, §9.2.7, §9.6.2, §9.6.3.
 - VITS type families are grounded in [PAL VITS Definitions](../analogue-video-specifications/docs/video_metadata/VITS/PAL-VITS.md) and [NTSC VITS Definitions](../analogue-video-specifications/docs/video_metadata/VITS/NTSC-VITS.md).
@@ -537,15 +537,19 @@ project:
   description: "A test output with colour bars and line injections"  # Optional
 
 cvbs_presets:
-  standard: PAL                  # PAL or NTSC (only one allowed per project)
+  video_standard_preset: PAL     # PAL or NTSC (only one allowed per project)
+  sample_encoding_preset: CVBS_U10_4FSC  # CVBS_U10_4FSC, CVBS_U16_4FSC, RAW_S16_28M, RAW_S16_40M, CVBS_TPG21_4FSC
+  signal_state_preset: STANDARD_TBC_LOCKED  # STANDARD_TBC_LOCKED or other spec-defined signal-state presets
   mode: locked                   # locked or unlocked
-  sample_rate: 4fsc             # 4fsc, 20MSPS, 40MSPS, or custom
-  subcarrier_lock: false        # Only for 4fsc; default: false
   pal_laserdisc_pilot_burst: false  # PAL only; inject 3.75 MHz pilot burst on all sync pulses (IEC 60856 §9.1.2); default: false
   ntsc_laserdisc_vbi_burst: false   # NTSC only; insert colour burst on equalizing and broad sync pulses (IEC 60857 §9.1.2); default: false
   field_order: upper_first      # upper_first or lower_first (default: upper_first)
   field_dominance: field1       # field1 or field2 (default: field1 for PAL, field2 for NTSC)
   endianness: little            # little or big (default: little)
+
+output:
+  video_path: "out/pal_test_video.composite"
+  metadata_path: "out/pal_test_metadata.meta"
 
 sections:
   - name: "Colour Bars with VITS and Laserdisc"
@@ -588,6 +592,7 @@ source: "builtin:smpte_leader"        # built-in asset bundled with the applicat
 source: "/media/archive/clip.mov"     # absolute path
 source: "assets/clip.mov"             # relative to the project YAML directory
 source: "../shared/clip.mov"          # relative path traversal is permitted
+video_path: "out/pal_test_video.composite" # project-relative output file path
 ```
 
 ---
@@ -595,10 +600,13 @@ source: "../shared/clip.mov"          # relative path traversal is permitted
 ### **Validation Rules**
 
 1. **Single CVBS Preset**:
-  - Only one `standard` (PAL or NTSC) per project.
-  - Only one `sample_rate` per project.
+  - Only one `video_standard_preset` (PAL or NTSC) per project.
+  - Only one `sample_encoding_preset` per project.
+  - Only one `signal_state_preset` per project.
+  - `output.video_path` and `output.metadata_path` are required in the project YAML.
+  - `output.video_path` and `output.metadata_path` must resolve to different paths.
   - Resolution is **fixed by the standard** (720×576 for PAL, 720×480 for NTSC) and must not be specified in the project file.
-  - `subcarrier_lock` can **only be enabled for 4fsc sample rate**. If enabled for any other sample rate, the YAML is considered **invalid**.
+  - 4fsc generation requires a 4fsc `sample_encoding_preset` and a locked `signal_state_preset`.
   - `pal_laserdisc_pilot_burst` can **only be enabled for PAL projects**. If enabled for NTSC, the YAML is considered **invalid**.
   - `ntsc_laserdisc_vbi_burst` can **only be enabled for NTSC projects**. If enabled for PAL, the YAML is considered **invalid**.
 2. **Sections**:
@@ -1156,8 +1164,8 @@ For **testing applications**, the subcarrier locking implementation **must meet 
 
 ```yaml
 cvbs_presets:
-  sample_rate: 4fsc
-  subcarrier_lock: true  # Only valid for 4fsc; default: false
+  sample_encoding_preset: CVBS_U10_4FSC
+  signal_state_preset: STANDARD_TBC_LOCKED
 ```
 
 ---
@@ -1253,7 +1261,7 @@ The generator uses a **modular pipeline** to process sections and combine them i
 
 - Parse the YAML file and validate all fields.
 - Check for conflicts (e.g., overlapping `target_lines` in line injections).
-- Ensure `subcarrier_lock` is only enabled for `4fsc` sample rate.
+- Ensure the selected `signal_state_preset` denotes locked operation when using a 4fsc `sample_encoding_preset`.
 - **Fail validation if any errors are found.**
 
 #### **2. Generation Stage**
@@ -1278,7 +1286,7 @@ The generator uses a **modular pipeline** to process sections and combine them i
     - Create the CVBS file header with all required metadata (see [CVBS File Format Specification](../cvbs-file-format-specification/docs/index.md)).
   2. **Sampling**:
     - Sample the time-based Y and C signals at the specified rate (e.g., 4fsc, 20MSPS).
-    - For **4fsc with `subcarrier_lock: true**`, use an **NCO** to lock the sample clock to the colour subcarrier.
+    - For **4fsc encodings with `signal_state_preset: STANDARD_TBC_LOCKED`**, use an **NCO** to lock the sample clock to the colour subcarrier.
   3. **mV to Integer Conversion**:
     - Map each `double` mV sample to a 10-bit integer using the normative linear mapping for the active standard (EBU Tech. 3280-E for PAL, SMPTE 244M-2003 for NTSC). See [§6.1](#61-signal-levels) for the formulae.
     - Clamp to the legal code range; excluded values (codes 0–3 and 1020–1023) must not appear in output.
@@ -1308,8 +1316,8 @@ To simulate **analogue output**, the generator must:
 
 ### **Specification Cross-Check (Section 13)**
 
-- `standard`/line-range consistency checks map to [ITU-R BT.470-6](../analogue-video-specifications/docs/video_formats/BT-470-6-1998/BT-470-6-1998.md), Annex 1, Table 1 and [SMPTE 170M-2004](../analogue-video-specifications/docs/video_formats/SMPTE-170M-2004/SMPTE-170M-2004.md) §1.1.
-- `subcarrier_lock` and 4fsc checks map to [SMPTE 244M-2003](../analogue-video-specifications/docs/video_formats/SMPTE-244M-2003/SMPTE-244M-2003.md) §3.1 and [EBU Tech. 3280-E](../analogue-video-specifications/docs/video_formats/EBU-Tech-3280-E/EBU-Tech-3280-E.md) §1.1.1.
+- `video_standard_preset`/line-range consistency checks map to [ITU-R BT.470-6](../analogue-video-specifications/docs/video_formats/BT-470-6-1998/BT-470-6-1998.md), Annex 1, Table 1 and [SMPTE 170M-2004](../analogue-video-specifications/docs/video_formats/SMPTE-170M-2004/SMPTE-170M-2004.md) §1.1.
+- `signal_state_preset` and 4fsc sample-encoding checks map to [SMPTE 244M-2003](../analogue-video-specifications/docs/video_formats/SMPTE-244M-2003/SMPTE-244M-2003.md) §3.1 and [EBU Tech. 3280-E](../analogue-video-specifications/docs/video_formats/EBU-Tech-3280-E/EBU-Tech-3280-E.md) §1.1.1.
 - Laserdisc reserved-range conflicts and laserdisc-only placement logic map to [IEC 60856](../analogue-video-specifications/docs/laserdisc/IEC-60856-1986-Laservision-PAL/IEC-60856-1986-Laservision-PAL.md) §9.1.4/§10 and [IEC 60857](../analogue-video-specifications/docs/laserdisc/IEC-60857-1986-Laservision-NTSC/IEC-60857-1986-Laservision-NTSC.md) §9.1.5/§10.
 - VITC constraints (including incompatibility decisions when laserdisc is active in the same section) map to [IEC 60461:2010](../analogue-video-specifications/docs/video_metadata/IEC-60461-2010-Time-and-control-code/IEC-60461-2010-Time-and-control-code.md) Clause 9 and laserdisc Clause 10 families.
 - Frame-rate checks map to [ITU-R BT.470-6](../analogue-video-specifications/docs/video_formats/BT-470-6-1998/BT-470-6-1998.md), Annex 1 Table 1 and [SMPTE 170M-2004](../analogue-video-specifications/docs/video_formats/SMPTE-170M-2004/SMPTE-170M-2004.md) §11.3.
@@ -1319,10 +1327,11 @@ To simulate **analogue output**, the generator must:
 ### **Validation Rules**
 
 1. **CVBS Presets**:
-  - Only one `standard` (PAL or NTSC) per project.
-  - Only one `sample_rate` per project.
+  - Only one `video_standard_preset` (PAL or NTSC) per project.
+  - Only one `sample_encoding_preset` per project.
+  - Only one `signal_state_preset` per project.
   - Resolution is **fixed by the standard** (720×576 for PAL, 720×480 for NTSC) and must not be specified in the project file.
-  - `subcarrier_lock` can **only be enabled for 4fsc sample rate**. If enabled for any other sample rate, the YAML is considered **invalid**.
+  - 4fsc generation requires a 4fsc `sample_encoding_preset` and a locked `signal_state_preset`.
   - `pal_laserdisc_pilot_burst` can **only be enabled for PAL projects**. If enabled for NTSC, the YAML is considered **invalid**.
   - `ntsc_laserdisc_vbi_burst` can **only be enabled for NTSC projects**. If enabled for PAL, the YAML is considered **invalid**.
 2. **Sections**:
@@ -1346,7 +1355,7 @@ To simulate **analogue output**, the generator must:
 
 | **Error**                                  | **Message**                                                                                                                              |
 | ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| Invalid standard                           | "Standard must be 'PAL' or 'NTSC'."                                                                                                      |
+| Invalid standard                           | "video_standard_preset must be 'PAL' or 'NTSC'."                                                                                         |
 | `resolution` field present                 | "`resolution` must not be specified; it is fixed by the standard."                                                                       |
 | Invalid sample rate                        | "Sample rate 10MSPS may not capture the full CVBS bandwidth (5.5 MHz for PAL)."                                                          |
 | Missing source file                        | "File '/nonexistent.mov' not found."                                                                                                     |
@@ -1355,7 +1364,7 @@ To simulate **analogue output**, the generator must:
 | Laserdisc reserved range conflict          | "Injection type [type] targets line [n] which is within the laserdisc reserved range for [standard]; cannot coexist with laserdisc injection." |
 | VITC with laserdisc                        | "`vitc` injection cannot be used in the same section as a `laserdisc` injection; laserdisc does not use VITC."                              |
 | Overlapping target lines                   | "Overlapping target_lines in section: [section_name]."                                                                                   |
-| Invalid subcarrier lock                    | "subcarrier_lock can only be enabled for 4fsc sample rate."                                                                              |
+| Invalid signal state preset                | "signal_state_preset must indicate locked state for 4fsc generation."                                                                    |
 | Invalid pilot burst                        | "pal_laserdisc_pilot_burst can only be enabled for PAL projects."                                                                        |
 | Invalid VBI burst                          | "ntsc_laserdisc_vbi_burst can only be enabled for NTSC projects."                                                                        |
 | Invalid frame rate                         | "Input frame rate must match the output standard's frame rate (25 fps for PAL, ~29.97 fps for NTSC)."                                    |
@@ -1377,7 +1386,7 @@ To simulate **analogue output**, the generator must:
 ### **Usage**
 
 ```bash
-videosynth --project project.yaml --output output.cvbs [options]
+videosynth --project project.yaml [options]
 ```
 
 ---
@@ -1388,10 +1397,10 @@ videosynth --project project.yaml --output output.cvbs [options]
 | **Option**   | **Description**                                   | **Default** |
 | ------------ | ------------------------------------------------- | ----------- |
 | `--project`  | Path to the YAML project file (required).         | -           |
-| `--output`   | Path to the output CVBS video file (required).    | -           |
-| `--metadata` | Path to the output CVBS metadata file (required). | -           |
 | `--validate` | Validate the YAML file without generating output. | `false`     |
 | `--verbose`  | Enable verbose logging.                           | `false`     |
+
+Output paths are configured in YAML under `output.video_path` and `output.metadata_path`.
 
 
 ---
@@ -1400,7 +1409,7 @@ videosynth --project project.yaml --output output.cvbs [options]
 
 ```bash
 # Generate CVBS output from a project file
-videosynth --project pal_test.yaml --output pal_test_video.cvbs --metadata pal_test_metadata.cvbs
+videosynth --project pal_test.yaml
 
 # Validate a project file without generating output
 videosynth --project ntsc_test.yaml --validate
