@@ -89,7 +89,10 @@ bool TestPatternFrameSource::GenerateColourBars75(Standard standard,
                                                   FrameSourceImage* out_image,
                                                   std::string* error) const {
   static constexpr int kBarCount = 8;
-  static constexpr std::int16_t kY[kBarCount] = {720, 648, 524, 448, 336, 260, 140, 64};
+  // 10-bit BT.601 75% saturation component colour bars with a 100% white bar.
+  // This stage emits YCbCr directly; setup/blanking handling is applied later
+  // when mapping component luma to the standard-specific composite levels.
+  static constexpr std::int16_t kY[kBarCount] = {940, 648, 524, 448, 336, 260, 140, 64};
   static constexpr std::int16_t kCb[kBarCount] = {512, 176, 624, 288, 736, 400, 848, 512};
   static constexpr std::int16_t kCr[kBarCount] = {512, 568, 176, 232, 792, 848, 456, 512};
 

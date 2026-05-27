@@ -59,15 +59,19 @@ std::vector<double> CarrierPhasesForActiveLine(int line_1based,
                                                const TimingConstants& timing,
                                                int active_window_samples,
                                                int active_window_start) {
+  constexpr double kPi = 3.14159265358979323846;
   std::vector<double> phases(static_cast<std::size_t>(active_window_samples), 0.0);
   const double subcarrier_hz = timing.sample_rate_4fsc_hz / 4.0;
-  const LineTimingPrimitive line = BuildLineTimingPrimitive(
-      timing.lines_per_frame == 625 ? Standard::kPal : Standard::kNtsc, line_1based);
+  const Standard standard = timing.lines_per_frame == 625 ? Standard::kPal : Standard::kNtsc;
+  const LineTimingPrimitive line = BuildLineTimingPrimitive(standard, line_1based);
   for (int x_sample = 0; x_sample < active_window_samples; ++x_sample) {
     const int sample_offset = active_window_start + x_sample;
     const double t = static_cast<double>(sample_offset) / timing.sample_rate_4fsc_hz;
-    phases[static_cast<std::size_t>(x_sample)] =
-        (2.0 * M_PI * subcarrier_hz * t) + line.burst_phase_rad;
+    double carrier_phase = (2.0 * M_PI * subcarrier_hz * t) + line.burst_phase_rad;
+    if (standard == Standard::kNtsc) {
+      carrier_phase += kPi;
+    }
+    phases[static_cast<std::size_t>(x_sample)] = carrier_phase;
   }
   return phases;
 }
@@ -520,7 +524,7 @@ TEST(GenerationStagePatternTest, DurationFramesScalesOutputSampleCount) {
   EXPECT_EQ(c.size(), y.size());
 }
 
-TEST(GenerationStageChromaTest, ActiveChromaUsesSameCarrierModelAsBurst) {
+TEST(GenerationStageChromaTest, ActiveChromaUsesNtscBurstPlus180ReferenceModel) {
   GenerationStage generation;
   std::vector<std::string> errors;
   std::vector<double> y;

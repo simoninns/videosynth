@@ -464,7 +464,13 @@ bool GenerationStage::Generate(const Project& project,
         }
 
         const double t = static_cast<double>(sample_index - line_base) / timing.sample_rate_4fsc_hz;
-        carrier_phases_rad[sample_slot] = (2.0 * kPi * subcarrier_hz * t) + line.burst_phase_rad + frame_phase_offset;
+        double carrier_phase = (2.0 * kPi * subcarrier_hz * t) + line.burst_phase_rad + frame_phase_offset;
+        if (project.cvbs_presets.video_standard_preset == Standard::kNtsc) {
+          // SMPTE 170M-2004 Section 10 defines wt using burst+180 deg as the
+          // active chroma phase reference.
+          carrier_phase += kPi;
+        }
+        carrier_phases_rad[sample_slot] = carrier_phase;
       }
 
       std::vector<double> encoded_line_chroma;

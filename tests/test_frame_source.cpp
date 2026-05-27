@@ -28,6 +28,20 @@ TEST(FrameSourceTest, GeneratesFixedFormatPalFrameDimensions) {
   ASSERT_EQ(image.pixels.size(), static_cast<std::size_t>(720 * 576));
 }
 
+TEST(FrameSourceTest, GeneratesEbuColourBarsWithFullWhiteReference) {
+  TestPatternFrameSource frame_source;
+  FrameSourceImage image;
+  std::string error;
+
+  ASSERT_TRUE(frame_source.GenerateFrame("ebu_colour_bars", Standard::kPal, &image, &error));
+  EXPECT_TRUE(error.empty());
+
+  const YCbCr444Pixel& white_bar = image.PixelAt(0, 0);
+  EXPECT_EQ(white_bar.y, 940);
+  EXPECT_EQ(white_bar.cb, 512);
+  EXPECT_EQ(white_bar.cr, 512);
+}
+
 TEST(FrameSourceTest, KeepsPixelsInsideBt601StudioSwingContract) {
   TestPatternFrameSource frame_source;
   FrameSourceImage image;

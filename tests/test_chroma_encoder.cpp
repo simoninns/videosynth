@@ -52,7 +52,9 @@ std::vector<YCbCr444Pixel> MakeNtscAxisLine(std::size_t sample_count,
     const double angle = 2.0 * M_PI * cycles_per_sample * static_cast<double>(index);
     const double carrier = amplitude_norm * std::sin(angle);
     const double cb_norm = carrier;
-    const double cr_norm = q_only ? ((0.27 / 0.74) * carrier) : (-(0.41 / 0.48) * carrier);
+    const double cr_norm =
+        q_only ? ((0.26802288 / 0.73575162) * carrier)
+               : (-(0.41271905 / 0.47780269) * carrier);
     line[index].cb = static_cast<std::int16_t>(std::lround(512.0 + (448.0 * cb_norm)));
     line[index].cr = static_cast<std::int16_t>(std::lround(512.0 + (448.0 * cr_norm)));
   }
