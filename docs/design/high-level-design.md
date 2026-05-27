@@ -37,6 +37,13 @@
 
 ## **1. Overview**
 
+### **Specification Cross-Check (Section 1)**
+
+- This section is a product-summary section; normative technical detail is expanded and clause-traced in Sections 2-13.
+- PAL/NTSC studio-signal scope aligns with [ITU-R BT.1700](../analogue-video-specifications/docs/video_formats/BT-1700-E/BT-1700-E.md) (Scope and Part A/Part B) and [SMPTE 170M-2004](../analogue-video-specifications/docs/video_formats/SMPTE-170M-2004/SMPTE-170M-2004.md) §1.1.
+- Laserdisc feature scope aligns with [IEC 60856](../analogue-video-specifications/docs/laserdisc/IEC-60856-1986-Laservision-PAL/IEC-60856-1986-Laservision-PAL.md) §9.1/§10 and [IEC 60857](../analogue-video-specifications/docs/laserdisc/IEC-60857-1986-Laservision-NTSC/IEC-60857-1986-Laservision-NTSC.md) §9.1/§10.
+- VITC scope aligns with [IEC 60461:2010](../analogue-video-specifications/docs/video_metadata/IEC-60461-2010-Time-and-control-code/IEC-60461-2010-Time-and-control-code.md) Clause 9 (vertical interval application).
+
 ### **Purpose**
 
 **VideoSynth** is a **C++17 application** designed to generate **PAL or NTSC video signals** in the **CVBS file format**. It adheres closely to the **analogue video standards** and is built for **video engineers and media preservation professionals**.
@@ -72,6 +79,13 @@
 
 ## **2. Core Requirements**
 
+### **Specification Cross-Check (Section 2)**
+
+- `525`/`625` lines per frame and nominal field rates are sourced from [ITU-R BT.470-6](../analogue-video-specifications/docs/video_formats/BT-470-6-1998/BT-470-6-1998.md), Annex 1, Table 1 (items 1-2), and [SMPTE 170M-2004](../analogue-video-specifications/docs/video_formats/SMPTE-170M-2004/SMPTE-170M-2004.md) §1.1 and §11.3.
+- NTSC subcarrier `3.579545 MHz` is sourced from [SMPTE 170M-2004](../analogue-video-specifications/docs/video_formats/SMPTE-170M-2004/SMPTE-170M-2004.md) §11.1 and [ITU-R BT.470-6](../analogue-video-specifications/docs/video_formats/BT-470-6-1998/BT-470-6-1998.md), Table 2 item 2.11(a).
+- PAL subcarrier `4.43361875 MHz` is sourced from [ITU-R BT.470-6](../analogue-video-specifications/docs/video_formats/BT-470-6-1998/BT-470-6-1998.md), Table 2 item 2.11(a).
+- `4fsc` sample-rate values are sourced from [SMPTE 244M-2003](../analogue-video-specifications/docs/video_formats/SMPTE-244M-2003/SMPTE-244M-2003.md) §3.1/§3.4 (NTSC, 14.31818 MHz) and [EBU Tech. 3280-E](../analogue-video-specifications/docs/video_formats/EBU-Tech-3280-E/EBU-Tech-3280-E.md) §1.1.1 (PAL, 17.734475 MHz).
+
 ### **Supported Standards**
 
 All timing, signal levels, and encoding parameters for **PAL** and **NTSC** are defined in the following specifications:
@@ -82,11 +96,27 @@ All timing, signal levels, and encoding parameters for **PAL** and **NTSC** are 
 - [SMPTE 244M-2003](../analogue-video-specifications/docs/video_formats/SMPTE-244M-2003/SMPTE-244M-2003.md): Bit-Parallel Digital Interface for NTSC.
 - [EBU Tech. 3280-E](../analogue-video-specifications/docs/video_formats/EBU-Tech-3280-E/EBU-Tech-3280-E.md): 625-Line Digital PAL Interfaces.
 
+### **PAL/NTSC Variant Scope (Normative for this Specification)**
+
+To avoid ambiguity, this specification uses **PAL** and **NTSC** with the following fixed meanings:
+
+- **PAL** means the **625/50 PAL family with 4.43361875 MHz subcarrier** (PAL-B/G/H/I timing family in baseband composite terms).
+- **NTSC** means **NTSC-M 525/59.94 with 3.579545 MHz subcarrier** as defined by SMPTE 170M.
+
+The following are **out of scope** for this specification unless explicitly added in a future revision:
+
+- PAL-M, PAL-N, PAL-60, NTSC-J, NTSC 4.43, SECAM, and other non-625/50-PAL or non-NTSC-M variants.
+- RF transmission/channel-plan differences (for example PAL-I RF sound spacing), because this document defines **baseband CVBS generation** rather than broadcast RF modulation.
+
+Practical interpretation:
+
+- If a user asks for "PAL-I", VideoSynth uses the same baseband 625/50 PAL composite timing and levels defined here; PAL-I-specific RF-layer differences are not modeled.
+
 
 | **Standard** | **Resolution** | **Frame Rate** | **Field Rate** | **Colour Subcarrier** | **Lines/Frame** | **Reference**   |
 | ------------ | -------------- | -------------- | -------------- | --------------------- | --------------- | --------------- |
-| PAL          | 720x576        | 25 fps         | 50 Hz          | 4.43361875 MHz        | 625             | ITU-R BT.470-6  |
-| NTSC         | 720x480        | ~29.97 fps     | ~59.94 Hz      | 3.579545 MHz          | 525             | SMPTE 170M-2004 |
+| PAL (625/50 family) | 720x576  | 25 fps         | 50 Hz          | 4.43361875 MHz        | 625             | ITU-R BT.470-6  |
+| NTSC-M (525/59.94)  | 720x480  | ~29.97 fps     | ~59.94 Hz      | 3.579545 MHz          | 525             | SMPTE 170M-2004 |
 
 
 ### **Output Modes**
@@ -111,6 +141,11 @@ All timing, signal levels, and encoding parameters for **PAL** and **NTSC** are 
 
 ## **3. Architecture Overview**
 
+### **Specification Cross-Check (Section 3)**
+
+- The two-stage split (time-domain generation then sampled digital output) is an implementation architecture; it is consistent with composite-signal decomposition in [SMPTE 170M-2004](../analogue-video-specifications/docs/video_formats/SMPTE-170M-2004/SMPTE-170M-2004.md) §3, §7-§10 and [ITU-R BT.1700](../analogue-video-specifications/docs/video_formats/BT-1700-E/BT-1700-E.md) Part A/Part B.
+- Independent luma/chroma generation with later composition maps to luminance/chrominance model definitions in [SMPTE 170M-2004](../analogue-video-specifications/docs/video_formats/SMPTE-170M-2004/SMPTE-170M-2004.md) §6-§10 and [ITU-R BT.470-6](../analogue-video-specifications/docs/video_formats/BT-470-6-1998/BT-470-6-1998.md), Table 2 item 2.5.
+
 VideoSynth follows a **two-stage architecture** to ensure **separation of concerns** and **flexibility**:
 
 1. **[Generation Stage](#generation-stage)**: Generates **time-based representations** of **luma (Y)** and **chroma (C)** signals.
@@ -127,6 +162,14 @@ VideoSynth follows a **two-stage architecture** to ensure **separation of concer
 ---
 
 ## **4. Generation Stage**
+
+### **Specification Cross-Check (Section 4)**
+
+- BT.601 source-domain assumptions (YCbCr construction/quantization and studio swing conventions) are grounded in [BT.601-5](../analogue-video-specifications/docs/video_formats/BT-601-5-1995/BT-601-5-1995.md) §3.5.1-§3.5.4 and Part A tables for 4:4:4 coding.
+- NTSC colour encoding/filtering references are grounded in [SMPTE 170M-2004](../analogue-video-specifications/docs/video_formats/SMPTE-170M-2004/SMPTE-170M-2004.md) §6 (matrices), §7 (filtering), §8 (subcarrier modulation).
+- PAL chroma sideband limits used for encoder bandwidth targets are grounded in [ITU-R BT.470-6](../analogue-video-specifications/docs/video_formats/BT-470-6-1998/BT-470-6-1998.md), Table 2 item 2.12.
+- Sync/burst insertion basis is grounded in [ITU-R BT.1700](../analogue-video-specifications/docs/video_formats/BT-1700-E/BT-1700-E.md), Table 2/Table 3 and Figures 1-9, plus [SMPTE 170M-2004](../analogue-video-specifications/docs/video_formats/SMPTE-170M-2004/SMPTE-170M-2004.md) §13.
+- PAL pilot burst and NTSC VBI-burst behavior are grounded in [IEC 60856](../analogue-video-specifications/docs/laserdisc/IEC-60856-1986-Laservision-PAL/IEC-60856-1986-Laservision-PAL.md) §9.1.2 and [IEC 60857](../analogue-video-specifications/docs/laserdisc/IEC-60857-1986-Laservision-NTSC/IEC-60857-1986-Laservision-NTSC.md) §9.1.2.
 
 ### **Key Principle: Frame-Based Generation**
 
@@ -184,6 +227,12 @@ This is a hard interface contract. The chroma encoder assumes this representatio
 
 ## **5. Output Stage**
 
+### **Specification Cross-Check (Section 5)**
+
+- 10-bit quantization and legal/protected code-space behavior are grounded in [EBU Tech. 3280-E](../analogue-video-specifications/docs/video_formats/EBU-Tech-3280-E/EBU-Tech-3280-E.md) §1.1.1/§1.1.2 and [SMPTE 244M-2003](../analogue-video-specifications/docs/video_formats/SMPTE-244M-2003/SMPTE-244M-2003.md) §3.3, §4.2.4, Table 1.
+- NTSC 4fsc sample-phase alignment and clock/subcarrier relationship are grounded in [SMPTE 244M-2003](../analogue-video-specifications/docs/video_formats/SMPTE-244M-2003/SMPTE-244M-2003.md) §3.1 and §4.1.2.
+- PAL 4fsc sampling rate and interface assumptions are grounded in [EBU Tech. 3280-E](../analogue-video-specifications/docs/video_formats/EBU-Tech-3280-E/EBU-Tech-3280-E.md) §1.1.1 and §2.4.
+
 ### **Responsibilities**
 
 
@@ -219,6 +268,15 @@ The output stage generates **two files** as per the [CVBS File Format Specificat
 ---
 
 ## **6. PAL and NTSC Analogue Specifications**
+
+### **Specification Cross-Check (Section 6)**
+
+- PAL/NTSC signal level tables are grounded in [ITU-R BT.1700](../analogue-video-specifications/docs/video_formats/BT-1700-E/BT-1700-E.md), Table 2 (blanking/white/sync), and [SMPTE 170M-2004](../analogue-video-specifications/docs/video_formats/SMPTE-170M-2004/SMPTE-170M-2004.md) §15.4 / Annex B.
+- NTSC IRE relationships are grounded in [SMPTE 170M-2004](../analogue-video-specifications/docs/video_formats/SMPTE-170M-2004/SMPTE-170M-2004.md), Annex B (IRE units) and §15.4.
+- PAL pilot-burst headroom requirement is grounded in [IEC 60856](../analogue-video-specifications/docs/laserdisc/IEC-60856-1986-Laservision-PAL/IEC-60856-1986-Laservision-PAL.md) §9.1.2.
+- 10-bit code anchors and excluded/reserved code ranges are grounded in [EBU Tech. 3280-E](../analogue-video-specifications/docs/video_formats/EBU-Tech-3280-E/EBU-Tech-3280-E.md) §1.1.1/§1.1.2 and [SMPTE 244M-2003](../analogue-video-specifications/docs/video_formats/SMPTE-244M-2003/SMPTE-244M-2003.md) §4.2.4, Table 1.
+- Equalizing and broad sync pulse durations are grounded in [ITU-R BT.1700](../analogue-video-specifications/docs/video_formats/BT-1700-E/BT-1700-E.md), Table 3 and [SMPTE 170M-2004](../analogue-video-specifications/docs/video_formats/SMPTE-170M-2004/SMPTE-170M-2004.md) §13.3.
+- PAL/NTSC non-visible line structures are grounded in [ITU-R BT.470-6](../analogue-video-specifications/docs/video_formats/BT-470-6-1998/BT-470-6-1998.md), Annex 1 Tables 1-1/1-2, [ITU-R BT.1700](../analogue-video-specifications/docs/video_formats/BT-1700-E/BT-1700-E.md), and laserdisc overlays in [IEC 60856](../analogue-video-specifications/docs/laserdisc/IEC-60856-1986-Laservision-PAL/IEC-60856-1986-Laservision-PAL.md) §9.1.3-§9.1.4 and [IEC 60857](../analogue-video-specifications/docs/laserdisc/IEC-60857-1986-Laservision-NTSC/IEC-60857-1986-Laservision-NTSC.md) §9.1.3-§9.1.5.
 
 All specifications for **PAL** and **NTSC** are explicitly referenced from the [Analogue Video Specifications](../analogue-video-specifications/docs/index.md) repository.
 
@@ -460,6 +518,14 @@ For **NTSC (525-line system)**, the vertical blanking interval (VBI) is defined 
 
 ## **7. YAML Project File Specification**
 
+### **Specification Cross-Check (Section 7)**
+
+- Standard-dependent fixed line counts and timing families are grounded in [ITU-R BT.470-6](../analogue-video-specifications/docs/video_formats/BT-470-6-1998/BT-470-6-1998.md), Annex 1, Table 1 and [SMPTE 170M-2004](../analogue-video-specifications/docs/video_formats/SMPTE-170M-2004/SMPTE-170M-2004.md) §1.1/§11.
+- `subcarrier_lock` constraints for `4fsc` are grounded in [SMPTE 244M-2003](../analogue-video-specifications/docs/video_formats/SMPTE-244M-2003/SMPTE-244M-2003.md) §3.1 and [EBU Tech. 3280-E](../analogue-video-specifications/docs/video_formats/EBU-Tech-3280-E/EBU-Tech-3280-E.md) §1.1.1.
+- Laserdisc-specific YAML constraints are grounded in [IEC 60856](../analogue-video-specifications/docs/laserdisc/IEC-60856-1986-Laservision-PAL/IEC-60856-1986-Laservision-PAL.md) §9.1.4/§10.1 and [IEC 60857](../analogue-video-specifications/docs/laserdisc/IEC-60857-1986-Laservision-NTSC/IEC-60857-1986-Laservision-NTSC.md) §9.1.5/§10.1/§10.2.
+- VITC structure, flags, CRC, and line-placement constraints are grounded in [IEC 60461:2010](../analogue-video-specifications/docs/video_metadata/IEC-60461-2010-Time-and-control-code/IEC-60461-2010-Time-and-control-code.md) §9.2.3, §9.2.5, §9.2.7, §9.6.2, §9.6.3.
+- VITS type families are grounded in [PAL VITS Definitions](../analogue-video-specifications/docs/video_metadata/VITS/PAL-VITS.md) and [NTSC VITS Definitions](../analogue-video-specifications/docs/video_metadata/VITS/NTSC-VITS.md).
+
 ---
 
 ### **Top-Level Structure**
@@ -558,6 +624,13 @@ source: "../shared/clip.mov"          # relative path traversal is permitted
 ---
 
 ## **8. Section Types**
+
+### **Specification Cross-Check (Section 8)**
+
+- Software-generated pattern naming is an implementation catalog; waveform/level validity for test insertions maps to [PAL VITS Definitions](../analogue-video-specifications/docs/video_metadata/VITS/PAL-VITS.md), [NTSC VITS Definitions](../analogue-video-specifications/docs/video_metadata/VITS/NTSC-VITS.md), and analogue level limits in [ITU-R BT.1700](../analogue-video-specifications/docs/video_formats/BT-1700-E/BT-1700-E.md).
+- Progressive-source frame-rate matching to output standards is grounded in [ITU-R BT.470-6](../analogue-video-specifications/docs/video_formats/BT-470-6-1998/BT-470-6-1998.md), Annex 1, Table 1 and [SMPTE 170M-2004](../analogue-video-specifications/docs/video_formats/SMPTE-170M-2004/SMPTE-170M-2004.md) §11.3.
+- Laserdisc code-type definitions and per-line placement are grounded in [IEC 60856](../analogue-video-specifications/docs/laserdisc/IEC-60856-1986-Laservision-PAL/IEC-60856-1986-Laservision-PAL.md) §10.1 and [IEC 60857](../analogue-video-specifications/docs/laserdisc/IEC-60857-1986-Laservision-NTSC/IEC-60857-1986-Laservision-NTSC.md) §10.1/§10.2, plus Amendment 2 updates for CLV picture-number behavior.
+- VITC fields (`timecode`, flags, CRC) are grounded in [IEC 60461:2010](../analogue-video-specifications/docs/video_metadata/IEC-60461-2010-Time-and-control-code/IEC-60461-2010-Time-and-control-code.md) §9.2 and §9.5-§9.6.
 
 ---
 
@@ -958,6 +1031,12 @@ line_injections:
 
 ## **9. Field and Line Handling**
 
+### **Specification Cross-Check (Section 9)**
+
+- PAL/NTSC frame/field line totals and scanning relationships are grounded in [ITU-R BT.470-6](../analogue-video-specifications/docs/video_formats/BT-470-6-1998/BT-470-6-1998.md), Annex 1, Table 1 and [SMPTE 170M-2004](../analogue-video-specifications/docs/video_formats/SMPTE-170M-2004/SMPTE-170M-2004.md) §1.1/§9/§13.
+- Horizontal sync width (`4.7 us`), equalizing pulse width (`2.3 us`), vertical-sync pulse block durations (`2.5H` PAL, `3H` NTSC), and burst phase conventions are grounded in [ITU-R BT.1700](../analogue-video-specifications/docs/video_formats/BT-1700-E/BT-1700-E.md), Table 2/Table 3/Figures 5/8/9, and [SMPTE 170M-2004](../analogue-video-specifications/docs/video_formats/SMPTE-170M-2004/SMPTE-170M-2004.md) §13.1-§13.3.
+- PAL laserdisc pilot burst and NTSC VBI burst behavior are grounded in [IEC 60856](../analogue-video-specifications/docs/laserdisc/IEC-60856-1986-Laservision-PAL/IEC-60856-1986-Laservision-PAL.md) §9.1.2 and [IEC 60857](../analogue-video-specifications/docs/laserdisc/IEC-60857-1986-Laservision-NTSC/IEC-60857-1986-Laservision-NTSC.md) §9.1.2.
+
 For **field and line handling**, refer to:
 
 - [ITU-R BT.470-6](../analogue-video-specifications/docs/video_formats/BT-470-6-1998/BT-470-6-1998.md): Conventional Television Systems.
@@ -1035,6 +1114,13 @@ For **HSync, VSync, and colour burst insertion**, refer to:
 
 ## **10. 4fsc Sampling and Subcarrier Locking**
 
+### **Specification Cross-Check (Section 10)**
+
+- Core 4fsc sampling rule is grounded in [SMPTE 244M-2003](../analogue-video-specifications/docs/video_formats/SMPTE-244M-2003/SMPTE-244M-2003.md) §3.1 (sample at `4 x fsc`, phase-referenced to subcarrier).
+- NTSC `14.31818 MHz` and sample-axis relationship (I/Q axes) are grounded in [SMPTE 244M-2003](../analogue-video-specifications/docs/video_formats/SMPTE-244M-2003/SMPTE-244M-2003.md) §3.4 and §4.1.2.
+- PAL `17.734475 MHz` interface sampling reference is grounded in [EBU Tech. 3280-E](../analogue-video-specifications/docs/video_formats/EBU-Tech-3280-E/EBU-Tech-3280-E.md) §1.1.1.
+- Subcarrier nominal frequencies and frequency tolerances are grounded in [ITU-R BT.470-6](../analogue-video-specifications/docs/video_formats/BT-470-6-1998/BT-470-6-1998.md), Table 2 item 2.11(a), and [SMPTE 170M-2004](../analogue-video-specifications/docs/video_formats/SMPTE-170M-2004/SMPTE-170M-2004.md) §11.1.
+
 For **4fsc sampling**, refer to:
 
 - [SMPTE 244M-2003](../analogue-video-specifications/docs/video_formats/SMPTE-244M-2003/SMPTE-244M-2003.md): Bit-Parallel Digital Interface for NTSC.
@@ -1090,6 +1176,15 @@ cvbs_presets:
 
 ## **11. VBI Line Allocation**
 
+### **Specification Cross-Check (Section 11)**
+
+- PAL laserdisc reserved ranges and address-signal constraints are grounded in [IEC 60856](../analogue-video-specifications/docs/laserdisc/IEC-60856-1986-Laservision-PAL/IEC-60856-1986-Laservision-PAL.md) §9.1.4 and Clause 10.
+- NTSC laserdisc reserved ranges and 40-bit FM coexistence are grounded in [IEC 60857](../analogue-video-specifications/docs/laserdisc/IEC-60857-1986-Laservision-NTSC/IEC-60857-1986-Laservision-NTSC.md) §9.1.5, §10.1, §10.2.
+- VIRS/ITS line assignments for NTSC laserdisc are grounded in [IEC 60857](../analogue-video-specifications/docs/laserdisc/IEC-60857-1986-Laservision-NTSC/IEC-60857-1986-Laservision-NTSC.md) §9.1.3-§9.1.4.
+- PAL amendment-specific alternates (e.g., added CLV picture-number behavior and alternate VBI usage) are grounded in [IEC 60856 Amendment 2](../analogue-video-specifications/docs/laserdisc/IEC-60856-1986-Laservision-PAL-Amendment-2/IEC-60856-1986-Laservision-PAL-Amendment-2.md) §9.1.3/§9.1.4/§10.1.10.
+- NTSC amendment-specific CLV/FM updates are grounded in [IEC 60857 Amendment 2](../analogue-video-specifications/docs/laserdisc/IEC-60857-1986-Laservision-NTSC-Amendment-2/IEC-60857-1986-Laservision-NTSC-Amendment-2.md) §10.1.10 and §10.2.3.
+- VITC location constraints used for conflict checks are grounded in [IEC 60461:2010](../analogue-video-specifications/docs/video_metadata/IEC-60461-2010-Time-and-control-code/IEC-60461-2010-Time-and-control-code.md) §9.6.2 and §9.6.3.
+
 VBI line allocations differ between PAL and NTSC and between Laserdisc and non-Laserdisc use. The laserdisc standards define exclusive reserved ranges that must not overlap with any other injection type.
 
 ---
@@ -1132,6 +1227,13 @@ VBI line allocations differ between PAL and NTSC and between Laserdisc and non-L
 ---
 
 ## **12. Implementation Pipeline**
+
+### **Specification Cross-Check (Section 12)**
+
+- Validation-stage checks listed here are a direct implementation of constraints traced in Sections 7, 8, 11, and 13 (and therefore map to BT.470/1700, SMPTE 170M/244M, IEC 60856/60857, IEC 60461).
+- Generation-stage sync, burst, and modulation behavior is grounded in [ITU-R BT.1700](../analogue-video-specifications/docs/video_formats/BT-1700-E/BT-1700-E.md) and [SMPTE 170M-2004](../analogue-video-specifications/docs/video_formats/SMPTE-170M-2004/SMPTE-170M-2004.md).
+- Output-stage quantization and reserved/excluded code handling is grounded in [EBU Tech. 3280-E](../analogue-video-specifications/docs/video_formats/EBU-Tech-3280-E/EBU-Tech-3280-E.md) and [SMPTE 244M-2003](../analogue-video-specifications/docs/video_formats/SMPTE-244M-2003/SMPTE-244M-2003.md) §4.2.
+- Rise/fall-time targets (`140 ns ± 20 ns`, `200 ns ± 50 ns`) are grounded in [SMPTE 170M-2004](../analogue-video-specifications/docs/video_formats/SMPTE-170M-2004/SMPTE-170M-2004.md) §13 notes (default pulse transitions) and [ITU-R BT.1700](../analogue-video-specifications/docs/video_formats/BT-1700-E/BT-1700-E.md), Table 2/Table 3.
 
 ---
 
@@ -1204,6 +1306,14 @@ To simulate **analogue output**, the generator must:
 
 ## **13. Error Handling and Validation**
 
+### **Specification Cross-Check (Section 13)**
+
+- `standard`/line-range consistency checks map to [ITU-R BT.470-6](../analogue-video-specifications/docs/video_formats/BT-470-6-1998/BT-470-6-1998.md), Annex 1, Table 1 and [SMPTE 170M-2004](../analogue-video-specifications/docs/video_formats/SMPTE-170M-2004/SMPTE-170M-2004.md) §1.1.
+- `subcarrier_lock` and 4fsc checks map to [SMPTE 244M-2003](../analogue-video-specifications/docs/video_formats/SMPTE-244M-2003/SMPTE-244M-2003.md) §3.1 and [EBU Tech. 3280-E](../analogue-video-specifications/docs/video_formats/EBU-Tech-3280-E/EBU-Tech-3280-E.md) §1.1.1.
+- Laserdisc reserved-range conflicts and laserdisc-only placement logic map to [IEC 60856](../analogue-video-specifications/docs/laserdisc/IEC-60856-1986-Laservision-PAL/IEC-60856-1986-Laservision-PAL.md) §9.1.4/§10 and [IEC 60857](../analogue-video-specifications/docs/laserdisc/IEC-60857-1986-Laservision-NTSC/IEC-60857-1986-Laservision-NTSC.md) §9.1.5/§10.
+- VITC constraints (including incompatibility decisions when laserdisc is active in the same section) map to [IEC 60461:2010](../analogue-video-specifications/docs/video_metadata/IEC-60461-2010-Time-and-control-code/IEC-60461-2010-Time-and-control-code.md) Clause 9 and laserdisc Clause 10 families.
+- Frame-rate checks map to [ITU-R BT.470-6](../analogue-video-specifications/docs/video_formats/BT-470-6-1998/BT-470-6-1998.md), Annex 1 Table 1 and [SMPTE 170M-2004](../analogue-video-specifications/docs/video_formats/SMPTE-170M-2004/SMPTE-170M-2004.md) §11.3.
+
 ---
 
 ### **Validation Rules**
@@ -1257,6 +1367,11 @@ To simulate **analogue output**, the generator must:
 
 ## **14. CLI Interface**
 
+### **Specification Cross-Check (Section 14)**
+
+- This section defines application interface behavior (non-normative to analogue waveform standards).
+- `--validate` behavior is intended to enforce constraints traced to Sections 7, 11, and 13 (which are normatively tied to BT.470/1700, SMPTE 170M/244M, IEC 60856/60857, IEC 60461).
+
 ---
 
 ### **Usage**
@@ -1296,6 +1411,11 @@ videosynth --project ntsc_test.yaml --validate
 ---
 
 ## **15. Build and Packaging**
+
+### **Specification Cross-Check (Section 15)**
+
+- This section is implementation/tooling guidance and does not introduce analogue waveform constants.
+- No additional normative analogue-spec clauses are required here beyond those already referenced in design requirements sections.
 
 ---
 
@@ -1449,6 +1569,11 @@ install(TARGETS videosynth DESTINATION bin)
 
 ## **16. Directory Structure**
 
+### **Specification Cross-Check (Section 16)**
+
+- This section is repository-layout guidance (non-normative to analogue waveform standards).
+- The listed spec submodule locations correspond to the normative sources cited in Sections 2-13.
+
 ```
 videosynth/
 ├── CMakeLists.txt
@@ -1520,6 +1645,11 @@ videosynth/
 
 ## **17. Future Requirements**
 
+### **Specification Cross-Check (Section 17)**
+
+- CEA-608 future feature reference is grounded in [ANSI/CTA-608-E S-2019](../analogue-video-specifications/docs/video_metadata/ANSI-CTA-608-E-S-2019/ANSI-CTA-608-E-S-2019.md).
+- No additional current PAL/NTSC waveform constants are introduced in this section.
+
 The following features are **reserved for future implementation**:
 
 1. **CEA-608 Closed Captions**:
@@ -1535,6 +1665,11 @@ The following features are **reserved for future implementation**:
 
 ## **18. Appendix: References**
 
+### **Specification Cross-Check (Section 18)**
+
+- To support clause-level traceability used above, include amendment documents explicitly with base laserdisc standards.
+- Include [IEC 60856 Amendment 2](../analogue-video-specifications/docs/laserdisc/IEC-60856-1986-Laservision-PAL-Amendment-2/IEC-60856-1986-Laservision-PAL-Amendment-2.md) and [IEC 60857 Amendment 2](../analogue-video-specifications/docs/laserdisc/IEC-60857-1986-Laservision-NTSC-Amendment-2/IEC-60857-1986-Laservision-NTSC-Amendment-2.md) when citing CLV picture-number and line-allocation updates.
+
 All specifications referenced in this document are available in the following repositories:
 
 - **[CVBS File Format Specification](../cvbs-file-format-specification/docs/index.md)**
@@ -1545,6 +1680,10 @@ All specifications referenced in this document are available in the following re
   - [SMPTE 244M-2003](../analogue-video-specifications/docs/video_formats/SMPTE-244M-2003/SMPTE-244M-2003.md): Bit-Parallel Digital Interface for NTSC.
   - [EBU Tech. 3280-E](../analogue-video-specifications/docs/video_formats/EBU-Tech-3280-E/EBU-Tech-3280-E.md): 625-Line Digital PAL Interfaces.
   - [IEC 60856](../analogue-video-specifications/docs/laserdisc/IEC-60856-1986-Laservision-PAL/IEC-60856-1986-Laservision-PAL.md): Laservision PAL.
+  - [IEC 60856 Amendment 1](../analogue-video-specifications/docs/laserdisc/IEC-60856-1986-Laservision-PAL-Amendment-1/IEC-60856-1986-Laservision-PAL-Amendment-1.md): Laservision PAL Amendment 1.
+  - [IEC 60856 Amendment 2](../analogue-video-specifications/docs/laserdisc/IEC-60856-1986-Laservision-PAL-Amendment-2/IEC-60856-1986-Laservision-PAL-Amendment-2.md): Laservision PAL Amendment 2.
   - [IEC 60857](../analogue-video-specifications/docs/laserdisc/IEC-60857-1986-Laservision-NTSC/IEC-60857-1986-Laservision-NTSC.md): Laservision NTSC.
+  - [IEC 60857 Amendment 1](../analogue-video-specifications/docs/laserdisc/IEC-60857-1986-Laservision-NTSC-Amendment-1/IEC-60857-1986-Laservision-NTSC-Amendment-1.md): Laservision NTSC Amendment 1.
+  - [IEC 60857 Amendment 2](../analogue-video-specifications/docs/laserdisc/IEC-60857-1986-Laservision-NTSC-Amendment-2/IEC-60857-1986-Laservision-NTSC-Amendment-2.md): Laservision NTSC Amendment 2.
   - [SMPTE 12M](../analogue-video-specifications/docs/video_metadata/IEC-60461-2010-Time-and-control-code/IEC-60461-2010-Time-and-control-code.md): Vertical Interval Timecode (VITC).
   - [Vertical Interval Test Signals - NTSC and PAL definitions](../analogue-video-specifications/docs/video_metadata/VITS/index.md): VITS waveforms.
