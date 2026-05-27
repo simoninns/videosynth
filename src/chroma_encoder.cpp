@@ -19,14 +19,11 @@ namespace videosynth {
 namespace {
 
 constexpr double kPi = 3.14159265358979323846;
-constexpr double kNtscIqAxisRotationRad = 33.0 * kPi / 180.0;
 constexpr double kCompositeChromaScaleMillivolts = 350.0;
 constexpr double kPalUvCutoffHz = 1.3e6;
-constexpr double kNtscICutoffHz = 1.3e6;
-constexpr double kNtscQCutoffHz = 0.5e6;
+constexpr double kNtscCbCrCutoffHz = 1.2e6;
 constexpr int kPalFilterTaps = 33;
-constexpr int kNtscIFilterTaps = 33;
-constexpr int kNtscQFilterTaps = 65;
+constexpr int kNtscFilterTaps = 17;
 
 int ClampCode(int code, int lo, int hi) {
   return std::max(lo, std::min(code, hi));
@@ -120,30 +117,6 @@ std::vector<double> ExtractCrAxis(const std::vector<YCbCr444Pixel>& source_sampl
   return axis;
 }
 
-std::vector<double> ExtractIAxis(const std::vector<YCbCr444Pixel>& source_samples) {
-  std::vector<double> axis;
-  axis.reserve(source_samples.size());
-  for (const YCbCr444Pixel& pixel : source_samples) {
-    const double cb_norm = NormalizedCb(pixel);
-    const double cr_norm = NormalizedCr(pixel);
-    // SMPTE 170M-2004 Annex A.4: I = -0.26802288(B-Y) + 0.73575162(R-Y)
-    axis.push_back((-0.26802288 * cb_norm) + (0.73575162 * cr_norm));
-  }
-  return axis;
-}
-
-std::vector<double> ExtractQAxis(const std::vector<YCbCr444Pixel>& source_samples) {
-  std::vector<double> axis;
-  axis.reserve(source_samples.size());
-  for (const YCbCr444Pixel& pixel : source_samples) {
-    const double cb_norm = NormalizedCb(pixel);
-    const double cr_norm = NormalizedCr(pixel);
-    // SMPTE 170M-2004 Annex A.4: Q = +0.41271905(B-Y) + 0.47780269(R-Y)
-    axis.push_back((0.41271905 * cb_norm) + (0.47780269 * cr_norm));
-  }
-  return axis;
-}
-
 }  // namespace
 
 PalChromaEncoder::PalChromaEncoder(double sample_rate_hz)
@@ -173,28 +146,25 @@ void PalChromaEncoder::EncodeLine(const std::vector<YCbCr444Pixel>& source_sampl
 }
 
 NtscChromaEncoder::NtscChromaEncoder(double sample_rate_hz)
-    : i_filter_taps_(DesignLowPassKernel(kNtscICutoffHz, sample_rate_hz, kNtscIFilterTaps)),
-      q_filter_taps_(DesignLowPassKernel(kNtscQCutoffHz, sample_rate_hz, kNtscQFilterTaps)) {}
+    : cb_filter_taps_(DesignLowPassKernel(kNtscCbCrCutoffHz, sample_rate_hz, kNtscFilterTaps)),
+      cr_filter_taps_(DesignLowPassKernel(kNtscCbCrCutoffHz, sample_rate_hz, kNtscFilterTaps)) {}
 
 void NtscChromaEncoder::EncodeLine(const std::vector<YCbCr444Pixel>& source_samples,
                                    const std::vector<double>& carrier_phases_rad,
                                    std::vector<double>* out_chroma_mv) const {
   ValidateLineArguments(source_samples, carrier_phases_rad, out_chroma_mv);
 
-  const std::vector<double> filtered_i = ApplyFirFilter(ExtractIAxis(source_samples), i_filter_taps_);
-  const std::vector<double> filtered_q = ApplyFirFilter(ExtractQAxis(source_samples), q_filter_taps_);
+  const std::vector<double> filtered_cb = ApplyFirFilter(ExtractCbAxis(source_samples), cb_filter_taps_);
+  const std::vector<double> filtered_cr = ApplyFirFilter(ExtractCrAxis(source_samples), cr_filter_taps_);
 
   out_chroma_mv->assign(source_samples.size(), 0.0);
   for (std::size_t index = 0; index < source_samples.size(); ++index) {
-    // SMPTE 170M-2004 Section 10 (I/Q form):
-    // N = ... + 0.925*Q*sin(wt+33deg) + 0.925*I*cos(wt+33deg), where wt uses
-    // the burst+180deg subcarrier phase reference. The caller supplies per-sample
-    // carrier phase already aligned to that reference; this encoder applies the
-    // +33deg chroma-axis rotation in the modulation stage.
-    const double phase = carrier_phases_rad[index] + kNtscIqAxisRotationRad;
+    // NTSC chroma is synthesized directly on the two colour-difference axes so
+    // bar-pattern saturation stays visually uniform in the composite envelope.
+    const double phase = carrier_phases_rad[index];
     (*out_chroma_mv)[index] = kCompositeChromaScaleMillivolts *
-                              ((filtered_q[index] * std::sin(phase)) +
-                               (filtered_i[index] * std::cos(phase)));
+                              ((filtered_cb[index] * std::sin(phase)) +
+                               (filtered_cr[index] * std::cos(phase)));
   }
 }
 

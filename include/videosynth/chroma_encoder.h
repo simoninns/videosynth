@@ -47,8 +47,8 @@ class NtscChromaEncoder final : public IChromaEncoder {
                   std::vector<double>* out_chroma_mv) const override;
 
  private:
-  std::vector<double> i_filter_taps_;
-  std::vector<double> q_filter_taps_;
+  std::vector<double> cb_filter_taps_;
+  std::vector<double> cr_filter_taps_;
 };
 
 std::unique_ptr<IChromaEncoder> CreateChromaEncoder(Standard standard, double sample_rate_hz);

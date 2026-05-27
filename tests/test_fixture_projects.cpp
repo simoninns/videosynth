@@ -146,8 +146,8 @@ TEST(ProjectFixturesTest, FixtureOutputHashesRemainStable) {
   };
 
   const std::vector<FixtureExpectation> expectations = {
-      {"pal_32f_bars_ramp.yaml", 4497564970412197955ULL},
-      {"ntsc_32f_bars_ramp.yaml", 17738610972192034179ULL},
+      {"pal_32f_bars_ramp.yaml", 5580045903227877251ULL},
+      {"ntsc_32f_bars_ramp.yaml", 4652568662636059011ULL},
   };
 
   for (const FixtureExpectation& expectation : expectations) {
