@@ -9,6 +9,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 find_package(yaml-cpp REQUIRED)
 find_package(spdlog REQUIRED)
 find_package(GTest REQUIRED)
+find_package(SQLite3 REQUIRED)
 
 add_library(videosynth_core
     src/chroma_encoder.cpp
@@ -31,6 +32,7 @@ target_link_libraries(videosynth_core
     PUBLIC
         yaml-cpp
         spdlog::spdlog
+        SQLite::SQLite3
 )
 
 add_executable(videosynth

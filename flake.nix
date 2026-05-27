@@ -26,6 +26,7 @@
             yaml-cpp
             spdlog
             gtest
+            sqlite
           ];
 
           cmakeFlags = [
@@ -52,6 +53,7 @@
             yaml-cpp
             spdlog
             gtest
+            sqlite
           ];
         };
       });

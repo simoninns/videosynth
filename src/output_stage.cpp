@@ -14,6 +14,8 @@
 #include <fstream>
 #include <string>
 
+#include <sqlite3.h>
+
 #include "videosynth/model.h"
 #include "videosynth/timing_constants.h"
 
@@ -180,40 +182,137 @@ bool OutputStage::Write(const Project& project,
                sizeof(encoded_sample));
   }
 
-  std::ofstream metadata_stream(metadata_path);
-  if (!metadata_stream) {
-    errors->push_back("Failed to open metadata file: " + metadata_path);
+  // Write metadata as SQLite database per CVBS specification
+  // Remove existing metadata file if present
+  std::remove(metadata_path.c_str());
+
+  sqlite3* db = nullptr;
+  const int open_result = sqlite3_open(metadata_path.c_str(), &db);
+  if (open_result != SQLITE_OK) {
+    errors->push_back("Failed to create metadata SQLite database: " + metadata_path);
+    if (db != nullptr) {
+      sqlite3_close(db);
+    }
+    return false;
+  }
+
+  // Set pragma for CVBS spec compliance (user_version = 7)
+  char* error_msg = nullptr;
+  if (sqlite3_exec(db, "PRAGMA user_version = 7;", nullptr, nullptr, &error_msg) != SQLITE_OK) {
+    errors->push_back(std::string("Failed to set PRAGMA user_version: ") + error_msg);
+    sqlite3_free(error_msg);
+    sqlite3_close(db);
+    return false;
+  }
+
+  // Create cvbs_file table per CVBS specification
+  const char* create_table_sql =
+      "CREATE TABLE cvbs_file ("
+      "    cvbs_file_id                INTEGER PRIMARY KEY,"
+      "    preset                      TEXT    NOT NULL"
+      "        CHECK (preset IN ('NTSC', 'PAL', 'PAL_M')),"
+      "    sample_encoding_preset      TEXT    NOT NULL"
+      "        CHECK (sample_encoding_preset IN ('CVBS_U10_4FSC', 'CVBS_U16_4FSC', 'RAW_S16_28M', 'RAW_S16_40M', 'CVBS_TPG21_4FSC')),"
+      "    signal_state_preset         TEXT    NOT NULL"
+      "        CHECK (signal_state_preset IN ("
+      "            'STANDARD_TBC_LOCKED',"
+      "            'STANDARD_TBC_UNLOCKED',"
+      "            'STANDARD_RAW',"
+      "            'NONSTANDARD_TBC_LOCKED',"
+      "            'NONSTANDARD_TBC_UNLOCKED',"
+      "            'NONSTANDARD_RAW'"
+      "        )),"
+      "    signal_type                 TEXT    NOT NULL"
+      "        CHECK (signal_type IN ('composite', 'yc')),"
+      "    decoder                     TEXT    NOT NULL,"
+      "    git_branch                  TEXT,"
+      "    git_commit                  TEXT,"
+      "    number_of_sequential_frames INTEGER"
+      "        CHECK (number_of_sequential_frames IS NULL OR number_of_sequential_frames >= 1),"
+      "    black_level                 INTEGER,"
+      "    has_nonstandard_values      BOOLEAN,"
+      "    capture_notes               TEXT"
+      ");";
+
+  if (sqlite3_exec(db, create_table_sql, nullptr, nullptr, &error_msg) != SQLITE_OK) {
+    errors->push_back(std::string("Failed to create cvbs_file table: ") + error_msg);
+    sqlite3_free(error_msg);
+    sqlite3_close(db);
     return false;
   }
 
   const std::size_t frame_count = y_mv.size() / frame_span;
 
-  metadata_stream << "format=videosynth_cvbs\n";
-  metadata_stream << "signal_type=composite\n";
-  metadata_stream << "video_standard_preset="
-                  << StandardToString(project.cvbs_presets.video_standard_preset) << "\n";
-  metadata_stream << "sample_encoding_preset="
-                  << project.cvbs_presets.sample_encoding_preset << "\n";
-  metadata_stream << "signal_state_preset="
-                  << project.cvbs_presets.signal_state_preset << "\n";
-  metadata_stream << "sample_rate_mode="
-                  << SampleRateModeFromEncodingPreset(project.cvbs_presets.sample_encoding_preset)
-                  << "\n";
-  metadata_stream << "sample_rate_hz="
-                  << static_cast<std::uint64_t>(std::llround(timing.sample_rate_4fsc_hz)) << "\n";
-  metadata_stream << "subcarrier_lock="
-                  << (IsLockedSignalStatePreset(project.cvbs_presets.signal_state_preset) ? "true"
-                                                                                           : "false")
-                  << "\n";
-  metadata_stream << "lines_per_frame=" << timing.lines_per_frame << "\n";
-  metadata_stream << "samples_per_line=" << timing.samples_per_line_4fsc << "\n";
-  metadata_stream << "frame_count=" << frame_count << "\n";
-  metadata_stream << "sample_count=" << y_mv.size() << "\n";
-  metadata_stream << "legal_code_min=" << quantization.minimum_legal_code << "\n";
-  metadata_stream << "legal_code_max=" << quantization.maximum_legal_code << "\n";
-  metadata_stream << "clipped_low_samples=" << clipped_low_count << "\n";
-  metadata_stream << "clipped_high_samples=" << clipped_high_count << "\n";
-  metadata_stream << "composite_only=true\n";
+  // Convert video standard to CVBS spec string
+  std::string preset_str;
+  if (project.cvbs_presets.video_standard_preset == Standard::kPal) {
+    preset_str = "PAL";
+  } else if (project.cvbs_presets.video_standard_preset == Standard::kNtsc) {
+    preset_str = "NTSC";
+  } else {
+    errors->push_back("Unknown video standard preset");
+    sqlite3_close(db);
+    return false;
+  }
+
+  // Check for nonstandard values
+  bool has_nonstandard = false;
+  for (std::size_t i = 0; i < y_mv.size(); ++i) {
+    const double composite_mv = y_mv[i] + c_mv[i];
+    const int mapped =
+        static_cast<int>(std::lround(composite_mv / quantization.millivolts_per_code)) +
+        quantization.blanking_code;
+    if (mapped < quantization.minimum_legal_code || mapped > quantization.maximum_legal_code) {
+      has_nonstandard = true;
+      break;
+    }
+  }
+
+  // Insert metadata row into cvbs_file table
+  sqlite3_stmt* insert_stmt = nullptr;
+  const char* insert_sql =
+      "INSERT INTO cvbs_file ("
+      "    preset,"
+      "    sample_encoding_preset,"
+      "    signal_state_preset,"
+      "    signal_type,"
+      "    decoder,"
+      "    git_branch,"
+      "    git_commit,"
+      "    number_of_sequential_frames,"
+      "    black_level,"
+      "    has_nonstandard_values,"
+      "    capture_notes"
+      ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
+
+  if (sqlite3_prepare_v2(db, insert_sql, -1, &insert_stmt, nullptr) != SQLITE_OK) {
+    errors->push_back("Failed to prepare insert statement");
+    sqlite3_close(db);
+    return false;
+  }
+
+  // Bind values
+  sqlite3_bind_text(insert_stmt, 1, preset_str.c_str(), -1, SQLITE_STATIC);
+  sqlite3_bind_text(insert_stmt, 2, project.cvbs_presets.sample_encoding_preset.c_str(), -1, SQLITE_STATIC);
+  sqlite3_bind_text(insert_stmt, 3, project.cvbs_presets.signal_state_preset.c_str(), -1, SQLITE_STATIC);
+  sqlite3_bind_text(insert_stmt, 4, "composite", -1, SQLITE_STATIC);
+  sqlite3_bind_text(insert_stmt, 5, "videosynth", -1, SQLITE_STATIC);
+  sqlite3_bind_null(insert_stmt, 6);  // git_branch (NULL)
+  sqlite3_bind_null(insert_stmt, 7);  // git_commit (NULL)
+  sqlite3_bind_int64(insert_stmt, 8, static_cast<sqlite3_int64>(frame_count));
+  sqlite3_bind_int(insert_stmt, 9, quantization.blanking_code);
+  sqlite3_bind_int(insert_stmt, 10, has_nonstandard ? 1 : 0);
+  sqlite3_bind_null(insert_stmt, 11);  // capture_notes (NULL)
+
+  if (sqlite3_step(insert_stmt) != SQLITE_DONE) {
+    errors->push_back("Failed to insert metadata row");
+    sqlite3_finalize(insert_stmt);
+    sqlite3_close(db);
+    return false;
+  }
+
+  sqlite3_finalize(insert_stmt);
+  sqlite3_close(db);
 
   return true;
 }

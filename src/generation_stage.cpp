@@ -77,22 +77,26 @@ int ClampCode(int code, int lo, int hi) {
 }
 
 ActiveRasterGeometry GetActiveRasterGeometry(Standard standard, double sample_rate_hz) {
-  const int active_window_start =
-      std::max(0, static_cast<int>(std::lround(sample_rate_hz * 10.5e-6)));
-  const int active_window_end =
-      std::max(active_window_start + 1,
-               static_cast<int>(std::lround(sample_rate_hz * 62.5e-6)));
-
   if (standard == Standard::kPal) {
+  // EBU Tech. 3280-E Section 1.2 defines PAL 4fsc line numbering with
+  // digital active samples at indices 0..947 and blanking at 948..1134.
+  // Relative to the sample following sync leading edge, active starts at
+  // +177 samples and spans 948 samples.
     return ActiveRasterGeometry{
         .first_active_line_field1 = 23,
         .first_active_line_field2 = 336,
         .active_lines_per_field = 288,
-        .active_window_start_samples = active_window_start,
-        .active_window_end_samples = active_window_end,
+    .active_window_start_samples = 177,
+    .active_window_end_samples = 1125,
         .active_width_pixels = 720,
     };
   }
+
+  const int active_window_start =
+    std::max(0, static_cast<int>(std::lround(sample_rate_hz * 10.5e-6)));
+  const int active_window_end =
+    std::max(active_window_start + 1,
+         static_cast<int>(std::lround(sample_rate_hz * 62.5e-6)));
 
   return ActiveRasterGeometry{
       .first_active_line_field1 = 22,

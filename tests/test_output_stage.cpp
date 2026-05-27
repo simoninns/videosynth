@@ -14,6 +14,7 @@
 #include <string>
 #include <vector>
 
+#include <sqlite3.h>
 #include <gtest/gtest.h>
 
 #include "videosynth/output_stage.h"
@@ -42,6 +43,55 @@ std::string ReadTextFile(const std::filesystem::path& path) {
   std::ifstream stream(path);
   return std::string((std::istreambuf_iterator<char>(stream)),
                      std::istreambuf_iterator<char>());
+}
+
+struct CvbsMetadata {
+  std::string preset;
+  std::string sample_encoding_preset;
+  std::string signal_state_preset;
+  std::string signal_type;
+  std::string decoder;
+  int64_t number_of_sequential_frames = 0;
+  int32_t black_level = 0;
+  bool has_nonstandard_values = false;
+};
+
+bool ReadCvbsMetadata(const std::filesystem::path& path, CvbsMetadata* metadata) {
+  if (metadata == nullptr) {
+    return false;
+  }
+  
+  sqlite3* db = nullptr;
+  if (sqlite3_open(path.c_str(), &db) != SQLITE_OK) {
+    sqlite3_close(db);
+    return false;
+  }
+
+  const char* query_sql = "SELECT preset, sample_encoding_preset, signal_state_preset, signal_type, decoder, number_of_sequential_frames, black_level, has_nonstandard_values FROM cvbs_file LIMIT 1;";
+  sqlite3_stmt* stmt = nullptr;
+
+  if (sqlite3_prepare_v2(db, query_sql, -1, &stmt, nullptr) != SQLITE_OK) {
+    sqlite3_finalize(stmt);
+    sqlite3_close(db);
+    return false;
+  }
+
+  bool result = false;
+  if (sqlite3_step(stmt) == SQLITE_ROW) {
+    metadata->preset = std::string(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0)));
+    metadata->sample_encoding_preset = std::string(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1)));
+    metadata->signal_state_preset = std::string(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2)));
+    metadata->signal_type = std::string(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3)));
+    metadata->decoder = std::string(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4)));
+    metadata->number_of_sequential_frames = sqlite3_column_int64(stmt, 5);
+    metadata->black_level = sqlite3_column_int(stmt, 6);
+    metadata->has_nonstandard_values = sqlite3_column_int(stmt, 7) != 0;
+    result = true;
+  }
+
+  sqlite3_finalize(stmt);
+  sqlite3_close(db);
+  return result;
 }
 
 TEST(OutputStageTest, WritesCompositeSamplesUsingPalQuantizationProfile) {
@@ -73,13 +123,16 @@ TEST(OutputStageTest, WritesCompositeSamplesUsingPalQuantizationProfile) {
   EXPECT_EQ(samples[1], 844);
   EXPECT_EQ(samples[2], 4);
 
-  const std::string metadata = ReadTextFile(metadata_path);
-  EXPECT_NE(metadata.find("signal_type=composite"), std::string::npos);
-  EXPECT_NE(metadata.find("video_standard_preset=PAL"), std::string::npos);
-  EXPECT_NE(metadata.find("sample_encoding_preset=CVBS_U10_4FSC"), std::string::npos);
-  EXPECT_NE(metadata.find("sample_rate_mode=4fsc"), std::string::npos);
-  EXPECT_NE(metadata.find("subcarrier_lock=true"), std::string::npos);
-  EXPECT_NE(metadata.find("composite_only=true"), std::string::npos);
+  CvbsMetadata metadata;
+  ASSERT_TRUE(ReadCvbsMetadata(metadata_path, &metadata));
+  EXPECT_EQ(metadata.preset, "PAL");
+  EXPECT_EQ(metadata.signal_type, "composite");
+  EXPECT_EQ(metadata.sample_encoding_preset, "CVBS_U10_4FSC");
+  EXPECT_EQ(metadata.signal_state_preset, "STANDARD_TBC_LOCKED");
+  EXPECT_EQ(metadata.decoder, "videosynth");
+  EXPECT_EQ(metadata.number_of_sequential_frames, 1);
+  EXPECT_EQ(metadata.black_level, 256);
+  EXPECT_FALSE(metadata.has_nonstandard_values);
 
   std::filesystem::remove(video_path);
   std::filesystem::remove(metadata_path);
@@ -115,9 +168,10 @@ TEST(OutputStageTest, WritesCompositeSamplesUsingTpg21EncodingPreset) {
   EXPECT_EQ(samples[1], 21504);
   EXPECT_EQ(samples[2], -32256);
 
-  const std::string metadata = ReadTextFile(metadata_path);
-  EXPECT_NE(metadata.find("sample_encoding_preset=CVBS_TPG21_4FSC"), std::string::npos);
-  EXPECT_NE(metadata.find("sample_rate_mode=4fsc"), std::string::npos);
+  CvbsMetadata metadata;
+  ASSERT_TRUE(ReadCvbsMetadata(metadata_path, &metadata));
+  EXPECT_EQ(metadata.sample_encoding_preset, "CVBS_TPG21_4FSC");
+  EXPECT_EQ(metadata.preset, "PAL");
 
   std::filesystem::remove(video_path);
   std::filesystem::remove(metadata_path);
@@ -148,6 +202,11 @@ TEST(OutputStageTest, SumsYAndCBeforeQuantizationInNtscProfile) {
   ASSERT_EQ(samples.size(), 2U);
   EXPECT_EQ(samples[0], 340);
   EXPECT_EQ(samples[1], 240);
+
+  CvbsMetadata metadata;
+  ASSERT_TRUE(ReadCvbsMetadata(metadata_path, &metadata));
+  EXPECT_EQ(metadata.preset, "NTSC");
+  EXPECT_EQ(metadata.black_level, 240);
 
   std::filesystem::remove(video_path);
   std::filesystem::remove(metadata_path);
@@ -180,9 +239,9 @@ TEST(OutputStageTest, ClampsOutOfRangeValuesToLegalCodeSpace) {
   EXPECT_EQ(samples[0], 4);
   EXPECT_EQ(samples[1], 1019);
 
-  const std::string metadata = ReadTextFile(metadata_path);
-  EXPECT_NE(metadata.find("clipped_low_samples=1"), std::string::npos);
-  EXPECT_NE(metadata.find("clipped_high_samples=1"), std::string::npos);
+  CvbsMetadata metadata;
+  ASSERT_TRUE(ReadCvbsMetadata(metadata_path, &metadata));
+  EXPECT_TRUE(metadata.has_nonstandard_values);
 
   std::filesystem::remove(video_path);
   std::filesystem::remove(metadata_path);

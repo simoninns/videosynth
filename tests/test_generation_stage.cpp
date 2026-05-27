@@ -447,6 +447,31 @@ TEST(GenerationStagePatternTest, ColourBarsProduceMultipleDiscreteLumaLevels) {
   EXPECT_GE(levels.size(), 6U);
 }
 
+TEST(GenerationStagePatternTest, PalColourBarsFirstTransitionMatchesEbuDigitalActivePlacement) {
+  GenerationStage generation;
+  std::vector<std::string> errors;
+  std::vector<double> y;
+  std::vector<double> c;
+  ASSERT_TRUE(generation.Generate(MakeProject(Standard::kPal, "ebu_colour_bars"), &y, &c, &errors));
+
+  const TimingConstants pal = GetTimingConstants(Standard::kPal);
+  const int line_start = (23 - 1) * pal.samples_per_line_4fsc;
+
+  // EBU Tech. 3280-E Section 1.2: PAL digital active starts at +177 samples,
+  // with 948 active samples. For 8 equal bars rendered from 720 pixels, the
+  // first bar transition lands at sample 296 on line 23.
+  int first_transition_sample = -1;
+  for (int sample = line_start + 240; sample < line_start + 360; ++sample) {
+    if ((y[sample - 1] - y[sample]) > 50.0) {
+      first_transition_sample = sample;
+      break;
+    }
+  }
+
+  ASSERT_NE(first_transition_sample, -1);
+  EXPECT_EQ(first_transition_sample - line_start, 296);
+}
+
 TEST(GenerationStagePatternTest, GrayscaleRampRisesAcrossActiveRegion) {
   GenerationStage generation;
   std::vector<std::string> errors;

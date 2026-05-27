@@ -14,6 +14,7 @@
 #include <string>
 #include <vector>
 
+#include <sqlite3.h>
 #include <gtest/gtest.h>
 
 #include "videosynth/generation_stage.h"
@@ -56,6 +57,37 @@ std::uint64_t Fnv1a64(const std::vector<std::uint8_t>& bytes) {
     hash *= 1099511628211ULL;
   }
   return hash;
+}
+
+bool QueryCvbsMetadataFrameCount(const std::filesystem::path& path, int64_t* frame_count) {
+  if (frame_count == nullptr) {
+    return false;
+  }
+
+  sqlite3* db = nullptr;
+  if (sqlite3_open(path.c_str(), &db) != SQLITE_OK) {
+    sqlite3_close(db);
+    return false;
+  }
+
+  const char* query_sql = "SELECT number_of_sequential_frames FROM cvbs_file LIMIT 1;";
+  sqlite3_stmt* stmt = nullptr;
+
+  if (sqlite3_prepare_v2(db, query_sql, -1, &stmt, nullptr) != SQLITE_OK) {
+    sqlite3_finalize(stmt);
+    sqlite3_close(db);
+    return false;
+  }
+
+  bool result = false;
+  if (sqlite3_step(stmt) == SQLITE_ROW) {
+    *frame_count = sqlite3_column_int64(stmt, 0);
+    result = true;
+  }
+
+  sqlite3_finalize(stmt);
+  sqlite3_close(db);
+  return result;
 }
 
 TEST(ProjectFixturesTest, PalAndNtscProjectsParseAndValidate) {
@@ -120,14 +152,9 @@ TEST(ProjectFixturesTest, FixtureProjectsGenerateCompositeOutputWith32Frames) {
     ASSERT_TRUE(output.Write(project, y_mv, c_mv, &output_errors))
         << fixture;
 
-    const std::string metadata = ReadTextFile(metadata_path);
-    EXPECT_NE(metadata.find("signal_type=composite"), std::string::npos) << fixture;
-    EXPECT_NE(metadata.find("sample_encoding_preset=" + project.cvbs_presets.sample_encoding_preset),
-          std::string::npos)
-      << fixture;
-    EXPECT_NE(metadata.find("frame_count=32"), std::string::npos) << fixture;
-    EXPECT_NE(metadata.find("sample_count=" + std::to_string(y_mv.size())), std::string::npos)
-        << fixture;
+    int64_t frame_count_from_metadata = 0;
+    ASSERT_TRUE(QueryCvbsMetadataFrameCount(metadata_path, &frame_count_from_metadata)) << fixture;
+    EXPECT_EQ(frame_count_from_metadata, 32) << fixture;
 
     std::filesystem::remove(output_path);
     std::filesystem::remove(metadata_path);
@@ -146,7 +173,7 @@ TEST(ProjectFixturesTest, FixtureOutputHashesRemainStable) {
   };
 
   const std::vector<FixtureExpectation> expectations = {
-      {"pal_32f_bars_ramp.yaml", 3183976727390330307ULL},
+      {"pal_32f_bars_ramp.yaml", 14768760415023918467ULL},
       {"ntsc_32f_bars_ramp.yaml", 4652568662636059011ULL},
   };
 
