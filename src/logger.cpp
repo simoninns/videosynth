@@ -1,3 +1,12 @@
+/*
+ * File:        logger.cpp
+ * Module:      logger
+ * Purpose:     Provides logging abstractions and spdlog-backed implementation.
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: 2026 Simon Inns
+ */
+
 #include "videosynth/logger.h"
 
 #include <spdlog/sinks/stdout_color_sinks.h>

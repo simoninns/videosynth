@@ -1,3 +1,12 @@
+/*
+ * File:        project_validator.cpp
+ * Module:      project_validator
+ * Purpose:     Validates project constraints for supported generation profiles.
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: 2026 Simon Inns
+ */
+
 #include "videosynth/project_validator.h"
 
 namespace videosynth {

@@ -1,3 +1,12 @@
+/*
+ * File:        logger.h
+ * Module:      logger
+ * Purpose:     Provides logging abstractions and spdlog-backed implementation.
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: 2026 Simon Inns
+ */
+
 #pragma once
 
 #include <string>

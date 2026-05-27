@@ -1,3 +1,12 @@
+/*
+ * File:        pipeline.h
+ * Module:      pipeline
+ * Purpose:     Orchestrates parsing, validation, generation, and output stages.
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: 2026 Simon Inns
+ */
+
 #pragma once
 
 #include "videosynth/interfaces.h"

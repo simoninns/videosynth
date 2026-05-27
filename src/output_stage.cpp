@@ -1,3 +1,12 @@
+/*
+ * File:        output_stage.cpp
+ * Module:      output_stage
+ * Purpose:     Writes generated sample buffers to output and metadata files.
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: 2026 Simon Inns
+ */
+
 #include "videosynth/output_stage.h"
 
 #include <cstdint>

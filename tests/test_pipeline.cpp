@@ -1,3 +1,12 @@
+/*
+ * File:        test_pipeline.cpp
+ * Module:      pipeline_tests
+ * Purpose:     Validates pipeline control flow using deterministic mocks.
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: 2026 Simon Inns
+ */
+
 #include <gtest/gtest.h>
 
 #include "videosynth/pipeline.h"

@@ -1,3 +1,12 @@
+/*
+ * File:        timing_constants.h
+ * Module:      timing_constants
+ * Purpose:     Provides PAL and NTSC timing and signal level constants.
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: 2026 Simon Inns
+ */
+
 #pragma once
 
 #include <stdexcept>

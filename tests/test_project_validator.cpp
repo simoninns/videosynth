@@ -1,3 +1,12 @@
+/*
+ * File:        test_project_validator.cpp
+ * Module:      project_validator_tests
+ * Purpose:     Validates project constraint enforcement and error reporting.
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: 2026 Simon Inns
+ */
+
 #include <gtest/gtest.h>
 
 #include "videosynth/project_validator.h"

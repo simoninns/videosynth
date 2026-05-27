@@ -1,3 +1,12 @@
+/*
+ * File:        test_timing_constants.cpp
+ * Module:      timing_constants_tests
+ * Purpose:     Validates PAL and NTSC timing and signal level constants.
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: 2026 Simon Inns
+ */
+
 #include <gtest/gtest.h>
 
 #include "videosynth/timing_constants.h"

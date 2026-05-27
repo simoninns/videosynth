@@ -42,7 +42,9 @@ target_link_libraries(videosynth
 enable_testing()
 
 add_executable(videosynth_tests
+    tests/test_generation_stage.cpp
     tests/test_pipeline.cpp
+    tests/test_signal_timing_model.cpp
     tests/test_project_validator.cpp
     tests/test_timing_constants.cpp
 )

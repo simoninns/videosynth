@@ -1,3 +1,12 @@
+/*
+ * File:        output_stage.h
+ * Module:      output_stage
+ * Purpose:     Writes generated sample buffers to output and metadata files.
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: 2026 Simon Inns
+ */
+
 #pragma once
 
 #include "videosynth/interfaces.h"

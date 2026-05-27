@@ -1,3 +1,12 @@
+/*
+ * File:        yaml_project_parser.cpp
+ * Module:      yaml_project_parser
+ * Purpose:     Parses YAML project files into internal project models.
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: 2026 Simon Inns
+ */
+
 #include "videosynth/yaml_project_parser.h"
 
 #include <exception>

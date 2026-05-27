@@ -1,3 +1,12 @@
+/*
+ * File:        generation_stage.h
+ * Module:      generation_stage
+ * Purpose:     Generates CVBS-domain Y and C sample buffers from project sections.
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: 2026 Simon Inns
+ */
+
 #pragma once
 
 #include "videosynth/interfaces.h"

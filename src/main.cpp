@@ -1,3 +1,12 @@
+/*
+ * File:        main.cpp
+ * Module:      main
+ * Purpose:     Implements CLI entrypoint and runtime option parsing.
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: 2026 Simon Inns
+ */
+
 #include <iostream>
 #include <string>
 
