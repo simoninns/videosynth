@@ -78,9 +78,50 @@ TEST(OutputStageTest, WritesCompositeSamplesUsingPalQuantizationProfile) {
   const std::string metadata = ReadTextFile(metadata_path);
   EXPECT_NE(metadata.find("signal_type=composite"), std::string::npos);
   EXPECT_NE(metadata.find("video_standard_preset=PAL"), std::string::npos);
+  EXPECT_NE(metadata.find("sample_encoding_preset=CVBS_U10_4FSC"), std::string::npos);
   EXPECT_NE(metadata.find("sample_rate_mode=4fsc"), std::string::npos);
   EXPECT_NE(metadata.find("subcarrier_lock=true"), std::string::npos);
   EXPECT_NE(metadata.find("composite_only=true"), std::string::npos);
+
+  std::filesystem::remove(video_path);
+  std::filesystem::remove(metadata_path);
+}
+
+TEST(OutputStageTest, WritesCompositeSamplesUsingTpg21EncodingPreset) {
+  OutputStage output;
+  Project project = MakeProject(Standard::kPal);
+  project.cvbs_presets.sample_encoding_preset = "CVBS_TPG21_4FSC";
+  const TimingConstants pal = GetTimingConstants(Standard::kPal);
+  const std::size_t frame_span =
+    static_cast<std::size_t>(pal.lines_per_frame * pal.samples_per_line_4fsc);
+
+  std::vector<double> y(frame_span, 0.0);
+  std::vector<double> c(frame_span, 0.0);
+  y[0] = 0.0;
+  y[1] = 700.0;
+  y[2] = -300.0;
+
+  const std::filesystem::path video_path =
+    std::filesystem::temp_directory_path() / "videosynth_output_stage_tpg21.composite";
+  const std::filesystem::path metadata_path =
+    std::filesystem::temp_directory_path() / "videosynth_output_stage_tpg21.meta";
+  project.output.video_path = video_path.string();
+  project.output.metadata_path = metadata_path.string();
+  std::filesystem::remove(video_path);
+  std::filesystem::remove(metadata_path);
+
+  std::vector<std::string> errors;
+  ASSERT_TRUE(output.Write(project, y, c, &errors));
+
+  const std::vector<std::int16_t> samples = ReadSamples(video_path, 3);
+  ASSERT_EQ(samples.size(), 3U);
+  EXPECT_EQ(samples[0], -16128);
+  EXPECT_EQ(samples[1], 21504);
+  EXPECT_EQ(samples[2], -32256);
+
+  const std::string metadata = ReadTextFile(metadata_path);
+  EXPECT_NE(metadata.find("sample_encoding_preset=CVBS_TPG21_4FSC"), std::string::npos);
+  EXPECT_NE(metadata.find("sample_rate_mode=4fsc"), std::string::npos);
 
   std::filesystem::remove(video_path);
   std::filesystem::remove(metadata_path);

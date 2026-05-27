@@ -19,6 +19,10 @@ bool IsSupportedPattern(const std::string& pattern) {
          pattern == "grayscale_ramp" || pattern == "pluge_basic";
 }
 
+bool IsSupportedGenerationEncodingPreset(const std::string& preset) {
+  return preset == "CVBS_U10_4FSC" || preset == "CVBS_TPG21_4FSC";
+}
+
 }  // namespace
 
 namespace videosynth {
@@ -38,10 +42,10 @@ ValidationResult ProjectValidator::Validate(const Project& project) {
         "MVP constraint violation: sample_encoding_preset must be a 4fsc preset.");
   }
 
-  if (project.cvbs_presets.sample_encoding_preset != "CVBS_U10_4FSC") {
+    if (!IsSupportedGenerationEncodingPreset(project.cvbs_presets.sample_encoding_preset)) {
     result.is_valid = false;
     result.errors.push_back(
-        "MVP constraint violation: sample_encoding_preset must be 'CVBS_U10_4FSC'.");
+      "MVP constraint violation: sample_encoding_preset must be 'CVBS_U10_4FSC' or 'CVBS_TPG21_4FSC'.");
   }
 
   if (project.cvbs_presets.signal_state_preset != "STANDARD_TBC_LOCKED") {

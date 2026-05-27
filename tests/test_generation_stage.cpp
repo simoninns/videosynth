@@ -220,6 +220,46 @@ TEST(GenerationStageTimingTest, IncludesEndOfFrameNtscVerticalTransitionBlock) {
   EXPECT_GT(line523, line522);
 }
 
+TEST(GenerationStageTimingTest, NtscBroadSyncKeepsIntervalWithinEachHalfLine) {
+  GenerationStage generation;
+  std::vector<std::string> errors;
+  std::vector<double> y;
+  std::vector<double> c;
+  ASSERT_TRUE(generation.Generate(MakeProject(Standard::kNtsc), &y, &c, &errors));
+
+  const TimingConstants ntsc = GetTimingConstants(Standard::kNtsc);
+  const SignalLevels levels = GetSignalLevels(Standard::kNtsc);
+  const int half_line_samples = ntsc.samples_per_line_4fsc / 2;
+
+  const int vs_first_half = CountSyncSamplesInHalfLine(y, 5, 0, ntsc, levels.sync_tip_mv);
+  const int vs_second_half = CountSyncSamplesInHalfLine(y, 5, 1, ntsc, levels.sync_tip_mv);
+
+  EXPECT_GT(vs_first_half, 0);
+  EXPECT_GT(vs_second_half, 0);
+  EXPECT_LT(vs_first_half, half_line_samples);
+  EXPECT_LT(vs_second_half, half_line_samples);
+}
+
+TEST(GenerationStageTimingTest, PalBroadSyncKeepsIntervalWithinEachHalfLine) {
+  GenerationStage generation;
+  std::vector<std::string> errors;
+  std::vector<double> y;
+  std::vector<double> c;
+  ASSERT_TRUE(generation.Generate(MakeProject(Standard::kPal), &y, &c, &errors));
+
+  const TimingConstants pal = GetTimingConstants(Standard::kPal);
+  const SignalLevels levels = GetSignalLevels(Standard::kPal);
+  const int half_line_samples = pal.samples_per_line_4fsc / 2;
+
+  const int vs_first_half = CountSyncSamplesInHalfLine(y, 6, 0, pal, levels.sync_tip_mv);
+  const int vs_second_half = CountSyncSamplesInHalfLine(y, 6, 1, pal, levels.sync_tip_mv);
+
+  EXPECT_GT(vs_first_half, 0);
+  EXPECT_GT(vs_second_half, 0);
+  EXPECT_LT(vs_first_half, half_line_samples);
+  EXPECT_LT(vs_second_half, half_line_samples);
+}
+
 TEST(GenerationStageTimingTest, EmitsBurstOnHorizontalButNotBroadSyncLines) {
   GenerationStage generation;
   std::vector<std::string> errors;

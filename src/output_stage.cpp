@@ -69,6 +69,27 @@ int QuantizeCompositeMillivolts(double composite_mv, const QuantizationProfile& 
   return mapped;
 }
 
+bool EncodeCompositeSample(const std::string& preset,
+                           int quantized_code,
+                           std::int16_t* encoded_sample) {
+  if (encoded_sample == nullptr) {
+    return false;
+  }
+
+  if (preset == "CVBS_U10_4FSC") {
+    *encoded_sample = static_cast<std::int16_t>(quantized_code);
+    return true;
+  }
+
+  if (preset == "CVBS_TPG21_4FSC") {
+    const int tpg21_encoded = (quantized_code - 508) * 64;
+    *encoded_sample = static_cast<std::int16_t>(tpg21_encoded);
+    return true;
+  }
+
+  return false;
+}
+
 }  // namespace
 
 bool OutputStage::Write(const Project& project,
@@ -146,10 +167,17 @@ bool OutputStage::Write(const Project& project,
       ++clipped_high_count;
     }
 
-    const std::int16_t composite_code = static_cast<std::int16_t>(
-        QuantizeCompositeMillivolts(composite_mv, quantization));
-    video_stream.write(reinterpret_cast<const char*>(&composite_code),
-                       sizeof(composite_code));
+    const int quantized_code = QuantizeCompositeMillivolts(composite_mv, quantization);
+    std::int16_t encoded_sample = 0;
+    if (!EncodeCompositeSample(project.cvbs_presets.sample_encoding_preset,
+                   quantized_code,
+                   &encoded_sample)) {
+      errors->push_back("Output stage does not support sample_encoding_preset: " +
+              project.cvbs_presets.sample_encoding_preset);
+      return false;
+    }
+    video_stream.write(reinterpret_cast<const char*>(&encoded_sample),
+               sizeof(encoded_sample));
   }
 
   std::ofstream metadata_stream(metadata_path);

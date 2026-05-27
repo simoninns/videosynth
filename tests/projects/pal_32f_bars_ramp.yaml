@@ -1,0 +1,23 @@
+project:
+  name: PAL32BarsRamp
+  version: "1.0"
+  description: PAL regression fixture with 32 frames
+
+cvbs_presets:
+  video_standard_preset: PAL
+  sample_encoding_preset: CVBS_TPG21_4FSC
+  signal_state_preset: STANDARD_TBC_LOCKED
+
+output:
+  video_path: tests/projects/output/videosynth_pal_32f_bars_ramp.composite
+  metadata_path: tests/projects/output/videosynth_pal_32f_bars_ramp.meta
+
+sections:
+  - name: PALBars
+    type: software_generated
+    pattern: colour_bars_75
+    duration_frames: 16
+  - name: PALRamp
+    type: software_generated
+    pattern: grayscale_ramp_horizontal
+    duration_frames: 16

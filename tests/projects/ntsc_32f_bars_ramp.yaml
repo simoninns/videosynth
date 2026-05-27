@@ -1,0 +1,23 @@
+project:
+  name: NTSC32BarsRamp
+  version: "1.0"
+  description: NTSC regression fixture with 32 frames
+
+cvbs_presets:
+  video_standard_preset: NTSC
+  sample_encoding_preset: CVBS_TPG21_4FSC
+  signal_state_preset: STANDARD_TBC_LOCKED
+
+output:
+  video_path: tests/projects/output/videosynth_ntsc_32f_bars_ramp.composite
+  metadata_path: tests/projects/output/videosynth_ntsc_32f_bars_ramp.meta
+
+sections:
+  - name: NTSCBars75
+    type: software_generated
+    pattern: colour_bars_75
+    duration_frames: 16
+  - name: NTSCRamp
+    type: software_generated
+    pattern: grayscale_ramp_horizontal
+    duration_frames: 16

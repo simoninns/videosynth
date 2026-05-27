@@ -37,6 +37,17 @@ TEST(ProjectValidatorTest, AcceptsMvpCompliantProject) {
   EXPECT_TRUE(result.errors.empty());
 }
 
+TEST(ProjectValidatorTest, AcceptsTpg21SampleEncodingPreset) {
+  Project project = MakeValidProject();
+  project.cvbs_presets.sample_encoding_preset = "CVBS_TPG21_4FSC";
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_TRUE(result.is_valid);
+  EXPECT_TRUE(result.errors.empty());
+}
+
 TEST(ProjectValidatorTest, RejectsInvalidStandard) {
   Project project = MakeValidProject();
   project.cvbs_presets.video_standard_preset = Standard::kUnknown;

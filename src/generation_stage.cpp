@@ -117,7 +117,9 @@ double PulseWidthSeconds(SyncPulseKind kind, Standard standard) {
     return 2.3e-6;
   }
   if (standard == Standard::kNtsc) {
-    return 31.778e-6;
+    // SMPTE 170M broad pulses are shorter than a half-line, leaving the
+    // equalizing interval inside each half-line during the 3H sync block.
+    return 27.1e-6;
   }
   return 27.3e-6;
 }
