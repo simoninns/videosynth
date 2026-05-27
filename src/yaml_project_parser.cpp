@@ -50,6 +50,7 @@ ParseResult YamlProjectParser::ParseFile(const std::string& path) {
       Section section;
       section.name = section_node["name"].as<std::string>("");
       section.type = section_node["type"].as<std::string>("");
+      section.pattern = section_node["pattern"].as<std::string>("");
       result.project.sections.push_back(section);
     }
 

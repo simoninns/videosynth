@@ -9,6 +9,17 @@
 
 #include "videosynth/project_validator.h"
 
+#include <string>
+
+namespace {
+
+bool IsSupportedPattern(const std::string& pattern) {
+  return pattern == "colour_bars_75" || pattern == "grayscale_ramp" ||
+         pattern == "pluge_basic";
+}
+
+}  // namespace
+
 namespace videosynth {
 
 ValidationResult ProjectValidator::Validate(const Project& project) {
@@ -43,6 +54,21 @@ ValidationResult ProjectValidator::Validate(const Project& project) {
       result.is_valid = false;
       result.errors.push_back(
           "MVP constraint violation: section type must be 'software_generated'.");
+      break;
+    }
+
+    if (section.pattern.empty()) {
+      result.is_valid = false;
+      result.errors.push_back(
+          "MVP constraint violation: software_generated sections must define a pattern.");
+      break;
+    }
+
+    if (!IsSupportedPattern(section.pattern)) {
+      result.is_valid = false;
+      result.errors.push_back(
+          "MVP constraint violation: unsupported pattern. Supported patterns are "
+          "'colour_bars_75', 'grayscale_ramp', and 'pluge_basic'.");
       break;
     }
   }

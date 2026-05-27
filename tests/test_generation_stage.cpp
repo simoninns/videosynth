@@ -7,7 +7,10 @@
  * SPDX-FileCopyrightText: 2026 Simon Inns
  */
 
+#include <algorithm>
 #include <cmath>
+#include <set>
+#include <string>
 
 #include <gtest/gtest.h>
 
@@ -25,13 +28,37 @@ int BurstEndSamples(double sample_rate_hz) {
   return static_cast<int>(std::lround(sample_rate_hz * 8.0e-6));
 }
 
-Project MakeProject(Standard standard) {
+Project MakeProject(Standard standard, const std::string& pattern = "colour_bars_75") {
   Project project;
   project.cvbs_presets.standard = standard;
   project.cvbs_presets.sample_rate = "4fsc";
   project.cvbs_presets.subcarrier_lock = true;
-  project.sections.push_back(Section{.name = "SignalTiming", .type = "software_generated"});
+  project.sections.push_back(
+      Section{.name = "SignalTiming", .type = "software_generated", .pattern = pattern});
   return project;
+}
+
+int ActiveWindowStartSamples(double sample_rate_hz) {
+  return static_cast<int>(std::lround(sample_rate_hz * 10.5e-6));
+}
+
+int ActiveWindowEndSamples(double sample_rate_hz) {
+  return static_cast<int>(std::lround(sample_rate_hz * 62.5e-6));
+}
+
+std::set<int> UniqueRoundedLumaLevelsInActiveWindow(const std::vector<double>& y_mv,
+                                                    int line_1based,
+                                                    const TimingConstants& timing) {
+  const int line_start = (line_1based - 1) * timing.samples_per_line_4fsc;
+  const int start = line_start + ActiveWindowStartSamples(timing.sample_rate_4fsc_hz);
+  const int end = std::min(line_start + ActiveWindowEndSamples(timing.sample_rate_4fsc_hz),
+                           line_start + timing.samples_per_line_4fsc);
+
+  std::set<int> levels;
+  for (int i = start; i < end; ++i) {
+    levels.insert(static_cast<int>(std::lround(y_mv[i])));
+  }
+  return levels;
 }
 
 int CountSyncSamplesOnLine(const std::vector<double>& y_mv,
@@ -204,6 +231,62 @@ TEST(GenerationStageTimingTest, UsesFixedNtscBurstPhaseAndAlternatingPalBurstPha
   const double pal_line20 = BurstWindowMean(c_pal, 20, pal);
   const double pal_line21 = BurstWindowMean(c_pal, 21, pal);
   EXPECT_LT(pal_line20 * pal_line21, 0.0);
+}
+
+TEST(GenerationStagePatternTest, ColourBarsProduceMultipleDiscreteLumaLevels) {
+  GenerationStage generation;
+  std::vector<std::string> errors;
+  std::vector<double> y;
+  std::vector<double> c;
+  ASSERT_TRUE(generation.Generate(MakeProject(Standard::kPal, "colour_bars_75"), &y, &c, &errors));
+
+  const TimingConstants pal = GetTimingConstants(Standard::kPal);
+  const std::set<int> levels = UniqueRoundedLumaLevelsInActiveWindow(y, 100, pal);
+
+  EXPECT_GE(levels.size(), 6U);
+}
+
+TEST(GenerationStagePatternTest, GrayscaleRampRisesAcrossActiveRegion) {
+  GenerationStage generation;
+  std::vector<std::string> errors;
+  std::vector<double> y;
+  std::vector<double> c;
+  ASSERT_TRUE(generation.Generate(MakeProject(Standard::kNtsc, "grayscale_ramp"), &y, &c, &errors));
+
+  const TimingConstants ntsc = GetTimingConstants(Standard::kNtsc);
+  const int line_start = (60 - 1) * ntsc.samples_per_line_4fsc;
+  const int start = line_start + ActiveWindowStartSamples(ntsc.sample_rate_4fsc_hz);
+  const int end = std::min(line_start + ActiveWindowEndSamples(ntsc.sample_rate_4fsc_hz),
+                           line_start + ntsc.samples_per_line_4fsc);
+
+  ASSERT_LT(start + 2, end);
+  const double left = y[start + 1];
+  const double right = y[end - 1];
+  EXPECT_LT(left, right);
+}
+
+TEST(GenerationStagePatternTest, PlugePatternStaysNearBlackRange) {
+  GenerationStage generation;
+  std::vector<std::string> errors;
+  std::vector<double> y;
+  std::vector<double> c;
+  ASSERT_TRUE(generation.Generate(MakeProject(Standard::kPal, "pluge_basic"), &y, &c, &errors));
+
+  const TimingConstants pal = GetTimingConstants(Standard::kPal);
+  const int line_start = (140 - 1) * pal.samples_per_line_4fsc;
+  const int start = line_start + ActiveWindowStartSamples(pal.sample_rate_4fsc_hz);
+  const int end = std::min(line_start + ActiveWindowEndSamples(pal.sample_rate_4fsc_hz),
+                           line_start + pal.samples_per_line_4fsc);
+
+  double min_y = y[start];
+  double max_y = y[start];
+  for (int i = start; i < end; ++i) {
+    min_y = std::min(min_y, y[i]);
+    max_y = std::max(max_y, y[i]);
+  }
+
+  EXPECT_GT(max_y - min_y, 10.0);
+  EXPECT_LT(max_y, 120.0);
 }
 
 }  // namespace

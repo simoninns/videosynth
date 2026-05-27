@@ -50,6 +50,7 @@ struct CvbsPresets {
 struct Section {
   std::string name;
   std::string type;
+  std::string pattern;
 };
 
 struct Project {

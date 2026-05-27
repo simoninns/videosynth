@@ -19,7 +19,8 @@ Project MakeValidProject() {
   project.cvbs_presets.standard = Standard::kPal;
   project.cvbs_presets.sample_rate = "4fsc";
   project.cvbs_presets.subcarrier_lock = true;
-  project.sections.push_back(Section{.name = "Bars", .type = "software_generated"});
+  project.sections.push_back(
+      Section{.name = "Bars", .type = "software_generated", .pattern = "colour_bars_75"});
   return project;
 }
 
@@ -65,6 +66,26 @@ TEST(ProjectValidatorTest, RejectsSubcarrierLockDisabled) {
 TEST(ProjectValidatorTest, RejectsNonSoftwareSections) {
   Project project = MakeValidProject();
   project.sections[0].type = "progressive";
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_FALSE(result.is_valid);
+}
+
+TEST(ProjectValidatorTest, RejectsMissingPatternOnSoftwareSection) {
+  Project project = MakeValidProject();
+  project.sections[0].pattern.clear();
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_FALSE(result.is_valid);
+}
+
+TEST(ProjectValidatorTest, RejectsUnsupportedPattern) {
+  Project project = MakeValidProject();
+  project.sections[0].pattern = "checkerboard_8x8";
 
   ProjectValidator validator;
   const ValidationResult result = validator.Validate(project);

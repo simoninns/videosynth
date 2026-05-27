@@ -83,7 +83,8 @@ Project MakeProject() {
   p.cvbs_presets.standard = Standard::kPal;
   p.cvbs_presets.sample_rate = "4fsc";
   p.cvbs_presets.subcarrier_lock = true;
-  p.sections.push_back(Section{.name = "Valid", .type = "software_generated"});
+  p.sections.push_back(
+      Section{.name = "Valid", .type = "software_generated", .pattern = "colour_bars_75"});
   return p;
 }
 
