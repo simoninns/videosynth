@@ -4,6 +4,8 @@
 
 Deliver a minimum-viable VideoSynth implementation that can generate software test patterns for both PAL and NTSC and write composite-only CVBS-format output using only 4fsc subcarrier-locked sampling.
 
+This MVP plan is a constrained implementation subset of the project High-Level Design (HLD), and implementation decisions must remain traceable to it.
+
 The MVP is intentionally narrow:
 
 - Software-generated frame content only.
@@ -16,6 +18,27 @@ The MVP is intentionally narrow:
 - Project structure is built as a Nix flake targeting Nixpkgs 25.11.
 - Unit testing is required and must follow TESTING.md (dependency inversion, interface-first design, mock-based deterministic unit tests).
 - CI/CD scaffolding is required using GitHub Actions to run unit tests and build the application.
+
+## 1.1 HLD Anchoring Rule (Normative for MVP)
+
+- The MVP is authoritative only within the boundaries defined by the HLD: [VideoSynth Technical Design Specification](./high-level-design.md).
+- If this MVP plan and the HLD appear to conflict, the HLD prevails unless the MVP plan is explicitly amended.
+- Every implementation task, PR, and test artifact in MVP phases shall cite relevant HLD sections.
+- Because the HLD is specification-cross-checked against PAL/NTSC source standards, HLD traceability is the required path for anchoring implementation to the underlying video format specifications.
+
+Minimum HLD sections that must be used for MVP implementation traceability:
+
+- [Section 2: Core Requirements](./high-level-design.md#2-core-requirements)
+- [Section 3: Architecture Overview](./high-level-design.md#3-architecture-overview)
+- [Section 4: Generation Stage](./high-level-design.md#4-generation-stage)
+- [Section 5: Output Stage](./high-level-design.md#5-output-stage)
+- [Section 6: PAL and NTSC Analogue Specifications](./high-level-design.md#6-pal-and-ntsc-analogue-specifications)
+- [Section 7: YAML Project File Specification](./high-level-design.md#7-yaml-project-file-specification)
+- [Section 9: Field and Line Handling](./high-level-design.md#9-field-and-line-handling)
+- [Section 10: 4fsc Sampling and Subcarrier Locking](./high-level-design.md#10-4fsc-sampling-and-subcarrier-locking)
+- [Section 13: Error Handling and Validation](./high-level-design.md#13-error-handling-and-validation)
+- [Section 14: CLI Interface](./high-level-design.md#14-cli-interface)
+- [Section 15: Build and Packaging](./high-level-design.md#15-build-and-packaging)
 
 ## 2. Scope Boundaries
 
@@ -64,6 +87,7 @@ The MVP is intentionally narrow:
 8. The repository shall include a Nix flake project structure pinned to Nixpkgs 25.11 for reproducible builds and tests.
 9. Unit tests shall follow TESTING.md: dependency inversion via interfaces, constructor-injected dependencies, mocks for all external collaborators, and deterministic execution without clock/network side effects.
 10. The repository shall include GitHub Actions workflows that automatically build the application and run the unit test suite on pull requests and mainline updates.
+11. Each implemented MVP requirement shall include explicit traceability to applicable HLD sections, and those HLD sections shall be used as the normative bridge to referenced PAL/NTSC specification clauses.
 
 ## 4. Phased Delivery Plan
 
@@ -75,6 +99,14 @@ The MVP is intentionally narrow:
 - Build skeleton project flow: parse -> validate -> generate -> output.
 
 ### Work Items
+
+HLD anchor set for this phase:
+
+- [Section 7: YAML Project File Specification](./high-level-design.md#7-yaml-project-file-specification)
+- [Section 13: Error Handling and Validation](./high-level-design.md#13-error-handling-and-validation)
+- [Section 14: CLI Interface](./high-level-design.md#14-cli-interface)
+- [Section 15: Build and Packaging](./high-level-design.md#15-build-and-packaging)
+- [Section 16: Directory Structure](./high-level-design.md#16-directory-structure)
 
 - Create top-level project structure for a C++17 implementation (src, include, tests, tooling) suitable for incremental MVP development.
 - Create or update flake.nix pinned to Nixpkgs 25.11 with dev shell and build/test outputs.
@@ -109,6 +141,14 @@ The MVP is intentionally narrow:
 
 ### Work Items
 
+HLD anchor set for this phase:
+
+- [Section 2: Core Requirements](./high-level-design.md#2-core-requirements)
+- [Section 4: Generation Stage](./high-level-design.md#4-generation-stage)
+- [Section 6: PAL and NTSC Analogue Specifications](./high-level-design.md#6-pal-and-ntsc-analogue-specifications)
+- [Section 9: Field and Line Handling](./high-level-design.md#9-field-and-line-handling)
+- [Section 10: 4fsc Sampling and Subcarrier Locking](./high-level-design.md#10-4fsc-sampling-and-subcarrier-locking)
+
 - Build timing model primitives:
   - samples per line at 4fsc.
   - lines per frame and field sequencing.
@@ -135,6 +175,12 @@ The MVP is intentionally narrow:
 
 ### Work Items
 
+HLD anchor set for this phase:
+
+- [Section 2: Core Requirements](./high-level-design.md#2-core-requirements)
+- [Section 4: Generation Stage](./high-level-design.md#4-generation-stage)
+- [Section 8.1: Frame-Based Sections](./high-level-design.md#81-frame-based-sections)
+
 - Implement a minimal pattern set (recommended):
   - 75% colour bars.
   - grayscale ramp.
@@ -156,6 +202,12 @@ The MVP is intentionally narrow:
 
 ### Work Items
 
+HLD anchor set for this phase:
+
+- [Section 5: Output Stage](./high-level-design.md#5-output-stage)
+- [Section 6.1: Signal Levels](./high-level-design.md#61-signal-levels)
+- [Section 10: 4fsc Sampling and Subcarrier Locking](./high-level-design.md#10-4fsc-sampling-and-subcarrier-locking)
+
 - Implement 4fsc sample clock generation phase-locked to subcarrier (NCO-based or equivalent deterministic lock).
 - Map mV-domain waveform to 10-bit integer codes using standard-specific mapping anchors.
 - Clamp to legal ranges and forbid excluded codes.
@@ -175,6 +227,11 @@ The MVP is intentionally narrow:
 - Prove correctness against MVP requirements and prepare for release.
 
 ### Work Items
+
+HLD anchor set for this phase:
+
+- [Section 13: Error Handling and Validation](./high-level-design.md#13-error-handling-and-validation)
+- [Section 15: Build and Packaging](./high-level-design.md#15-build-and-packaging)
 
 - Implement and harden GitHub Actions workflows for MVP delivery:
   - Separate build and unit-test jobs (or clearly separated steps) with explicit failure reporting.
@@ -219,6 +276,7 @@ The MVP is intentionally narrow:
 - GitHub Actions CI/CD is scaffolded and operational for build + unit-test gates.
 - Unit tests are deterministic and mock-based per TESTING.md.
 - Rejects non-MVP features with clear validation errors.
+- Traceability evidence exists for all MVP requirements and phases, linking implementation artifacts to relevant HLD sections.
 
 ## 6. Risks and Mitigations
 
