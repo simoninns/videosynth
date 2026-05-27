@@ -44,11 +44,11 @@ std::vector<int> BuildLineSampleCounts(Standard standard, int lines_per_frame, i
   std::vector<int> counts(static_cast<std::size_t>(lines_per_frame), nominal_samples);
   if (standard == Standard::kPal) {
     // EBU Tech. 3280-E Section 1.2: 625-line PAL at 4fsc has 1135.0064
-    // samples/line average, i.e. 709,379 samples/frame. Represent this with
-    // four +1 sample slips distributed across the frame.
-    constexpr int kSlipLines[] = {157, 313, 469, 625};
-    for (int line_1based : kSlipLines) {
-      counts[static_cast<std::size_t>(line_1based - 1)] += 1;
+    // samples/line average, i.e. 709,379 samples/frame. The normative placement
+    // of the four extra samples per frame is two on line 313 and two on line 625.
+    constexpr int kLongLines[] = {313, 625};
+    for (int line_1based : kLongLines) {
+      counts[static_cast<std::size_t>(line_1based - 1)] += 2;
     }
   }
   return counts;
@@ -142,6 +142,11 @@ int ActiveFrameLineIndex(const ActiveRasterGeometry& geometry,
   }
 
   return -1;
+}
+
+int InvertCenteredChromaCode(int code) {
+  const int clamped = ClampCode(code, 64, 960);
+  return 1024 - clamped;
 }
 
 double LumaMillivoltsFromCode(int y_code, const SignalLevels& levels) {
@@ -457,6 +462,14 @@ bool GenerationStage::Generate(const Project& project,
         active_sample_indices[sample_slot] = sample_index;
         line_source_samples[sample_slot] = pixel;
 
+        if (project.cvbs_presets.video_standard_preset == Standard::kPal &&
+            (line.line_number_1based % 2) == 0) {
+          // PAL phase alternation is implemented by inverting the V axis on
+          // successive lines while keeping U unchanged.
+          line_source_samples[sample_slot].cr =
+              static_cast<std::int16_t>(InvertCenteredChromaCode(pixel.cr));
+        }
+
         // Preserve any sync-domain sample already placed for this line; only
         // paint active luma where the waveform is at/above blanking level.
         if ((*out_y_mv)[sample_index] >= levels.blanking_mv) {
@@ -464,11 +477,16 @@ bool GenerationStage::Generate(const Project& project,
         }
 
         const double t = static_cast<double>(sample_index - line_base) / timing.sample_rate_4fsc_hz;
-        double carrier_phase = (2.0 * kPi * subcarrier_hz * t) + line.burst_phase_rad + frame_phase_offset;
+        double carrier_phase = 0.0;
         if (project.cvbs_presets.video_standard_preset == Standard::kNtsc) {
+          carrier_phase = (2.0 * kPi * subcarrier_hz * t) + line.burst_phase_rad + frame_phase_offset;
           // SMPTE 170M-2004 Section 10 defines wt using burst+180 deg as the
           // active chroma phase reference.
           carrier_phase += kPi;
+        } else {
+          // For PAL, use the subcarrier's +U-axis reference and perform the
+          // mandated line-alternation by flipping V on even lines.
+          carrier_phase = (2.0 * kPi * subcarrier_hz * t) + (kPi / 4.0);
         }
         carrier_phases_rad[sample_slot] = carrier_phase;
       }
