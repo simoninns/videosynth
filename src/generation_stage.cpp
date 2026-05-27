@@ -1,7 +1,7 @@
 /*
  * File:        generation_stage.cpp
  * Module:      generation_stage
- * Purpose:     Generates CVBS-domain Y and C sample buffers from project sections.
+ * Purpose:     Generates CVBS-domain Y and C sample buffers from frame-based source data.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Simon Inns
@@ -11,9 +11,11 @@
 
 #include <algorithm>
 #include <cmath>
-#include <cstdint>
+#include <memory>
 #include <vector>
 
+#include "videosynth/chroma_encoder.h"
+#include "videosynth/frame_source.h"
 #include "videosynth/signal_timing_model.h"
 #include "videosynth/timing_constants.h"
 
@@ -23,12 +25,6 @@ namespace {
 
 constexpr double kPi = 3.14159265358979323846;
 
-enum class PatternKind {
-  kColourBars75,
-  kGrayscaleRamp,
-  kPlugeBasic,
-};
-
 struct ActiveRasterGeometry {
   int first_active_line_field1 = 0;
   int first_active_line_field2 = 0;
@@ -36,12 +32,6 @@ struct ActiveRasterGeometry {
   int active_window_start_samples = 0;
   int active_window_end_samples = 0;
   int active_width_pixels = 720;
-};
-
-struct PixelYCbCr {
-  std::int16_t y = 64;
-  std::int16_t cb = 512;
-  std::int16_t cr = 512;
 };
 
 int ClampCode(int code, int lo, int hi) {
@@ -76,28 +66,9 @@ ActiveRasterGeometry GetActiveRasterGeometry(Standard standard, double sample_ra
   };
 }
 
-bool ParsePatternKind(const std::string& pattern, PatternKind* out_kind) {
-  if (out_kind == nullptr) {
-    return false;
-  }
-
-  if (pattern == "ebu_colour_bars" || pattern == "colour_bars_75") {
-    *out_kind = PatternKind::kColourBars75;
-    return true;
-  }
-  if (pattern == "grayscale_ramp_horizontal" || pattern == "grayscale_ramp") {
-    *out_kind = PatternKind::kGrayscaleRamp;
-    return true;
-  }
-  if (pattern == "pluge" || pattern == "pluge_basic") {
-    *out_kind = PatternKind::kPlugeBasic;
-    return true;
-  }
-  return false;
-}
-
 bool BuildFramePatternSchedule(const Project& project,
-                               std::vector<PatternKind>* out_frame_patterns) {
+                               const TestPatternFrameSource& frame_source,
+                               std::vector<std::string>* out_frame_patterns) {
   if (out_frame_patterns == nullptr) {
     return false;
   }
@@ -108,13 +79,12 @@ bool BuildFramePatternSchedule(const Project& project,
       continue;
     }
 
-    PatternKind kind = PatternKind::kColourBars75;
-    if (!ParsePatternKind(section.pattern, &kind) || section.duration_frames <= 0) {
+    if (!frame_source.SupportsPattern(section.pattern) || section.duration_frames <= 0) {
       return false;
     }
 
     for (int i = 0; i < section.duration_frames; ++i) {
-      out_frame_patterns->push_back(kind);
+      out_frame_patterns->push_back(section.pattern);
     }
   }
 
@@ -133,76 +103,10 @@ int ActiveFrameLineIndex(const ActiveRasterGeometry& geometry, int line_1based) 
   return -1;
 }
 
-PixelYCbCr MakeColourBars75Pixel(int x, int width) {
-  static constexpr int kBarCount = 8;
-  static constexpr std::int16_t kY[kBarCount] = {720, 648, 524, 448, 336, 260, 140, 64};
-  static constexpr std::int16_t kCb[kBarCount] = {512, 176, 624, 288, 736, 400, 848, 512};
-  static constexpr std::int16_t kCr[kBarCount] = {512, 568, 176, 232, 792, 848, 456, 512};
-
-  const int bar_width = std::max(1, width / kBarCount);
-  const int bar = std::min(kBarCount - 1, x / bar_width);
-  return PixelYCbCr{.y = kY[bar], .cb = kCb[bar], .cr = kCr[bar]};
-}
-
-PixelYCbCr MakeGrayscaleRampPixel(int x, int width) {
-  const int span = std::max(1, width - 1);
-  const double t = static_cast<double>(x) / static_cast<double>(span);
-  const int y = static_cast<int>(std::lround(64.0 + (876.0 * t)));
-  return PixelYCbCr{
-      .y = static_cast<std::int16_t>(ClampCode(y, 64, 940)),
-      .cb = 512,
-      .cr = 512,
-  };
-}
-
-PixelYCbCr MakePlugePixel(int x, int y, int width, int height) {
-  (void)height;
-  int y_code = 96;
-
-  const int pluge_top = (3 * width) / 16;
-  const int pluge_bottom = (7 * width) / 16;
-  if (x >= pluge_top && x < pluge_bottom && y > 80) {
-    const int segment = std::max(1, (pluge_bottom - pluge_top) / 4);
-    const int local_x = x - pluge_top;
-    const int band = std::min(3, local_x / segment);
-    if (band == 0) {
-      y_code = 68;
-    } else if (band == 1) {
-      y_code = 72;
-    } else if (band == 2) {
-      y_code = 80;
-    } else {
-      y_code = 100;
-    }
-  }
-
-  return PixelYCbCr{.y = static_cast<std::int16_t>(y_code), .cb = 512, .cr = 512};
-}
-
-PixelYCbCr MakePatternPixel(PatternKind kind, int x, int y, int width, int height) {
-  if (kind == PatternKind::kColourBars75) {
-    return MakeColourBars75Pixel(x, width);
-  }
-  if (kind == PatternKind::kGrayscaleRamp) {
-    return MakeGrayscaleRampPixel(x, width);
-  }
-  return MakePlugePixel(x, y, width, height);
-}
-
 double LumaMillivoltsFromCode(int y_code, const SignalLevels& levels) {
   const int clamped = ClampCode(y_code, 64, 940);
   const double y_norm = static_cast<double>(clamped - 64) / 876.0;
   return levels.black_mv + (y_norm * (levels.white_mv - levels.black_mv));
-}
-
-double ChromaMillivoltsFromCodes(int cb_code, int cr_code, double carrier_phase_rad) {
-  const int cb = ClampCode(cb_code, 64, 960);
-  const int cr = ClampCode(cr_code, 64, 960);
-  const double cb_norm = static_cast<double>(cb - 512) / 448.0;
-  const double cr_norm = static_cast<double>(cr - 512) / 448.0;
-  const double chroma_scale_mv = 350.0;
-  return chroma_scale_mv * ((cr_norm * std::sin(carrier_phase_rad)) +
-                            (cb_norm * std::cos(carrier_phase_rad)));
 }
 
 double PulseWidthSeconds(SyncPulseKind kind, Standard standard) {
@@ -241,8 +145,8 @@ bool GenerationStage::Generate(const Project& project,
     return false;
   }
 
-    const TimingConstants timing = GetTimingConstants(project.cvbs_presets.video_standard_preset);
-    const SignalLevels levels = GetSignalLevels(project.cvbs_presets.video_standard_preset);
+  const TimingConstants timing = GetTimingConstants(project.cvbs_presets.video_standard_preset);
+  const SignalLevels levels = GetSignalLevels(project.cvbs_presets.video_standard_preset);
   const std::vector<LineTimingPrimitive> lines =
       BuildFrameTimingPrimitives(project.cvbs_presets.video_standard_preset);
   const double subcarrier_hz = timing.sample_rate_4fsc_hz / 4.0;
@@ -252,9 +156,17 @@ bool GenerationStage::Generate(const Project& project,
   const int half_line_samples = timing.samples_per_line_4fsc / 2;
   const ActiveRasterGeometry active =
       GetActiveRasterGeometry(project.cvbs_presets.video_standard_preset, timing.sample_rate_4fsc_hz);
-  std::vector<PatternKind> frame_patterns;
+  const TestPatternFrameSource frame_source;
+  std::unique_ptr<IChromaEncoder> chroma_encoder =
+      CreateChromaEncoder(project.cvbs_presets.video_standard_preset, timing.sample_rate_4fsc_hz);
+  std::vector<std::string> frame_patterns;
 
-  if (!BuildFramePatternSchedule(project, &frame_patterns)) {
+  if (chroma_encoder == nullptr) {
+    errors->push_back("Unsupported video standard for chroma encoding.");
+    return false;
+  }
+
+  if (!BuildFramePatternSchedule(project, frame_source, &frame_patterns)) {
     errors->push_back(
       "Unsupported or missing software-generated pattern. Supported patterns are "
         "'ebu_colour_bars', 'grayscale_ramp_horizontal', and 'pluge'.");
@@ -271,13 +183,21 @@ bool GenerationStage::Generate(const Project& project,
       std::max(active_window_start + 1,
            std::min(active.active_window_end_samples, timing.samples_per_line_4fsc));
   const int active_window_samples = active_window_end - active_window_start;
-  const int active_height_lines = active.active_lines_per_field * 2;
 
   out_y_mv->assign(sample_count, levels.blanking_mv);
   out_c_mv->assign(sample_count, 0.0);
 
   for (std::size_t frame_index = 0; frame_index < frame_count; ++frame_index) {
-    const PatternKind frame_pattern = frame_patterns[frame_index];
+    FrameSourceImage source_frame;
+    std::string frame_error;
+    if (!frame_source.GenerateFrame(frame_patterns[frame_index],
+                                    project.cvbs_presets.video_standard_preset,
+                                    &source_frame,
+                                    &frame_error)) {
+      errors->push_back(frame_error.empty() ? "Unable to generate frame-based source data."
+                                            : frame_error);
+      return false;
+    }
 
     for (const LineTimingPrimitive& line : lines) {
       const int line_index = line.line_number_1based - 1;
@@ -326,6 +246,11 @@ bool GenerationStage::Generate(const Project& project,
         continue;
       }
 
+      std::vector<YCbCr444Pixel> line_source_samples(
+          static_cast<std::size_t>(active_window_samples), YCbCr444Pixel{});
+      std::vector<double> carrier_phases_rad(static_cast<std::size_t>(active_window_samples), 0.0);
+      std::vector<int> active_sample_indices(static_cast<std::size_t>(active_window_samples), line_base);
+
       for (int x_sample = 0; x_sample < active_window_samples; ++x_sample) {
         const int sample_index = line_base + active_window_start + x_sample;
         if (sample_index < line_base || sample_index >= line_end) {
@@ -335,19 +260,26 @@ bool GenerationStage::Generate(const Project& project,
         int pixel_x = (x_sample * active.active_width_pixels) / active_window_samples;
         pixel_x = std::min(active.active_width_pixels - 1, std::max(0, pixel_x));
 
-        const PixelYCbCr pixel =
-            MakePatternPixel(frame_pattern,
-                             pixel_x,
-                             active_y,
-                             active.active_width_pixels,
-                             active_height_lines);
+        if (pixel_x >= source_frame.width || active_y >= source_frame.height) {
+          continue;
+        }
+
+        const YCbCr444Pixel& pixel = source_frame.PixelAt(pixel_x, active_y);
+        const std::size_t sample_slot = static_cast<std::size_t>(x_sample);
+        active_sample_indices[sample_slot] = sample_index;
+        line_source_samples[sample_slot] = pixel;
 
         (*out_y_mv)[sample_index] = LumaMillivoltsFromCode(pixel.y, levels);
 
         const double t = static_cast<double>(sample_index - line_base) / timing.sample_rate_4fsc_hz;
-        const double carrier_phase = (2.0 * kPi * subcarrier_hz * t) + line.burst_phase_rad;
-        (*out_c_mv)[sample_index] +=
-            ChromaMillivoltsFromCodes(pixel.cb, pixel.cr, carrier_phase);
+        carrier_phases_rad[sample_slot] = (2.0 * kPi * subcarrier_hz * t) + line.burst_phase_rad;
+      }
+
+      std::vector<double> encoded_line_chroma;
+      chroma_encoder->EncodeLine(line_source_samples, carrier_phases_rad, &encoded_line_chroma);
+      for (int x_sample = 0; x_sample < active_window_samples; ++x_sample) {
+        (*out_c_mv)[static_cast<std::size_t>(active_sample_indices[static_cast<std::size_t>(x_sample)])] +=
+            encoded_line_chroma[static_cast<std::size_t>(x_sample)];
       }
     }
   }

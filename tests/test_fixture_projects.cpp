@@ -129,7 +129,7 @@ TEST(ProjectFixturesTest, FixtureOutputHashesRemainStable) {
   };
 
   const std::vector<FixtureExpectation> expectations = {
-      {"pal_32f_colour_bars.yaml", 855084759098206595ULL},
+      {"pal_32f_colour_bars.yaml", 7076720342532857859ULL},
       {"ntsc_32f_grayscale.yaml", 1655772628846765827ULL},
   };
 

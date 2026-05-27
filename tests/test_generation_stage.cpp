@@ -11,10 +11,14 @@
 #include <cmath>
 #include <set>
 #include <string>
+#include <vector>
 
 #include <gtest/gtest.h>
 
+#include "videosynth/chroma_encoder.h"
+#include "videosynth/frame_source.h"
 #include "videosynth/generation_stage.h"
+#include "videosynth/signal_timing_model.h"
 #include "videosynth/timing_constants.h"
 
 namespace videosynth {
@@ -49,6 +53,23 @@ int ActiveWindowStartSamples(double sample_rate_hz) {
 
 int ActiveWindowEndSamples(double sample_rate_hz) {
   return static_cast<int>(std::lround(sample_rate_hz * 62.5e-6));
+}
+
+std::vector<double> CarrierPhasesForActiveLine(int line_1based,
+                                               const TimingConstants& timing,
+                                               int active_window_samples,
+                                               int active_window_start) {
+  std::vector<double> phases(static_cast<std::size_t>(active_window_samples), 0.0);
+  const double subcarrier_hz = timing.sample_rate_4fsc_hz / 4.0;
+  const LineTimingPrimitive line = BuildLineTimingPrimitive(
+      timing.lines_per_frame == 625 ? Standard::kPal : Standard::kNtsc, line_1based);
+  for (int x_sample = 0; x_sample < active_window_samples; ++x_sample) {
+    const int sample_offset = active_window_start + x_sample;
+    const double t = static_cast<double>(sample_offset) / timing.sample_rate_4fsc_hz;
+    phases[static_cast<std::size_t>(x_sample)] =
+        (2.0 * M_PI * subcarrier_hz * t) + line.burst_phase_rad;
+  }
+  return phases;
 }
 
 std::set<int> UniqueRoundedLumaLevelsInActiveWindow(const std::vector<double>& y_mv,
@@ -331,6 +352,56 @@ TEST(GenerationStagePatternTest, DurationFramesScalesOutputSampleCount) {
   EXPECT_EQ(y.size(),
             static_cast<std::size_t>(3 * pal.lines_per_frame * pal.samples_per_line_4fsc));
   EXPECT_EQ(c.size(), y.size());
+}
+
+TEST(GenerationStageChromaTest, ActiveChromaUsesSameCarrierModelAsBurst) {
+  GenerationStage generation;
+  std::vector<std::string> errors;
+  std::vector<double> y;
+  std::vector<double> c;
+
+  ASSERT_TRUE(generation.Generate(MakeProject(Standard::kNtsc, "ebu_colour_bars"), &y, &c, &errors));
+
+  const TimingConstants ntsc = GetTimingConstants(Standard::kNtsc);
+  const int line_1based = 60;
+  const int line_start = (line_1based - 1) * ntsc.samples_per_line_4fsc;
+  const int burst_start = line_start + BurstStartSamples(ntsc.sample_rate_4fsc_hz);
+  const int burst_mid = burst_start + 8;
+  const double subcarrier_hz = ntsc.sample_rate_4fsc_hz / 4.0;
+  const LineTimingPrimitive line = BuildLineTimingPrimitive(Standard::kNtsc, line_1based);
+  const double burst_t = static_cast<double>(burst_mid - line_start) / ntsc.sample_rate_4fsc_hz;
+  const double expected_burst = 150.0 *
+                                std::sin((2.0 * M_PI * subcarrier_hz * burst_t) + line.burst_phase_rad);
+  EXPECT_NEAR(c[burst_mid], expected_burst, 1e-9);
+
+  const int active_start = ActiveWindowStartSamples(ntsc.sample_rate_4fsc_hz);
+  const int active_end = ActiveWindowEndSamples(ntsc.sample_rate_4fsc_hz);
+  const int active_window_samples = active_end - active_start;
+  TestPatternFrameSource frame_source;
+  FrameSourceImage source_frame;
+  std::string frame_error;
+  ASSERT_TRUE(frame_source.GenerateFrame("ebu_colour_bars", Standard::kNtsc, &source_frame, &frame_error));
+
+  std::vector<YCbCr444Pixel> source_line(static_cast<std::size_t>(active_window_samples));
+  for (int x_sample = 0; x_sample < active_window_samples; ++x_sample) {
+    int pixel_x = (x_sample * source_frame.width) / active_window_samples;
+    pixel_x = std::min(source_frame.width - 1, std::max(0, pixel_x));
+    source_line[static_cast<std::size_t>(x_sample)] = source_frame.PixelAt(pixel_x, 60 - 22);
+  }
+
+  const auto chroma_encoder = CreateChromaEncoder(Standard::kNtsc, ntsc.sample_rate_4fsc_hz);
+  ASSERT_NE(chroma_encoder, nullptr);
+  std::vector<double> expected_active_line;
+  chroma_encoder->EncodeLine(source_line,
+                             CarrierPhasesForActiveLine(line_1based,
+                                                        ntsc,
+                                                        active_window_samples,
+                                                        active_start),
+                             &expected_active_line);
+
+  const int active_sample = active_window_samples / 3;
+  const int generated_sample_index = line_start + active_start + active_sample;
+  EXPECT_NEAR(c[generated_sample_index], expected_active_line[static_cast<std::size_t>(active_sample)], 1e-9);
 }
 
 }  // namespace

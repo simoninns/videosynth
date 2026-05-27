@@ -114,3 +114,7 @@ Thumbs.db
 # Nix and local results
 result
 result-*
+
+# Ignore any composite video output files and associated metadata
+*.composite
+*.meta

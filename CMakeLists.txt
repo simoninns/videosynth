@@ -11,6 +11,8 @@ find_package(spdlog REQUIRED)
 find_package(GTest REQUIRED)
 
 add_library(videosynth_core
+    src/chroma_encoder.cpp
+    src/frame_source.cpp
     src/generation_stage.cpp
     src/logger.cpp
     src/output_stage.cpp
@@ -42,6 +44,8 @@ target_link_libraries(videosynth
 enable_testing()
 
 add_executable(videosynth_tests
+    tests/test_chroma_encoder.cpp
+    tests/test_frame_source.cpp
     tests/test_fixture_projects.cpp
     tests/test_generation_stage.cpp
     tests/test_output_stage.cpp

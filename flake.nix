@@ -46,6 +46,7 @@
             cmake
             ninja
             pkg-config
+            python3
             gcc
             yaml-cpp
             spdlog
