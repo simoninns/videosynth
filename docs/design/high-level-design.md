@@ -136,6 +136,22 @@ The **only field-aware process** is **progressive source ingestion**, which spli
 
 ---
 
+### **Source Colour Space Requirement**
+
+**All frame-based sources — test patterns and progressive sources alike — must provide pixel data to the chroma encoder in the following representation:**
+
+> **10-bit 4:4:4 YCbCr, BT.601 studio swing**
+> - Y: 64–940 (black–white)
+> - Cb, Cr: 64–960 (midpoint 512)
+
+This is a hard interface contract. The chroma encoder assumes this representation unconditionally and does not perform any colour space conversion internally. The rationale for 4:4:4 (rather than 4:2:2) is that the encoder must apply its own standard-compliant bandlimiting filters to the chroma channels before quadrature modulation — PAL requires a ~1.3 MHz symmetric LPF on U and V, while NTSC requires asymmetric filtering of I (~1.3 MHz) and Q (~0.5 MHz) after a YCbCr→YIQ rotation. Receiving pre-subsampled chroma would prevent correct application of these filters, and would introduce chroma siting ambiguity that is incompatible with subcarrier-locked sampling at 4fsc.
+
+**Test patterns** naturally produce values in this space directly.
+
+**Progressive sources** (MOV, MP4, PNG, RAW, etc.) are converted during ingestion by `progressive_source`. Any source colour space — RGB, YUV 4:2:0, YUV 4:2:2, or other — must be converted and upsampled to 10-bit 4:4:4 YCbCr BT.601 studio swing **before** the frame data is passed to the generator. The precise conversion path depends on the source's declared colour primaries, transfer characteristics, and matrix coefficients; these must be read from the source container metadata where available and applied correctly.
+
+---
+
 ### **Responsibilities**
 
 
@@ -143,7 +159,7 @@ The **only field-aware process** is **progressive source ingestion**, which spli
 | ------------------------------- | ---------------------------------------------------------------------------------------- | ------------------------------- |
 | **Luma (Y) Generation**         | Generate luma component per frame, including sync pulses and blanking.                   | ITU-R BT.470-6, ITU-R BT.1700   |
 | **Chroma (C) Generation**       | Generate chroma component per frame, including colour burst.                             | ITU-R BT.470-6, ITU-R BT.1700   |
-| **Progressive Source Ingestion**| Split progressive frames into interlaced fields and apply ordering/dominance.            | ITU-R BT.470-6                  |
+| **Progressive Source Ingestion**| Decode progressive frames, convert to 10-bit 4:4:4 YCbCr BT.601 studio swing, split into interlaced fields. | ITU-R BT.470-6, ITU-R BT.601   |
 | **Sync and Burst Insertion**    | Insert HSync, VSync, equalizing pulses, and colour burst.                                | ITU-R BT.470-6, ITU-R BT.1700   |
 | **PAL Laserdisc Pilot Burst**   | Superimpose a 3.75 MHz pilot burst on all sync pulses when enabled (PAL only).           | IEC 60856 §9.1.2                |
 | **NTSC Laserdisc VBI Burst**    | Insert colour burst on equalizing and broad sync pulses when enabled (NTSC only).        | IEC 60857 §9.1.2                |
@@ -153,7 +169,7 @@ The **only field-aware process** is **progressive source ingestion**, which spli
 
 ### **Inputs**
 
-- Frame-based content (test patterns, progressive sources).
+- Frame-based content in **10-bit 4:4:4 YCbCr BT.601 studio swing** (test patterns or normalised progressive sources).
 - Line-based injections (VITS, Laserdisc biphase, VITC).
 - CVBS presets (standard, mode, sample rate).
 
@@ -489,6 +505,27 @@ sections:
 
 ---
 
+### **File Path Resolution**
+
+Any field in a project YAML that accepts a file path (e.g., `source` on a `progressive` section) resolves the path using the following priority order:
+
+1. **Built-in sources** — paths prefixed with `builtin:` refer to source files bundled and installed with the application. The prefix is followed by the built-in asset name (e.g., `builtin:smpte_leader`). The application resolves these against its installation data directory at runtime, regardless of where the project YAML is located.
+2. **Absolute paths** — paths beginning with `/` are used exactly as specified. The file must exist at that location on the host filesystem.
+3. **Project-relative paths** — all other paths are resolved relative to the **directory containing the project YAML file**. This allows a project and its associated assets to be grouped together and moved as a unit.
+
+The application must report a clear validation error if a referenced file cannot be found after applying these rules.
+
+#### **Examples**
+
+```yaml
+source: "builtin:smpte_leader"        # built-in asset bundled with the application
+source: "/media/archive/clip.mov"     # absolute path
+source: "assets/clip.mov"             # relative to the project YAML directory
+source: "../shared/clip.mov"          # relative path traversal is permitted
+```
+
+---
+
 ### **Validation Rules**
 
 1. **Single CVBS Preset**:
@@ -511,6 +548,7 @@ sections:
   - **When a `laserdisc` injection is active in a section, no other injection type may target lines within the laserdisc reserved ranges** (PAL: Field 1 lines 6–18, Field 2 lines 319–331; NTSC: Field 1 lines 10–18, Field 2 lines 273–281).
   - **A `vitc` injection and a `laserdisc` injection must not appear in the same section.** Laserdisc does not use VITC.
 4. **Progressive Sources**:
+  - `source` must resolve to an accessible file after applying [File Path Resolution](#file-path-resolution) rules. If the resolved path does not exist, the YAML is considered **invalid**.
   - `duration_frames` must be either:
     - A positive integer (fixed number of frames).
     - `"all"` (use all available frames from the source).
@@ -591,7 +629,7 @@ Ingests progressive sources (MOV, MP4, PNG, RAW) and converts them to interlaced
 | ----------------- | -------------- | ------------ | ------------------------------------------------------------------------------ | -------------------- |
 | `name`            | string         | Yes          | User-friendly name.                                                            | `"MOV Source"`       |
 | `type`            | string         | Yes          | Must be `"progressive"`.                                                       | `"progressive"`      |
-| `source`          | string         | Yes          | Path to the source file.                                                       | `"/assets/test.mov"` |
+| `source`          | string         | Yes          | Path to the source file. May be a `builtin:` prefixed name, an absolute path, or a path relative to the project YAML. See [File Path Resolution](#file-path-resolution). | `"assets/test.mov"` |
 | `start_frame`     | integer        | No           | First frame to use (default: `0`).                                             | `0`                  |
 | `duration_frames` | integer/string | No           | Number of frames to extract. Use `"all"` for all frames or a positive integer. | `100` or `"all"`     |
 
@@ -1438,6 +1476,8 @@ videosynth/
 │   ├── nco.h
 │   ├── ramping.cpp
 │   ├── ramping.h
+│   ├── progressive_source.cpp
+│   ├── progressive_source.h
 │   └── ...
 ├── docs/
 │   ├── analogue-video-specifications/  (submodule)
@@ -1449,6 +1489,23 @@ videosynth/
 │       ├── getting_started.md
 │       ├── yaml_reference.md
 │       └── ...
+├── resources/
+│   └── assets/                          # Built-in source assets installed with the application
+│       ├── 720x480/                     # NTSC-dimensioned assets
+│       │   ├── stills/
+│       │   │   ├── png/                 # 206 × 8-bit RGB PNG still frames, 720×480
+│       │   │   └── raw/                 # 19 × headerless single-frame stills, YCbCr 4:2:2 10-bit planar
+│       │   │                            #   (yuv422p10le; same pixel format as the 720x480 MOV sources)
+│       │   └── video/
+│       │       └── mp4_29_97/           # H.264 MP4 clips, YCbCr 4:2:0 8-bit, 29.97 fps (30000/1001)
+│       └── 720x576/                     # PAL-dimensioned assets
+│           ├── stills/
+│           │   ├── png/                 # 206 × 8-bit RGB PNG still frames, 720×576
+│           │   └── raw/                 # 19 × headerless single-frame stills, YCbCr 4:2:2 10-bit planar
+│           │                            #   (yuv422p10le; same pixel format as the 720x576 MOV sources)
+│           └── video/
+│               ├── mov_25_00/           # QuickTime MOV clips, v210 codec (uncompressed YCbCr 4:2:2 10-bit), 25 fps
+│               └── mp4_25_00/           # H.264 MP4 clips, YCbCr 4:2:0 8-bit, 25 fps
 ├── tests/
 │   ├── test_yaml_parser.cpp
 │   ├── test_generation_stage.cpp
