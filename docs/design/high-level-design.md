@@ -581,7 +581,7 @@ sections:
   - name: "Colour Bars with VITS and Laserdisc"
     type: software_generated   # Frame-based content
     duration_frames: 10
-    pattern: "smpte_colour_bars"
+    pattern: "smpte_170m_100_7_5_100_7_5_colour_bars"
     line_injections:           # Line-based injections for this section
       - type: vits
         target_lines: [10, 11, 12]
@@ -686,7 +686,7 @@ Generates static or dynamic test patterns. Each test pattern is **predefined** a
 | `name`            | string   | Yes          | User-friendly name.             | `"Colour Bars"`                              |
 | `type`            | string   | Yes          | Must be `"software_generated"`. | `"software_generated"`                       |
 | `duration_frames` | integer  | Yes          | Number of frames to generate.   | `10`                                         |
-| `pattern`         | string   | Yes          | Name of the test pattern.       | `"smpte_colour_bars"`                        |
+| `pattern`         | string   | Yes          | Name of the test pattern.       | `"smpte_170m_100_7_5_100_7_5_colour_bars"` |
 | `line_injections` | list     | No           | List of line-based injections.  | (See [Line Injections](#82-line-injections)) |
 
 
@@ -694,19 +694,21 @@ Generates static or dynamic test patterns. Each test pattern is **predefined** a
 
 Each pattern is **unique** and has no configurable options. Variations (e.g., 75% vs. 100% colour bars) are separate patterns.
 
+Authoritative pattern definitions (waveform, geometry, levels, and deterministic mapping rules) are specified in [Software-Generated Patterns](software-generated-patterns.md).
 
-| **Pattern Name**            | **Description**                        |
-| --------------------------- | -------------------------------------- |
-| `smpte_colour_bars`         | Full-range colour bars (SMPTE RP 219). |
-| `ebu_colour_bars`           | 75% range colour bars (EBU).           |
-| `grayscale_ramp_horizontal` | Horizontal grayscale ramp.             |
-| `grayscale_ramp_vertical`   | Vertical grayscale ramp.               |
-| `checkerboard_8x8`          | 8x8 checkerboard pattern.              |
-| `checkerboard_16x16`        | 16x16 checkerboard pattern.            |
-| `solid_colour_black`        | Solid black field.                     |
-| `solid_colour_white`        | Solid white field.                     |
-| `pluge`                     | Picture Line-Up Generation Equipment.  |
-| `crosshatch`                | Crosshatch pattern.                    |
+
+| **Pattern Name**                              | **Description**                                     |
+| --------------------------------------------- | --------------------------------------------------- |
+| `smpte_170m_100_7_5_100_7_5_colour_bars`     | SMPTE 170M 100/7.5/100/7.5 colour bars.             |
+| `ebu_tech_3280_100_0_100_0_colour_bars`      | EBU Tech. 3280-E 100/0/100/0 colour bars.           |
+| `linear_grayscale_ramp_horizontal`            | Horizontal linear grayscale ramp.                    |
+| `linear_grayscale_ramp_vertical`              | Vertical linear grayscale ramp.                      |
+| `luma_checkerboard_8x8`                       | Luma-only checkerboard with 8x8 pixel tiles.        |
+| `luma_checkerboard_16x16`                     | Luma-only checkerboard with 16x16 pixel tiles.      |
+| `full_field_black`                            | Full-field black level.                              |
+| `full_field_white`                            | Full-field white level.                              |
+| `pluge_3bar_near_black`                        | Three-bar PLUGE around black reference.              |
+| `crosshatch_75_grid`                          | 75-pixel grid crosshatch alignment pattern.          |
 
 
 ##### **Example**
@@ -716,7 +718,7 @@ sections:
   - name: "SMPTE Colour Bars"
     type: software_generated
     duration_frames: 5
-    pattern: "smpte_colour_bars"
+    pattern: "smpte_170m_100_7_5_100_7_5_colour_bars"
     line_injections:
       - type: vits
         target_lines: [10, 11, 12]
