@@ -19,19 +19,80 @@ double ClampUnitInterval(double value) {
   return std::max(0.0, std::min(1.0, value));
 }
 
-double SmoothStep01(double x) {
+double SCurve01(double x) {
   const double clamped = ClampUnitInterval(x);
-  return clamped * clamped * (3.0 - (2.0 * clamped));
+  // Quintic smootherstep gives an S-curve with zero slope and curvature at
+  // the endpoints, reducing sharp corners at transition start/end.
+  return clamped * clamped * clamped *
+         ((clamped * ((6.0 * clamped) - 15.0)) + 10.0);
+}
+
+double InverseSCurve01(double y) {
+  const double target = ClampUnitInterval(y);
+  double lo = 0.0;
+  double hi = 1.0;
+
+  for (int i = 0; i < 48; ++i) {
+    const double mid = 0.5 * (lo + hi);
+    if (SCurve01(mid) < target) {
+      lo = mid;
+    } else {
+      hi = mid;
+    }
+  }
+
+  return 0.5 * (lo + hi);
 }
 
 }  // namespace
 
 int RiseTimeToRampSamples(double rise_time_seconds, double sample_rate_hz) {
-  // Specifications quote rise/fall between 10%-90%. Expand to a full 0%-100%
-  // transition for discrete-time synthesis so the endpoints are also eased.
-  const double ten_to_ninety_samples = rise_time_seconds * sample_rate_hz;
-  const double full_transition_samples = ten_to_ninety_samples / 0.8;
-  return std::max(3, static_cast<int>(std::ceil(full_transition_samples)));
+  // Most sync-edge specs quote rise/fall times between 10%-90% amplitude.
+  return TransitionTimeToRampSamples(
+      rise_time_seconds,
+      sample_rate_hz,
+      0.1,
+      0.9);
+}
+
+int TransitionTimeToRampSamples(double transition_time_seconds,
+                                double sample_rate_hz,
+                                double low_amplitude_fraction,
+                                double high_amplitude_fraction) {
+  if (transition_time_seconds <= 0.0 || sample_rate_hz <= 0.0) {
+    return 4;
+  }
+
+  const double low = ClampUnitInterval(low_amplitude_fraction);
+  const double high = ClampUnitInterval(high_amplitude_fraction);
+  if (high <= low) {
+    return 4;
+  }
+
+  // Convert a measured interval (for example 10%-90% or 50%-50%) into the
+  // full 0%-100% S-curve duration used by sample-domain synthesis.
+  const double low_progress = InverseSCurve01(low);
+  const double high_progress = InverseSCurve01(high);
+  const double measured_fraction = std::max(1e-12, high_progress - low_progress);
+  const double measured_samples = transition_time_seconds * sample_rate_hz;
+  const double full_transition_samples = measured_samples / measured_fraction;
+
+  // Keep at least four samples so discrete S-curves are not degenerate.
+  return std::max(4, static_cast<int>(std::ceil(full_transition_samples)));
+}
+
+int HalfAmplitudeTimeToRampSamples(double half_amplitude_time_seconds,
+                                   double sample_rate_hz) {
+  if (half_amplitude_time_seconds <= 0.0 || sample_rate_hz <= 0.0) {
+    return 4;
+  }
+
+  // Half-amplitude timing spans start->50%; the complete edge is twice this.
+  return TransitionTimeToRampSamples(
+      2.0 * half_amplitude_time_seconds,
+      sample_rate_hz,
+      0.0,
+      1.0);
 }
 
 double ShapedPulseLevel(int relative_index,
@@ -50,12 +111,12 @@ double ShapedPulseLevel(int relative_index,
   if (relative_index < ramp) {
     const double x = static_cast<double>(relative_index) /
                      static_cast<double>(std::max(1, ramp - 1));
-    depth = SmoothStep01(x);
+    depth = SCurve01(x);
   } else if (relative_index >= trailing_start) {
     const int trailing_index = relative_index - trailing_start;
     const double x = static_cast<double>((ramp - 1) - trailing_index) /
                      static_cast<double>(std::max(1, ramp - 1));
-    depth = SmoothStep01(x);
+    depth = SCurve01(x);
   }
 
   return baseline_level + ((pulse_level - baseline_level) * depth);
@@ -72,13 +133,13 @@ double ShapedGateEnvelope(int relative_index, int gate_width_samples, int ramp_s
   if (relative_index < ramp) {
     const double x = static_cast<double>(relative_index) /
                      static_cast<double>(std::max(1, ramp - 1));
-    return SmoothStep01(x);
+    return SCurve01(x);
   }
   if (relative_index >= trailing_start) {
     const int trailing_index = relative_index - trailing_start;
     const double x = static_cast<double>((ramp - 1) - trailing_index) /
                      static_cast<double>(std::max(1, ramp - 1));
-    return SmoothStep01(x);
+    return SCurve01(x);
   }
 
   return 1.0;

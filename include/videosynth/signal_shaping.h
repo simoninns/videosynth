@@ -13,6 +13,14 @@ namespace videosynth {
 
 int RiseTimeToRampSamples(double rise_time_seconds, double sample_rate_hz);
 
+int TransitionTimeToRampSamples(double transition_time_seconds,
+                                double sample_rate_hz,
+                                double low_amplitude_fraction,
+                                double high_amplitude_fraction);
+
+int HalfAmplitudeTimeToRampSamples(double half_amplitude_time_seconds,
+                                   double sample_rate_hz);
+
 double ShapedPulseLevel(int relative_index,
                         int pulse_width_samples,
                         int ramp_samples,
