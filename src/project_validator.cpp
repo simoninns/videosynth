@@ -132,6 +132,84 @@ bool RasterMatchesStandard(int width, int height, videosynth::Standard standard)
   return false;
 }
 
+bool ContainsCsvToken(const std::string& csv, const std::string& token) {
+  if (token.empty()) {
+    return false;
+  }
+
+  std::size_t start = 0;
+  while (start <= csv.size()) {
+    const std::size_t comma = csv.find(',', start);
+    const std::size_t end = (comma == std::string::npos) ? csv.size() : comma;
+    const std::string item = csv.substr(start, end - start);
+    if (item == token) {
+      return true;
+    }
+    if (comma == std::string::npos) {
+      break;
+    }
+    start = comma + 1;
+  }
+  return false;
+}
+
+bool ValidateProfileBySourceFamily(const videosynth::Section& section,
+                                   const videosynth::ProgressiveSourceProfile& profile,
+                                   std::string* error) {
+  const std::string source = Lowercase(section.source);
+  const std::string container = Lowercase(profile.container);
+  const std::string codec = Lowercase(profile.codec);
+  const std::string pixel_format = Lowercase(profile.pixel_format);
+
+  if (EndsWith(source, ".mp4")) {
+    if (!ContainsCsvToken(container, "mp4")) {
+      if (error != nullptr) {
+        *error = "Progressive MP4 sections require an MP4 container profile.";
+      }
+      return false;
+    }
+    if (codec != "h264") {
+      if (error != nullptr) {
+        *error = "Progressive MP4 sections only support H.264/AVC video codec.";
+      }
+      return false;
+    }
+    if (pixel_format != "yuv420p") {
+      if (error != nullptr) {
+        *error = "Progressive MP4 sections only support yuv420p pixel format.";
+      }
+      return false;
+    }
+    if (profile.bit_depth > 0 && profile.bit_depth != 8) {
+      if (error != nullptr) {
+        *error = "Progressive MP4 sections only support 8-bit sample depth.";
+      }
+      return false;
+    }
+    return true;
+  }
+
+  if (EndsWith(source, ".raw")) {
+    if (pixel_format != "yuv422p10le") {
+      if (error != nullptr) {
+        *error = "Progressive RAW sections only support yuv422p10le profile.";
+      }
+      return false;
+    }
+    return true;
+  }
+
+  if (EndsWith(source, ".png")) {
+    return true;
+  }
+
+  if (EndsWith(source, ".mov")) {
+    return true;
+  }
+
+  return true;
+}
+
 }  // namespace
 
 namespace videosynth {
@@ -309,6 +387,15 @@ ValidationResult ProjectValidator::Validate(const Project& project) {
           result.is_valid = false;
           result.errors.push_back(
               "Progressive section validation error: source frame rate must match selected video standard.");
+          break;
+        }
+
+        std::string profile_error;
+        if (!ValidateProfileBySourceFamily(section, profile, &profile_error)) {
+          result.is_valid = false;
+          result.errors.push_back(profile_error.empty()
+                                      ? "Progressive section validation error: unsupported source profile."
+                                      : profile_error);
           break;
         }
       }

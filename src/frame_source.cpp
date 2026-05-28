@@ -10,11 +10,16 @@
 #include "videosynth/frame_source.h"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cmath>
+#include <cstdlib>
 #include <cstdint>
 #include <cstdio>
 #include <fstream>
+#include <map>
+#include <sstream>
+#include <utility>
 #include <vector>
 
 #include <png.h>
@@ -73,6 +78,229 @@ bool EndsWithLowercase(const std::string& value, const std::string& suffix) {
     return false;
   }
   return value.compare(value.size() - suffix.size(), suffix.size(), suffix) == 0;
+}
+
+void SetFrameGeometryForStandard(Standard standard, FrameSourceImage* image);
+
+std::string EscapeForSingleQuotedShell(const std::string& value) {
+  std::string escaped;
+  escaped.reserve(value.size() + 8);
+  for (char c : value) {
+    if (c == '\'') {
+      escaped += "'\\''";
+      continue;
+    }
+    escaped.push_back(c);
+  }
+  return escaped;
+}
+
+bool ParseFfprobeKeyValueOutput(const std::string& output,
+                                std::map<std::string, std::string>* out_values) {
+  if (out_values == nullptr) {
+    return false;
+  }
+
+  out_values->clear();
+  std::istringstream stream(output);
+  std::string line;
+  while (std::getline(stream, line)) {
+    const std::size_t equals_pos = line.find('=');
+    if (equals_pos == std::string::npos || equals_pos == 0) {
+      continue;
+    }
+
+    const std::string key = line.substr(0, equals_pos);
+    const std::string value = line.substr(equals_pos + 1);
+    if (!key.empty()) {
+      (*out_values)[key] = value;
+    }
+  }
+
+  return true;
+}
+
+int ParseIntegerOrZero(const std::string& value) {
+  if (value.empty() || value == "N/A") {
+    return 0;
+  }
+  return std::atoi(value.c_str());
+}
+
+bool ProbeVideoRasterWithFfprobe(const std::string& source,
+                                 int* out_width,
+                                 int* out_height,
+                                 std::string* error) {
+  if (out_width == nullptr || out_height == nullptr) {
+    if (error != nullptr) {
+      *error = "Progressive probe output pointers must not be null.";
+    }
+    return false;
+  }
+
+  const std::string escaped_source = EscapeForSingleQuotedShell(source);
+  const std::string command =
+      "ffprobe -v error -select_streams v:0 "
+      "-show_entries stream=width,height "
+      "-of default=noprint_wrappers=1:nokey=0 '" +
+      escaped_source + "' 2>/dev/null";
+
+  std::array<char, 4096> buffer{};
+  std::string output;
+  FILE* pipe = popen(command.c_str(), "r");
+  if (pipe == nullptr) {
+    if (error != nullptr) {
+      *error = "Unable to run ffprobe for progressive source probing.";
+    }
+    return false;
+  }
+
+  while (std::fgets(buffer.data(), static_cast<int>(buffer.size()), pipe) != nullptr) {
+    output += buffer.data();
+  }
+
+  const int rc = pclose(pipe);
+  if (rc != 0) {
+    if (error != nullptr) {
+      *error = "ffprobe failed while probing progressive video source raster.";
+    }
+    return false;
+  }
+
+  std::map<std::string, std::string> values;
+  ParseFfprobeKeyValueOutput(output, &values);
+  *out_width = ParseIntegerOrZero(values["width"]);
+  *out_height = ParseIntegerOrZero(values["height"]);
+  if (*out_width <= 0 || *out_height <= 0) {
+    if (error != nullptr) {
+      *error = "Unable to determine progressive video source raster.";
+    }
+    return false;
+  }
+  return true;
+}
+
+bool DecodeMp4Frames(const std::string& source,
+                     Standard standard,
+                     std::vector<FrameSourceImage>* out_frames,
+                     std::string* error) {
+  if (out_frames == nullptr) {
+    if (error != nullptr) {
+      *error = "Decoded MP4 frame output pointer must not be null.";
+    }
+    return false;
+  }
+
+  int source_width = 0;
+  int source_height = 0;
+  if (!ProbeVideoRasterWithFfprobe(source, &source_width, &source_height, error)) {
+    return false;
+  }
+
+  const bool is_pal = standard == Standard::kPal;
+  const int expected_height = is_pal ? kPalHeight : kNtscHeight;
+  if (source_height != expected_height || (source_width != 720 && source_width != 704)) {
+    if (error != nullptr) {
+      *error =
+          "Progressive MP4 raster must be 720x576 or 704x576 for PAL, and 720x480 or 704x480 for NTSC.";
+    }
+    return false;
+  }
+
+  if ((source_width % 2) != 0 || (source_height % 2) != 0) {
+    if (error != nullptr) {
+      *error = "Progressive MP4 raster must be even for yuv420p decoding.";
+    }
+    return false;
+  }
+
+  const std::string escaped_source = EscapeForSingleQuotedShell(source);
+  const std::string command =
+      "ffmpeg -v error -i '" + escaped_source +
+      "' -an -sn -dn -pix_fmt yuv420p -vsync 0 -f rawvideo - 2>/dev/null";
+
+  FILE* pipe = popen(command.c_str(), "r");
+  if (pipe == nullptr) {
+    if (error != nullptr) {
+      *error = "Unable to run ffmpeg for progressive MP4 decoding.";
+    }
+    return false;
+  }
+
+  std::vector<std::uint8_t> decoded_bytes;
+  std::array<std::uint8_t, 8192> chunk{};
+  while (true) {
+    const std::size_t read_count = std::fread(chunk.data(), 1, chunk.size(), pipe);
+    if (read_count > 0) {
+      decoded_bytes.insert(decoded_bytes.end(), chunk.data(), chunk.data() + read_count);
+    }
+    if (read_count < chunk.size()) {
+      break;
+    }
+  }
+
+  const int rc = pclose(pipe);
+  if (rc != 0) {
+    if (error != nullptr) {
+      *error = "ffmpeg failed while decoding progressive MP4 source.";
+    }
+    return false;
+  }
+
+  const std::size_t y_plane_size = static_cast<std::size_t>(source_width * source_height);
+  const std::size_t chroma_plane_size = static_cast<std::size_t>((source_width / 2) * (source_height / 2));
+  const std::size_t frame_size = y_plane_size + chroma_plane_size + chroma_plane_size;
+  if (frame_size == 0 || (decoded_bytes.size() % frame_size) != 0) {
+    if (error != nullptr) {
+      *error = "Decoded MP4 frame payload size is not aligned to yuv420p frame boundaries.";
+    }
+    return false;
+  }
+
+  const std::size_t frame_count = decoded_bytes.size() / frame_size;
+  if (frame_count == 0) {
+    if (error != nullptr) {
+      *error = "Progressive MP4 source does not contain decodable video frames.";
+    }
+    return false;
+  }
+
+  out_frames->clear();
+  out_frames->reserve(frame_count);
+
+  const int source_x_offset = source_width == 704 ? 8 : 0;
+  for (std::size_t frame_index = 0; frame_index < frame_count; ++frame_index) {
+    FrameSourceImage frame;
+    SetFrameGeometryForStandard(standard, &frame);
+    frame.pixels.assign(static_cast<std::size_t>(frame.width * frame.height),
+                        MakePixel(64, 512, 512));
+
+    const std::size_t frame_offset = frame_index * frame_size;
+    const std::uint8_t* y_plane = decoded_bytes.data() + frame_offset;
+    const std::uint8_t* cb_plane = y_plane + y_plane_size;
+    const std::uint8_t* cr_plane = cb_plane + chroma_plane_size;
+
+    for (int y = 0; y < source_height; ++y) {
+      for (int x = 0; x < source_width; ++x) {
+        const int dst_x = x + source_x_offset;
+        const int dst_y = y;
+
+        const std::size_t y_index = static_cast<std::size_t>(y * source_width + x);
+        const std::size_t chroma_index =
+            static_cast<std::size_t>((y / 2) * (source_width / 2) + (x / 2));
+        const int y_code = static_cast<int>(y_plane[y_index]) * 4;
+        const int cb_code = static_cast<int>(cb_plane[chroma_index]) * 4;
+        const int cr_code = static_cast<int>(cr_plane[chroma_index]) * 4;
+
+        frame.pixels[static_cast<std::size_t>((dst_y * frame.width) + dst_x)] =
+            MakePixel(y_code, cb_code, cr_code);
+      }
+    }
+
+    out_frames->push_back(std::move(frame));
+  }
+
+  return true;
 }
 
 void SetFrameGeometryForStandard(Standard standard, FrameSourceImage* image) {
@@ -437,6 +665,64 @@ bool ProgressiveFrameSource::SupportsSection(const Section& section) const {
        EndsWithLowercase(source, ".mov"));
 }
 
+bool ProgressiveFrameSource::ResolveFrameCount(const Section& section,
+                                               Standard standard,
+                                               int* out_frame_count,
+                                               std::string* error) const {
+  if (out_frame_count == nullptr) {
+    if (error != nullptr) {
+      *error = "Progressive frame count output pointer must not be null.";
+    }
+    return false;
+  }
+
+  if (!SupportsSection(section)) {
+    if (error != nullptr) {
+      *error = "Progressive section source family is not supported.";
+    }
+    return false;
+  }
+
+  std::string source = section.source;
+  std::transform(source.begin(), source.end(), source.begin(), [](unsigned char c) {
+    return static_cast<char>(std::tolower(c));
+  });
+
+  if (EndsWithLowercase(source, ".png") || EndsWithLowercase(source, ".raw")) {
+    *out_frame_count = 1;
+    return true;
+  }
+
+  if (EndsWithLowercase(source, ".mp4")) {
+    const bool cache_hit = has_cached_mp4_frames_ &&
+                           cached_mp4_source_ == section.source &&
+                           cached_mp4_standard_ == standard;
+    if (!cache_hit) {
+      std::vector<FrameSourceImage> decoded_frames;
+      std::string decode_error;
+      if (!DecodeMp4Frames(section.source, standard, &decoded_frames, &decode_error)) {
+        if (error != nullptr) {
+          *error = decode_error.empty() ? "Failed to decode progressive MP4 source."
+                                        : decode_error;
+        }
+        return false;
+      }
+      cached_mp4_frames_ = std::move(decoded_frames);
+      cached_mp4_source_ = section.source;
+      cached_mp4_standard_ = standard;
+      has_cached_mp4_frames_ = true;
+    }
+
+    *out_frame_count = static_cast<int>(cached_mp4_frames_.size());
+    return true;
+  }
+
+  if (error != nullptr) {
+    *error = "Progressive source frame count probing is not yet implemented for this source family.";
+  }
+  return false;
+}
+
 bool ProgressiveFrameSource::GenerateFrame(const Section& section,
                                            int frame_index,
                                            Standard standard,
@@ -488,6 +774,42 @@ bool ProgressiveFrameSource::GenerateFrame(const Section& section,
 
   if (EndsWithLowercase(source, ".raw")) {
     return LoadRawFrame(section, standard, out_image, error);
+  }
+
+  if (EndsWithLowercase(source, ".mp4")) {
+    if (frame_index < 0) {
+      if (error != nullptr) {
+        *error = "Progressive frame index must be non-negative.";
+      }
+      return false;
+    }
+
+    int frame_count = 0;
+    std::string frame_count_error;
+    if (!ResolveFrameCount(section, standard, &frame_count, &frame_count_error)) {
+      if (error != nullptr) {
+        *error = frame_count_error.empty() ? "Failed to resolve progressive MP4 frame count."
+                                           : frame_count_error;
+      }
+      return false;
+    }
+
+    if (frame_index >= frame_count) {
+      if (error != nullptr) {
+        *error = "Requested frame index exceeds decoded progressive MP4 source length.";
+      }
+      return false;
+    }
+
+    if (out_image == nullptr) {
+      if (error != nullptr) {
+        *error = "Frame source output image pointer must not be null.";
+      }
+      return false;
+    }
+
+    *out_image = cached_mp4_frames_[static_cast<std::size_t>(frame_index)];
+    return true;
   }
 
   if (error != nullptr) {

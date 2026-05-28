@@ -50,6 +50,11 @@ class ProgressiveFrameSource final : public IProgressiveFrameProvider {
  public:
   bool SupportsSection(const Section& section) const;
 
+  bool ResolveFrameCount(const Section& section,
+                         Standard standard,
+                         int* out_frame_count,
+                         std::string* error) const;
+
   bool GenerateFrame(const Section& section,
                      int frame_index,
                      Standard standard,
@@ -61,6 +66,11 @@ class ProgressiveFrameSource final : public IProgressiveFrameProvider {
   mutable std::string cached_png_source_;
   mutable Standard cached_png_standard_ = Standard::kUnknown;
   mutable FrameSourceImage cached_png_frame_;
+
+  mutable bool has_cached_mp4_frames_ = false;
+  mutable std::string cached_mp4_source_;
+  mutable Standard cached_mp4_standard_ = Standard::kUnknown;
+  mutable std::vector<FrameSourceImage> cached_mp4_frames_;
 };
 
 }  // namespace videosynth

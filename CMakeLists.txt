@@ -21,6 +21,7 @@ add_library(videosynth_core
     src/output_stage.cpp
     src/pal_pattern_generator.cpp
     src/pipeline.cpp
+    src/progressive_source_probe.cpp
     src/project_validator.cpp
     src/signal_shaping.cpp
     src/yaml_project_parser.cpp

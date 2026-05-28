@@ -29,6 +29,7 @@
             sqlite
             libpng
             zlib
+            ffmpeg
           ];
 
           cmakeFlags = [
@@ -58,6 +59,7 @@
             sqlite
             libpng
             zlib
+            ffmpeg
           ];
         };
       });

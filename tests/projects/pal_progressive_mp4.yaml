@@ -1,0 +1,19 @@
+project:
+  name: PALProgressiveMp4Fixture
+  version: "1.0"
+  description: PAL progressive MP4 fixture
+
+cvbs_presets:
+  video_standard_preset: PAL
+  sample_encoding_preset: CVBS_TPG21_4FSC
+  signal_state_preset: STANDARD_TBC_LOCKED
+
+output:
+  video_path: tests/projects/output/videosynth_pal_progressive_mp4.composite
+  metadata_path: tests/projects/output/videosynth_pal_progressive_mp4.meta
+
+sections:
+  - name: PalMp4Nynashamn
+    type: progressive
+    source: resources/assets/720x576/video/mp4_25_00/nynashamn.mp4
+    duration_frames: all

@@ -68,6 +68,20 @@ Project MakeProgressivePngProject(Standard standard, const std::string& source_p
   return project;
 }
 
+Project MakeProgressiveMp4Project(Standard standard, const std::string& source_path) {
+  Project project;
+  project.cvbs_presets.video_standard_preset = standard;
+  project.cvbs_presets.sample_encoding_preset = "CVBS_U10_4FSC";
+  project.cvbs_presets.signal_state_preset = "STANDARD_TBC_LOCKED";
+  project.sections.push_back(
+      Section{.name = "ProgressiveVideo",
+              .type = "progressive",
+              .source = source_path,
+              .duration_frames_all = true,
+              .duration_frames = 0});
+  return project;
+}
+
 double LumaMillivoltsFromCodeForTest(int y_code, const SignalLevels& levels) {
   const int clamped = std::max(48, std::min(940, y_code));
   const double y_norm = static_cast<double>(clamped - 64) / 876.0;
@@ -1074,6 +1088,37 @@ TEST(GenerationStageProgressiveTest, PalPngUsesField2DominantRowPairing) {
 
   EXPECT_NEAR(y[static_cast<std::size_t>(field1_line_start + sample_offset)], expected_field1, 1.0);
   EXPECT_NEAR(y[static_cast<std::size_t>(field2_line_start + sample_offset)], expected_field2, 1.0);
+}
+
+TEST(GenerationStageProgressiveTest, ProgressiveMp4AllDurationGeneratesEntireSource) {
+  const std::string source_path =
+      (std::filesystem::path(VIDEOSYNTH_SOURCE_DIR) /
+       "resources/assets/720x576/video/mp4_25_00/nynashamn.mp4")
+          .string();
+
+  ProgressiveFrameSource progressive_source;
+  Section section;
+  section.type = "progressive";
+  section.source = source_path;
+
+  int expected_frame_count = 0;
+  std::string count_error;
+  ASSERT_TRUE(progressive_source.ResolveFrameCount(
+      section, Standard::kPal, &expected_frame_count, &count_error));
+  ASSERT_GT(expected_frame_count, 0);
+
+  GenerationStage generation;
+  std::vector<std::string> errors;
+  std::vector<double> y;
+  std::vector<double> c;
+  ASSERT_TRUE(generation.Generate(MakeProgressiveMp4Project(Standard::kPal, source_path),
+                                  &y,
+                                  &c,
+                                  &errors));
+
+  const std::size_t frame_span = static_cast<std::size_t>(SamplesPerFrame4fsc(Standard::kPal));
+  EXPECT_EQ(y.size(), frame_span * static_cast<std::size_t>(expected_frame_count));
+  EXPECT_EQ(c.size(), y.size());
 }
 
 }  // namespace

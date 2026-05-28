@@ -115,6 +115,7 @@ ActiveRasterGeometry GetActiveRasterGeometry(Standard standard, double sample_ra
 bool BuildFramePatternSchedule(const Project& project,
                                const TestPatternFrameSource& pattern_source,
                                const ProgressiveFrameSource& progressive_source,
+                               Standard standard,
                                std::vector<std::pair<const Section*, int>>* out_frame_sections,
                                std::string* error) {
   if (out_frame_sections == nullptr) {
@@ -147,11 +148,31 @@ bool BuildFramePatternSchedule(const Project& project,
       }
 
       if (section.duration_frames_all) {
-        if (error != nullptr) {
-          *error =
-              "Progressive sections using duration_frames='all' are not yet supported by generation.";
+        int resolved_frame_count = 0;
+        std::string count_error;
+        if (!progressive_source.ResolveFrameCount(section,
+                                                  standard,
+                                                  &resolved_frame_count,
+                                                  &count_error)) {
+          if (error != nullptr) {
+            *error = count_error.empty()
+                         ? "Failed to resolve progressive section frame count for duration_frames='all'."
+                         : count_error;
+          }
+          return false;
         }
-        return false;
+
+        if (resolved_frame_count <= 0) {
+          if (error != nullptr) {
+            *error = "Progressive section duration_frames='all' resolved to zero frames.";
+          }
+          return false;
+        }
+
+        for (int i = 0; i < resolved_frame_count; ++i) {
+          out_frame_sections->push_back(std::make_pair(&section, i + section.start_frame));
+        }
+        continue;
       }
 
       if (section.duration_frames <= 0) {
@@ -433,6 +454,7 @@ bool GenerationStage::Generate(const Project& project,
   if (!BuildFramePatternSchedule(project,
                                  pattern_source,
                                  progressive_source,
+                                 project.cvbs_presets.video_standard_preset,
                                  &frame_sections,
                                  &schedule_error)) {
     errors->push_back(

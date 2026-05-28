@@ -6,7 +6,7 @@ projects_dir="$repo_root/tests/projects"
 output_dir="$projects_dir/output"
 binary="$repo_root/build/videosynth"
 
-if [[ -z "${IN_NIX_SHELL:-}" ]]; then
+if [[ -z "${IN_NIX_SHELL:-}" ]] || ! command -v ffprobe >/dev/null 2>&1; then
   exec nix develop "path:$repo_root" --command "$repo_root/run-projects.sh" "$@"
 fi
 
