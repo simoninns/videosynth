@@ -48,3 +48,12 @@
   - `docs/analogue-video-specifications/README.md`
   - `docs/analogue-video-specifications/docs/index.md`
 - If implementation details conflict with assumptions, align code and tests to these specification sources first.
+
+## HLD and Code Consistency
+- Treat `docs/design/high-level-design.md` as a living design document that must stay aligned with implemented behavior.
+- Apply the same alignment requirement to HLD-referenced design sub-specifications (for example `docs/design/software-generated-patterns.md` and other documents linked from the HLD).
+- When changing code that affects behavior described by the HLD, update the HLD in the same task whenever practical.
+- When changing code that affects behavior described in HLD-linked sub-specs, update those sub-spec documents in the same task whenever practical.
+- If you detect that current code behavior differs from the HLD or any HLD-linked sub-spec, explicitly warn the user about the mismatch.
+- In that warning, offer to update the affected documentation to match the code (or, if requested, to update the code to match the documentation).
+- Do not silently leave known code/documentation mismatches unresolved.
