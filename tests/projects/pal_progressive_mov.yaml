@@ -1,0 +1,27 @@
+project:
+  name: PALProgressiveMovFixture
+  version: "1.0"
+  description: PAL progressive MOV fixture
+
+cvbs_presets:
+  video_standard_preset: PAL
+  sample_encoding_preset: CVBS_TPG21_4FSC
+  signal_state_preset: STANDARD_TBC_LOCKED
+
+output:
+  video_path: tests/projects/output/videosynth_pal_progressive_mov.composite
+  metadata_path: tests/projects/output/videosynth_pal_progressive_mov.meta
+
+sections:
+  - name: PalMovMovingZone
+    type: progressive
+    source: resources/assets/720x576/video/mov_25_00/Moving-Zone-2H.mov
+    duration_frames: all
+  - name: PalMovPluge
+    type: progressive
+    source: resources/assets/720x576/video/mov_25_00/PLUGE.mov
+    duration_frames: all
+  - name: PalMovPt5300
+    type: progressive
+    source: resources/assets/720x576/video/mov_25_00/pt5300.mov
+    duration_frames: all

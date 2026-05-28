@@ -180,6 +180,58 @@ bool ProbeVideoRasterWithFfprobe(const std::string& source,
   return true;
 }
 
+bool ProbeVideoFrameCountWithFfprobe(const std::string& source,
+                                     int* out_frame_count,
+                                     std::string* error) {
+  if (out_frame_count == nullptr) {
+    if (error != nullptr) {
+      *error = "Progressive probe frame count output pointer must not be null.";
+    }
+    return false;
+  }
+
+  const std::string escaped_source = EscapeForSingleQuotedShell(source);
+  const std::string command =
+      "ffprobe -v error -select_streams v:0 -count_frames "
+      "-show_entries stream=nb_read_frames "
+      "-of default=noprint_wrappers=1:nokey=0 '" +
+      escaped_source + "' 2>/dev/null";
+
+  std::array<char, 4096> buffer{};
+  std::string output;
+  FILE* pipe = popen(command.c_str(), "r");
+  if (pipe == nullptr) {
+    if (error != nullptr) {
+      *error = "Unable to run ffprobe for progressive source frame counting.";
+    }
+    return false;
+  }
+
+  while (std::fgets(buffer.data(), static_cast<int>(buffer.size()), pipe) != nullptr) {
+    output += buffer.data();
+  }
+
+  const int rc = pclose(pipe);
+  if (rc != 0) {
+    if (error != nullptr) {
+      *error = "ffprobe failed while counting progressive source frames.";
+    }
+    return false;
+  }
+
+  std::map<std::string, std::string> values;
+  ParseFfprobeKeyValueOutput(output, &values);
+  *out_frame_count = ParseIntegerOrZero(values["nb_read_frames"]);
+  if (*out_frame_count <= 0) {
+    if (error != nullptr) {
+      *error = "Unable to determine progressive source frame count.";
+    }
+    return false;
+  }
+
+  return true;
+}
+
 bool DecodeMp4Frames(const std::string& source,
                      Standard standard,
                      std::vector<FrameSourceImage>* out_frames,
@@ -294,6 +346,148 @@ bool DecodeMp4Frames(const std::string& source,
 
         frame.pixels[static_cast<std::size_t>((dst_y * frame.width) + dst_x)] =
             MakePixel(y_code, cb_code, cr_code);
+      }
+    }
+
+    out_frames->push_back(std::move(frame));
+  }
+
+  return true;
+}
+
+bool DecodeMovFrames(const std::string& source,
+                     Standard standard,
+                     std::vector<FrameSourceImage>* out_frames,
+                     std::string* error) {
+  if (out_frames == nullptr) {
+    if (error != nullptr) {
+      *error = "Decoded MOV frame output pointer must not be null.";
+    }
+    return false;
+  }
+
+  int source_width = 0;
+  int source_height = 0;
+  if (!ProbeVideoRasterWithFfprobe(source, &source_width, &source_height, error)) {
+    return false;
+  }
+
+  const bool is_pal = standard == Standard::kPal;
+  const int expected_height = is_pal ? kPalHeight : kNtscHeight;
+  if (source_height != expected_height || (source_width != 720 && source_width != 704)) {
+    if (error != nullptr) {
+      *error =
+          "Progressive MOV raster must be 720x576 or 704x576 for PAL, and 720x480 or 704x480 for NTSC.";
+    }
+    return false;
+  }
+
+  int source_frame_count = 0;
+  if (!ProbeVideoFrameCountWithFfprobe(source, &source_frame_count, error)) {
+    return false;
+  }
+
+  const std::string escaped_source = EscapeForSingleQuotedShell(source);
+  const std::string command =
+      "ffmpeg -v error -i '" + escaped_source +
+      "' -an -sn -dn -pix_fmt yuv422p10le -vsync 0 -f rawvideo - 2>/dev/null";
+
+  FILE* pipe = popen(command.c_str(), "r");
+  if (pipe == nullptr) {
+    if (error != nullptr) {
+      *error = "Unable to run ffmpeg for progressive MOV decoding.";
+    }
+    return false;
+  }
+
+  std::vector<std::uint8_t> decoded_bytes;
+  std::array<std::uint8_t, 8192> chunk{};
+  while (true) {
+    const std::size_t read_count = std::fread(chunk.data(), 1, chunk.size(), pipe);
+    if (read_count > 0) {
+      decoded_bytes.insert(decoded_bytes.end(), chunk.data(), chunk.data() + read_count);
+    }
+    if (read_count < chunk.size()) {
+      break;
+    }
+  }
+
+  const int rc = pclose(pipe);
+  if (rc != 0) {
+    if (error != nullptr) {
+      *error = "ffmpeg failed while decoding progressive MOV source.";
+    }
+    return false;
+  }
+
+  const std::size_t bytes_per_frame = decoded_bytes.size() / static_cast<std::size_t>(source_frame_count);
+  if (source_frame_count <= 0 ||
+      decoded_bytes.size() != bytes_per_frame * static_cast<std::size_t>(source_frame_count)) {
+    if (error != nullptr) {
+      *error = "Decoded MOV frame payload size is not aligned to frame boundaries.";
+    }
+    return false;
+  }
+
+  const std::size_t bytes_per_line = static_cast<std::size_t>(source_height) * sizeof(std::uint16_t) * 2;
+  if (bytes_per_line == 0 || (bytes_per_frame % bytes_per_line) != 0) {
+    if (error != nullptr) {
+      *error = "Decoded MOV frame payload size is not aligned to yuv422p10le frame boundaries.";
+    }
+    return false;
+  }
+
+  const int decoded_width = static_cast<int>(bytes_per_frame / bytes_per_line);
+  if ((is_pal && decoded_width != 720 && decoded_width != 704 && decoded_width != 702) ||
+      (!is_pal && decoded_width != 720 && decoded_width != 704)) {
+    if (error != nullptr) {
+      *error =
+          "Decoded MOV raster must be 720/704 for NTSC and 720/704/702 for PAL after display aperture handling.";
+    }
+    return false;
+  }
+
+  const std::size_t frame_count = static_cast<std::size_t>(source_frame_count);
+  const std::size_t y_plane_size = static_cast<std::size_t>(decoded_width * source_height);
+  const std::size_t chroma_plane_size = static_cast<std::size_t>((decoded_width / 2) * source_height);
+  const std::size_t frame_size = (y_plane_size + chroma_plane_size + chroma_plane_size) *
+                                 sizeof(std::uint16_t);
+
+  out_frames->clear();
+  out_frames->reserve(frame_count);
+
+  int source_x_offset = 0;
+  if (decoded_width == 704) {
+    source_x_offset = 8;
+  } else if (decoded_width == 702) {
+    source_x_offset = 9;
+  }
+  for (std::size_t frame_index = 0; frame_index < frame_count; ++frame_index) {
+    FrameSourceImage frame;
+    SetFrameGeometryForStandard(standard, &frame);
+    frame.pixels.assign(static_cast<std::size_t>(frame.width * frame.height),
+                        MakePixel(64, 512, 512));
+
+    const std::size_t frame_offset = frame_index * frame_size;
+    const std::uint8_t* frame_data = decoded_bytes.data() + frame_offset;
+    const std::uint16_t* y_plane = reinterpret_cast<const std::uint16_t*>(frame_data);
+    const std::uint16_t* cb_plane = y_plane + y_plane_size;
+    const std::uint16_t* cr_plane = cb_plane + chroma_plane_size;
+
+    for (int y = 0; y < source_height; ++y) {
+      for (int x = 0; x < decoded_width; ++x) {
+        const int dst_x = x + source_x_offset;
+        const int dst_y = y;
+        const std::size_t index = static_cast<std::size_t>(y * decoded_width + x);
+        const std::size_t chroma_index =
+            static_cast<std::size_t>(y * (decoded_width / 2) + (x / 2));
+
+        const std::uint16_t y_code = static_cast<std::uint16_t>(y_plane[index] & 0x03FFu);
+        const std::uint16_t cb_code = static_cast<std::uint16_t>(cb_plane[chroma_index] & 0x03FFu);
+        const std::uint16_t cr_code = static_cast<std::uint16_t>(cr_plane[chroma_index] & 0x03FFu);
+
+        frame.pixels[static_cast<std::size_t>((dst_y * frame.width) + dst_x)] =
+            MakeRawPixel(y_code, cb_code, cr_code);
       }
     }
 
@@ -717,6 +911,30 @@ bool ProgressiveFrameSource::ResolveFrameCount(const Section& section,
     return true;
   }
 
+  if (EndsWithLowercase(source, ".mov")) {
+    const bool cache_hit = has_cached_mov_frames_ &&
+                           cached_mov_source_ == section.source &&
+                           cached_mov_standard_ == standard;
+    if (!cache_hit) {
+      std::vector<FrameSourceImage> decoded_frames;
+      std::string decode_error;
+      if (!DecodeMovFrames(section.source, standard, &decoded_frames, &decode_error)) {
+        if (error != nullptr) {
+          *error = decode_error.empty() ? "Failed to decode progressive MOV source."
+                                        : decode_error;
+        }
+        return false;
+      }
+      cached_mov_frames_ = std::move(decoded_frames);
+      cached_mov_source_ = section.source;
+      cached_mov_standard_ = standard;
+      has_cached_mov_frames_ = true;
+    }
+
+    *out_frame_count = static_cast<int>(cached_mov_frames_.size());
+    return true;
+  }
+
   if (error != nullptr) {
     *error = "Progressive source frame count probing is not yet implemented for this source family.";
   }
@@ -809,6 +1027,42 @@ bool ProgressiveFrameSource::GenerateFrame(const Section& section,
     }
 
     *out_image = cached_mp4_frames_[static_cast<std::size_t>(frame_index)];
+    return true;
+  }
+
+  if (EndsWithLowercase(source, ".mov")) {
+    if (frame_index < 0) {
+      if (error != nullptr) {
+        *error = "Progressive frame index must be non-negative.";
+      }
+      return false;
+    }
+
+    int frame_count = 0;
+    std::string frame_count_error;
+    if (!ResolveFrameCount(section, standard, &frame_count, &frame_count_error)) {
+      if (error != nullptr) {
+        *error = frame_count_error.empty() ? "Failed to resolve progressive MOV frame count."
+                                           : frame_count_error;
+      }
+      return false;
+    }
+
+    if (frame_index >= frame_count) {
+      if (error != nullptr) {
+        *error = "Requested frame index exceeds decoded progressive MOV source length.";
+      }
+      return false;
+    }
+
+    if (out_image == nullptr) {
+      if (error != nullptr) {
+        *error = "Frame source output image pointer must not be null.";
+      }
+      return false;
+    }
+
+    *out_image = cached_mov_frames_[static_cast<std::size_t>(frame_index)];
     return true;
   }
 

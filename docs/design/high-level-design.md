@@ -801,9 +801,7 @@ Ingests progressive sources and converts them to interlaced signals, subject to 
 
 Container names alone are not sufficient for validation; source files must match one of the following profiles:
 
-- **MOV video**: Apple ProRes in MOV at dimensions valid for the selected output standard, and at a frame rate that matches the selected output standard (`25 fps` PAL, `30000/1001 fps` NTSC):
-  - `prores_ks` / ProRes 422 family (`yuv422p10le`)
-  - `prores_ks` / ProRes 4444 (`yuv444p10le`)
+- **MOV video**: `v210` in MOV (`yuv422p10le`) at dimensions valid for the selected output standard, and at a frame rate that matches the selected output standard (`25 fps` PAL, `30000/1001 fps` NTSC).
 - **MP4 video**: H.264/AVC (`yuv420p`) in MP4 at dimensions valid for the selected output standard, and at a frame rate that matches the selected output standard (`25 fps` PAL, `30000/1001 fps` NTSC).
 - **PNG still image**: Single-frame PNG truecolour input (RGB/RGBA, 8-bit or 16-bit integer channels) at target dimensions.
 - **RAW still frame**: Headerless raw frame with external format declaration (project field or sidecar) using one supported pixel format:

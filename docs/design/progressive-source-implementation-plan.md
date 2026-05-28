@@ -44,7 +44,7 @@ Normative behavior that must remain fixed across all phases:
 
 Supported profiles to implement:
 
-- MOV: ProRes 422 family (`yuv422p10le`) and ProRes 4444 (`yuv444p10le`) in MOV, with source frame rate matching selected output standard (`25 fps` PAL, `30000/1001 fps` NTSC).
+- MOV: `v210` in MOV (`yuv422p10le`), with source frame rate matching selected output standard (`25 fps` PAL, `30000/1001 fps` NTSC).
 - MP4: H.264/AVC (`yuv420p`) in MP4, with source frame rate matching selected output standard (`25 fps` PAL, `30000/1001 fps` NTSC).
 - PNG: Single-frame PNG truecolour (RGB/RGBA, 8-bit or 16-bit integer channels).
 - RAW: Headerless raw still frame with explicit external format declaration using:
@@ -234,7 +234,7 @@ Phase ordering is strict:
 ### Goals
 
 - Add MOV container support with MOV-specific profile constraints aligned to the HLD.
-- Support ProRes 422 and ProRes 4444 in MOV, with 10-bit studio-range preservation including sub-black/over-white excursions.
+- Support `v210` in MOV (`yuv422p10le`) with 10-bit studio-range preservation including sub-black/over-white excursions.
 
 ### Work Items
 
@@ -253,7 +253,7 @@ Phase ordering is strict:
 
 - Unit tests:
   - MOV-specific metadata handling and fallback behavior.
-  - sub-black/over-white preservation verification for ProRes source fixtures.
+  - sub-black/over-white preservation verification for `v210` source fixtures.
 - Integration tests:
   - full decode and generation for PAL/NTSC MOV fixtures.
   - generated frame count equals full source length.

@@ -204,6 +204,30 @@ bool ValidateProfileBySourceFamily(const videosynth::Section& section,
   }
 
   if (EndsWith(source, ".mov")) {
+    if (!ContainsCsvToken(container, "mov")) {
+      if (error != nullptr) {
+        *error = "Progressive MOV sections require a MOV container profile.";
+      }
+      return false;
+    }
+    if (codec != "v210") {
+      if (error != nullptr) {
+        *error = "Progressive MOV sections only support v210 video codec.";
+      }
+      return false;
+    }
+    if (pixel_format != "yuv422p10le") {
+      if (error != nullptr) {
+        *error = "Progressive MOV sections only support yuv422p10le pixel format.";
+      }
+      return false;
+    }
+    if (profile.bit_depth > 0 && profile.bit_depth != 10) {
+      if (error != nullptr) {
+        *error = "Progressive MOV sections only support 10-bit sample depth.";
+      }
+      return false;
+    }
     return true;
   }
 
