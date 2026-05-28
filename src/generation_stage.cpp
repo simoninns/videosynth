@@ -479,6 +479,12 @@ bool GenerationStage::Generate(const Project& project,
   out_y_mv->assign(sample_count, levels.blanking_mv);
   out_c_mv->assign(sample_count, 0.0);
 
+  std::vector<YCbCr444Pixel> line_source_samples(
+      static_cast<std::size_t>(active_window_samples), YCbCr444Pixel{});
+  std::vector<double> carrier_phases_rad(static_cast<std::size_t>(active_window_samples), 0.0);
+  std::vector<int> active_sample_indices(static_cast<std::size_t>(active_window_samples), 0);
+  std::vector<double> encoded_line_chroma(static_cast<std::size_t>(active_window_samples), 0.0);
+
   for (std::size_t frame_index = 0; frame_index < frame_count; ++frame_index) {
     const Section* section = frame_sections[frame_index].first;
     const int source_frame_index = frame_sections[frame_index].second;
@@ -583,10 +589,9 @@ bool GenerationStage::Generate(const Project& project,
         continue;
       }
 
-      std::vector<YCbCr444Pixel> line_source_samples(
-          static_cast<std::size_t>(active_window_samples), YCbCr444Pixel{});
-      std::vector<double> carrier_phases_rad(static_cast<std::size_t>(active_window_samples), 0.0);
-      std::vector<int> active_sample_indices(static_cast<std::size_t>(active_window_samples), line_base);
+      std::fill(line_source_samples.begin(), line_source_samples.end(), YCbCr444Pixel{});
+      std::fill(carrier_phases_rad.begin(), carrier_phases_rad.end(), 0.0);
+      std::fill(active_sample_indices.begin(), active_sample_indices.end(), line_base);
 
       const bool invert_pal_v_axis = is_pal && PalInvertVAxisForLine(frame_index, line);
 
@@ -646,7 +651,6 @@ bool GenerationStage::Generate(const Project& project,
         carrier_phases_rad[sample_slot] = carrier_phase;
       }
 
-      std::vector<double> encoded_line_chroma;
       chroma_encoder->EncodeLine(line_source_samples, carrier_phases_rad, &encoded_line_chroma);
       for (int x_sample = 0; x_sample < active_window_samples; ++x_sample) {
         (*out_c_mv)[static_cast<std::size_t>(active_sample_indices[static_cast<std::size_t>(x_sample)])] +=

@@ -67,15 +67,21 @@ std::vector<double> DesignLowPassKernel(double cutoff_hz, double sample_rate_hz,
   return kernel;
 }
 
-std::vector<double> ApplyFirFilter(const std::vector<double>& input,
-                                   const std::vector<double>& kernel) {
+void ApplyFirFilter(const std::vector<double>& input,
+                    const std::vector<double>& kernel,
+                    std::vector<double>* output) {
+  if (output == nullptr) {
+    throw std::invalid_argument("Output FIR buffer pointer must not be null");
+  }
+
   if (input.empty()) {
-    return {};
+    output->clear();
+    return;
   }
 
   const int kernel_size = static_cast<int>(kernel.size());
   const int half_width = kernel_size / 2;
-  std::vector<double> output(input.size(), 0.0);
+  output->assign(input.size(), 0.0);
   for (std::size_t index = 0; index < input.size(); ++index) {
     double sum = 0.0;
     for (int tap = 0; tap < kernel_size; ++tap) {
@@ -83,9 +89,8 @@ std::vector<double> ApplyFirFilter(const std::vector<double>& input,
       const int clamped_index = std::max(0, std::min(static_cast<int>(input.size()) - 1, sample_index));
       sum += input[static_cast<std::size_t>(clamped_index)] * kernel[static_cast<std::size_t>(tap)];
     }
-    output[index] = sum;
+    (*output)[index] = sum;
   }
-  return output;
 }
 
 void ValidateLineArguments(const std::vector<YCbCr444Pixel>& source_samples,
@@ -99,22 +104,28 @@ void ValidateLineArguments(const std::vector<YCbCr444Pixel>& source_samples,
   }
 }
 
-std::vector<double> ExtractCbAxis(const std::vector<YCbCr444Pixel>& source_samples) {
-  std::vector<double> axis;
-  axis.reserve(source_samples.size());
-  for (const YCbCr444Pixel& pixel : source_samples) {
-    axis.push_back(NormalizedCb(pixel));
+void ExtractCbAxis(const std::vector<YCbCr444Pixel>& source_samples,
+                   std::vector<double>* axis) {
+  if (axis == nullptr) {
+    throw std::invalid_argument("Cb axis output pointer must not be null");
   }
-  return axis;
+
+  axis->resize(source_samples.size());
+  for (std::size_t index = 0; index < source_samples.size(); ++index) {
+    (*axis)[index] = NormalizedCb(source_samples[index]);
+  }
 }
 
-std::vector<double> ExtractCrAxis(const std::vector<YCbCr444Pixel>& source_samples) {
-  std::vector<double> axis;
-  axis.reserve(source_samples.size());
-  for (const YCbCr444Pixel& pixel : source_samples) {
-    axis.push_back(NormalizedCr(pixel));
+void ExtractCrAxis(const std::vector<YCbCr444Pixel>& source_samples,
+                   std::vector<double>* axis) {
+  if (axis == nullptr) {
+    throw std::invalid_argument("Cr axis output pointer must not be null");
   }
-  return axis;
+
+  axis->resize(source_samples.size());
+  for (std::size_t index = 0; index < source_samples.size(); ++index) {
+    (*axis)[index] = NormalizedCr(source_samples[index]);
+  }
 }
 
 }  // namespace
@@ -128,8 +139,10 @@ void PalChromaEncoder::EncodeLine(const std::vector<YCbCr444Pixel>& source_sampl
                                   std::vector<double>* out_chroma_mv) const {
   ValidateLineArguments(source_samples, carrier_phases_rad, out_chroma_mv);
 
-  const std::vector<double> filtered_u = ApplyFirFilter(ExtractCbAxis(source_samples), u_filter_taps_);
-  const std::vector<double> filtered_v = ApplyFirFilter(ExtractCrAxis(source_samples), v_filter_taps_);
+  ExtractCbAxis(source_samples, &cb_axis_workspace_);
+  ExtractCrAxis(source_samples, &cr_axis_workspace_);
+  ApplyFirFilter(cb_axis_workspace_, u_filter_taps_, &filtered_u_workspace_);
+  ApplyFirFilter(cr_axis_workspace_, v_filter_taps_, &filtered_v_workspace_);
 
   out_chroma_mv->assign(source_samples.size(), 0.0);
   for (std::size_t index = 0; index < source_samples.size(); ++index) {
@@ -143,8 +156,8 @@ void PalChromaEncoder::EncodeLine(const std::vector<YCbCr444Pixel>& source_sampl
     // E'U * sin(wt) + E'V * cos(wt), with line-sequence V-sign handling owned
     // by the timing model path in generation_stage.
     (*out_chroma_mv)[index] = kCompositeChromaScaleMillivolts *
-                              ((filtered_u[index] * std::sin(carrier_phases_rad[index])) +
-                               (filtered_v[index] * std::cos(carrier_phases_rad[index])));
+                              ((filtered_u_workspace_[index] * std::sin(carrier_phases_rad[index])) +
+                               (filtered_v_workspace_[index] * std::cos(carrier_phases_rad[index])));
   }
 }
 
@@ -157,8 +170,10 @@ void NtscChromaEncoder::EncodeLine(const std::vector<YCbCr444Pixel>& source_samp
                                    std::vector<double>* out_chroma_mv) const {
   ValidateLineArguments(source_samples, carrier_phases_rad, out_chroma_mv);
 
-  const std::vector<double> filtered_cb = ApplyFirFilter(ExtractCbAxis(source_samples), cb_filter_taps_);
-  const std::vector<double> filtered_cr = ApplyFirFilter(ExtractCrAxis(source_samples), cr_filter_taps_);
+  ExtractCbAxis(source_samples, &cb_axis_workspace_);
+  ExtractCrAxis(source_samples, &cr_axis_workspace_);
+  ApplyFirFilter(cb_axis_workspace_, cb_filter_taps_, &filtered_cb_workspace_);
+  ApplyFirFilter(cr_axis_workspace_, cr_filter_taps_, &filtered_cr_workspace_);
 
   out_chroma_mv->assign(source_samples.size(), 0.0);
   for (std::size_t index = 0; index < source_samples.size(); ++index) {
@@ -166,8 +181,8 @@ void NtscChromaEncoder::EncodeLine(const std::vector<YCbCr444Pixel>& source_samp
     // bar-pattern saturation stays visually uniform in the composite envelope.
     const double phase = carrier_phases_rad[index];
     (*out_chroma_mv)[index] = kCompositeChromaScaleMillivolts *
-                              ((filtered_cb[index] * std::sin(phase)) +
-                               (filtered_cr[index] * std::cos(phase)));
+                              ((filtered_cb_workspace_[index] * std::sin(phase)) +
+                               (filtered_cr_workspace_[index] * std::cos(phase)));
   }
 }
 

@@ -36,6 +36,10 @@ class PalChromaEncoder final : public IChromaEncoder {
  private:
   std::vector<double> u_filter_taps_;
   std::vector<double> v_filter_taps_;
+  mutable std::vector<double> cb_axis_workspace_;
+  mutable std::vector<double> cr_axis_workspace_;
+  mutable std::vector<double> filtered_u_workspace_;
+  mutable std::vector<double> filtered_v_workspace_;
 };
 
 class NtscChromaEncoder final : public IChromaEncoder {
@@ -49,6 +53,10 @@ class NtscChromaEncoder final : public IChromaEncoder {
  private:
   std::vector<double> cb_filter_taps_;
   std::vector<double> cr_filter_taps_;
+  mutable std::vector<double> cb_axis_workspace_;
+  mutable std::vector<double> cr_axis_workspace_;
+  mutable std::vector<double> filtered_cb_workspace_;
+  mutable std::vector<double> filtered_cr_workspace_;
 };
 
 std::unique_ptr<IChromaEncoder> CreateChromaEncoder(Standard standard, double sample_rate_hz);

@@ -32,6 +32,11 @@ struct QuantizationProfile {
   int maximum_legal_code = 1023;
 };
 
+enum class OutputEncoding {
+  kCvbsU10,
+  kCvbsTpg21,
+};
+
 bool BuildQuantizationProfile(Standard standard, QuantizationProfile* profile) {
   if (profile == nullptr) {
     return false;
@@ -60,38 +65,54 @@ bool BuildQuantizationProfile(Standard standard, QuantizationProfile* profile) {
   return false;
 }
 
-int QuantizeCompositeMillivolts(double composite_mv, const QuantizationProfile& profile) {
-  const int mapped =
-      static_cast<int>(std::lround(composite_mv / profile.millivolts_per_code)) +
-      profile.blanking_code;
-  if (mapped < profile.minimum_legal_code) {
-    return profile.minimum_legal_code;
-  }
-  if (mapped > profile.maximum_legal_code) {
-    return profile.maximum_legal_code;
-  }
-  return mapped;
+int MapCompositeMillivoltsToCode(double composite_mv, const QuantizationProfile& profile) {
+  return static_cast<int>(std::lround(composite_mv / profile.millivolts_per_code)) +
+         profile.blanking_code;
 }
 
-bool EncodeCompositeSample(const std::string& preset,
-                           int quantized_code,
-                           std::int16_t* encoded_sample) {
-  if (encoded_sample == nullptr) {
+int ClampToLegalCodeRange(int mapped_code, const QuantizationProfile& profile) {
+  if (mapped_code < profile.minimum_legal_code) {
+    return profile.minimum_legal_code;
+  }
+  if (mapped_code > profile.maximum_legal_code) {
+    return profile.maximum_legal_code;
+  }
+  return mapped_code;
+}
+
+bool ResolveOutputEncoding(const std::string& preset, OutputEncoding* output_encoding) {
+  if (output_encoding == nullptr) {
     return false;
   }
 
   if (preset == "CVBS_U10_4FSC") {
-    *encoded_sample = static_cast<std::int16_t>(quantized_code);
+    *output_encoding = OutputEncoding::kCvbsU10;
     return true;
   }
 
   if (preset == "CVBS_TPG21_4FSC") {
-    const int tpg21_encoded = (quantized_code - 508) * 64;
-    *encoded_sample = static_cast<std::int16_t>(tpg21_encoded);
+    *output_encoding = OutputEncoding::kCvbsTpg21;
     return true;
   }
 
   return false;
+}
+
+std::int16_t EncodeCompositeSample(OutputEncoding encoding, int quantized_code) {
+  if (encoding == OutputEncoding::kCvbsU10) {
+    return static_cast<std::int16_t>(quantized_code);
+  }
+  const int tpg21_encoded = (quantized_code - 508) * 64;
+  return static_cast<std::int16_t>(tpg21_encoded);
+}
+
+bool IsNonstandardMappedCode(int mapped_code, const QuantizationProfile& profile) {
+  return mapped_code < profile.minimum_legal_code || mapped_code > profile.maximum_legal_code;
+}
+
+int QuantizeCompositeMillivolts(double composite_mv, const QuantizationProfile& profile) {
+  const int mapped = MapCompositeMillivoltsToCode(composite_mv, profile);
+  return ClampToLegalCodeRange(mapped, profile);
 }
 
 }  // namespace
@@ -143,6 +164,13 @@ bool OutputStage::Write(const Project& project,
     return false;
   }
 
+  OutputEncoding output_encoding = OutputEncoding::kCvbsU10;
+  if (!ResolveOutputEncoding(project.cvbs_presets.sample_encoding_preset, &output_encoding)) {
+    errors->push_back("Output stage does not support sample_encoding_preset: " +
+                      project.cvbs_presets.sample_encoding_preset);
+    return false;
+  }
+
   if (y_mv.size() != c_mv.size()) {
     errors->push_back("Internal error: Y and C sample vectors must be same size.");
     return false;
@@ -166,29 +194,16 @@ bool OutputStage::Write(const Project& project,
     logger_->Trace("Opened output video file for writing: " + output_path);
   }
 
-  std::size_t clipped_low_count = 0;
-  std::size_t clipped_high_count = 0;
+  bool has_nonstandard = false;
   for (std::size_t i = 0; i < y_mv.size(); ++i) {
     const double composite_mv = y_mv[i] + c_mv[i];
-    const int mapped =
-        static_cast<int>(std::lround(composite_mv / quantization.millivolts_per_code)) +
-        quantization.blanking_code;
-    if (mapped < quantization.minimum_legal_code) {
-      ++clipped_low_count;
-    }
-    if (mapped > quantization.maximum_legal_code) {
-      ++clipped_high_count;
+    const int mapped = MapCompositeMillivoltsToCode(composite_mv, quantization);
+    if (IsNonstandardMappedCode(mapped, quantization)) {
+      has_nonstandard = true;
     }
 
-    const int quantized_code = QuantizeCompositeMillivolts(composite_mv, quantization);
-    std::int16_t encoded_sample = 0;
-    if (!EncodeCompositeSample(project.cvbs_presets.sample_encoding_preset,
-                   quantized_code,
-                   &encoded_sample)) {
-      errors->push_back("Output stage does not support sample_encoding_preset: " +
-              project.cvbs_presets.sample_encoding_preset);
-      return false;
-    }
+    const int quantized_code = ClampToLegalCodeRange(mapped, quantization);
+    const std::int16_t encoded_sample = EncodeCompositeSample(output_encoding, quantized_code);
     video_stream.write(reinterpret_cast<const char*>(&encoded_sample),
                sizeof(encoded_sample));
   }
@@ -268,19 +283,6 @@ bool OutputStage::Write(const Project& project,
     errors->push_back("Unknown video standard preset");
     sqlite3_close(db);
     return false;
-  }
-
-  // Check for nonstandard values
-  bool has_nonstandard = false;
-  for (std::size_t i = 0; i < y_mv.size(); ++i) {
-    const double composite_mv = y_mv[i] + c_mv[i];
-    const int mapped =
-        static_cast<int>(std::lround(composite_mv / quantization.millivolts_per_code)) +
-        quantization.blanking_code;
-    if (mapped < quantization.minimum_legal_code || mapped > quantization.maximum_legal_code) {
-      has_nonstandard = true;
-      break;
-    }
   }
 
   // Insert metadata row into cvbs_file table
