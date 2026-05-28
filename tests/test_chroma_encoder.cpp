@@ -14,6 +14,7 @@
 #include <gtest/gtest.h>
 
 #include "videosynth/chroma_encoder.h"
+#include "videosynth/fixed_point.h"
 #include "videosynth/timing_constants.h"
 
 namespace videosynth {
@@ -23,10 +24,11 @@ std::vector<double> ConstantPhaseLine(std::size_t sample_count, double phase_rad
   return std::vector<double>(sample_count, phase_rad);
 }
 
-double RootMeanSquare(const std::vector<double>& values) {
+double RootMeanSquare(const std::vector<SampleFixed>& values) {
   double square_sum = 0.0;
-  for (double value : values) {
-    square_sum += value * value;
+  for (SampleFixed value : values) {
+    const double value_mv = SampleFixedToMillivolts(value);
+    square_sum += value_mv * value_mv;
   }
   return values.empty() ? 0.0 : std::sqrt(square_sum / static_cast<double>(values.size()));
 }
@@ -59,8 +61,8 @@ TEST(ChromaEncoderTest, NeutralChromaProducesNoSubcarrierEnergy) {
   const std::vector<YCbCr444Pixel> neutral_line(64, YCbCr444Pixel{.y = 512, .cb = 512, .cr = 512});
   const auto pal = CreateChromaEncoder(Standard::kPal, GetTimingConstants(Standard::kPal).sample_rate_4fsc_hz);
   const auto ntsc = CreateChromaEncoder(Standard::kNtsc, GetTimingConstants(Standard::kNtsc).sample_rate_4fsc_hz);
-  std::vector<double> pal_output;
-  std::vector<double> ntsc_output;
+  std::vector<SampleFixed> pal_output;
+  std::vector<SampleFixed> ntsc_output;
 
   ASSERT_NE(pal, nullptr);
   ASSERT_NE(ntsc, nullptr);
@@ -68,11 +70,11 @@ TEST(ChromaEncoderTest, NeutralChromaProducesNoSubcarrierEnergy) {
   pal->EncodeLine(neutral_line, ConstantPhaseLine(neutral_line.size(), 0.0), &pal_output);
   ntsc->EncodeLine(neutral_line, ConstantPhaseLine(neutral_line.size(), 0.0), &ntsc_output);
 
-  for (double value : pal_output) {
-    EXPECT_NEAR(value, 0.0, 1e-12);
+  for (SampleFixed value : pal_output) {
+    EXPECT_NEAR(SampleFixedToMillivolts(value), 0.0, 1e-12);
   }
-  for (double value : ntsc_output) {
-    EXPECT_NEAR(value, 0.0, 1e-12);
+  for (SampleFixed value : ntsc_output) {
+    EXPECT_NEAR(SampleFixedToMillivolts(value), 0.0, 1e-12);
   }
 }
 
@@ -80,8 +82,8 @@ TEST(ChromaEncoderTest, PalAndNtscUseConsistentQuadratureMappingForStaticCbCrInp
   const std::vector<YCbCr444Pixel> saturated_line(64, YCbCr444Pixel{.y = 512, .cb = 800, .cr = 300});
   const auto pal = CreateChromaEncoder(Standard::kPal, GetTimingConstants(Standard::kPal).sample_rate_4fsc_hz);
   const auto ntsc = CreateChromaEncoder(Standard::kNtsc, GetTimingConstants(Standard::kNtsc).sample_rate_4fsc_hz);
-  std::vector<double> pal_output;
-  std::vector<double> ntsc_output;
+  std::vector<SampleFixed> pal_output;
+  std::vector<SampleFixed> ntsc_output;
 
   ASSERT_NE(pal, nullptr);
   ASSERT_NE(ntsc, nullptr);
@@ -89,14 +91,14 @@ TEST(ChromaEncoderTest, PalAndNtscUseConsistentQuadratureMappingForStaticCbCrInp
   pal->EncodeLine(saturated_line, ConstantPhaseLine(saturated_line.size(), 0.75), &pal_output);
   ntsc->EncodeLine(saturated_line, ConstantPhaseLine(saturated_line.size(), 0.75), &ntsc_output);
 
-  EXPECT_NEAR(pal_output[32], ntsc_output[32], 1e-9);
+  EXPECT_NEAR(SampleFixedToMillivolts(pal_output[32]), SampleFixedToMillivolts(ntsc_output[32]), 1e-9);
 }
 
 TEST(ChromaEncoderTest, PalLowPassAttenuatesHighFrequencyChromaMoreThanLowFrequency) {
   const TimingConstants pal_timing = GetTimingConstants(Standard::kPal);
   const auto pal = CreateChromaEncoder(Standard::kPal, pal_timing.sample_rate_4fsc_hz);
-  std::vector<double> low_output;
-  std::vector<double> high_output;
+  std::vector<SampleFixed> low_output;
+  std::vector<SampleFixed> high_output;
 
   ASSERT_NE(pal, nullptr);
 
@@ -113,8 +115,8 @@ TEST(ChromaEncoderTest, PalLowPassAttenuatesHighFrequencyChromaMoreThanLowFreque
 TEST(ChromaEncoderTest, NtscCbAndCrAxesUseSymmetricBandwidth) {
   const TimingConstants ntsc_timing = GetTimingConstants(Standard::kNtsc);
   const auto ntsc = CreateChromaEncoder(Standard::kNtsc, ntsc_timing.sample_rate_4fsc_hz);
-  std::vector<double> cb_output;
-  std::vector<double> cr_output;
+  std::vector<SampleFixed> cb_output;
+  std::vector<SampleFixed> cr_output;
 
   ASSERT_NE(ntsc, nullptr);
 

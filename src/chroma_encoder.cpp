@@ -166,12 +166,12 @@ bool IsQuarterWaveStep(double phase_step) {
 void ModulateQuadrature(const std::vector<double>& axis_sin,
                         const std::vector<double>& axis_cos,
                         const std::vector<double>& carrier_phases_rad,
-                        std::vector<double>* out_chroma_mv) {
+                        std::vector<SampleFixed>* out_chroma_mv) {
   if (out_chroma_mv == nullptr) {
     throw std::invalid_argument("Output chroma line pointer must not be null");
   }
 
-  out_chroma_mv->assign(carrier_phases_rad.size(), 0.0);
+  out_chroma_mv->assign(carrier_phases_rad.size(), MillivoltsToSampleFixed(0.0));
   if (carrier_phases_rad.empty()) {
     return;
   }
@@ -182,9 +182,9 @@ void ModulateQuadrature(const std::vector<double>& axis_sin,
   if (!fast_quarter_wave) {
     for (std::size_t index = 0; index < carrier_phases_rad.size(); ++index) {
       const double phase = carrier_phases_rad[index];
-      (*out_chroma_mv)[index] =
+      (*out_chroma_mv)[index] = MillivoltsToSampleFixed(
           kCompositeChromaScaleMillivolts *
-          ((axis_sin[index] * std::sin(phase)) + (axis_cos[index] * std::cos(phase)));
+          ((axis_sin[index] * std::sin(phase)) + (axis_cos[index] * std::cos(phase))));
     }
     return;
   }
@@ -192,8 +192,9 @@ void ModulateQuadrature(const std::vector<double>& axis_sin,
   double sin_phase = std::sin(carrier_phases_rad.front());
   double cos_phase = std::cos(carrier_phases_rad.front());
   for (std::size_t index = 0; index < carrier_phases_rad.size(); ++index) {
-    (*out_chroma_mv)[index] =
-        kCompositeChromaScaleMillivolts * ((axis_sin[index] * sin_phase) + (axis_cos[index] * cos_phase));
+    (*out_chroma_mv)[index] = MillivoltsToSampleFixed(
+      kCompositeChromaScaleMillivolts *
+      ((axis_sin[index] * sin_phase) + (axis_cos[index] * cos_phase)));
 
     const double next_sin = cos_phase;
     const double next_cos = -sin_phase;
@@ -204,7 +205,7 @@ void ModulateQuadrature(const std::vector<double>& axis_sin,
 
 void ValidateLineArguments(const std::vector<YCbCr444Pixel>& source_samples,
                            const std::vector<double>& carrier_phases_rad,
-                           std::vector<double>* out_chroma_mv) {
+                           std::vector<SampleFixed>* out_chroma_mv) {
   if (out_chroma_mv == nullptr) {
     throw std::invalid_argument("Output chroma line pointer must not be null");
   }
@@ -245,7 +246,7 @@ PalChromaEncoder::PalChromaEncoder(double sample_rate_hz)
 
 void PalChromaEncoder::EncodeLine(const std::vector<YCbCr444Pixel>& source_samples,
                                   const std::vector<double>& carrier_phases_rad,
-                                  std::vector<double>* out_chroma_mv) const {
+                                  std::vector<SampleFixed>* out_chroma_mv) const {
   ValidateLineArguments(source_samples, carrier_phases_rad, out_chroma_mv);
 
   ExtractCbAxis(source_samples, &cb_axis_workspace_);
@@ -271,7 +272,7 @@ NtscChromaEncoder::NtscChromaEncoder(double sample_rate_hz)
 
 void NtscChromaEncoder::EncodeLine(const std::vector<YCbCr444Pixel>& source_samples,
                                    const std::vector<double>& carrier_phases_rad,
-                                   std::vector<double>* out_chroma_mv) const {
+                                   std::vector<SampleFixed>* out_chroma_mv) const {
   ValidateLineArguments(source_samples, carrier_phases_rad, out_chroma_mv);
 
   ExtractCbAxis(source_samples, &cb_axis_workspace_);

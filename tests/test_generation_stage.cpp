@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <filesystem>
 #include <set>
 #include <string>
@@ -18,6 +19,7 @@
 #include <gtest/gtest.h>
 
 #include "videosynth/chroma_encoder.h"
+#include "videosynth/fixed_point.h"
 #include "videosynth/frame_source.h"
 #include "videosynth/generation_stage.h"
 #include "videosynth/signal_timing_model.h"
@@ -125,7 +127,7 @@ std::vector<double> CarrierPhasesForActiveLine(int line_1based,
   return phases;
 }
 
-std::set<int> UniqueRoundedLumaLevelsInActiveWindow(const std::vector<double>& y_mv,
+std::set<int> UniqueRoundedLumaLevelsInActiveWindow(const std::vector<SampleFixed>& y_mv,
                                                     int line_1based,
                                                     Standard standard,
                                                     const TimingConstants& timing) {
@@ -136,12 +138,12 @@ std::set<int> UniqueRoundedLumaLevelsInActiveWindow(const std::vector<double>& y
 
   std::set<int> levels;
   for (int i = start; i < end; ++i) {
-    levels.insert(static_cast<int>(std::lround(y_mv[i])));
+    levels.insert(static_cast<int>(std::lround(SampleFixedToMillivolts(y_mv[i]))));
   }
   return levels;
 }
 
-int CountSyncSamplesOnLine(const std::vector<double>& y_mv,
+int CountSyncSamplesOnLine(const std::vector<SampleFixed>& y_mv,
                            int line_1based,
                            const TimingConstants& timing,
                            double sync_tip_mv) {
@@ -149,15 +151,16 @@ int CountSyncSamplesOnLine(const std::vector<double>& y_mv,
   const int line_end = line_start + timing.samples_per_line_4fsc;
 
   int count = 0;
+  const SampleFixed sync_tip_fixed = MillivoltsToSampleFixed(sync_tip_mv);
   for (int i = line_start; i < line_end; ++i) {
-    if (y_mv[i] == sync_tip_mv) {
+    if (y_mv[i] == sync_tip_fixed) {
       ++count;
     }
   }
   return count;
 }
 
-int CountSyncSamplesInHalfLine(const std::vector<double>& y_mv,
+int CountSyncSamplesInHalfLine(const std::vector<SampleFixed>& y_mv,
                                int line_1based,
                                int half_index,
                                const TimingConstants& timing,
@@ -168,15 +171,36 @@ int CountSyncSamplesInHalfLine(const std::vector<double>& y_mv,
   const int end = std::min(start + half_size, line_start + timing.samples_per_line_4fsc);
 
   int count = 0;
+  const SampleFixed sync_tip_fixed = MillivoltsToSampleFixed(sync_tip_mv);
   for (int i = start; i < end; ++i) {
-    if (y_mv[i] == sync_tip_mv) {
+    if (y_mv[i] == sync_tip_fixed) {
       ++count;
     }
   }
   return count;
 }
 
-double BurstWindowMean(const std::vector<double>& c_mv,
+int QuantizeCompositeCodeForStandard(double composite_mv, Standard standard) {
+  if (standard == Standard::kPal) {
+    constexpr double kMillivoltsPerCode = 1.1905;
+    constexpr int kBlankingCode = 256;
+    constexpr int kMinCode = 4;
+    constexpr int kMaxCode = 1019;
+    const int mapped = static_cast<int>(std::lround(composite_mv / kMillivoltsPerCode)) +
+                       kBlankingCode;
+    return std::max(kMinCode, std::min(kMaxCode, mapped));
+  }
+
+  constexpr double kMillivoltsPerCode = 1.2755;
+  constexpr int kBlankingCode = 240;
+  constexpr int kMinCode = 16;
+  constexpr int kMaxCode = 1019;
+  const int mapped = static_cast<int>(std::lround(composite_mv / kMillivoltsPerCode)) +
+                     kBlankingCode;
+  return std::max(kMinCode, std::min(kMaxCode, mapped));
+}
+
+double BurstWindowMean(const std::vector<SampleFixed>& c_mv,
                        int line_1based,
                        const TimingConstants& timing) {
   const int line_start = (line_1based - 1) * timing.samples_per_line_4fsc;
@@ -186,13 +210,13 @@ double BurstWindowMean(const std::vector<double>& c_mv,
   double sum = 0.0;
   int count = 0;
   for (int i = start; i < end; ++i) {
-    sum += c_mv[i];
+    sum += SampleFixedToMillivolts(c_mv[i]);
     ++count;
   }
   return count > 0 ? (sum / static_cast<double>(count)) : 0.0;
 }
 
-double EstimateBurstPhaseRad(const std::vector<double>& c_mv,
+double EstimateBurstPhaseRad(const std::vector<SampleFixed>& c_mv,
                              int line_1based,
                              const TimingConstants& timing) {
   constexpr double kPi = 3.14159265358979323846;
@@ -206,8 +230,9 @@ double EstimateBurstPhaseRad(const std::vector<double>& c_mv,
   for (int i = start; i < end; ++i) {
     const double wt = 2.0 * kPi * subcarrier_hz *
                       (static_cast<double>(i) / timing.sample_rate_4fsc_hz);
-    sum_sin += c_mv[static_cast<std::size_t>(i)] * std::sin(wt);
-    sum_cos += c_mv[static_cast<std::size_t>(i)] * std::cos(wt);
+    const double c_mv_double = SampleFixedToMillivolts(c_mv[static_cast<std::size_t>(i)]);
+    sum_sin += c_mv_double * std::sin(wt);
+    sum_cos += c_mv_double * std::cos(wt);
   }
   return std::atan2(sum_cos, sum_sin);
 }
@@ -229,7 +254,7 @@ struct DecodedPalChromaSample {
   double burst_phase_rad = 0.0;
 };
 
-DecodedPalChromaSample DecodePalChromaWindowBurstLocked(const std::vector<double>& c_mv,
+DecodedPalChromaSample DecodePalChromaWindowBurstLocked(const std::vector<SampleFixed>& c_mv,
                                                          int line_1based,
                                                          int sample_start,
                                                          int sample_end,
@@ -248,7 +273,7 @@ DecodedPalChromaSample DecodePalChromaWindowBurstLocked(const std::vector<double
   for (int sample_index = sample_start; sample_index < sample_end; ++sample_index) {
     const double t = static_cast<double>(sample_index) / timing.sample_rate_4fsc_hz;
     const double wt = (2.0 * kPi * subcarrier_hz * t) + phase_correction;
-    const double chroma_norm = c_mv[static_cast<std::size_t>(sample_index)] /
+    const double chroma_norm = SampleFixedToMillivolts(c_mv[static_cast<std::size_t>(sample_index)]) /
                                kCompositeChromaScaleMillivolts;
     sum_u += chroma_norm * std::sin(wt);
     sum_v += chroma_norm * std::cos(wt);
@@ -266,19 +291,67 @@ TEST(GenerationStageTimingTest, ProducesDeterministicSampleCounts) {
   GenerationStage generation;
   std::vector<std::string> errors;
 
-  std::vector<double> y_pal;
-  std::vector<double> c_pal;
+  std::vector<SampleFixed> y_pal;
+  std::vector<SampleFixed> c_pal;
   ASSERT_TRUE(generation.Generate(MakeProject(Standard::kPal), &y_pal, &c_pal, &errors));
   EXPECT_EQ(y_pal.size(), static_cast<std::size_t>(SamplesPerFrame4fsc(Standard::kPal)));
   EXPECT_EQ(c_pal.size(), y_pal.size());
 
-  std::vector<double> y_ntsc;
-  std::vector<double> c_ntsc;
+  std::vector<SampleFixed> y_ntsc;
+  std::vector<SampleFixed> c_ntsc;
   ASSERT_TRUE(generation.Generate(MakeProject(Standard::kNtsc), &y_ntsc, &c_ntsc, &errors));
   const TimingConstants ntsc = GetTimingConstants(Standard::kNtsc);
   EXPECT_EQ(ntsc.samples_per_line_4fsc, 910);
   EXPECT_EQ(y_ntsc.size(), static_cast<std::size_t>(SamplesPerFrame4fsc(Standard::kNtsc)));
   EXPECT_EQ(c_ntsc.size(), y_ntsc.size());
+}
+
+TEST(GenerationStageTimingTest, FixedPointModeMatchesFloatingReferenceAtCodeLevel) {
+  GenerationStage generation;
+  std::vector<std::string> errors;
+  const Project project = MakeProject(Standard::kPal, "pal_ebu_colour_bars_100", 1);
+
+  std::vector<SampleFixed> y_float;
+  std::vector<SampleFixed> c_float;
+  unsetenv("VIDEOSYNTH_GENERATION_FIXED");
+  ASSERT_TRUE(generation.Generate(project, &y_float, &c_float, &errors));
+
+  std::vector<SampleFixed> y_fixed;
+  std::vector<SampleFixed> c_fixed;
+  ASSERT_EQ(setenv("VIDEOSYNTH_GENERATION_FIXED", "1", 1), 0);
+  ASSERT_TRUE(generation.Generate(project, &y_fixed, &c_fixed, &errors));
+  unsetenv("VIDEOSYNTH_GENERATION_FIXED");
+
+  ASSERT_EQ(y_float.size(), y_fixed.size());
+  ASSERT_EQ(c_float.size(), c_fixed.size());
+
+  int max_abs_code_delta = 0;
+  double code_error_power = 0.0;
+  int float_clipped = 0;
+  int fixed_clipped = 0;
+
+  for (std::size_t i = 0; i < y_float.size(); ++i) {
+    const int code_float =
+        QuantizeCompositeCodeForStandard(y_float[i] + c_float[i], Standard::kPal);
+    const int code_fixed =
+        QuantizeCompositeCodeForStandard(y_fixed[i] + c_fixed[i], Standard::kPal);
+    const int delta = code_fixed - code_float;
+
+    max_abs_code_delta = std::max(max_abs_code_delta, std::abs(delta));
+    code_error_power += static_cast<double>(delta * delta);
+
+    if (code_float == 4 || code_float == 1019) {
+      ++float_clipped;
+    }
+    if (code_fixed == 4 || code_fixed == 1019) {
+      ++fixed_clipped;
+    }
+  }
+
+  const double rms_code_delta = std::sqrt(code_error_power / static_cast<double>(y_float.size()));
+  EXPECT_LE(max_abs_code_delta, 1);
+  EXPECT_LT(rms_code_delta, 0.5);
+  EXPECT_EQ(float_clipped, fixed_clipped);
 }
 
 TEST(GenerationStageTimingTest, ReportsProgressiveSourceReadError) {
@@ -290,8 +363,8 @@ TEST(GenerationStageTimingTest, ReportsProgressiveSourceReadError) {
 
   GenerationStage generation;
   std::vector<std::string> errors;
-  std::vector<double> y;
-  std::vector<double> c;
+  std::vector<SampleFixed> y;
+  std::vector<SampleFixed> c;
 
   EXPECT_FALSE(generation.Generate(project, &y, &c, &errors));
   ASSERT_FALSE(errors.empty());
@@ -300,8 +373,8 @@ TEST(GenerationStageTimingTest, ReportsProgressiveSourceReadError) {
 TEST(GenerationStageTimingTest, BuildsDifferentPulseWidthsForEqualizingAndBroadPulses) {
   GenerationStage generation;
   std::vector<std::string> errors;
-  std::vector<double> y;
-  std::vector<double> c;
+  std::vector<SampleFixed> y;
+  std::vector<SampleFixed> c;
   ASSERT_TRUE(generation.Generate(MakeProject(Standard::kNtsc), &y, &c, &errors));
 
   const TimingConstants ntsc = GetTimingConstants(Standard::kNtsc);
@@ -318,8 +391,8 @@ TEST(GenerationStageTimingTest, BuildsDifferentPulseWidthsForEqualizingAndBroadP
 TEST(GenerationStageTimingTest, AppliesTwoHalfLinePulsesToEqualizingAndVerticalSyncLines) {
   GenerationStage generation;
   std::vector<std::string> errors;
-  std::vector<double> y;
-  std::vector<double> c;
+  std::vector<SampleFixed> y;
+  std::vector<SampleFixed> c;
   ASSERT_TRUE(generation.Generate(MakeProject(Standard::kPal), &y, &c, &errors));
 
   const TimingConstants pal = GetTimingConstants(Standard::kPal);
@@ -342,8 +415,8 @@ TEST(GenerationStageTimingTest, AppliesTwoHalfLinePulsesToEqualizingAndVerticalS
 TEST(GenerationStageTimingTest, KeepsEndOfFrameNtscLinesAsHorizontalSync) {
   GenerationStage generation;
   std::vector<std::string> errors;
-  std::vector<double> y;
-  std::vector<double> c;
+  std::vector<SampleFixed> y;
+  std::vector<SampleFixed> c;
   ASSERT_TRUE(generation.Generate(MakeProject(Standard::kNtsc), &y, &c, &errors));
 
   const TimingConstants ntsc = GetTimingConstants(Standard::kNtsc);
@@ -362,8 +435,8 @@ TEST(GenerationStageTimingTest, KeepsEndOfFrameNtscLinesAsHorizontalSync) {
 TEST(GenerationStageTimingTest, IncludesSecondFieldNtscVerticalTransitionBlock) {
   GenerationStage generation;
   std::vector<std::string> errors;
-  std::vector<double> y;
-  std::vector<double> c;
+  std::vector<SampleFixed> y;
+  std::vector<SampleFixed> c;
   ASSERT_TRUE(generation.Generate(MakeProject(Standard::kNtsc), &y, &c, &errors));
 
   const TimingConstants ntsc = GetTimingConstants(Standard::kNtsc);
@@ -383,8 +456,8 @@ TEST(GenerationStageTimingTest, IncludesSecondFieldNtscVerticalTransitionBlock) 
 TEST(GenerationStageTimingTest, NtscBroadSyncKeepsIntervalWithinEachHalfLine) {
   GenerationStage generation;
   std::vector<std::string> errors;
-  std::vector<double> y;
-  std::vector<double> c;
+  std::vector<SampleFixed> y;
+  std::vector<SampleFixed> c;
   ASSERT_TRUE(generation.Generate(MakeProject(Standard::kNtsc), &y, &c, &errors));
 
   const TimingConstants ntsc = GetTimingConstants(Standard::kNtsc);
@@ -403,8 +476,8 @@ TEST(GenerationStageTimingTest, NtscBroadSyncKeepsIntervalWithinEachHalfLine) {
 TEST(GenerationStageTimingTest, PalBroadSyncKeepsIntervalWithinEachHalfLine) {
   GenerationStage generation;
   std::vector<std::string> errors;
-  std::vector<double> y;
-  std::vector<double> c;
+  std::vector<SampleFixed> y;
+  std::vector<SampleFixed> c;
   ASSERT_TRUE(generation.Generate(MakeProject(Standard::kPal), &y, &c, &errors));
 
   const TimingConstants pal = GetTimingConstants(Standard::kPal);
@@ -423,8 +496,8 @@ TEST(GenerationStageTimingTest, PalBroadSyncKeepsIntervalWithinEachHalfLine) {
 TEST(GenerationStageTimingTest, EmitsBurstOnHorizontalButNotBroadSyncLines) {
   GenerationStage generation;
   std::vector<std::string> errors;
-  std::vector<double> y;
-  std::vector<double> c;
+  std::vector<SampleFixed> y;
+  std::vector<SampleFixed> c;
   ASSERT_TRUE(generation.Generate(MakeProject(Standard::kNtsc), &y, &c, &errors));
 
   const TimingConstants ntsc = GetTimingConstants(Standard::kNtsc);
@@ -443,8 +516,8 @@ TEST(GenerationStageTimingTest, UsesContinuousSubcarrierBurstPhaseProgressionFor
 
   // NTSC: 910 samples/line × π/2 rad/sample = π rad/line, so adjacent lines
   // maintain a strong burst with stable magnitude under continuous subcarrier timing.
-  std::vector<double> y_ntsc;
-  std::vector<double> c_ntsc;
+  std::vector<SampleFixed> y_ntsc;
+  std::vector<SampleFixed> c_ntsc;
   ASSERT_TRUE(generation.Generate(MakeProject(Standard::kNtsc), &y_ntsc, &c_ntsc, &errors));
   const TimingConstants ntsc = GetTimingConstants(Standard::kNtsc);
 
@@ -453,8 +526,8 @@ TEST(GenerationStageTimingTest, UsesContinuousSubcarrierBurstPhaseProgressionFor
   EXPECT_GT(std::abs(ntsc_line20), 0.1);
   EXPECT_GT(std::abs(ntsc_line21), 0.1);
 
-  std::vector<double> y_pal;
-  std::vector<double> c_pal;
+  std::vector<SampleFixed> y_pal;
+  std::vector<SampleFixed> c_pal;
   ASSERT_TRUE(generation.Generate(MakeProject(Standard::kPal), &y_pal, &c_pal, &errors));
   const TimingConstants pal = GetTimingConstants(Standard::kPal);
 
@@ -471,8 +544,8 @@ TEST(GenerationStageTimingTest, PalBurstPhaseFollowsFourFrameSequence) {
   constexpr double kPi = 3.14159265358979323846;
   GenerationStage generation;
   std::vector<std::string> errors;
-  std::vector<double> y_pal;
-  std::vector<double> c_pal;
+  std::vector<SampleFixed> y_pal;
+  std::vector<SampleFixed> c_pal;
   ASSERT_TRUE(generation.Generate(MakeProject(Standard::kPal, "pal_ebu_colour_bars_100", 4),
                                   &y_pal,
                                   &c_pal,
@@ -516,8 +589,8 @@ TEST(GenerationStageTimingTest, PalBurstPhaseFollowsFourFrameSequence) {
 TEST(GenerationStageTimingTest, ShapesSyncEdgesInsteadOfHardSteps) {
   GenerationStage generation;
   std::vector<std::string> errors;
-  std::vector<double> y;
-  std::vector<double> c;
+  std::vector<SampleFixed> y;
+  std::vector<SampleFixed> c;
   ASSERT_TRUE(generation.Generate(MakeProject(Standard::kNtsc), &y, &c, &errors));
 
   const TimingConstants ntsc = GetTimingConstants(Standard::kNtsc);
@@ -530,9 +603,9 @@ TEST(GenerationStageTimingTest, ShapesSyncEdgesInsteadOfHardSteps) {
 
   // SMPTE 170M-2004 specifies finite sync rise/fall times, so the pulse edge
   // should move through intermediate levels rather than a single hard step.
-  const double first_pulse_sample = y[line_start];
-  const double second_pulse_sample = y[line_start + 1];
-  const double third_pulse_sample = y[line_start + 2];
+  const double first_pulse_sample = SampleFixedToMillivolts(y[line_start]);
+  const double second_pulse_sample = SampleFixedToMillivolts(y[line_start + 1]);
+  const double third_pulse_sample = SampleFixedToMillivolts(y[line_start + 2]);
   EXPECT_DOUBLE_EQ(first_pulse_sample, levels.blanking_mv);
   EXPECT_LT(second_pulse_sample, levels.blanking_mv);
   EXPECT_GT(second_pulse_sample, levels.sync_tip_mv);
@@ -542,8 +615,8 @@ TEST(GenerationStageTimingTest, ShapesSyncEdgesInsteadOfHardSteps) {
 TEST(GenerationStageTimingTest, AppliesBurstEnvelopeRampAtBurstWindowEdges) {
   GenerationStage generation;
   std::vector<std::string> errors;
-  std::vector<double> y;
-  std::vector<double> c;
+  std::vector<SampleFixed> y;
+  std::vector<SampleFixed> c;
   ASSERT_TRUE(generation.Generate(MakeProject(Standard::kNtsc), &y, &c, &errors));
 
   const TimingConstants ntsc = GetTimingConstants(Standard::kNtsc);
@@ -554,7 +627,7 @@ TEST(GenerationStageTimingTest, AppliesBurstEnvelopeRampAtBurstWindowEdges) {
   auto MaxAbsInRange = [&](int start_sample, int end_sample) {
     double max_abs = 0.0;
     for (int i = start_sample; i < end_sample; ++i) {
-      max_abs = std::max(max_abs, std::abs(c[i]));
+      max_abs = std::max(max_abs, std::abs(SampleFixedToMillivolts(c[i])));
     }
     return max_abs;
   };
@@ -580,8 +653,8 @@ TEST(GenerationStageTimingTest, AppliesBurstEnvelopeRampAtBurstWindowEdges) {
 TEST(GenerationStageTimingTest, ShapesBothPositiveAndNegativeBurstLobesAtEdges) {
   GenerationStage generation;
   std::vector<std::string> errors;
-  std::vector<double> y;
-  std::vector<double> c;
+  std::vector<SampleFixed> y;
+  std::vector<SampleFixed> c;
   ASSERT_TRUE(generation.Generate(MakeProject(Standard::kNtsc), &y, &c, &errors));
 
   const TimingConstants ntsc = GetTimingConstants(Standard::kNtsc);
@@ -598,7 +671,7 @@ TEST(GenerationStageTimingTest, ShapesBothPositiveAndNegativeBurstLobesAtEdges) 
   auto PeakPositive = [&](int start_sample, int end_sample) {
     double peak = 0.0;
     for (int i = start_sample; i < end_sample; ++i) {
-      peak = std::max(peak, c[i]);
+      peak = std::max(peak, SampleFixedToMillivolts(c[i]));
     }
     return peak;
   };
@@ -606,7 +679,7 @@ TEST(GenerationStageTimingTest, ShapesBothPositiveAndNegativeBurstLobesAtEdges) 
   auto PeakNegativeMagnitude = [&](int start_sample, int end_sample) {
     double peak = 0.0;
     for (int i = start_sample; i < end_sample; ++i) {
-      peak = std::max(peak, -c[i]);
+      peak = std::max(peak, -SampleFixedToMillivolts(c[i]));
     }
     return peak;
   };
@@ -625,8 +698,8 @@ TEST(GenerationStageTimingTest, ShapesBothPositiveAndNegativeBurstLobesAtEdges) 
 TEST(GenerationStagePatternTest, ColourBarsProduceMultipleDiscreteLumaLevels) {
   GenerationStage generation;
   std::vector<std::string> errors;
-  std::vector<double> y;
-  std::vector<double> c;
+  std::vector<SampleFixed> y;
+  std::vector<SampleFixed> c;
   ASSERT_TRUE(generation.Generate(
       MakeProject(Standard::kPal, "pal_ebu_colour_bars_100"), &y, &c, &errors));
 
@@ -639,8 +712,8 @@ TEST(GenerationStagePatternTest, ColourBarsProduceMultipleDiscreteLumaLevels) {
 TEST(GenerationStagePatternTest, PalColourBarsFirstTransitionMatchesVisibleAperturePlacement) {
   GenerationStage generation;
   std::vector<std::string> errors;
-  std::vector<double> y;
-  std::vector<double> c;
+  std::vector<SampleFixed> y;
+  std::vector<SampleFixed> c;
   ASSERT_TRUE(generation.Generate(
       MakeProject(Standard::kPal, "pal_ebu_colour_bars_100"), &y, &c, &errors));
 
@@ -670,8 +743,8 @@ TEST(GenerationStagePatternTest, PalColourBarsFirstTransitionMatchesVisibleApert
 TEST(GenerationStagePatternTest, GrayscaleRampRisesAcrossActiveRegion) {
   GenerationStage generation;
   std::vector<std::string> errors;
-  std::vector<double> y;
-  std::vector<double> c;
+  std::vector<SampleFixed> y;
+  std::vector<SampleFixed> c;
   ASSERT_TRUE(
       generation.Generate(MakeProject(Standard::kNtsc, "ntsc_linear_grayscale_ramp_horizontal"), &y, &c, &errors));
 
@@ -690,8 +763,8 @@ TEST(GenerationStagePatternTest, GrayscaleRampRisesAcrossActiveRegion) {
 TEST(GenerationStagePatternTest, PlugePatternStaysNearBlackRange) {
   GenerationStage generation;
   std::vector<std::string> errors;
-  std::vector<double> y;
-  std::vector<double> c;
+  std::vector<SampleFixed> y;
+  std::vector<SampleFixed> c;
   ASSERT_TRUE(generation.Generate(MakeProject(Standard::kPal, "pal_pluge_5patch_near_black"), &y, &c, &errors));
 
   const SignalLevels levels = GetSignalLevels(Standard::kPal);
@@ -699,7 +772,8 @@ TEST(GenerationStagePatternTest, PlugePatternStaysNearBlackRange) {
   bool initialized = false;
   double min_y = 0.0;
   double max_y = 0.0;
-  for (double sample_mv : y) {
+  for (SampleFixed sample : y) {
+    const double sample_mv = SampleFixedToMillivolts(sample);
     if (sample_mv < levels.blanking_mv) {
       continue;
     }
@@ -721,15 +795,16 @@ TEST(GenerationStagePatternTest, PlugePatternStaysNearBlackRange) {
 TEST(GenerationStagePatternTest, PlugePatternContainsBelowBlackSamples) {
   GenerationStage generation;
   std::vector<std::string> errors;
-  std::vector<double> y;
-  std::vector<double> c;
+  std::vector<SampleFixed> y;
+  std::vector<SampleFixed> c;
   ASSERT_TRUE(generation.Generate(MakeProject(Standard::kNtsc, "ntsc_pluge_5patch_near_black"), &y, &c, &errors));
 
   const SignalLevels levels = GetSignalLevels(Standard::kNtsc);
 
   bool initialized = false;
   double min_y = 0.0;
-  for (double sample_mv : y) {
+  for (SampleFixed sample : y) {
+    const double sample_mv = SampleFixedToMillivolts(sample);
     if (sample_mv < levels.blanking_mv) {
       continue;
     }
@@ -748,8 +823,8 @@ TEST(GenerationStagePatternTest, PlugePatternContainsBelowBlackSamples) {
 TEST(GenerationStagePatternTest, CrosshatchProducesMultipleVerticalTransitionsOnActiveLine) {
   GenerationStage generation;
   std::vector<std::string> errors;
-  std::vector<double> y;
-  std::vector<double> c;
+  std::vector<SampleFixed> y;
+  std::vector<SampleFixed> c;
   ASSERT_TRUE(generation.Generate(MakeProject(Standard::kNtsc, "ntsc_crosshatch_visible_area_grid"), &y, &c, &errors));
 
   const TimingConstants ntsc = GetTimingConstants(Standard::kNtsc);
@@ -760,7 +835,7 @@ TEST(GenerationStagePatternTest, CrosshatchProducesMultipleVerticalTransitionsOn
 
   int transitions = 0;
   for (int i = start + 1; i < end; ++i) {
-    if (std::abs(y[i] - y[i - 1]) > 200.0) {
+    if (std::abs(SampleFixedToMillivolts(y[i]) - SampleFixedToMillivolts(y[i - 1])) > 200.0) {
       ++transitions;
     }
   }
@@ -771,8 +846,8 @@ TEST(GenerationStagePatternTest, CrosshatchProducesMultipleVerticalTransitionsOn
 TEST(GenerationStagePatternTest, PalCrosshatchIncludesBottomActiveLine) {
   GenerationStage generation;
   std::vector<std::string> errors;
-  std::vector<double> y;
-  std::vector<double> c;
+  std::vector<SampleFixed> y;
+  std::vector<SampleFixed> c;
   ASSERT_TRUE(generation.Generate(MakeProject(Standard::kPal, "pal_crosshatch_visible_area_grid"),
                                 &y,
                                 &c,
@@ -786,7 +861,9 @@ TEST(GenerationStagePatternTest, PalCrosshatchIncludesBottomActiveLine) {
   const int center_sample = line_start + active_start + ((active_end - active_start) / 2);
 
   ASSERT_LT(center_sample, static_cast<int>(y.size()));
-  EXPECT_NEAR(y[static_cast<std::size_t>(center_sample)], levels.white_mv, 5.0);
+  EXPECT_NEAR(SampleFixedToMillivolts(y[static_cast<std::size_t>(center_sample)]),
+              levels.white_mv,
+              5.0);
 }
 
 TEST(GenerationStagePatternTest, EachPatternRendersForPalAndNtsc) {
@@ -814,8 +891,8 @@ TEST(GenerationStagePatternTest, EachPatternRendersForPalAndNtsc) {
            {Standard::kNtsc, "ntsc_full_field_white"},
            {Standard::kNtsc, "ntsc_pluge_5patch_near_black"},
            {Standard::kNtsc, "ntsc_crosshatch_visible_area_grid"}}) {
-    std::vector<double> y;
-    std::vector<double> c;
+    std::vector<SampleFixed> y;
+    std::vector<SampleFixed> c;
     ASSERT_TRUE(generation.Generate(MakeProject(pair.first, pair.second), &y, &c, &errors));
     EXPECT_EQ(y.size(), static_cast<std::size_t>(SamplesPerFrame4fsc(pair.first)));
     EXPECT_EQ(c.size(), y.size());
@@ -825,8 +902,8 @@ TEST(GenerationStagePatternTest, EachPatternRendersForPalAndNtsc) {
 TEST(GenerationStagePatternTest, DurationFramesScalesOutputSampleCount) {
   GenerationStage generation;
   std::vector<std::string> errors;
-  std::vector<double> y;
-  std::vector<double> c;
+  std::vector<SampleFixed> y;
+  std::vector<SampleFixed> c;
 
   ASSERT_TRUE(generation.Generate(
                                   MakeProject(Standard::kPal,
@@ -842,8 +919,8 @@ TEST(GenerationStagePatternTest, DurationFramesScalesOutputSampleCount) {
 TEST(GenerationStageChromaTest, ActiveChromaUsesNtscBurstPlus180ReferenceModel) {
   GenerationStage generation;
   std::vector<std::string> errors;
-  std::vector<double> y;
-  std::vector<double> c;
+  std::vector<SampleFixed> y;
+  std::vector<SampleFixed> c;
 
   ASSERT_TRUE(generation.Generate(
       MakeProject(Standard::kNtsc, "ntsc_smpte_170m_colour_bars_100"), &y, &c, &errors));
@@ -858,7 +935,7 @@ TEST(GenerationStageChromaTest, ActiveChromaUsesNtscBurstPlus180ReferenceModel) 
   const double burst_t = static_cast<double>(burst_mid) / ntsc.sample_rate_4fsc_hz;
   const double expected_burst = 150.0 *
                                 std::sin((2.0 * M_PI * subcarrier_hz * burst_t) + line.burst_phase_rad);
-  EXPECT_NEAR(c[burst_mid], expected_burst, 1e-9);
+  EXPECT_NEAR(SampleFixedToMillivolts(c[burst_mid]), expected_burst, 1e-6);
 
   const int active_start = ActiveWindowStartSamples(Standard::kNtsc, ntsc.sample_rate_4fsc_hz);
   const int active_end = ActiveWindowEndSamples(Standard::kNtsc, ntsc.sample_rate_4fsc_hz);
@@ -879,7 +956,7 @@ TEST(GenerationStageChromaTest, ActiveChromaUsesNtscBurstPlus180ReferenceModel) 
 
   const auto chroma_encoder = CreateChromaEncoder(Standard::kNtsc, ntsc.sample_rate_4fsc_hz);
   ASSERT_NE(chroma_encoder, nullptr);
-  std::vector<double> expected_active_line;
+  std::vector<SampleFixed> expected_active_line;
   chroma_encoder->EncodeLine(source_line,
                              CarrierPhasesForActiveLine(line_1based,
                                                         ntsc,
@@ -889,14 +966,16 @@ TEST(GenerationStageChromaTest, ActiveChromaUsesNtscBurstPlus180ReferenceModel) 
 
   const int active_sample = active_window_samples / 3;
   const int generated_sample_index = line_start + active_start + active_sample;
-  EXPECT_NEAR(c[generated_sample_index], expected_active_line[static_cast<std::size_t>(active_sample)], 1e-9);
+  EXPECT_NEAR(SampleFixedToMillivolts(c[generated_sample_index]),
+              SampleFixedToMillivolts(expected_active_line[static_cast<std::size_t>(active_sample)]),
+              1e-6);
 }
 
 TEST(GenerationStageChromaTest, PalBurstLockedDecodeRecoversStableHueAcrossLines) {
   GenerationStage generation;
   std::vector<std::string> errors;
-  std::vector<double> y;
-  std::vector<double> c;
+  std::vector<SampleFixed> y;
+  std::vector<SampleFixed> c;
 
   ASSERT_TRUE(generation.Generate(
       MakeProject(Standard::kPal, "pal_ebu_colour_bars_100"), &y, &c, &errors));
@@ -998,8 +1077,8 @@ TEST(GenerationStageProgressiveTest, NtscPngUsesField2DominantRowPairing) {
 
   GenerationStage generation;
   std::vector<std::string> errors;
-  std::vector<double> y;
-  std::vector<double> c;
+  std::vector<SampleFixed> y;
+  std::vector<SampleFixed> c;
   ASSERT_TRUE(generation.Generate(MakeProgressivePngProject(Standard::kNtsc, source_path),
                                   &y,
                                   &c,
@@ -1017,8 +1096,12 @@ TEST(GenerationStageProgressiveTest, NtscPngUsesField2DominantRowPairing) {
       source_frame.PixelAt(pixel_x, source_frame.active_y + (2 * selected_field_line)).y,
       levels);
 
-  EXPECT_NEAR(y[static_cast<std::size_t>(field1_line_start + sample_offset)], expected_field1, 1.0);
-  EXPECT_NEAR(y[static_cast<std::size_t>(field2_line_start + sample_offset)], expected_field2, 1.0);
+  EXPECT_NEAR(SampleFixedToMillivolts(y[static_cast<std::size_t>(field1_line_start + sample_offset)]),
+              expected_field1,
+              1.0);
+  EXPECT_NEAR(SampleFixedToMillivolts(y[static_cast<std::size_t>(field2_line_start + sample_offset)]),
+              expected_field2,
+              1.0);
 }
 
 TEST(GenerationStageProgressiveTest, PalPngUsesField2DominantRowPairing) {
@@ -1067,8 +1150,8 @@ TEST(GenerationStageProgressiveTest, PalPngUsesField2DominantRowPairing) {
 
   GenerationStage generation;
   std::vector<std::string> errors;
-  std::vector<double> y;
-  std::vector<double> c;
+  std::vector<SampleFixed> y;
+  std::vector<SampleFixed> c;
   ASSERT_TRUE(generation.Generate(MakeProgressivePngProject(Standard::kPal, source_path),
                                   &y,
                                   &c,
@@ -1086,8 +1169,12 @@ TEST(GenerationStageProgressiveTest, PalPngUsesField2DominantRowPairing) {
       source_frame.PixelAt(pixel_x, source_frame.active_y + (2 * selected_field_line)).y,
       levels);
 
-  EXPECT_NEAR(y[static_cast<std::size_t>(field1_line_start + sample_offset)], expected_field1, 1.0);
-  EXPECT_NEAR(y[static_cast<std::size_t>(field2_line_start + sample_offset)], expected_field2, 1.0);
+  EXPECT_NEAR(SampleFixedToMillivolts(y[static_cast<std::size_t>(field1_line_start + sample_offset)]),
+              expected_field1,
+              1.0);
+  EXPECT_NEAR(SampleFixedToMillivolts(y[static_cast<std::size_t>(field2_line_start + sample_offset)]),
+              expected_field2,
+              1.0);
 }
 
 TEST(GenerationStageProgressiveTest, ProgressiveMp4AllDurationGeneratesEntireSource) {
@@ -1109,8 +1196,8 @@ TEST(GenerationStageProgressiveTest, ProgressiveMp4AllDurationGeneratesEntireSou
 
   GenerationStage generation;
   std::vector<std::string> errors;
-  std::vector<double> y;
-  std::vector<double> c;
+  std::vector<SampleFixed> y;
+  std::vector<SampleFixed> c;
   ASSERT_TRUE(generation.Generate(MakeProgressiveMp4Project(Standard::kPal, source_path),
                                   &y,
                                   &c,

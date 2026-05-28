@@ -41,12 +41,12 @@ class MockGeneration final : public IGenerationStage {
   bool called = false;
 
   bool Generate(const Project&,
-                std::vector<double>* out_y_mv,
-                std::vector<double>* out_c_mv,
+                std::vector<SampleFixed>* out_y_mv,
+                std::vector<SampleFixed>* out_c_mv,
                 std::vector<std::string>* errors) override {
     called = true;
-    out_y_mv->assign(8, 0.0);
-    out_c_mv->assign(8, 0.0);
+    out_y_mv->assign(8, 0);
+    out_c_mv->assign(8, 0);
     errors->clear();
     return true;
   }
@@ -57,8 +57,8 @@ class MockOutput final : public IOutputStage {
   bool called = false;
 
   bool Write(const Project&,
-             const std::vector<double>&,
-             const std::vector<double>&,
+             const std::vector<SampleFixed>&,
+             const std::vector<SampleFixed>&,
              std::vector<std::string>* errors) override {
     called = true;
     errors->clear();

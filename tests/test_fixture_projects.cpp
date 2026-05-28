@@ -253,8 +253,8 @@ TEST(ProjectFixturesTest, FixtureProjectsGenerateCompositeOutputWith80Frames) {
       ResolveFixtureOutputPath(project.output.metadata_path).string();
     ASSERT_TRUE(validator.Validate(project).is_valid) << fixture;
 
-    std::vector<double> y_mv;
-    std::vector<double> c_mv;
+    std::vector<SampleFixed> y_mv;
+    std::vector<SampleFixed> c_mv;
     std::vector<std::string> generation_errors;
     ASSERT_TRUE(
       generation.Generate(project, &y_mv, &c_mv, &generation_errors))
@@ -305,8 +305,8 @@ TEST(ProjectFixturesTest, ProgressivePngFixturesGenerateCompositeOutputWith72Fra
     ResolveProgressiveSourcePaths(&project);
     ASSERT_TRUE(validator.Validate(project).is_valid) << fixture;
 
-    std::vector<double> y_mv;
-    std::vector<double> c_mv;
+    std::vector<SampleFixed> y_mv;
+    std::vector<SampleFixed> c_mv;
     std::vector<std::string> generation_errors;
     ASSERT_TRUE(generation.Generate(project, &y_mv, &c_mv, &generation_errors))
         << fixture;
@@ -353,8 +353,8 @@ TEST(ProjectFixturesTest, ProgressiveRawFixturesGenerateCompositeOutputWith152Fr
     ResolveProgressiveSourcePaths(&project);
     ASSERT_TRUE(validator.Validate(project).is_valid) << fixture;
 
-    std::vector<double> y_mv;
-    std::vector<double> c_mv;
+    std::vector<SampleFixed> y_mv;
+    std::vector<SampleFixed> c_mv;
     std::vector<std::string> generation_errors;
     ASSERT_TRUE(generation.Generate(project, &y_mv, &c_mv, &generation_errors))
         << fixture;
@@ -412,8 +412,8 @@ TEST(ProjectFixturesTest, ProgressiveMp4FixturesGenerateCompositeOutputForFullSo
         << fixture << ": " << count_error;
     ASSERT_GT(expected_source_frames, 0) << fixture;
 
-    std::vector<double> y_mv;
-    std::vector<double> c_mv;
+    std::vector<SampleFixed> y_mv;
+    std::vector<SampleFixed> c_mv;
     std::vector<std::string> generation_errors;
     ASSERT_TRUE(generation.Generate(project, &y_mv, &c_mv, &generation_errors))
         << fixture;
@@ -475,8 +475,8 @@ TEST(ProjectFixturesTest, ProgressiveMovFixturesGenerateCompositeOutputForFullSo
       expected_source_frames += section_source_frames;
     }
 
-    std::vector<double> y_mv;
-    std::vector<double> c_mv;
+    std::vector<SampleFixed> y_mv;
+    std::vector<SampleFixed> c_mv;
     std::vector<std::string> generation_errors;
     ASSERT_TRUE(generation.Generate(project, &y_mv, &c_mv, &generation_errors))
         << fixture;
@@ -516,8 +516,8 @@ TEST(ProjectFixturesTest, FixtureOutputHashesRemainStable) {
   };
 
   const std::vector<FixtureExpectation> expectations = {
-      {"pal_32f_bars_ramp.yaml", 3417102992390215043ULL},
-      {"ntsc_32f_bars_ramp.yaml", 11146436952582566211ULL},
+      {"pal_32f_bars_ramp.yaml", 9954163301157790659ULL},
+      {"ntsc_32f_bars_ramp.yaml", 10524627689147863747ULL},
   };
 
   for (const FixtureExpectation& expectation : expectations) {
@@ -529,8 +529,8 @@ TEST(ProjectFixturesTest, FixtureOutputHashesRemainStable) {
       ResolveFixtureOutputPath(project.output.metadata_path).string();
     ASSERT_TRUE(validator.Validate(project).is_valid) << expectation.fixture;
 
-    std::vector<double> y_mv;
-    std::vector<double> c_mv;
+    std::vector<SampleFixed> y_mv;
+    std::vector<SampleFixed> c_mv;
     std::vector<std::string> generation_errors;
     ASSERT_TRUE(
       generation.Generate(project, &y_mv, &c_mv, &generation_errors))

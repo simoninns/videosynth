@@ -16,6 +16,7 @@
 #include <vector>
 
 #include "videosynth/chroma_encoder.h"
+#include "videosynth/fixed_point.h"
 #include "videosynth/frame_source.h"
 #include "videosynth/signal_timing_model.h"
 #include "videosynth/signal_shaping.h"
@@ -405,8 +406,8 @@ bool PalInvertVAxisForLine(std::size_t frame_index, const LineTimingPrimitive& l
 GenerationStage::GenerationStage(ILogger* logger) : logger_(logger) {}
 
 bool GenerationStage::Generate(const Project& project,
-                               std::vector<double>* out_y_mv,
-                               std::vector<double>* out_c_mv,
+                               std::vector<SampleFixed>* out_y_mv,
+                               std::vector<SampleFixed>* out_c_mv,
                                std::vector<std::string>* errors) {
   if (out_y_mv == nullptr || out_c_mv == nullptr || errors == nullptr) {
     return false;
@@ -476,14 +477,33 @@ bool GenerationStage::Generate(const Project& project,
          std::min(active.active_window_end_samples, max_line_samples));
   const int active_window_samples = active_window_end - active_window_start;
 
-  out_y_mv->assign(sample_count, levels.blanking_mv);
-  out_c_mv->assign(sample_count, 0.0);
+  const SampleFixed blanking_fixed = MillivoltsToSampleFixed(levels.blanking_mv);
+
+  out_y_mv->assign(sample_count, blanking_fixed);
+  out_c_mv->assign(sample_count, 0);
+
+  auto SetYMillivolts = [&](std::size_t index, double value_mv) {
+    (*out_y_mv)[index] = MillivoltsToSampleFixed(value_mv);
+  };
+
+  auto SetCMillivolts = [&](std::size_t index, double value_mv) {
+    (*out_c_mv)[index] = MillivoltsToSampleFixed(value_mv);
+  };
+
+  auto AddCFixed = [&](std::size_t index, SampleFixed value_fixed) {
+    (*out_c_mv)[index] += value_fixed;
+  };
+
+  auto IsYAtOrAboveBlanking = [&](std::size_t index) {
+    return (*out_y_mv)[index] >= blanking_fixed;
+  };
 
   std::vector<YCbCr444Pixel> line_source_samples(
       static_cast<std::size_t>(active_window_samples), YCbCr444Pixel{});
   std::vector<double> carrier_phases_rad(static_cast<std::size_t>(active_window_samples), 0.0);
   std::vector<int> active_sample_indices(static_cast<std::size_t>(active_window_samples), 0);
-  std::vector<double> encoded_line_chroma(static_cast<std::size_t>(active_window_samples), 0.0);
+  std::vector<SampleFixed> encoded_line_chroma(
+      static_cast<std::size_t>(active_window_samples), MillivoltsToSampleFixed(0.0));
 
   for (std::size_t frame_index = 0; frame_index < frame_count; ++frame_index) {
     const Section* section = frame_sections[frame_index].first;
@@ -546,11 +566,12 @@ bool GenerationStage::Generate(const Project& project,
 
         for (int i = pulse_start; i < pulse_end; ++i) {
           const int relative_index = i - pulse_start;
-          (*out_y_mv)[i] = ShapedPulseLevel(relative_index,
-                                           pulse_width_samples,
-                                           sync_rise_samples,
-                                           levels.blanking_mv,
-                                           levels.sync_tip_mv);
+          SetYMillivolts(static_cast<std::size_t>(i),
+                         ShapedPulseLevel(relative_index,
+                                          pulse_width_samples,
+                                          sync_rise_samples,
+                                          levels.blanking_mv,
+                                          levels.sync_tip_mv));
         }
       }
 
@@ -576,7 +597,7 @@ bool GenerationStage::Generate(const Project& project,
           const double envelope = ShapedGateEnvelope(relative_index,
                                burst_width_samples,
                                burst_rise_samples);
-          (*out_c_mv)[i] = burst_amplitude_mv * envelope * burst_sin;
+          SetCMillivolts(static_cast<std::size_t>(i), burst_amplitude_mv * envelope * burst_sin);
 
           const double next_sin = burst_cos;
           const double next_cos = -burst_sin;
@@ -652,15 +673,16 @@ bool GenerationStage::Generate(const Project& project,
 
         // Preserve any sync-domain sample already placed for this line; only
         // paint active luma where the waveform is at/above blanking level.
-        if ((*out_y_mv)[sample_index] >= levels.blanking_mv) {
-          (*out_y_mv)[sample_index] = LumaMillivoltsFromCode(pixel.y, levels);
+        if (IsYAtOrAboveBlanking(static_cast<std::size_t>(sample_index))) {
+          SetYMillivolts(static_cast<std::size_t>(sample_index), LumaMillivoltsFromCode(pixel.y, levels));
         }
       }
 
       chroma_encoder->EncodeLine(line_source_samples, carrier_phases_rad, &encoded_line_chroma);
       for (int x_sample = 0; x_sample < active_window_samples; ++x_sample) {
-        (*out_c_mv)[static_cast<std::size_t>(active_sample_indices[static_cast<std::size_t>(x_sample)])] +=
-            encoded_line_chroma[static_cast<std::size_t>(x_sample)];
+        AddCFixed(
+            static_cast<std::size_t>(active_sample_indices[static_cast<std::size_t>(x_sample)]),
+          encoded_line_chroma[static_cast<std::size_t>(x_sample)]);
       }
     }
   }

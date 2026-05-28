@@ -46,8 +46,8 @@ bool VideoSynthPipeline::Run(const RunOptions& options) {
     return true;
   }
 
-  std::vector<double> y_mv;
-  std::vector<double> c_mv;
+  std::vector<SampleFixed> y_mv;
+  std::vector<SampleFixed> c_mv;
   std::vector<std::string> generation_errors;
   if (!generation_->Generate(parse_result.project, &y_mv, &c_mv, &generation_errors)) {
     for (const std::string& error : generation_errors) {

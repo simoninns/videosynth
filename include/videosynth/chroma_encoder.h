@@ -12,6 +12,7 @@
 #include <memory>
 #include <vector>
 
+#include "videosynth/fixed_point.h"
 #include "videosynth/frame_source.h"
 #include "videosynth/model.h"
 
@@ -22,7 +23,7 @@ class IChromaEncoder {
   virtual ~IChromaEncoder() = default;
   virtual void EncodeLine(const std::vector<YCbCr444Pixel>& source_samples,
                           const std::vector<double>& carrier_phases_rad,
-                          std::vector<double>* out_chroma_mv) const = 0;
+                          std::vector<SampleFixed>* out_chroma_mv) const = 0;
 };
 
 class PalChromaEncoder final : public IChromaEncoder {
@@ -31,7 +32,7 @@ class PalChromaEncoder final : public IChromaEncoder {
 
   void EncodeLine(const std::vector<YCbCr444Pixel>& source_samples,
                   const std::vector<double>& carrier_phases_rad,
-                  std::vector<double>* out_chroma_mv) const override;
+                  std::vector<SampleFixed>* out_chroma_mv) const override;
 
  private:
   std::vector<double> u_filter_taps_;
@@ -49,7 +50,7 @@ class NtscChromaEncoder final : public IChromaEncoder {
 
   void EncodeLine(const std::vector<YCbCr444Pixel>& source_samples,
                   const std::vector<double>& carrier_phases_rad,
-                  std::vector<double>* out_chroma_mv) const override;
+                  std::vector<SampleFixed>* out_chroma_mv) const override;
 
  private:
   std::vector<double> cb_filter_taps_;

@@ -12,6 +12,7 @@
 #include <string>
 #include <vector>
 
+#include "videosynth/fixed_point.h"
 #include "videosynth/model.h"
 #include "videosynth/results.h"
 
@@ -80,8 +81,8 @@ class IGenerationStage {
  public:
   virtual ~IGenerationStage() = default;
   virtual bool Generate(const Project& project,
-                        std::vector<double>* out_y_mv,
-                        std::vector<double>* out_c_mv,
+                std::vector<SampleFixed>* out_y_mv,
+                std::vector<SampleFixed>* out_c_mv,
                         std::vector<std::string>* errors) = 0;
 };
 
@@ -89,8 +90,8 @@ class IOutputStage {
  public:
   virtual ~IOutputStage() = default;
   virtual bool Write(const Project& project,
-                     const std::vector<double>& y_mv,
-                     const std::vector<double>& c_mv,
+              const std::vector<SampleFixed>& y_mv,
+              const std::vector<SampleFixed>& c_mv,
                      std::vector<std::string>* errors) = 0;
 };
 

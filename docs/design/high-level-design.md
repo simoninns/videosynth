@@ -292,7 +292,7 @@ Source-range capability note:
 
 ### **Outputs**
 
-- Time-based **luma (Y)** and **chroma (C)** signals as **`double`-precision floating-point mV values**, one complete frame at a time. Values are relative to blanking (0.0 mV) and are not yet quantised to integer.
+- Time-based **luma (Y)** and **chroma (C)** signals as **high-resolution fixed-point mV values**, one complete frame at a time. Values are relative to blanking and are stored internally as signed integers scaled by $2^{20}$ before final quantisation.
 - Metadata (field order, dominance, timing).
 
 ---
@@ -313,7 +313,7 @@ Source-range capability note:
 | **Responsibility**      | **Description**                                                         | **Reference**                     |
 | ----------------------- | ----------------------------------------------------------------------- | --------------------------------- |
 | **Sampling**            | Sample Y and C signals at the specified rate (e.g., 4fsc, 20MSPS).      | CVBS File Format Specification    |
-| **mV to Integer Conversion** | Quantise `double` mV values to 10-bit integers per EBU 3280 (PAL) or SMPTE 244M (NTSC). | EBU Tech. 3280-E, SMPTE 244M-2003 |
+| **mV to Integer Conversion** | Quantise fixed-point mV values to 10-bit integers per EBU 3280 (PAL) or SMPTE 244M (NTSC). | EBU Tech. 3280-E, SMPTE 244M-2003 |
 | **Combining Y and C**   | Combine quantised luma and chroma into composite signal (CVBS).         | CVBS File Format Specification    |
 | **Output Formatting**   | Format the sampled signal into the output files (video and metadata).   | CVBS File Format Specification    |
 | **Subcarrier Locking**  | Lock sample clock to colour subcarrier for 4fsc using NCO.              | SMPTE 244M-2003, EBU Tech. 3280-E |
@@ -407,12 +407,12 @@ This derives from the NTSC definition that 100 IRE = 714.3 mV (the luminance ran
 
 ---
 
-#### **Internal Floating-Point Representation**
+#### **Internal Fixed-Point Representation**
 
-The generator uses **`double` (64-bit IEEE 754 floating-point)** to represent all signal levels in mV. Accuracy is prioritised over speed throughout the generation stage. Quantisation to integer sample values happens **once**, at the output stage boundary, immediately before writing to the CVBS file.
+The generator uses **signed fixed-point millivolt buffers** to represent all signal levels internally. The runtime path now stores Y and C samples in a high-resolution integer domain (Q20.12-style scaling in the implementation) so the generation stage and output stage can stay deterministic without carrying a floating-point representation.
 
-**Why floating-point is required:**  
-Certain signal additions push levels well outside the nominal PAL or NTSC signal range. The most significant case is the **PAL Laserdisc pilot burst** ([IEC 60856](../analogue-video-specifications/docs/laserdisc/IEC-60856-1986-Laservision-PAL/IEC-60856-1986-Laservision-PAL.md) §9.1.2), which is superimposed on the sync pulse at 3.75 MHz with a peak-to-peak amplitude of $\frac{6}{7} \times 700\ \text{mV} = 600\ \text{mV p-p}$. Centred on sync tip level (−300 mV), this burst swings between **−600 mV and 0 mV** — 300 mV below the standard sync tip. Integer arithmetic over a fixed 10-bit range could not represent this without clipping or bias errors.
+**Why fixed-point is sufficient:**  
+Certain signal additions push levels well outside the nominal PAL or NTSC signal range. The most significant case is the **PAL Laserdisc pilot burst** ([IEC 60856](../analogue-video-specifications/docs/laserdisc/IEC-60856-1986-Laservision-PAL/IEC-60856-1986-Laservision-PAL.md) §9.1.2), which is superimposed on the sync pulse at 3.75 MHz with a peak-to-peak amplitude of $\frac{6}{7} \times 700\ \text{mV} = 600\ \text{mV p-p}$. Centred on sync tip level (−300 mV), this burst swings between **−600 mV and 0 mV** — 300 mV below the standard sync tip. The fixed-point domain retains this headroom while still avoiding floating-point state in the runtime pipeline.
 
 **Required internal headroom:**
 
@@ -421,11 +421,11 @@ Certain signal additions push levels well outside the nominal PAL or NTSC signal
 | Negative (below blanking) | ≤ −600 mV           | PAL Laserdisc pilot burst (IEC 60856 §9.1.2)           |
 | Positive (above blanking) | ≥ +1000 mV          | Peak chroma excursions on 100% colour bars (~933 mV) plus margin |
 
-`double` provides far more range than needed (exponent range of ±10³⁰⁸), so no clamping or range check is required in the generation stage. All signal components — sync, burst, active video, line injections — are additively composed in floating-point mV before any quantisation occurs.
+The fixed-point domain is wide enough to carry all supported excursions without clipping during generation. All signal components — sync, burst, active video, line injections — are additively composed in fixed-point mV before final quantisation occurs.
 
-**Output stage quantisation (float mV → 10-bit integer):**
+**Output stage quantisation (fixed-point mV → 10-bit integer):**
 
-The output stage performs a single linear mapping from the internal `double` mV value to a 10-bit integer code, using the normative level tables from the relevant digital interface standard. Values outside the legal code range are clamped to the standard's maximum legal value before writing.
+The output stage performs a single linear mapping from the internal fixed-point mV value to a 10-bit integer code, using the normative level tables from the relevant digital interface standard. Values outside the legal code range are clamped to the standard's legal range before writing.
 
 *PAL — EBU Tech. 3280-E (10-bit):*
 

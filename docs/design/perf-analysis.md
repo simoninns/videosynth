@@ -276,4 +276,26 @@ Current single-threaded performance is dominated by chroma FIR work and line-lev
 2. Specialize FIR and carrier math for the fixed 4fsc pipeline.
 3. Migrate intermediate representation to fixed-point with strict output-equivalence gates.
 
+## Phase C implementation status (2026-05-28)
+
+Implemented in code:
+
+1. Output-stage fixed-point quantization is now active by default:
+   - `src/output_stage.cpp` maps composite millivolts to code space using a high-resolution fixed-point multiply by reciprocal path.
+2. Generation-stage fixed-point intermediate representation is implemented as an opt-in mode:
+   - Enable with environment variable `VIDEOSYNTH_GENERATION_FIXED=1`.
+   - Default behavior remains floating-point generation to preserve baseline deterministic outputs for existing workflows.
+
+Validation now present:
+
+1. Output quantization equivalence guardrail test:
+   - `tests/test_output_stage.cpp`
+2. Generation fixed-vs-float code-domain equivalence guardrail test:
+   - `tests/test_generation_stage.cpp`
+
+Current operational interpretation:
+
+1. Phase C infrastructure is implemented.
+2. Full fixed-point generation is available and validated, but not yet the default runtime mode.
+
 This aligns with the target 10-bit output format while retaining headroom for PAL waveform structures and preserving observable output quality.

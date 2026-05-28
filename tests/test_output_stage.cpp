@@ -7,9 +7,11 @@
  * SPDX-FileCopyrightText: 2026 Simon Inns
  */
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <cstdint>
+#include <cmath>
 #include <iterator>
 #include <string>
 #include <vector>
@@ -17,6 +19,7 @@
 #include <sqlite3.h>
 #include <gtest/gtest.h>
 
+#include "videosynth/fixed_point.h"
 #include "videosynth/output_stage.h"
 #include "videosynth/timing_constants.h"
 
@@ -43,6 +46,26 @@ std::string ReadTextFile(const std::filesystem::path& path) {
   std::ifstream stream(path);
   return std::string((std::istreambuf_iterator<char>(stream)),
                      std::istreambuf_iterator<char>());
+}
+
+int QuantizePalReferenceCode(double composite_mv) {
+  constexpr double kMillivoltsPerCode = 1.1905;
+  constexpr int kBlankingCode = 256;
+  constexpr int kMinCode = 4;
+  constexpr int kMaxCode = 1019;
+  const int mapped = static_cast<int>(std::lround(composite_mv / kMillivoltsPerCode)) +
+                     kBlankingCode;
+  return std::max(kMinCode, std::min(kMaxCode, mapped));
+}
+
+int QuantizeNtscReferenceCode(double composite_mv) {
+  constexpr double kMillivoltsPerCode = 1.2755;
+  constexpr int kBlankingCode = 240;
+  constexpr int kMinCode = 16;
+  constexpr int kMaxCode = 1019;
+  const int mapped = static_cast<int>(std::lround(composite_mv / kMillivoltsPerCode)) +
+                     kBlankingCode;
+  return std::max(kMinCode, std::min(kMaxCode, mapped));
 }
 
 struct CvbsMetadata {
@@ -99,11 +122,11 @@ TEST(OutputStageTest, WritesCompositeSamplesUsingPalQuantizationProfile) {
   Project project = MakeProject(Standard::kPal);
   const std::size_t frame_span = static_cast<std::size_t>(SamplesPerFrame4fsc(Standard::kPal));
 
-  std::vector<double> y(frame_span, 0.0);
-  std::vector<double> c(frame_span, 0.0);
-  y[0] = 0.0;
-  y[1] = 700.0;
-  y[2] = -300.0;
+  std::vector<SampleFixed> y(frame_span, MillivoltsToSampleFixed(0.0));
+  std::vector<SampleFixed> c(frame_span, MillivoltsToSampleFixed(0.0));
+  y[0] = MillivoltsToSampleFixed(0.0);
+  y[1] = MillivoltsToSampleFixed(700.0);
+  y[2] = MillivoltsToSampleFixed(-300.0);
 
   const std::filesystem::path video_path =
       std::filesystem::temp_directory_path() / "videosynth_output_stage_pal.composite";
@@ -144,11 +167,11 @@ TEST(OutputStageTest, WritesCompositeSamplesUsingTpg21EncodingPreset) {
   project.cvbs_presets.sample_encoding_preset = "CVBS_TPG21_4FSC";
   const std::size_t frame_span = static_cast<std::size_t>(SamplesPerFrame4fsc(Standard::kPal));
 
-  std::vector<double> y(frame_span, 0.0);
-  std::vector<double> c(frame_span, 0.0);
-  y[0] = 0.0;
-  y[1] = 700.0;
-  y[2] = -300.0;
+  std::vector<SampleFixed> y(frame_span, MillivoltsToSampleFixed(0.0));
+  std::vector<SampleFixed> c(frame_span, MillivoltsToSampleFixed(0.0));
+  y[0] = MillivoltsToSampleFixed(0.0);
+  y[1] = MillivoltsToSampleFixed(700.0);
+  y[2] = MillivoltsToSampleFixed(-300.0);
 
   const std::filesystem::path video_path =
     std::filesystem::temp_directory_path() / "videosynth_output_stage_tpg21.composite";
@@ -182,9 +205,9 @@ TEST(OutputStageTest, SumsYAndCBeforeQuantizationInNtscProfile) {
   Project project = MakeProject(Standard::kNtsc);
   const std::size_t frame_span = static_cast<std::size_t>(SamplesPerFrame4fsc(Standard::kNtsc));
 
-  std::vector<double> y(frame_span, 0.0);
-  std::vector<double> c(frame_span, 0.0);
-  c[0] = 127.55;
+  std::vector<SampleFixed> y(frame_span, MillivoltsToSampleFixed(0.0));
+  std::vector<SampleFixed> c(frame_span, MillivoltsToSampleFixed(0.0));
+  c[0] = MillivoltsToSampleFixed(127.55);
 
   const std::filesystem::path video_path =
       std::filesystem::temp_directory_path() / "videosynth_output_stage_ntsc.composite";
@@ -217,10 +240,10 @@ TEST(OutputStageTest, ClampsOutOfRangeValuesToLegalCodeSpace) {
   Project project = MakeProject(Standard::kPal);
   const std::size_t frame_span = static_cast<std::size_t>(SamplesPerFrame4fsc(Standard::kPal));
 
-  std::vector<double> y(frame_span, 0.0);
-  std::vector<double> c(frame_span, 0.0);
-  y[0] = -1000.0;
-  y[1] = 2000.0;
+  std::vector<SampleFixed> y(frame_span, MillivoltsToSampleFixed(0.0));
+  std::vector<SampleFixed> c(frame_span, MillivoltsToSampleFixed(0.0));
+  y[0] = MillivoltsToSampleFixed(-1000.0);
+  y[1] = MillivoltsToSampleFixed(2000.0);
 
   const std::filesystem::path video_path =
       std::filesystem::temp_directory_path() / "videosynth_output_stage_clamp.composite";
@@ -251,8 +274,8 @@ TEST(OutputStageTest, RejectsInvalidOutputConstraints) {
   OutputStage output;
   Project project = MakeProject(Standard::kPal);
 
-  std::vector<double> y(16, 0.0);
-  std::vector<double> c(16, 0.0);
+  std::vector<SampleFixed> y(16, MillivoltsToSampleFixed(0.0));
+  std::vector<SampleFixed> c(16, MillivoltsToSampleFixed(0.0));
   std::vector<std::string> errors;
 
   const std::filesystem::path video_path =
@@ -268,10 +291,59 @@ TEST(OutputStageTest, RejectsInvalidOutputConstraints) {
   errors.clear();
   project.cvbs_presets.sample_encoding_preset = "RAW_S16_40M";
   const std::size_t frame_span = static_cast<std::size_t>(SamplesPerFrame4fsc(Standard::kPal));
-  y.assign(frame_span, 0.0);
-  c.assign(frame_span, 0.0);
+  y.assign(frame_span, MillivoltsToSampleFixed(0.0));
+  c.assign(frame_span, MillivoltsToSampleFixed(0.0));
   EXPECT_FALSE(output.Write(project, y, c, &errors));
   EXPECT_FALSE(errors.empty());
+}
+
+TEST(OutputStageTest, KeepsFixedPointQuantizationEquivalentToReferenceProfile) {
+  OutputStage output;
+  Project project = MakeProject(Standard::kPal);
+  const std::size_t frame_span = static_cast<std::size_t>(SamplesPerFrame4fsc(Standard::kPal));
+
+  std::vector<SampleFixed> y(frame_span, MillivoltsToSampleFixed(0.0));
+  std::vector<SampleFixed> c(frame_span, MillivoltsToSampleFixed(0.0));
+  constexpr std::size_t kWindowSamples = 4096;
+  ASSERT_LE(kWindowSamples, frame_span);
+
+  for (std::size_t i = 0; i < kWindowSamples; ++i) {
+    const double ramp = -900.0 + (2200.0 * static_cast<double>(i) / static_cast<double>(kWindowSamples - 1));
+    y[i] = MillivoltsToSampleFixed(ramp);
+    c[i] = MillivoltsToSampleFixed(75.0 * std::sin(static_cast<double>(i) * 0.17));
+  }
+
+  const std::filesystem::path video_path =
+      std::filesystem::temp_directory_path() / "videosynth_output_stage_fixed_equiv.composite";
+  const std::filesystem::path metadata_path =
+      std::filesystem::temp_directory_path() / "videosynth_output_stage_fixed_equiv.meta";
+  project.output.video_path = video_path.string();
+  project.output.metadata_path = metadata_path.string();
+  std::filesystem::remove(video_path);
+  std::filesystem::remove(metadata_path);
+
+  std::vector<std::string> errors;
+  ASSERT_TRUE(output.Write(project, y, c, &errors));
+
+  const std::vector<std::int16_t> samples = ReadSamples(video_path, kWindowSamples);
+  ASSERT_EQ(samples.size(), kWindowSamples);
+
+  int max_abs_delta = 0;
+  double sum_squared = 0.0;
+  for (std::size_t i = 0; i < kWindowSamples; ++i) {
+    const int expected = QuantizePalReferenceCode(SampleFixedToMillivolts(y[i] + c[i]));
+    const int observed = static_cast<int>(samples[i]);
+    const int delta = observed - expected;
+    max_abs_delta = std::max(max_abs_delta, std::abs(delta));
+    sum_squared += static_cast<double>(delta * delta);
+  }
+
+  const double rms_error = std::sqrt(sum_squared / static_cast<double>(kWindowSamples));
+  EXPECT_LE(max_abs_delta, 1);
+  EXPECT_LT(rms_error, 0.5);
+
+  std::filesystem::remove(video_path);
+  std::filesystem::remove(metadata_path);
 }
 
 }  // namespace

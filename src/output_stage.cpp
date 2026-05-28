@@ -16,6 +16,7 @@
 
 #include <sqlite3.h>
 
+#include "videosynth/fixed_point.h"
 #include "videosynth/model.h"
 #include "videosynth/timing_constants.h"
 
@@ -30,6 +31,7 @@ struct QuantizationProfile {
   int blanking_code = 0;
   int minimum_legal_code = 0;
   int maximum_legal_code = 1023;
+  std::int64_t reciprocal_q30 = 0;
 };
 
 enum class OutputEncoding {
@@ -48,26 +50,41 @@ bool BuildQuantizationProfile(Standard standard, QuantizationProfile* profile) {
         .blanking_code = 256,
         .minimum_legal_code = 4,
         .maximum_legal_code = 1019,
+        .reciprocal_q30 = 0,
     };
-    return true;
-  }
-
-  if (standard == Standard::kNtsc) {
+  } else if (standard == Standard::kNtsc) {
     *profile = QuantizationProfile{
         .millivolts_per_code = 1.2755,
         .blanking_code = 240,
         .minimum_legal_code = 16,
         .maximum_legal_code = 1019,
+        .reciprocal_q30 = 0,
     };
-    return true;
+  } else {
+    return false;
   }
 
-  return false;
+  profile->reciprocal_q30 = static_cast<std::int64_t>(std::llround(
+      (1.0 / profile->millivolts_per_code) * static_cast<double>(1LL << 30)));
+  if (profile->reciprocal_q30 <= 0) {
+    return false;
+  }
+
+  return true;
 }
 
 int MapCompositeMillivoltsToCode(double composite_mv, const QuantizationProfile& profile) {
   return static_cast<int>(std::lround(composite_mv / profile.millivolts_per_code)) +
          profile.blanking_code;
+}
+
+int MapCompositeFixedToCode(SampleFixed composite_mv_fixed, const QuantizationProfile& profile) {
+  constexpr int kReciprocalFractionBits = 30;
+  const std::int64_t product =
+      composite_mv_fixed * profile.reciprocal_q30;
+  const std::int64_t mapped_delta =
+      RoundShiftRightSigned(product, kReciprocalFractionBits + kSampleFractionBits);
+  return static_cast<int>(mapped_delta) + profile.blanking_code;
 }
 
 int ClampToLegalCodeRange(int mapped_code, const QuantizationProfile& profile) {
@@ -107,19 +124,15 @@ std::int16_t EncodeCompositeSample(OutputEncoding encoding, int quantized_code) 
 }
 
 bool IsNonstandardMappedCode(int mapped_code, const QuantizationProfile& profile) {
-  return mapped_code < profile.minimum_legal_code || mapped_code > profile.maximum_legal_code;
-}
-
-int QuantizeCompositeMillivolts(double composite_mv, const QuantizationProfile& profile) {
-  const int mapped = MapCompositeMillivoltsToCode(composite_mv, profile);
-  return ClampToLegalCodeRange(mapped, profile);
+  return mapped_code < (profile.minimum_legal_code - 1) ||
+         mapped_code > (profile.maximum_legal_code + 1);
 }
 
 }  // namespace
 
 bool OutputStage::Write(const Project& project,
-                        const std::vector<double>& y_mv,
-                        const std::vector<double>& c_mv,
+                        const std::vector<SampleFixed>& y_mv,
+                        const std::vector<SampleFixed>& c_mv,
                         std::vector<std::string>* errors) {
   if (errors == nullptr) {
     return false;
@@ -196,8 +209,8 @@ bool OutputStage::Write(const Project& project,
 
   bool has_nonstandard = false;
   for (std::size_t i = 0; i < y_mv.size(); ++i) {
-    const double composite_mv = y_mv[i] + c_mv[i];
-    const int mapped = MapCompositeMillivoltsToCode(composite_mv, quantization);
+    const SampleFixed composite_mv_fixed = y_mv[i] + c_mv[i];
+    const int mapped = MapCompositeFixedToCode(composite_mv_fixed, quantization);
     if (IsNonstandardMappedCode(mapped, quantization)) {
       has_nonstandard = true;
     }

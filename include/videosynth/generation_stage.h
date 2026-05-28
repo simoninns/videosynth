@@ -18,8 +18,8 @@ class GenerationStage final : public IGenerationStage {
     explicit GenerationStage(ILogger* logger = nullptr);
 
   bool Generate(const Project& project,
-                std::vector<double>* out_y_mv,
-                std::vector<double>* out_c_mv,
+                std::vector<SampleFixed>* out_y_mv,
+                std::vector<SampleFixed>* out_c_mv,
                 std::vector<std::string>* errors) override;
 
  private:
