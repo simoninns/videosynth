@@ -15,10 +15,15 @@ namespace videosynth {
 
 class OutputStage final : public IOutputStage {
  public:
+    explicit OutputStage(ILogger* logger = nullptr);
+
   bool Write(const Project& project,
              const std::vector<double>& y_mv,
              const std::vector<double>& c_mv,
              std::vector<std::string>* errors) override;
+
+ private:
+    ILogger* logger_;
 };
 
 }  // namespace videosynth

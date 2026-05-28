@@ -380,12 +380,19 @@ bool PalInvertVAxisForLine(std::size_t frame_index, const LineTimingPrimitive& l
 
 }  // namespace
 
+GenerationStage::GenerationStage(ILogger* logger) : logger_(logger) {}
+
 bool GenerationStage::Generate(const Project& project,
                                std::vector<double>* out_y_mv,
                                std::vector<double>* out_c_mv,
                                std::vector<std::string>* errors) {
   if (out_y_mv == nullptr || out_c_mv == nullptr || errors == nullptr) {
     return false;
+  }
+
+  if (logger_ != nullptr) {
+    logger_->Debug("Generating frame buffers for " + std::to_string(project.sections.size()) +
+                   " section(s).");
   }
 
   const TimingConstants timing = GetTimingConstants(project.cvbs_presets.video_standard_preset);
@@ -436,6 +443,10 @@ bool GenerationStage::Generate(const Project& project,
   const std::size_t frame_count = frame_sections.size();
     const std::size_t sample_count = frame_count * static_cast<std::size_t>(frame_samples);
 
+  if (logger_ != nullptr) {
+    logger_->Debug("Built frame schedule for " + std::to_string(frame_count) + " frame(s).");
+  }
+
   const int active_window_start =
       std::max(0, std::min(active.active_window_start_samples, max_line_samples - 1));
   const int active_window_end =
@@ -452,6 +463,12 @@ bool GenerationStage::Generate(const Project& project,
     if (section == nullptr) {
       errors->push_back("Internal generation error: null section in frame schedule.");
       return false;
+    }
+
+    if (logger_ != nullptr) {
+      logger_->Trace("Generating frame " + std::to_string(frame_index + 1) + " of " +
+                     std::to_string(frame_count) + " from section '" + section->name +
+                     "' (" + section->type + ").");
     }
 
     FrameSourceImage source_frame;
@@ -614,6 +631,10 @@ bool GenerationStage::Generate(const Project& project,
             encoded_line_chroma[static_cast<std::size_t>(x_sample)];
       }
     }
+  }
+
+  if (logger_ != nullptr) {
+    logger_->Info("Generated " + std::to_string(frame_count) + " frame(s) of signal data.");
   }
 
   return true;

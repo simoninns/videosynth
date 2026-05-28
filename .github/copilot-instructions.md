@@ -14,6 +14,13 @@
 - Prefer interface-based dependency inversion and constructor injection.
 - Keep test names behavior-focused and explicit.
 
+## Logging Requirements
+- Use `info` for normal lifecycle messages, successful stage transitions, validation summaries, and other user-facing status output.
+- Use `debug` for configuration details, branch decisions, resolved paths, and other troubleshooting information that is helpful during development but not needed in normal runs.
+- Use `trace` for very detailed internal diagnostics such as per-frame, per-line, or per-sample state, tight loops, and intermediate values that are only useful when investigating low-level behavior.
+- Prefer the least verbose level that still explains the behavior being logged; do not promote routine status messages to `debug` or `trace`.
+- Keep log text concise and action-oriented so the same message can be understood in console output and file logs.
+
 ## Source File Header Requirements
 - All C++ source and header files must include an SPDX-style header at the top of the file.
 - Use this structure:

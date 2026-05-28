@@ -21,6 +21,8 @@
 
 namespace videosynth {
 
+OutputStage::OutputStage(ILogger* logger) : logger_(logger) {}
+
 namespace {
 
 struct QuantizationProfile {
@@ -102,6 +104,11 @@ bool OutputStage::Write(const Project& project,
     return false;
   }
 
+  if (logger_ != nullptr) {
+    logger_->Debug("Preparing to write output files: video='" + project.output.video_path +
+                   "', metadata='" + project.output.metadata_path + "'.");
+  }
+
   const std::string& output_path = project.output.video_path;
   const std::string& metadata_path = project.output.metadata_path;
 
@@ -155,6 +162,10 @@ bool OutputStage::Write(const Project& project,
     return false;
   }
 
+  if (logger_ != nullptr) {
+    logger_->Trace("Opened output video file for writing: " + output_path);
+  }
+
   std::size_t clipped_low_count = 0;
   std::size_t clipped_high_count = 0;
   for (std::size_t i = 0; i < y_mv.size(); ++i) {
@@ -194,6 +205,10 @@ bool OutputStage::Write(const Project& project,
       sqlite3_close(db);
     }
     return false;
+  }
+
+  if (logger_ != nullptr) {
+    logger_->Trace("Opened metadata database for writing: " + metadata_path);
   }
 
   // Set pragma for CVBS spec compliance (user_version = 7)
@@ -313,6 +328,10 @@ bool OutputStage::Write(const Project& project,
 
   sqlite3_finalize(insert_stmt);
   sqlite3_close(db);
+
+  if (logger_ != nullptr) {
+    logger_->Info("Wrote " + std::to_string(frame_count) + " frame(s) to output files.");
+  }
 
   return true;
 }

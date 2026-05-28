@@ -20,7 +20,8 @@ namespace videosynth {
 struct RunOptions {
   std::string project_path;
   bool validate_only = false;
-  bool verbose = false;
+  std::string log_level = "info";
+  std::string log_file;
 };
 
 class ILogger {
@@ -29,6 +30,7 @@ class ILogger {
   virtual void Info(const std::string& message) = 0;
   virtual void Error(const std::string& message) = 0;
   virtual void Debug(const std::string& message) = 0;
+  virtual void Trace(const std::string& message) = 0;
 };
 
 class IProjectParser {

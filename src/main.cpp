@@ -19,6 +19,20 @@
 
 namespace {
 
+bool IsValidLogLevel(const std::string& log_level) {
+  return log_level == "info" || log_level == "debug" || log_level == "trace";
+}
+
+videosynth::LogLevel ParseLogLevel(const std::string& log_level) {
+  if (log_level == "debug") {
+    return videosynth::LogLevel::kDebug;
+  }
+  if (log_level == "trace") {
+    return videosynth::LogLevel::kTrace;
+  }
+  return videosynth::LogLevel::kInfo;
+}
+
 void PrintUsage() {
   std::cout << "Usage:\n"
             << "  videosynth --project <path> [options]\n"
@@ -27,7 +41,8 @@ void PrintUsage() {
             << "  --project   Path to YAML project file (required).\n"
             << "  Output paths are read from project YAML under output.video_path and output.metadata_path.\n"
             << "  --validate  Validate only; do not generate output.\n"
-            << "  --verbose   Enable debug logging.\n";
+            << "  --log-level <level>  Set log level: info, debug, or trace.\n"
+            << "  --log-file <filename>  Write logs to a file as well as stderr.\n";
 }
 
 }  // namespace
@@ -42,12 +57,19 @@ int main(int argc, char** argv) {
       options.project_path = argv[++i];
     } else if (arg == "--validate") {
       options.validate_only = true;
-    } else if (arg == "--verbose") {
-      options.verbose = true;
+    } else if (arg == "--log-level" && i + 1 < argc) {
+      options.log_level = argv[++i];
+    } else if (arg == "--log-file" && i + 1 < argc) {
+      options.log_file = argv[++i];
     } else {
       PrintUsage();
       return 2;
     }
+  }
+
+  if (!IsValidLogLevel(options.log_level)) {
+    PrintUsage();
+    return 2;
   }
 
   if (options.project_path.empty()) {
@@ -55,11 +77,16 @@ int main(int argc, char** argv) {
     return 2;
   }
 
-  videosynth::YamlProjectParser parser;
-  videosynth::ProjectValidator validator;
-  videosynth::GenerationStage generation;
-  videosynth::OutputStage output;
-  videosynth::SpdlogLogger logger(options.verbose);
+  videosynth::SpdlogLogger logger(ParseLogLevel(options.log_level), options.log_file);
+  logger.Debug("Logging configured at level '" + options.log_level + "'.");
+  if (!options.log_file.empty()) {
+    logger.Debug("Log file enabled: " + options.log_file);
+  }
+
+  videosynth::YamlProjectParser parser(&logger);
+  videosynth::ProjectValidator validator(nullptr, &logger);
+  videosynth::GenerationStage generation(&logger);
+  videosynth::OutputStage output(&logger);
 
   videosynth::VideoSynthPipeline pipeline(&parser, &validator, &generation, &output, &logger);
   return pipeline.Run(options) ? 0 : 1;

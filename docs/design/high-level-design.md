@@ -1532,7 +1532,8 @@ videosynth --project project.yaml [options]
 | ------------ | ------------------------------------------------- | ----------- |
 | `--project`  | Path to the YAML project file (required).         | -           |
 | `--validate` | Validate the YAML file without generating output. | `false`     |
-| `--verbose`  | Enable verbose logging.                           | `false`     |
+| `--log-level <level>` | Set the log level to `info`, `debug`, or `trace`. | `info` |
+| `--log-file <filename>` | Write log output to the specified file in addition to the console. | none |
 
 Output paths are configured in YAML under `output.video_path` and `output.metadata_path`.
 
@@ -1547,6 +1548,9 @@ videosynth --project pal_test.yaml
 
 # Validate a project file without generating output
 videosynth --project ntsc_test.yaml --validate
+
+# Generate with debug logging and a log file
+videosynth --project pal_test.yaml --log-level debug --log-file out/videosynth.log
 ```
 
 ---

@@ -17,7 +17,12 @@ namespace videosynth {
 
 class YamlProjectParser final : public IProjectParser {
  public:
+  explicit YamlProjectParser(ILogger* logger = nullptr);
+
   ParseResult ParseFile(const std::string& path) override;
+
+ private:
+  ILogger* logger_;
 };
 
 }  // namespace videosynth

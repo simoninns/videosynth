@@ -15,12 +15,14 @@ namespace videosynth {
 
 class ProjectValidator final : public IProjectValidator {
  public:
-  explicit ProjectValidator(IProgressiveSourceProbe* progressive_source_probe = nullptr);
+  explicit ProjectValidator(IProgressiveSourceProbe* progressive_source_probe = nullptr,
+                            ILogger* logger = nullptr);
 
   ValidationResult Validate(const Project& project) override;
 
  private:
   IProgressiveSourceProbe* progressive_source_probe_;
+  ILogger* logger_;
 };
 
 }  // namespace videosynth

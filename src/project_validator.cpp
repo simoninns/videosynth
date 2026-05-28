@@ -136,12 +136,18 @@ bool RasterMatchesStandard(int width, int height, videosynth::Standard standard)
 
 namespace videosynth {
 
-ProjectValidator::ProjectValidator(IProgressiveSourceProbe* progressive_source_probe)
-    : progressive_source_probe_(progressive_source_probe) {}
+ProjectValidator::ProjectValidator(IProgressiveSourceProbe* progressive_source_probe,
+                                   ILogger* logger)
+    : progressive_source_probe_(progressive_source_probe), logger_(logger) {}
 
 ValidationResult ProjectValidator::Validate(const Project& project) {
   ValidationResult result;
   result.is_valid = true;
+
+  if (logger_ != nullptr) {
+    logger_->Debug("Validating project with " + std::to_string(project.sections.size()) +
+                   " section(s).");
+  }
 
   if (project.cvbs_presets.video_standard_preset == Standard::kUnknown) {
     result.is_valid = false;
@@ -194,6 +200,10 @@ ValidationResult ProjectValidator::Validate(const Project& project) {
   }
 
   for (const Section& section : project.sections) {
+    if (logger_ != nullptr) {
+      logger_->Trace("Validating section '" + section.name + "' of type '" + section.type + "'.");
+    }
+
     if (section.type == "software_generated") {
       if (section.pattern.empty()) {
         result.is_valid = false;
@@ -310,6 +320,10 @@ ValidationResult ProjectValidator::Validate(const Project& project) {
     result.errors.push_back(
         "Section validation error: section type must be 'software_generated' or 'progressive'.");
     break;
+  }
+
+  if (logger_ != nullptr && result.is_valid) {
+    logger_->Debug("Project validation completed successfully.");
   }
 
   return result;

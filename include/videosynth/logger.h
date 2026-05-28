@@ -19,13 +19,20 @@
 
 namespace videosynth {
 
+enum class LogLevel {
+  kInfo,
+  kDebug,
+  kTrace,
+};
+
 class SpdlogLogger final : public ILogger {
  public:
-  explicit SpdlogLogger(bool verbose);
+  SpdlogLogger(LogLevel level, const std::string& log_file);
 
   void Info(const std::string& message) override;
   void Error(const std::string& message) override;
   void Debug(const std::string& message) override;
+  void Trace(const std::string& message) override;
 
  private:
   std::shared_ptr<spdlog::logger> logger_;

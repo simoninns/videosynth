@@ -32,7 +32,7 @@ failures=0
 for project in "${projects[@]}"; do
   rel_project="${project#$repo_root/}"
   echo "Running $rel_project"
-  if "$binary" --project "$project" "$@"; then
+  if "$binary" --project "$project" --log-level debug "$@"; then
     echo "PASS  $rel_project"
   else
     echo "FAIL  $rel_project" >&2

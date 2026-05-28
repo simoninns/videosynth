@@ -70,10 +70,13 @@ class MockLogger final : public ILogger {
  public:
   std::vector<std::string> infos;
   std::vector<std::string> errors;
+  std::vector<std::string> debugs;
+  std::vector<std::string> traces;
 
   void Info(const std::string& message) override { infos.push_back(message); }
   void Error(const std::string& message) override { errors.push_back(message); }
-  void Debug(const std::string&) override {}
+  void Debug(const std::string& message) override { debugs.push_back(message); }
+  void Trace(const std::string& message) override { traces.push_back(message); }
 };
 
 Project MakeProject() {
