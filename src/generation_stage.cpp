@@ -26,6 +26,7 @@ namespace videosynth {
 namespace {
 
 constexpr double kPi = 3.14159265358979323846;
+constexpr double kQuarterWaveRad = kPi / 2.0;
 
 struct ActiveRasterGeometry {
   int first_active_line_field1 = 0;
@@ -427,7 +428,6 @@ bool GenerationStage::Generate(const Project& project,
   const int max_line_samples = MaxLineSamples(line_sample_counts);
   const std::vector<LineTimingPrimitive> lines =
       BuildFrameTimingPrimitives(project.cvbs_presets.video_standard_preset);
-  const double subcarrier_hz = timing.sample_rate_4fsc_hz / 4.0;
   const double burst_amplitude_mv = 150.0;
   const int burst_start = BurstStartSamples(timing.sample_rate_4fsc_hz);
   const int burst_end = BurstEndSamples(timing.sample_rate_4fsc_hz);
@@ -560,20 +560,28 @@ bool GenerationStage::Generate(const Project& project,
         const double burst_phase_rad =
           is_pal ? PalBurstPhaseRadForLine(frame_index, line) : line.burst_phase_rad;
 
-        if (burst_enabled) {
+      if (burst_enabled) {
         const int burst_sample_start =
             std::min(line_base + burst_start, line_end > 0 ? line_end - 1 : line_base);
         const int burst_sample_end = std::min(line_base + burst_end, line_end);
         const int burst_width_samples = burst_sample_end - burst_sample_start;
+
+        double burst_sin = std::sin((kQuarterWaveRad * static_cast<double>(burst_sample_start)) +
+                                    burst_phase_rad);
+        double burst_cos = std::cos((kQuarterWaveRad * static_cast<double>(burst_sample_start)) +
+                                    burst_phase_rad);
 
         for (int i = burst_sample_start; i < burst_sample_end; ++i) {
           const int relative_index = i - burst_sample_start;
           const double envelope = ShapedGateEnvelope(relative_index,
                                burst_width_samples,
                                burst_rise_samples);
-          const double t = static_cast<double>(i) / timing.sample_rate_4fsc_hz;
-          (*out_c_mv)[i] =
-            burst_amplitude_mv * envelope * std::sin((2.0 * kPi * subcarrier_hz * t) + burst_phase_rad);
+          (*out_c_mv)[i] = burst_amplitude_mv * envelope * burst_sin;
+
+          const double next_sin = burst_cos;
+          const double next_cos = -burst_sin;
+          burst_sin = next_sin;
+          burst_cos = next_cos;
         }
       }
 
@@ -590,10 +598,20 @@ bool GenerationStage::Generate(const Project& project,
       }
 
       std::fill(line_source_samples.begin(), line_source_samples.end(), YCbCr444Pixel{});
-      std::fill(carrier_phases_rad.begin(), carrier_phases_rad.end(), 0.0);
       std::fill(active_sample_indices.begin(), active_sample_indices.end(), line_base);
 
       const bool invert_pal_v_axis = is_pal && PalInvertVAxisForLine(frame_index, line);
+      const int active_window_line_start = line_base + active_window_start;
+      // SMPTE 170M-2004 Section 10 defines active chroma with burst+180 deg
+      // reference for NTSC.
+      const double phase_offset =
+          (project.cvbs_presets.video_standard_preset == Standard::kNtsc) ? (line.burst_phase_rad + kPi) : 0.0;
+      const double phase_start =
+          (kQuarterWaveRad * static_cast<double>(active_window_line_start)) + phase_offset;
+      for (int x_sample = 0; x_sample < active_window_samples; ++x_sample) {
+        carrier_phases_rad[static_cast<std::size_t>(x_sample)] =
+            phase_start + (kQuarterWaveRad * static_cast<double>(x_sample));
+      }
 
       for (int x_sample = 0; x_sample < active_window_samples; ++x_sample) {
         const int sample_index = line_base + active_window_start + x_sample;
@@ -637,18 +655,6 @@ bool GenerationStage::Generate(const Project& project,
         if ((*out_y_mv)[sample_index] >= levels.blanking_mv) {
           (*out_y_mv)[sample_index] = LumaMillivoltsFromCode(pixel.y, levels);
         }
-
-        const double t = static_cast<double>(sample_index) / timing.sample_rate_4fsc_hz;
-        double carrier_phase = 0.0;
-        if (project.cvbs_presets.video_standard_preset == Standard::kNtsc) {
-          carrier_phase = (2.0 * kPi * subcarrier_hz * t) + line.burst_phase_rad;
-          // SMPTE 170M-2004 Section 10 defines wt using burst+180 deg as the
-          // active chroma phase reference.
-          carrier_phase += kPi;
-        } else {
-          carrier_phase = (2.0 * kPi * subcarrier_hz * t);
-        }
-        carrier_phases_rad[sample_slot] = carrier_phase;
       }
 
       chroma_encoder->EncodeLine(line_source_samples, carrier_phases_rad, &encoded_line_chroma);

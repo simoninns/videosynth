@@ -67,9 +67,72 @@ std::vector<double> DesignLowPassKernel(double cutoff_hz, double sample_rate_hz,
   return kernel;
 }
 
+template <std::size_t kTapCount>
+void ApplyFixedTapFir(const std::vector<double>& input,
+                      const std::vector<double>& kernel,
+                      std::vector<double>* output,
+                      std::vector<double>* padded_workspace) {
+  if (output == nullptr) {
+    throw std::invalid_argument("Output FIR buffer pointer must not be null");
+  }
+  if (padded_workspace == nullptr) {
+    throw std::invalid_argument("FIR workspace pointer must not be null");
+  }
+  if (kernel.size() != kTapCount) {
+    throw std::invalid_argument("Unexpected fixed-tap kernel size");
+  }
+
+  if (input.empty()) {
+    output->clear();
+    padded_workspace->clear();
+    return;
+  }
+
+  constexpr std::size_t kHalfWidth = kTapCount / 2;
+  const std::size_t input_size = input.size();
+
+  padded_workspace->resize(input_size + (2 * kHalfWidth));
+  std::fill_n(padded_workspace->begin(), kHalfWidth, input.front());
+  std::copy(input.begin(), input.end(), padded_workspace->begin() + static_cast<std::ptrdiff_t>(kHalfWidth));
+  std::fill(padded_workspace->begin() + static_cast<std::ptrdiff_t>(kHalfWidth + input_size),
+            padded_workspace->end(),
+            input.back());
+
+  output->assign(input_size, 0.0);
+  const double* kernel_data = kernel.data();
+  const double* padded_data = padded_workspace->data();
+
+  for (std::size_t index = 0; index < input_size; ++index) {
+    const double* sample = padded_data + index;
+    double sum = 0.0;
+
+    std::size_t tap = 0;
+    for (; tap + 3 < kTapCount; tap += 4) {
+      sum += (sample[tap] * kernel_data[tap]) + (sample[tap + 1] * kernel_data[tap + 1]) +
+             (sample[tap + 2] * kernel_data[tap + 2]) + (sample[tap + 3] * kernel_data[tap + 3]);
+    }
+    for (; tap < kTapCount; ++tap) {
+      sum += sample[tap] * kernel_data[tap];
+    }
+    (*output)[index] = sum;
+  }
+}
+
 void ApplyFirFilter(const std::vector<double>& input,
                     const std::vector<double>& kernel,
-                    std::vector<double>* output) {
+                    std::vector<double>* output,
+                    std::vector<double>* padded_workspace) {
+  if (kernel.size() == static_cast<std::size_t>(kPalFilterTaps)) {
+    ApplyFixedTapFir<static_cast<std::size_t>(kPalFilterTaps)>(
+        input, kernel, output, padded_workspace);
+    return;
+  }
+  if (kernel.size() == static_cast<std::size_t>(kNtscFilterTaps)) {
+    ApplyFixedTapFir<static_cast<std::size_t>(kNtscFilterTaps)>(
+        input, kernel, output, padded_workspace);
+    return;
+  }
+
   if (output == nullptr) {
     throw std::invalid_argument("Output FIR buffer pointer must not be null");
   }
@@ -90,6 +153,52 @@ void ApplyFirFilter(const std::vector<double>& input,
       sum += input[static_cast<std::size_t>(clamped_index)] * kernel[static_cast<std::size_t>(tap)];
     }
     (*output)[index] = sum;
+  }
+}
+
+bool IsQuarterWaveStep(double phase_step) {
+  constexpr double kQuarterWave = kPi / 2.0;
+  constexpr double kTolerance = 1e-9;
+  const double wrapped = std::remainder(phase_step - kQuarterWave, 2.0 * kPi);
+  return std::fabs(wrapped) <= kTolerance;
+}
+
+void ModulateQuadrature(const std::vector<double>& axis_sin,
+                        const std::vector<double>& axis_cos,
+                        const std::vector<double>& carrier_phases_rad,
+                        std::vector<double>* out_chroma_mv) {
+  if (out_chroma_mv == nullptr) {
+    throw std::invalid_argument("Output chroma line pointer must not be null");
+  }
+
+  out_chroma_mv->assign(carrier_phases_rad.size(), 0.0);
+  if (carrier_phases_rad.empty()) {
+    return;
+  }
+
+  const bool fast_quarter_wave =
+      carrier_phases_rad.size() < 2 || IsQuarterWaveStep(carrier_phases_rad[1] - carrier_phases_rad[0]);
+
+  if (!fast_quarter_wave) {
+    for (std::size_t index = 0; index < carrier_phases_rad.size(); ++index) {
+      const double phase = carrier_phases_rad[index];
+      (*out_chroma_mv)[index] =
+          kCompositeChromaScaleMillivolts *
+          ((axis_sin[index] * std::sin(phase)) + (axis_cos[index] * std::cos(phase)));
+    }
+    return;
+  }
+
+  double sin_phase = std::sin(carrier_phases_rad.front());
+  double cos_phase = std::cos(carrier_phases_rad.front());
+  for (std::size_t index = 0; index < carrier_phases_rad.size(); ++index) {
+    (*out_chroma_mv)[index] =
+        kCompositeChromaScaleMillivolts * ((axis_sin[index] * sin_phase) + (axis_cos[index] * cos_phase));
+
+    const double next_sin = cos_phase;
+    const double next_cos = -sin_phase;
+    sin_phase = next_sin;
+    cos_phase = next_cos;
   }
 }
 
@@ -141,24 +250,19 @@ void PalChromaEncoder::EncodeLine(const std::vector<YCbCr444Pixel>& source_sampl
 
   ExtractCbAxis(source_samples, &cb_axis_workspace_);
   ExtractCrAxis(source_samples, &cr_axis_workspace_);
-  ApplyFirFilter(cb_axis_workspace_, u_filter_taps_, &filtered_u_workspace_);
-  ApplyFirFilter(cr_axis_workspace_, v_filter_taps_, &filtered_v_workspace_);
+  ApplyFirFilter(cb_axis_workspace_, u_filter_taps_, &filtered_u_workspace_, &fir_pad_workspace_);
+  ApplyFirFilter(cr_axis_workspace_, v_filter_taps_, &filtered_v_workspace_, &fir_pad_workspace_);
 
-  out_chroma_mv->assign(source_samples.size(), 0.0);
-  for (std::size_t index = 0; index < source_samples.size(); ++index) {
-    // The high-level design requires PAL chroma bandlimiting before quadrature
-    // modulation. This encoder therefore low-passes the two colour-difference axes
-    // symmetrically to roughly 1.3 MHz, then modulates them using the same carrier
-    // phase sequence that drives burst generation. The timing model owns the line-
-    // by-line PAL phase alternation, matching the composite split described by
-    // ITU-R BT.470-6 Table 2 item 2.12 and ITU-R BT.1700 Annex 1 Part B.
-    // ITU-R BT.1700 Annex 1 Part B Table 1 item 10d defines PAL chroma as
-    // E'U * sin(wt) + E'V * cos(wt), with line-sequence V-sign handling owned
-    // by the timing model path in generation_stage.
-    (*out_chroma_mv)[index] = kCompositeChromaScaleMillivolts *
-                              ((filtered_u_workspace_[index] * std::sin(carrier_phases_rad[index])) +
-                               (filtered_v_workspace_[index] * std::cos(carrier_phases_rad[index])));
-  }
+  // The high-level design requires PAL chroma bandlimiting before quadrature
+  // modulation. This encoder therefore low-passes the two colour-difference axes
+  // symmetrically to roughly 1.3 MHz, then modulates them using the same carrier
+  // phase sequence that drives burst generation. The timing model owns the line-
+  // by-line PAL phase alternation, matching the composite split described by
+  // ITU-R BT.470-6 Table 2 item 2.12 and ITU-R BT.1700 Annex 1 Part B.
+  // ITU-R BT.1700 Annex 1 Part B Table 1 item 10d defines PAL chroma as
+  // E'U * sin(wt) + E'V * cos(wt), with line-sequence V-sign handling owned
+  // by the timing model path in generation_stage.
+  ModulateQuadrature(filtered_u_workspace_, filtered_v_workspace_, carrier_phases_rad, out_chroma_mv);
 }
 
 NtscChromaEncoder::NtscChromaEncoder(double sample_rate_hz)
@@ -172,18 +276,12 @@ void NtscChromaEncoder::EncodeLine(const std::vector<YCbCr444Pixel>& source_samp
 
   ExtractCbAxis(source_samples, &cb_axis_workspace_);
   ExtractCrAxis(source_samples, &cr_axis_workspace_);
-  ApplyFirFilter(cb_axis_workspace_, cb_filter_taps_, &filtered_cb_workspace_);
-  ApplyFirFilter(cr_axis_workspace_, cr_filter_taps_, &filtered_cr_workspace_);
+  ApplyFirFilter(cb_axis_workspace_, cb_filter_taps_, &filtered_cb_workspace_, &fir_pad_workspace_);
+  ApplyFirFilter(cr_axis_workspace_, cr_filter_taps_, &filtered_cr_workspace_, &fir_pad_workspace_);
 
-  out_chroma_mv->assign(source_samples.size(), 0.0);
-  for (std::size_t index = 0; index < source_samples.size(); ++index) {
-    // NTSC chroma is synthesized directly on the two colour-difference axes so
-    // bar-pattern saturation stays visually uniform in the composite envelope.
-    const double phase = carrier_phases_rad[index];
-    (*out_chroma_mv)[index] = kCompositeChromaScaleMillivolts *
-                              ((filtered_cb_workspace_[index] * std::sin(phase)) +
-                               (filtered_cr_workspace_[index] * std::cos(phase)));
-  }
+  // NTSC chroma is synthesized directly on the two colour-difference axes so
+  // bar-pattern saturation stays visually uniform in the composite envelope.
+  ModulateQuadrature(filtered_cb_workspace_, filtered_cr_workspace_, carrier_phases_rad, out_chroma_mv);
 }
 
 std::unique_ptr<IChromaEncoder> CreateChromaEncoder(Standard standard, double sample_rate_hz) {
