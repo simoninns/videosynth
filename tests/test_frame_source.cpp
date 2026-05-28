@@ -9,6 +9,8 @@
 
 #include <string>
 
+#include <filesystem>
+
 #include <gtest/gtest.h>
 
 #include "videosynth/frame_source.h"
@@ -193,6 +195,64 @@ TEST(FrameSourceTest, RejectsPalBarsPatternForNtsc) {
 
   EXPECT_FALSE(frame_source.GenerateFrame(
       "pal_ebu_colour_bars_100", Standard::kNtsc, &image, &error));
+  EXPECT_FALSE(error.empty());
+}
+
+TEST(FrameSourceTest, DecodesProgressivePalPngSource) {
+  ProgressiveFrameSource frame_source;
+  FrameSourceImage image;
+  std::string error;
+
+  Section section;
+  section.type = "progressive";
+  section.source =
+      (std::filesystem::path(VIDEOSYNTH_SOURCE_DIR) /
+       "resources/assets/720x576/stills/png/Color-Bars-Hori-Cont.png")
+          .string();
+
+  ASSERT_TRUE(frame_source.GenerateFrame(section, 0, Standard::kPal, &image, &error));
+  EXPECT_TRUE(error.empty());
+  EXPECT_EQ(image.width, 720);
+  EXPECT_EQ(image.height, 576);
+  EXPECT_EQ(image.active_x, 9);
+  EXPECT_EQ(image.active_width, 702);
+  EXPECT_NE(image.PixelAt(image.active_x, image.active_y).y, 64);
+}
+
+TEST(FrameSourceTest, DecodesProgressiveNtscPngSource) {
+  ProgressiveFrameSource frame_source;
+  FrameSourceImage image;
+  std::string error;
+
+  Section section;
+  section.type = "progressive";
+  section.source =
+      (std::filesystem::path(VIDEOSYNTH_SOURCE_DIR) /
+       "resources/assets/720x480/stills/png/Color-Bars-Hori-Cont.png")
+          .string();
+
+  ASSERT_TRUE(frame_source.GenerateFrame(section, 0, Standard::kNtsc, &image, &error));
+  EXPECT_TRUE(error.empty());
+  EXPECT_EQ(image.width, 720);
+  EXPECT_EQ(image.height, 480);
+  EXPECT_EQ(image.active_x, 4);
+  EXPECT_EQ(image.active_width, 711);
+  EXPECT_NE(image.PixelAt(image.active_x, image.active_y).y, 64);
+}
+
+TEST(FrameSourceTest, RejectsProgressivePngWithInvalidRaster) {
+  ProgressiveFrameSource frame_source;
+  FrameSourceImage image;
+  std::string error;
+
+  Section section;
+  section.type = "progressive";
+  section.source =
+      (std::filesystem::path(VIDEOSYNTH_SOURCE_DIR) /
+       "resources/doc-diagrams/DependencyInversionPattern.png")
+          .string();
+
+  EXPECT_FALSE(frame_source.GenerateFrame(section, 0, Standard::kPal, &image, &error));
   EXPECT_FALSE(error.empty());
 }
 

@@ -10,6 +10,7 @@ find_package(yaml-cpp REQUIRED)
 find_package(spdlog REQUIRED)
 find_package(GTest REQUIRED)
 find_package(SQLite3 REQUIRED)
+find_package(PNG REQUIRED)
 
 add_library(videosynth_core
     src/chroma_encoder.cpp
@@ -35,6 +36,7 @@ target_link_libraries(videosynth_core
         yaml-cpp
         spdlog::spdlog
         SQLite::SQLite3
+    PNG::PNG
 )
 
 add_executable(videosynth
@@ -58,6 +60,7 @@ add_executable(videosynth_tests
     tests/test_signal_shaping.cpp
     tests/test_signal_timing_model.cpp
     tests/test_project_validator.cpp
+    tests/test_yaml_project_parser.cpp
     tests/test_timing_constants.cpp
 )
 

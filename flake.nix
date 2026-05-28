@@ -27,6 +27,8 @@
             spdlog
             gtest
             sqlite
+            libpng
+            zlib
           ];
 
           cmakeFlags = [
@@ -54,6 +56,8 @@
             spdlog
             gtest
             sqlite
+            libpng
+            zlib
           ];
         };
       });

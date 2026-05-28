@@ -13,6 +13,7 @@
 #include <string>
 #include <vector>
 
+#include "videosynth/interfaces.h"
 #include "videosynth/model.h"
 
 namespace videosynth {
@@ -43,6 +44,23 @@ class TestPatternFrameSource {
                      Standard standard,
                      FrameSourceImage* out_image,
                      std::string* error) const;
+};
+
+class ProgressiveFrameSource final : public IProgressiveFrameProvider {
+ public:
+  bool SupportsSection(const Section& section) const;
+
+  bool GenerateFrame(const Section& section,
+                     int frame_index,
+                     Standard standard,
+                     FrameSourceImage* out_image,
+                     std::string* error) const override;
+
+ private:
+  mutable bool has_cached_png_frame_ = false;
+  mutable std::string cached_png_source_;
+  mutable Standard cached_png_standard_ = Standard::kUnknown;
+  mutable FrameSourceImage cached_png_frame_;
 };
 
 }  // namespace videosynth

@@ -73,7 +73,11 @@ struct Section {
   std::string name;
   std::string type;
   std::string pattern;
+  std::string source;
+  std::string source_pixel_format;
+  bool duration_frames_all = false;
   int duration_frames = 0;
+  int start_frame = 0;
 };
 
 struct OutputTargets {

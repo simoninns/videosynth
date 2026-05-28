@@ -185,7 +185,7 @@ For avoidance of doubt, the generator shall apply the following rules:
 
 - **NTSC active-picture line starts (1-indexed frame lines):** field 1 starts at line **22**; field 2 starts at line **284**. Line 21 (field-1 transition) and line 283 (field-2 transition) are not treated as full active-picture lines.
 - **PAL active-picture line starts (1-indexed frame lines):** field 1 starts at line **23**; field 2 starts at line **335**.
-- **Progressive-to-interlaced row mapping:** for a field-local active line index $n$ (starting at 0), field 1 samples source row $2n$ and field 2 samples source row $2n+1$.
+- **Progressive-to-interlaced row mapping:** for a field-local active line index $n$ (starting at 0), field 1 samples source row $2n+1$ and field 2 samples source row $2n$.
 
 Frame-source visible aperture contract:
 

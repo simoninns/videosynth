@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <cmath>
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include "videosynth/chroma_encoder.h"
@@ -112,28 +113,67 @@ ActiveRasterGeometry GetActiveRasterGeometry(Standard standard, double sample_ra
 }
 
 bool BuildFramePatternSchedule(const Project& project,
-                               const TestPatternFrameSource& frame_source,
-                               std::vector<std::string>* out_frame_patterns) {
-  if (out_frame_patterns == nullptr) {
+                               const TestPatternFrameSource& pattern_source,
+                               const ProgressiveFrameSource& progressive_source,
+                               std::vector<std::pair<const Section*, int>>* out_frame_sections,
+                               std::string* error) {
+  if (out_frame_sections == nullptr) {
     return false;
   }
 
-  out_frame_patterns->clear();
+  out_frame_sections->clear();
   for (const Section& section : project.sections) {
-    if (section.type != "software_generated") {
+    if (section.type == "software_generated") {
+      if (!pattern_source.SupportsPattern(section.pattern) || section.duration_frames <= 0 ||
+          section.duration_frames_all) {
+        if (error != nullptr) {
+          *error = "Unsupported or missing software-generated pattern section configuration.";
+        }
+        return false;
+      }
+
+      for (int i = 0; i < section.duration_frames; ++i) {
+        out_frame_sections->push_back(std::make_pair(&section, i));
+      }
       continue;
     }
 
-    if (!frame_source.SupportsPattern(section.pattern) || section.duration_frames <= 0) {
-      return false;
+    if (section.type == "progressive") {
+      if (!progressive_source.SupportsSection(section)) {
+        if (error != nullptr) {
+          *error = "Unsupported progressive source family in section schedule.";
+        }
+        return false;
+      }
+
+      if (section.duration_frames_all) {
+        if (error != nullptr) {
+          *error =
+              "Progressive sections using duration_frames='all' are not yet supported by generation.";
+        }
+        return false;
+      }
+
+      if (section.duration_frames <= 0) {
+        if (error != nullptr) {
+          *error = "Progressive sections must define duration_frames > 0 or 'all'.";
+        }
+        return false;
+      }
+
+      for (int i = 0; i < section.duration_frames; ++i) {
+        out_frame_sections->push_back(std::make_pair(&section, i + section.start_frame));
+      }
+      continue;
     }
 
-    for (int i = 0; i < section.duration_frames; ++i) {
-      out_frame_patterns->push_back(section.pattern);
+    if (error != nullptr) {
+      *error = "Unsupported section type in generation schedule.";
     }
+      return false;
   }
 
-  return !out_frame_patterns->empty();
+  return !out_frame_sections->empty();
 }
 
 int ActiveFrameLineIndex(const ActiveRasterGeometry& geometry,
@@ -371,33 +411,29 @@ bool GenerationStage::Generate(const Project& project,
                 timing.sample_rate_4fsc_hz);
   const ActiveRasterGeometry active =
       GetActiveRasterGeometry(project.cvbs_presets.video_standard_preset, timing.sample_rate_4fsc_hz);
-  const TestPatternFrameSource frame_source;
+    const TestPatternFrameSource pattern_source;
+    const ProgressiveFrameSource progressive_source;
   std::unique_ptr<IChromaEncoder> chroma_encoder =
       CreateChromaEncoder(project.cvbs_presets.video_standard_preset, timing.sample_rate_4fsc_hz);
-  std::vector<std::string> frame_patterns;
+    std::vector<std::pair<const Section*, int>> frame_sections;
 
   if (chroma_encoder == nullptr) {
     errors->push_back("Unsupported video standard for chroma encoding.");
     return false;
   }
 
-  if (!BuildFramePatternSchedule(project, frame_source, &frame_patterns)) {
+  std::string schedule_error;
+  if (!BuildFramePatternSchedule(project,
+                                 pattern_source,
+                                 progressive_source,
+                                 &frame_sections,
+                                 &schedule_error)) {
     errors->push_back(
-      "Unsupported or missing software-generated pattern. Supported patterns are "
-        "'pal_ebu_colour_bars_100', 'pal_ebu_colour_bars_75', "
-        "'pal_linear_grayscale_ramp_horizontal', 'pal_linear_grayscale_ramp_vertical', "
-        "'pal_luma_checkerboard_8x8', 'pal_luma_checkerboard_16x16', "
-        "'pal_full_field_black', 'pal_full_field_white', "
-        "'pal_pluge_5patch_near_black', 'pal_crosshatch_visible_area_grid', "
-        "'ntsc_smpte_170m_colour_bars_100', 'ntsc_smpte_170m_colour_bars_75', "
-        "'ntsc_linear_grayscale_ramp_horizontal', 'ntsc_linear_grayscale_ramp_vertical', "
-        "'ntsc_luma_checkerboard_8x8', 'ntsc_luma_checkerboard_16x16', "
-        "'ntsc_full_field_black', 'ntsc_full_field_white', "
-        "'ntsc_pluge_5patch_near_black', and 'ntsc_crosshatch_visible_area_grid'.");
+      schedule_error.empty() ? "Unable to build section frame schedule." : schedule_error);
     return false;
   }
 
-  const std::size_t frame_count = frame_patterns.size();
+  const std::size_t frame_count = frame_sections.size();
     const std::size_t sample_count = frame_count * static_cast<std::size_t>(frame_samples);
 
   const int active_window_start =
@@ -411,12 +447,30 @@ bool GenerationStage::Generate(const Project& project,
   out_c_mv->assign(sample_count, 0.0);
 
   for (std::size_t frame_index = 0; frame_index < frame_count; ++frame_index) {
+    const Section* section = frame_sections[frame_index].first;
+    const int source_frame_index = frame_sections[frame_index].second;
+    if (section == nullptr) {
+      errors->push_back("Internal generation error: null section in frame schedule.");
+      return false;
+    }
+
     FrameSourceImage source_frame;
     std::string frame_error;
-    if (!frame_source.GenerateFrame(frame_patterns[frame_index],
-                                    project.cvbs_presets.video_standard_preset,
-                                    &source_frame,
-                                    &frame_error)) {
+    bool generated = false;
+    if (section->type == "software_generated") {
+      generated = pattern_source.GenerateFrame(section->pattern,
+                                               project.cvbs_presets.video_standard_preset,
+                                               &source_frame,
+                                               &frame_error);
+    } else if (section->type == "progressive") {
+      generated = progressive_source.GenerateFrame(*section,
+                                                   source_frame_index,
+                                                   project.cvbs_presets.video_standard_preset,
+                                                   &source_frame,
+                                                   &frame_error);
+    }
+
+    if (!generated) {
       errors->push_back(frame_error.empty() ? "Unable to generate frame-based source data."
                                             : frame_error);
       return false;
@@ -509,12 +563,14 @@ bool GenerationStage::Generate(const Project& project,
                std::max(source_frame.active_x, pixel_x));
 
         // Map field lines onto progressive source rows by interleaving fields.
-        // Field 1 occupies even rows and field 2 occupies odd rows.
+        // Progressive imports use field-2-dominant row pairing, so field 1
+        // consumes odd rows and field 2 consumes even rows.
         const int field_line = active_y % active.active_lines_per_field;
+        const bool progressive_section = section->type == "progressive";
         const int source_row = source_frame.active_y +
-                   ((line.field_index_1based == 1)
-                  ? (2 * field_line)
-                  : (2 * field_line + 1));
+             ((line.field_index_1based == 1)
+            ? (2 * field_line + (progressive_section ? 1 : 0))
+            : (2 * field_line + (progressive_section ? 0 : 1)));
 
         if (pixel_x >= source_frame.width || source_row >= source_frame.height) {
           continue;

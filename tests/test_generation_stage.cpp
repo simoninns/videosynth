@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <filesystem>
 #include <set>
 #include <string>
 #include <utility>
@@ -52,6 +53,25 @@ Project MakeProject(Standard standard,
         .pattern = selected_pattern,
               .duration_frames = duration_frames});
   return project;
+}
+
+Project MakeProgressivePngProject(Standard standard, const std::string& source_path) {
+  Project project;
+  project.cvbs_presets.video_standard_preset = standard;
+  project.cvbs_presets.sample_encoding_preset = "CVBS_U10_4FSC";
+  project.cvbs_presets.signal_state_preset = "STANDARD_TBC_LOCKED";
+  project.sections.push_back(
+      Section{.name = "ProgressiveImport",
+              .type = "progressive",
+              .source = source_path,
+              .duration_frames = 1});
+  return project;
+}
+
+double LumaMillivoltsFromCodeForTest(int y_code, const SignalLevels& levels) {
+  const int clamped = std::max(48, std::min(940, y_code));
+  const double y_norm = static_cast<double>(clamped - 64) / 876.0;
+  return levels.black_mv + (y_norm * (levels.white_mv - levels.black_mv));
 }
 
 int ActiveWindowStartSamples(Standard standard, double sample_rate_hz) {
@@ -245,6 +265,22 @@ TEST(GenerationStageTimingTest, ProducesDeterministicSampleCounts) {
   EXPECT_EQ(ntsc.samples_per_line_4fsc, 910);
   EXPECT_EQ(y_ntsc.size(), static_cast<std::size_t>(SamplesPerFrame4fsc(Standard::kNtsc)));
   EXPECT_EQ(c_ntsc.size(), y_ntsc.size());
+}
+
+TEST(GenerationStageTimingTest, ReportsProgressiveSourceReadError) {
+  Project project = MakeProject(Standard::kPal);
+  project.sections[0].type = "progressive";
+  project.sections[0].pattern.clear();
+  project.sections[0].source = "fixture.png";
+  project.sections[0].duration_frames = 1;
+
+  GenerationStage generation;
+  std::vector<std::string> errors;
+  std::vector<double> y;
+  std::vector<double> c;
+
+  EXPECT_FALSE(generation.Generate(project, &y, &c, &errors));
+  ASSERT_FALSE(errors.empty());
 }
 
 TEST(GenerationStageTimingTest, BuildsDifferentPulseWidthsForEqualizingAndBroadPulses) {
@@ -900,6 +936,144 @@ TEST(GenerationStageChromaTest, PalBurstLockedDecodeRecoversStableHueAcrossLines
   EXPECT_NEAR(WrappedPhaseDeltaAbs(decoded_hues[0], decoded_hues[1]), 0.0, 0.15);
   EXPECT_NEAR(WrappedPhaseDeltaAbs(decoded_hues[1], decoded_hues[2]), 0.0, 0.15);
   EXPECT_NEAR(WrappedPhaseDeltaAbs(decoded_hues[2], decoded_hues[3]), 0.0, 0.15);
+}
+
+TEST(GenerationStageProgressiveTest, NtscPngUsesField2DominantRowPairing) {
+  const std::string source_path =
+      (std::filesystem::path(VIDEOSYNTH_SOURCE_DIR) /
+       "resources/assets/720x480/stills/png/Check-Gamma-Checker.png")
+          .string();
+
+  ProgressiveFrameSource progressive_source;
+  FrameSourceImage source_frame;
+  std::string source_error;
+  Section section;
+  section.type = "progressive";
+  section.source = source_path;
+  ASSERT_TRUE(
+      progressive_source.GenerateFrame(section, 0, Standard::kNtsc, &source_frame, &source_error));
+
+  const TimingConstants ntsc = GetTimingConstants(Standard::kNtsc);
+  const int active_start = ActiveWindowStartSamples(Standard::kNtsc, ntsc.sample_rate_4fsc_hz);
+  const int active_window_samples =
+      ActiveWindowEndSamples(Standard::kNtsc, ntsc.sample_rate_4fsc_hz) - active_start;
+
+  const int active_lines_per_field = 240;
+  int selected_field_line = -1;
+  int selected_x_sample = -1;
+  for (int field_line = 0; field_line < active_lines_per_field && selected_x_sample < 0; ++field_line) {
+    for (int x_sample = 0; x_sample < active_window_samples; ++x_sample) {
+      int pixel_x = source_frame.active_x + ((x_sample * source_frame.active_width) / active_window_samples);
+      pixel_x = std::min(source_frame.active_x + source_frame.active_width - 1,
+                         std::max(source_frame.active_x, pixel_x));
+      if (source_frame.PixelAt(pixel_x, source_frame.active_y + (2 * field_line)).y !=
+          source_frame.PixelAt(pixel_x, source_frame.active_y + (2 * field_line + 1)).y) {
+        selected_field_line = field_line;
+        selected_x_sample = x_sample;
+        break;
+      }
+    }
+  }
+  ASSERT_NE(selected_field_line, -1);
+  ASSERT_NE(selected_x_sample, -1);
+
+  int pixel_x = source_frame.active_x +
+                ((selected_x_sample * source_frame.active_width) / active_window_samples);
+  pixel_x = std::min(source_frame.active_x + source_frame.active_width - 1,
+                     std::max(source_frame.active_x, pixel_x));
+
+  GenerationStage generation;
+  std::vector<std::string> errors;
+  std::vector<double> y;
+  std::vector<double> c;
+  ASSERT_TRUE(generation.Generate(MakeProgressivePngProject(Standard::kNtsc, source_path),
+                                  &y,
+                                  &c,
+                                  &errors));
+
+  const SignalLevels levels = GetSignalLevels(Standard::kNtsc);
+    const int field1_line_start = ((22 + selected_field_line) - 1) * ntsc.samples_per_line_4fsc;
+    const int field2_line_start = ((284 + selected_field_line) - 1) * ntsc.samples_per_line_4fsc;
+  const int sample_offset = active_start + selected_x_sample;
+
+  const double expected_field1 = LumaMillivoltsFromCodeForTest(
+      source_frame.PixelAt(pixel_x, source_frame.active_y + (2 * selected_field_line + 1)).y,
+      levels);
+  const double expected_field2 = LumaMillivoltsFromCodeForTest(
+      source_frame.PixelAt(pixel_x, source_frame.active_y + (2 * selected_field_line)).y,
+      levels);
+
+  EXPECT_NEAR(y[static_cast<std::size_t>(field1_line_start + sample_offset)], expected_field1, 1.0);
+  EXPECT_NEAR(y[static_cast<std::size_t>(field2_line_start + sample_offset)], expected_field2, 1.0);
+}
+
+TEST(GenerationStageProgressiveTest, PalPngUsesField2DominantRowPairing) {
+  const std::string source_path =
+      (std::filesystem::path(VIDEOSYNTH_SOURCE_DIR) /
+       "resources/assets/720x576/stills/png/Check-Gamma-Checker.png")
+          .string();
+
+  ProgressiveFrameSource progressive_source;
+  FrameSourceImage source_frame;
+  std::string source_error;
+  Section section;
+  section.type = "progressive";
+  section.source = source_path;
+  ASSERT_TRUE(
+      progressive_source.GenerateFrame(section, 0, Standard::kPal, &source_frame, &source_error));
+
+  const TimingConstants pal = GetTimingConstants(Standard::kPal);
+  const int active_start = ActiveWindowStartSamples(Standard::kPal, pal.sample_rate_4fsc_hz);
+  const int active_window_samples =
+      ActiveWindowEndSamples(Standard::kPal, pal.sample_rate_4fsc_hz) - active_start;
+
+  const int active_lines_per_field = 288;
+  int selected_field_line = -1;
+  int selected_x_sample = -1;
+  for (int field_line = 0; field_line < active_lines_per_field && selected_x_sample < 0; ++field_line) {
+    for (int x_sample = 0; x_sample < active_window_samples; ++x_sample) {
+      int pixel_x = source_frame.active_x + ((x_sample * source_frame.active_width) / active_window_samples);
+      pixel_x = std::min(source_frame.active_x + source_frame.active_width - 1,
+                         std::max(source_frame.active_x, pixel_x));
+      if (source_frame.PixelAt(pixel_x, source_frame.active_y + (2 * field_line)).y !=
+          source_frame.PixelAt(pixel_x, source_frame.active_y + (2 * field_line + 1)).y) {
+        selected_field_line = field_line;
+        selected_x_sample = x_sample;
+        break;
+      }
+    }
+  }
+  ASSERT_NE(selected_field_line, -1);
+  ASSERT_NE(selected_x_sample, -1);
+
+  int pixel_x = source_frame.active_x +
+                ((selected_x_sample * source_frame.active_width) / active_window_samples);
+  pixel_x = std::min(source_frame.active_x + source_frame.active_width - 1,
+                     std::max(source_frame.active_x, pixel_x));
+
+  GenerationStage generation;
+  std::vector<std::string> errors;
+  std::vector<double> y;
+  std::vector<double> c;
+  ASSERT_TRUE(generation.Generate(MakeProgressivePngProject(Standard::kPal, source_path),
+                                  &y,
+                                  &c,
+                                  &errors));
+
+  const SignalLevels levels = GetSignalLevels(Standard::kPal);
+    const int field1_line_start = ((23 + selected_field_line) - 1) * pal.samples_per_line_4fsc;
+    const int field2_line_start = ((335 + selected_field_line) - 1) * pal.samples_per_line_4fsc;
+  const int sample_offset = active_start + selected_x_sample;
+
+  const double expected_field1 = LumaMillivoltsFromCodeForTest(
+      source_frame.PixelAt(pixel_x, source_frame.active_y + (2 * selected_field_line + 1)).y,
+      levels);
+  const double expected_field2 = LumaMillivoltsFromCodeForTest(
+      source_frame.PixelAt(pixel_x, source_frame.active_y + (2 * selected_field_line)).y,
+      levels);
+
+  EXPECT_NEAR(y[static_cast<std::size_t>(field1_line_start + sample_offset)], expected_field1, 1.0);
+  EXPECT_NEAR(y[static_cast<std::size_t>(field2_line_start + sample_offset)], expected_field2, 1.0);
 }
 
 }  // namespace

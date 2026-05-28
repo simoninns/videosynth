@@ -9,6 +9,9 @@
 
 #include <gtest/gtest.h>
 
+#include <filesystem>
+#include <fstream>
+
 #include "videosynth/project_validator.h"
 
 namespace videosynth {
@@ -27,6 +30,13 @@ Project MakeValidProject() {
           .pattern = "pal_ebu_colour_bars_100",
               .duration_frames = 1});
   return project;
+}
+
+std::string CreateTemporarySourceFile(const std::string& file_name) {
+  const std::filesystem::path path = std::filesystem::temp_directory_path() / file_name;
+  std::ofstream stream(path);
+  stream << "fixture";
+  return path.string();
 }
 
 TEST(ProjectValidatorTest, AcceptsMvpCompliantProject) {
@@ -82,6 +92,60 @@ TEST(ProjectValidatorTest, RejectsSubcarrierLockDisabled) {
 TEST(ProjectValidatorTest, RejectsNonSoftwareSections) {
   Project project = MakeValidProject();
   project.sections[0].type = "progressive";
+  project.sections[0].pattern.clear();
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_FALSE(result.is_valid);
+}
+
+TEST(ProjectValidatorTest, AcceptsProgressivePngSectionWithFixedDuration) {
+  Project project = MakeValidProject();
+  project.sections[0].type = "progressive";
+  project.sections[0].pattern.clear();
+  project.sections[0].source = CreateTemporarySourceFile("videosynth_progressive.png");
+  project.sections[0].duration_frames = 8;
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_TRUE(result.is_valid);
+  EXPECT_TRUE(result.errors.empty());
+
+  std::filesystem::remove(project.sections[0].source);
+}
+
+TEST(ProjectValidatorTest, RejectsProgressiveSectionWithoutSource) {
+  Project project = MakeValidProject();
+  project.sections[0].type = "progressive";
+  project.sections[0].pattern.clear();
+  project.sections[0].source.clear();
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_FALSE(result.is_valid);
+}
+
+TEST(ProjectValidatorTest, RejectsProgressiveRawWithoutPixelFormat) {
+  Project project = MakeValidProject();
+  project.sections[0].type = "progressive";
+  project.sections[0].pattern.clear();
+  project.sections[0].source = CreateTemporarySourceFile("videosynth_progressive.raw");
+  project.sections[0].source_pixel_format.clear();
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_FALSE(result.is_valid);
+
+  std::filesystem::remove(project.sections[0].source);
+}
+
+TEST(ProjectValidatorTest, RejectsSoftwareGeneratedAllDurationSemantics) {
+  Project project = MakeValidProject();
+  project.sections[0].duration_frames_all = true;
 
   ProjectValidator validator;
   const ValidationResult result = validator.Validate(project);

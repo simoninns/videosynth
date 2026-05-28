@@ -39,6 +39,42 @@ bool ValidateAllowedKeys(const YAML::Node& node,
   return errors->empty();
 }
 
+bool ParseDurationFrames(const YAML::Node& section_node,
+                         Section* section,
+                         std::vector<std::string>* errors) {
+  if (section == nullptr || errors == nullptr) {
+    return false;
+  }
+
+  if (!section_node["duration_frames"]) {
+    errors->push_back("section is missing required field: 'duration_frames'.");
+    return false;
+  }
+
+  const YAML::Node duration_node = section_node["duration_frames"];
+  if (!duration_node.IsScalar()) {
+    errors->push_back("section field 'duration_frames' must be a scalar integer or 'all'.");
+    return false;
+  }
+
+  const std::string scalar = duration_node.as<std::string>("");
+  if (scalar == "all") {
+    section->duration_frames_all = true;
+    section->duration_frames = 0;
+    return true;
+  }
+
+  try {
+    const int duration_frames = duration_node.as<int>();
+    section->duration_frames_all = false;
+    section->duration_frames = duration_frames;
+    return true;
+  } catch (const YAML::Exception&) {
+    errors->push_back("section field 'duration_frames' must be an integer or the string 'all'.");
+    return false;
+  }
+}
+
 }  // namespace
 
 ParseResult YamlProjectParser::ParseFile(const std::string& path) {
@@ -121,7 +157,8 @@ ParseResult YamlProjectParser::ParseFile(const std::string& path) {
       }
 
       const std::set<std::string> section_keys = {
-          "name", "type", "pattern", "duration_frames", "line_injections", "source", "start_frame"};
+          "name", "type", "pattern", "duration_frames", "line_injections", "source",
+          "source_pixel_format", "start_frame"};
       ValidateAllowedKeys(section_node, section_keys, "section", &result.errors);
       if (!result.errors.empty()) {
         return result;
@@ -131,7 +168,12 @@ ParseResult YamlProjectParser::ParseFile(const std::string& path) {
       section.name = section_node["name"].as<std::string>("");
       section.type = section_node["type"].as<std::string>("");
       section.pattern = section_node["pattern"].as<std::string>("");
-      section.duration_frames = section_node["duration_frames"].as<int>(0);
+      section.source = section_node["source"].as<std::string>("");
+      section.source_pixel_format = section_node["source_pixel_format"].as<std::string>("");
+      section.start_frame = section_node["start_frame"].as<int>(0);
+      if (!ParseDurationFrames(section_node, &section, &result.errors)) {
+        return result;
+      }
       result.project.sections.push_back(section);
     }
 
