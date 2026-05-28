@@ -197,7 +197,42 @@ The progressive source ingestion stage remains responsible for decoding and colo
 > - Y: 64–940 (black–white)
 > - Cb, Cr: 64–960 (midpoint 512)
 
-This is a hard interface contract. The chroma encoder assumes this representation unconditionally and does not perform any colour space conversion internally. The rationale for 4:4:4 (rather than 4:2:2) is that the encoder must apply its own standard-compliant bandlimiting filters to the chroma channels before quadrature modulation — PAL requires a ~1.3 MHz symmetric LPF on U and V, while NTSC requires asymmetric filtering of I (~1.3 MHz) and Q (~0.5 MHz) after a YCbCr→YIQ rotation. Receiving pre-subsampled chroma would prevent correct application of these filters, and would introduce chroma siting ambiguity that is incompatible with subcarrier-locked sampling at 4fsc.
+This is a hard interface contract. The chroma encoder assumes this representation unconditionally and does not perform any colour space conversion internally. The rationale for 4:4:4 (rather than 4:2:2) is that the encoder must apply its own standard-compliant bandlimiting filters to the chroma channels before quadrature modulation. In the current implementation, PAL applies a symmetric low-pass filter of approximately 1.3 MHz on U and V before modulation, and NTSC applies a symmetric low-pass filter of approximately 1.2 MHz on Cb and Cr before modulation. Receiving pre-subsampled chroma would prevent deterministic filtering at the encoder boundary and would introduce chroma siting ambiguity that is incompatible with subcarrier-locked sampling at 4fsc.
+
+### **PAL Chroma Encoding Model**
+
+The PAL chroma path in this specification is normative for the implementation and follows [ITU-R BT.1700](../analogue-video-specifications/docs/video_formats/BT-1700-E/BT-1700-E.md), Annex 1 Part B, Table 1 items 10d/10f/10h and Figure 8, plus [EBU Tech. 3280-E](../analogue-video-specifications/docs/video_formats/EBU-Tech-3280-E/EBU-Tech-3280-E.md) §1.1.1/§1.2.
+
+- PAL active chroma is synthesized as:
+
+$$
+E_M' = E_Y' + E_U'\sin(\omega t) + E_V'\cos(\omega t)
+$$
+
+- The PAL V-switch is applied by inverting the V axis on lines where the burst polarity sequence requires negative burst phase. This is sequence-aware and is not modeled as a simple global odd/even toggle.
+- PAL burst phase uses the BT.1700 sequence map (I/II/III/IV across colour fields) with nominal burst phases of $+135^\circ$ and $-135^\circ$ per Table 1 item 10f.
+- PAL burst suppression in the vertical interval follows BT.1700 Figure 8 (line windows for I/II/III/IV sequences).
+- PAL subcarrier phase progression is continuous across the full frame sample timeline (non-orthogonal 4fsc lattice per EBU Tech. 3280-E), and active-picture chroma uses the same sequence model as burst.
+
+### **NTSC Chroma Encoding Model**
+
+The NTSC chroma path in this specification is normative for the implementation and follows [SMPTE 170M-2004](../analogue-video-specifications/docs/video_formats/SMPTE-170M-2004/SMPTE-170M-2004.md) §8/§10/§13 together with [SMPTE 244M-2003](../analogue-video-specifications/docs/video_formats/SMPTE-244M-2003/SMPTE-244M-2003.md) §3.1/§4.1.1/§4.1.2.
+
+- NTSC active chroma is synthesized as:
+
+$$
+E_M' = E_Y' + E_{Cb}'\sin(\theta) + E_{Cr}'\cos(\theta)
+$$
+
+- In the implementation, the active-picture NTSC phase reference uses burst plus $180^\circ$ (SMPTE 170M §10 convention), i.e.:
+
+$$
+	heta = \omega t + \varphi_{\text{burst,line}} + \varphi_{\text{frame}} + \pi
+$$
+
+- Line-to-line NTSC burst phase alternates at 4fsc because 910 samples/line corresponds to a $\pi$ radian subcarrier phase advance per line (SMPTE 244M §4.1.1 interpretation in this model).
+- The NTSC colour sequence is modeled as a 2-frame SC-H progression using a frame phase offset of $0$ then $\pi$, repeating (SMPTE 170M field/frame color-sequence behavior).
+- In baseline mode, burst is present on horizontal lines and suppressed on equalizing/broad-sync lines; when NTSC laserdisc VBI burst mode is enabled, burst is additionally inserted on equalizing and broad-sync pulses per [IEC 60857](../analogue-video-specifications/docs/laserdisc/IEC-60857-1986-Laservision-NTSC/IEC-60857-1986-Laservision-NTSC.md) §9.1.2.
 
 **Test patterns** naturally produce values in this space directly.
 
@@ -1088,8 +1123,8 @@ For **HSync, VSync, and colour burst insertion**, refer to:
 1. **Horizontal Sync (HSync)**:
   - Insert a **4.7 µs pulse at 0V** at the start of each line.
   - Followed by **back porch (0.3V)** and **colour burst (2.25 µs, 0.3V p-p)**.
-  - **PAL**: Burst phase alternates **±135°** every line.
-  - **NTSC**: Burst phase is **0°** (fixed).
+  - **PAL**: Burst phase polarity follows the BT.1700 Table 1 item 10f sequence (I/II/III/IV over colour fields), with nominal **±135°** phase per line and sequence-dependent odd/even polarity assignment.
+  - **NTSC**: Burst phase follows continuous-subcarrier line progression (line-to-line $\pi$ alternation at 4fsc in the current implementation).
 2. **Vertical Sync (VSync)**:
   - **PAL**:
     - **Lines 623-625**: 5 broad pulses (2.5H each) with equalizing pulses.
@@ -1097,6 +1132,11 @@ For **HSync, VSync, and colour burst insertion**, refer to:
   - **NTSC**:
     - **Lines 523-525**: 3 broad pulses (3H each) with equalizing pulses.
     - **Equalizing Pulses**: 6 pulses before/after VSync (2.3 µs each).
+  - **PAL burst blanking during vertical interval**: burst suppression windows follow BT.1700 Figure 8 sequence windows:
+    - Sequence I: lines 623–625 and 1–6.
+    - Sequence II: lines 310–318.
+    - Sequence III: lines 622–625 and 1–5.
+    - Sequence IV: lines 311–319.
 3. **PAL Laserdisc Pilot Burst** (when `pal_laserdisc_pilot_burst: true`):
   - Superimpose a continuous **3.75 MHz** ($240 \times f_H$) sinusoidal burst on the **sync pulse level** of every horizontal and vertical sync pulse in every line (see [IEC 60856](../analogue-video-specifications/docs/laserdisc/IEC-60856-1986-Laservision-PAL/IEC-60856-1986-Laservision-PAL.md) §9.1.2).
   - Amplitude: $\frac{6}{7} \times 700\ \text{mV} = 600\ \text{mV p-p}$, centred on sync tip (−300 mV), so the burst swings between **−600 mV and 0 mV**.

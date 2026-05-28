@@ -142,6 +142,76 @@ double BurstWindowMean(const std::vector<double>& c_mv,
   return count > 0 ? (sum / static_cast<double>(count)) : 0.0;
 }
 
+double EstimateBurstPhaseRad(const std::vector<double>& c_mv,
+                             int line_1based,
+                             const TimingConstants& timing) {
+  constexpr double kPi = 3.14159265358979323846;
+  const int line_start = (line_1based - 1) * timing.samples_per_line_4fsc;
+  const int start = line_start + BurstStartSamples(timing.sample_rate_4fsc_hz);
+  const int end = line_start + BurstEndSamples(timing.sample_rate_4fsc_hz);
+  const double subcarrier_hz = timing.sample_rate_4fsc_hz / 4.0;
+
+  double sum_sin = 0.0;
+  double sum_cos = 0.0;
+  for (int i = start; i < end; ++i) {
+    const double wt = 2.0 * kPi * subcarrier_hz *
+                      (static_cast<double>(i) / timing.sample_rate_4fsc_hz);
+    sum_sin += c_mv[static_cast<std::size_t>(i)] * std::sin(wt);
+    sum_cos += c_mv[static_cast<std::size_t>(i)] * std::cos(wt);
+  }
+  return std::atan2(sum_cos, sum_sin);
+}
+
+double WrappedPhaseDeltaAbs(double a_rad, double b_rad) {
+  constexpr double kPi = 3.14159265358979323846;
+  const double two_pi = 2.0 * kPi;
+  double delta = std::fmod((b_rad - a_rad) + kPi, two_pi);
+  if (delta < 0.0) {
+    delta += two_pi;
+  }
+  delta -= kPi;
+  return std::abs(delta);
+}
+
+struct DecodedPalChromaSample {
+  double u = 0.0;
+  double v_switched = 0.0;
+  double burst_phase_rad = 0.0;
+};
+
+DecodedPalChromaSample DecodePalChromaWindowBurstLocked(const std::vector<double>& c_mv,
+                                                         int line_1based,
+                                                         int sample_start,
+                                                         int sample_end,
+                                                         const TimingConstants& timing) {
+  constexpr double kPi = 3.14159265358979323846;
+  constexpr double kCompositeChromaScaleMillivolts = 350.0;
+
+  const double burst_phase_rad = EstimateBurstPhaseRad(c_mv, line_1based, timing);
+  const double burst_nominal = burst_phase_rad >= 0.0 ? (3.0 * kPi / 4.0) : (-3.0 * kPi / 4.0);
+  const double phase_correction = burst_phase_rad - burst_nominal;
+  const double subcarrier_hz = timing.sample_rate_4fsc_hz / 4.0;
+
+  double sum_u = 0.0;
+  double sum_v = 0.0;
+  int count = 0;
+  for (int sample_index = sample_start; sample_index < sample_end; ++sample_index) {
+    const double t = static_cast<double>(sample_index) / timing.sample_rate_4fsc_hz;
+    const double wt = (2.0 * kPi * subcarrier_hz * t) + phase_correction;
+    const double chroma_norm = c_mv[static_cast<std::size_t>(sample_index)] /
+                               kCompositeChromaScaleMillivolts;
+    sum_u += chroma_norm * std::sin(wt);
+    sum_v += chroma_norm * std::cos(wt);
+    ++count;
+  }
+
+  return DecodedPalChromaSample{
+      .u = count > 0 ? (2.0 * sum_u / static_cast<double>(count)) : 0.0,
+      .v_switched = count > 0 ? (2.0 * sum_v / static_cast<double>(count)) : 0.0,
+      .burst_phase_rad = burst_phase_rad,
+  };
+}
+
 TEST(GenerationStageTimingTest, ProducesDeterministicSampleCounts) {
   GenerationStage generation;
   std::vector<std::string> errors;
@@ -300,7 +370,8 @@ TEST(GenerationStageTimingTest, EmitsBurstOnHorizontalButNotBroadSyncLines) {
   EXPECT_LT(broad_line_mean, 1e-9);
 }
 
-TEST(GenerationStageTimingTest, UsesContinuousSubcarrierAlternatingBurstPhaseForNtscAndPal) {
+TEST(GenerationStageTimingTest, UsesContinuousSubcarrierBurstPhaseProgressionForNtscAndPal) {
+  constexpr double kPi = 3.14159265358979323846;
   GenerationStage generation;
   std::vector<std::string> errors;
 
@@ -320,9 +391,59 @@ TEST(GenerationStageTimingTest, UsesContinuousSubcarrierAlternatingBurstPhaseFor
   ASSERT_TRUE(generation.Generate(MakeProject(Standard::kPal), &y_pal, &c_pal, &errors));
   const TimingConstants pal = GetTimingConstants(Standard::kPal);
 
-  const double pal_line20 = BurstWindowMean(c_pal, 20, pal);
-  const double pal_line21 = BurstWindowMean(c_pal, 21, pal);
-  EXPECT_LT(pal_line20 * pal_line21, 0.0);
+  // PAL 625 has 283.75 subcarrier cycles/line and V-switching, so adjacent
+  // burst-bearing lines carry a quarter-cycle phase delta in this model.
+  const double pal_line20_phase = EstimateBurstPhaseRad(c_pal, 20, pal);
+  const double pal_line21_phase = EstimateBurstPhaseRad(c_pal, 21, pal);
+  const double pal_line22_phase = EstimateBurstPhaseRad(c_pal, 22, pal);
+  EXPECT_NEAR(WrappedPhaseDeltaAbs(pal_line20_phase, pal_line21_phase), kPi / 2.0, 0.25);
+  EXPECT_NEAR(WrappedPhaseDeltaAbs(pal_line21_phase, pal_line22_phase), kPi / 2.0, 0.25);
+}
+
+TEST(GenerationStageTimingTest, PalBurstPhaseFollowsFourFrameSequence) {
+  constexpr double kPi = 3.14159265358979323846;
+  GenerationStage generation;
+  std::vector<std::string> errors;
+  std::vector<double> y_pal;
+  std::vector<double> c_pal;
+  ASSERT_TRUE(generation.Generate(MakeProject(Standard::kPal, "ebu_colour_bars", 4),
+                                  &y_pal,
+                                  &c_pal,
+                                  &errors));
+
+  const TimingConstants pal = GetTimingConstants(Standard::kPal);
+  const int frame_samples = SamplesPerFrame4fsc(Standard::kPal);
+  const int line_1based = 23;
+  const int burst_offset_start = BurstStartSamples(pal.sample_rate_4fsc_hz);
+  const int burst_offset_end = BurstEndSamples(pal.sample_rate_4fsc_hz);
+  const double subcarrier_hz = pal.sample_rate_4fsc_hz / 4.0;
+
+  auto phase_for_frame = [&](int frame_index) {
+    const int frame_base = frame_index * frame_samples;
+    const int line_start = frame_base + ((line_1based - 1) * pal.samples_per_line_4fsc);
+    const int start = line_start + burst_offset_start;
+    const int end = line_start + burst_offset_end;
+    double sum_sin = 0.0;
+    double sum_cos = 0.0;
+    for (int i = start; i < end; ++i) {
+      const double wt = 2.0 * kPi * subcarrier_hz *
+                        (static_cast<double>(i) / pal.sample_rate_4fsc_hz);
+      sum_sin += c_pal[static_cast<std::size_t>(i)] * std::sin(wt);
+      sum_cos += c_pal[static_cast<std::size_t>(i)] * std::cos(wt);
+    }
+    return std::atan2(sum_cos, sum_sin);
+  };
+
+  const double p1 = phase_for_frame(0);
+  const double p2 = phase_for_frame(1);
+  const double p3 = phase_for_frame(2);
+  const double p4 = phase_for_frame(3);
+
+  // PAL colour framing is a 4-frame sequence. The same frame line two frames
+  // later is half a cycle away, and the per-frame step is quarter-cycle.
+  EXPECT_NEAR(WrappedPhaseDeltaAbs(p1, p2), kPi / 2.0, 0.25);
+  EXPECT_NEAR(WrappedPhaseDeltaAbs(p2, p3), kPi / 2.0, 0.25);
+  EXPECT_NEAR(WrappedPhaseDeltaAbs(p3, p4), kPi / 2.0, 0.25);
 }
 
 TEST(GenerationStageTimingTest, ShapesSyncEdgesInsteadOfHardSteps) {
@@ -597,6 +718,60 @@ TEST(GenerationStageChromaTest, ActiveChromaUsesNtscBurstPlus180ReferenceModel) 
   const int active_sample = active_window_samples / 3;
   const int generated_sample_index = line_start + active_start + active_sample;
   EXPECT_NEAR(c[generated_sample_index], expected_active_line[static_cast<std::size_t>(active_sample)], 1e-9);
+}
+
+TEST(GenerationStageChromaTest, PalBurstLockedDecodeRecoversStableHueAcrossLines) {
+  GenerationStage generation;
+  std::vector<std::string> errors;
+  std::vector<double> y;
+  std::vector<double> c;
+
+  ASSERT_TRUE(generation.Generate(MakeProject(Standard::kPal, "ebu_colour_bars"), &y, &c, &errors));
+
+  const TimingConstants pal = GetTimingConstants(Standard::kPal);
+  TestPatternFrameSource frame_source;
+  FrameSourceImage source_frame;
+  std::string frame_error;
+  ASSERT_TRUE(frame_source.GenerateFrame("ebu_colour_bars", Standard::kPal, &source_frame, &frame_error));
+
+  // Use a window centered in the second EBU colour bar, away from transitions.
+  const int active_start = 177;
+  const int x_sample = 180;
+  const int sample_window = 64;
+  const int sample_window_start = x_sample - (sample_window / 2);
+  const int sample_window_end = sample_window_start + sample_window;
+
+  const int pixel_x = std::min(source_frame.width - 1,
+                               std::max(0, (x_sample * source_frame.width) / 948));
+  const YCbCr444Pixel source_pixel = source_frame.PixelAt(pixel_x, 0);
+  const double expected_u = static_cast<double>(source_pixel.cb - 512) / 448.0;
+  const double expected_v = static_cast<double>(source_pixel.cr - 512) / 448.0;
+  const double expected_hue = std::atan2(expected_v, expected_u);
+
+  std::vector<double> decoded_hues;
+  decoded_hues.reserve(4);
+
+  for (int line_1based = 23; line_1based <= 26; ++line_1based) {
+    const int line_start = (line_1based - 1) * pal.samples_per_line_4fsc;
+    const DecodedPalChromaSample decoded = DecodePalChromaWindowBurstLocked(
+        c,
+        line_1based,
+        line_start + active_start + sample_window_start,
+        line_start + active_start + sample_window_end,
+        pal);
+
+    const double v_unswitched = decoded.burst_phase_rad < 0.0 ? -decoded.v_switched : decoded.v_switched;
+    const double decoded_hue = std::atan2(v_unswitched, decoded.u);
+    const double decoded_magnitude = std::sqrt((decoded.u * decoded.u) + (v_unswitched * v_unswitched));
+
+    decoded_hues.push_back(decoded_hue);
+    EXPECT_GT(decoded_magnitude, 0.08);
+    EXPECT_NEAR(WrappedPhaseDeltaAbs(decoded_hue, expected_hue), 0.0, 0.25);
+  }
+
+  EXPECT_NEAR(WrappedPhaseDeltaAbs(decoded_hues[0], decoded_hues[1]), 0.0, 0.15);
+  EXPECT_NEAR(WrappedPhaseDeltaAbs(decoded_hues[1], decoded_hues[2]), 0.0, 0.15);
+  EXPECT_NEAR(WrappedPhaseDeltaAbs(decoded_hues[2], decoded_hues[3]), 0.0, 0.15);
 }
 
 }  // namespace

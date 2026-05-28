@@ -139,9 +139,12 @@ void PalChromaEncoder::EncodeLine(const std::vector<YCbCr444Pixel>& source_sampl
     // phase sequence that drives burst generation. The timing model owns the line-
     // by-line PAL phase alternation, matching the composite split described by
     // ITU-R BT.470-6 Table 2 item 2.12 and ITU-R BT.1700 Annex 1 Part B.
+    // ITU-R BT.1700 Annex 1 Part B Table 1 item 10d defines PAL chroma as
+    // E'U * sin(wt) + E'V * cos(wt), with line-sequence V-sign handling owned
+    // by the timing model path in generation_stage.
     (*out_chroma_mv)[index] = kCompositeChromaScaleMillivolts *
-                              ((filtered_v[index] * std::sin(carrier_phases_rad[index])) +
-                               (filtered_u[index] * std::cos(carrier_phases_rad[index])));
+                              ((filtered_u[index] * std::sin(carrier_phases_rad[index])) +
+                               (filtered_v[index] * std::cos(carrier_phases_rad[index])));
   }
 }
 

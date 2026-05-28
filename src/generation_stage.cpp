@@ -289,6 +289,52 @@ double BurstEnvelopeRiseTimeSeconds(Standard standard) {
   return 300.0e-9;
 }
 
+int PalBurstSequenceIndex(std::size_t frame_index, int field_index_1based) {
+  // ITU-R BT.1700 Table 1 item 10f defines sequence I/II/III/IV repeating
+  // over colour fields. A frame contains two consecutive fields.
+  return static_cast<int>(((2U * frame_index) + static_cast<std::size_t>(field_index_1based - 1)) % 4U);
+}
+
+bool PalBurstPositiveOnOddLine(int burst_sequence_index) {
+  // Sequence I/II: odd lines use +135 deg, even lines use -135 deg.
+  // Sequence III/IV: odd lines use -135 deg, even lines use +135 deg.
+  return burst_sequence_index == 0 || burst_sequence_index == 1;
+}
+
+bool IsPalBurstBlankedLine(int line_1based, int burst_sequence_index) {
+  // ITU-R BT.1700 Figure 8 burst blanking windows for 625 PAL.
+  if (burst_sequence_index == 0) {
+    return line_1based >= 623 || line_1based <= 6;
+  }
+  if (burst_sequence_index == 1) {
+    return line_1based >= 310 && line_1based <= 318;
+  }
+  if (burst_sequence_index == 2) {
+    return line_1based >= 622 || line_1based <= 5;
+  }
+  return line_1based >= 311 && line_1based <= 319;
+}
+
+double PalBurstPhaseRadForLine(std::size_t frame_index, const LineTimingPrimitive& line) {
+  const int burst_sequence_index = PalBurstSequenceIndex(frame_index, line.field_index_1based);
+  const bool line_is_odd = (line.line_number_1based % 2) == 1;
+  const bool positive_on_odd = PalBurstPositiveOnOddLine(burst_sequence_index);
+  const bool positive_phase = line_is_odd ? positive_on_odd : !positive_on_odd;
+  return positive_phase ? (3.0 * kPi / 4.0) : (-3.0 * kPi / 4.0);
+}
+
+bool PalBurstEnabledForLine(std::size_t frame_index, const LineTimingPrimitive& line) {
+  if (line.sync_pulse_kind != SyncPulseKind::kHorizontal) {
+    return false;
+  }
+  const int burst_sequence_index = PalBurstSequenceIndex(frame_index, line.field_index_1based);
+  return !IsPalBurstBlankedLine(line.line_number_1based, burst_sequence_index);
+}
+
+bool PalInvertVAxisForLine(std::size_t frame_index, const LineTimingPrimitive& line) {
+  return PalBurstPhaseRadForLine(frame_index, line) < 0.0;
+}
+
 }  // namespace
 
 bool GenerationStage::Generate(const Project& project,
@@ -366,6 +412,7 @@ bool GenerationStage::Generate(const Project& project,
 
     // NTSC: 525 lines/frame × π rad/line = 525π ≡ π (mod 2π) accumulated per frame,
     // producing the 2-frame SC-H phase pattern defined in SMPTE 170M.
+    // PAL uses per-line/field sequence handling below.
     const double frame_phase_offset =
         (project.cvbs_presets.video_standard_preset == Standard::kNtsc)
             ? static_cast<double>(frame_index % 2) * kPi
@@ -404,21 +451,28 @@ bool GenerationStage::Generate(const Project& project,
         }
       }
 
-      if (line.burst_enabled) {
+        const bool is_pal = project.cvbs_presets.video_standard_preset == Standard::kPal;
+        const bool burst_enabled =
+          is_pal ? PalBurstEnabledForLine(frame_index, line) : line.burst_enabled;
+        const double burst_phase_rad =
+          is_pal ? PalBurstPhaseRadForLine(frame_index, line) : (line.burst_phase_rad + frame_phase_offset);
+
+        if (burst_enabled) {
         const int burst_sample_start =
             std::min(line_base + burst_start, line_end > 0 ? line_end - 1 : line_base);
         const int burst_sample_end = std::min(line_base + burst_end, line_end);
         const int burst_width_samples = burst_sample_end - burst_sample_start;
-        const double phase = line.burst_phase_rad + frame_phase_offset;
 
         for (int i = burst_sample_start; i < burst_sample_end; ++i) {
           const int relative_index = i - burst_sample_start;
           const double envelope = ShapedGateEnvelope(relative_index,
                                burst_width_samples,
                                burst_rise_samples);
-          const double t = static_cast<double>(i - line_base) / timing.sample_rate_4fsc_hz;
+          const double t = is_pal
+                     ? (static_cast<double>(i) / timing.sample_rate_4fsc_hz)
+                     : (static_cast<double>(i - line_base) / timing.sample_rate_4fsc_hz);
           (*out_c_mv)[i] =
-              burst_amplitude_mv * envelope * std::sin((2.0 * kPi * subcarrier_hz * t) + phase);
+            burst_amplitude_mv * envelope * std::sin((2.0 * kPi * subcarrier_hz * t) + burst_phase_rad);
         }
       }
 
@@ -438,6 +492,8 @@ bool GenerationStage::Generate(const Project& project,
           static_cast<std::size_t>(active_window_samples), YCbCr444Pixel{});
       std::vector<double> carrier_phases_rad(static_cast<std::size_t>(active_window_samples), 0.0);
       std::vector<int> active_sample_indices(static_cast<std::size_t>(active_window_samples), line_base);
+
+      const bool invert_pal_v_axis = is_pal && PalInvertVAxisForLine(frame_index, line);
 
       for (int x_sample = 0; x_sample < active_window_samples; ++x_sample) {
         const int sample_index = line_base + active_window_start + x_sample;
@@ -466,10 +522,9 @@ bool GenerationStage::Generate(const Project& project,
         active_sample_indices[sample_slot] = sample_index;
         line_source_samples[sample_slot] = pixel;
 
-        if (project.cvbs_presets.video_standard_preset == Standard::kPal &&
-            (line.line_number_1based % 2) == 0) {
-          // PAL phase alternation is implemented by inverting the V axis on
-          // successive lines while keeping U unchanged.
+        if (invert_pal_v_axis) {
+          // ITU-R BT.1700 Table 1 item 10f: PAL V-axis switching follows the
+          // burst-sequence-dependent odd/even polarity map.
           line_source_samples[sample_slot].cr =
               static_cast<std::int16_t>(InvertCenteredChromaCode(pixel.cr));
         }
@@ -480,7 +535,9 @@ bool GenerationStage::Generate(const Project& project,
           (*out_y_mv)[sample_index] = LumaMillivoltsFromCode(pixel.y, levels);
         }
 
-        const double t = static_cast<double>(sample_index - line_base) / timing.sample_rate_4fsc_hz;
+        const double t = is_pal
+                             ? (static_cast<double>(sample_index) / timing.sample_rate_4fsc_hz)
+                             : (static_cast<double>(sample_index - line_base) / timing.sample_rate_4fsc_hz);
         double carrier_phase = 0.0;
         if (project.cvbs_presets.video_standard_preset == Standard::kNtsc) {
           carrier_phase = (2.0 * kPi * subcarrier_hz * t) + line.burst_phase_rad + frame_phase_offset;
@@ -488,9 +545,7 @@ bool GenerationStage::Generate(const Project& project,
           // active chroma phase reference.
           carrier_phase += kPi;
         } else {
-          // For PAL, use the subcarrier's +U-axis reference and perform the
-          // mandated line-alternation by flipping V on even lines.
-          carrier_phase = (2.0 * kPi * subcarrier_hz * t) + (kPi / 4.0);
+          carrier_phase = (2.0 * kPi * subcarrier_hz * t);
         }
         carrier_phases_rad[sample_slot] = carrier_phase;
       }

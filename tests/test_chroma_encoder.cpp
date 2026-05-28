@@ -76,7 +76,7 @@ TEST(ChromaEncoderTest, NeutralChromaProducesNoSubcarrierEnergy) {
   }
 }
 
-TEST(ChromaEncoderTest, PalAndNtscProduceDifferentQuadratureMixForStaticCbCrInputs) {
+TEST(ChromaEncoderTest, PalAndNtscUseConsistentQuadratureMappingForStaticCbCrInputs) {
   const std::vector<YCbCr444Pixel> saturated_line(64, YCbCr444Pixel{.y = 512, .cb = 800, .cr = 300});
   const auto pal = CreateChromaEncoder(Standard::kPal, GetTimingConstants(Standard::kPal).sample_rate_4fsc_hz);
   const auto ntsc = CreateChromaEncoder(Standard::kNtsc, GetTimingConstants(Standard::kNtsc).sample_rate_4fsc_hz);
@@ -89,7 +89,7 @@ TEST(ChromaEncoderTest, PalAndNtscProduceDifferentQuadratureMixForStaticCbCrInpu
   pal->EncodeLine(saturated_line, ConstantPhaseLine(saturated_line.size(), 0.75), &pal_output);
   ntsc->EncodeLine(saturated_line, ConstantPhaseLine(saturated_line.size(), 0.75), &ntsc_output);
 
-  EXPECT_GT(std::abs(pal_output[32] - ntsc_output[32]), 1.0);
+  EXPECT_NEAR(pal_output[32], ntsc_output[32], 1e-9);
 }
 
 TEST(ChromaEncoderTest, PalLowPassAttenuatesHighFrequencyChromaMoreThanLowFrequency) {
@@ -103,8 +103,9 @@ TEST(ChromaEncoderTest, PalLowPassAttenuatesHighFrequencyChromaMoreThanLowFreque
   const auto low_line = MakeCbSinusoidLine(256, 0.35, 0.01);
   const auto high_line = MakeCbSinusoidLine(256, 0.35, 0.18);
 
-  pal->EncodeLine(low_line, ConstantPhaseLine(low_line.size(), 0.0), &low_output);
-  pal->EncodeLine(high_line, ConstantPhaseLine(high_line.size(), 0.0), &high_output);
+  // PAL uses E'U on the sin() axis, so use +90 deg carrier phase to isolate Cb.
+  pal->EncodeLine(low_line, ConstantPhaseLine(low_line.size(), M_PI / 2.0), &low_output);
+  pal->EncodeLine(high_line, ConstantPhaseLine(high_line.size(), M_PI / 2.0), &high_output);
 
   EXPECT_GT(RootMeanSquare(low_output), RootMeanSquare(high_output) * 3.0);
 }
