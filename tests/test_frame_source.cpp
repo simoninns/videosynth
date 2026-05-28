@@ -10,6 +10,8 @@
 #include <string>
 
 #include <filesystem>
+#include <fstream>
+#include <vector>
 
 #include <gtest/gtest.h>
 
@@ -254,6 +256,99 @@ TEST(FrameSourceTest, RejectsProgressivePngWithInvalidRaster) {
 
   EXPECT_FALSE(frame_source.GenerateFrame(section, 0, Standard::kPal, &image, &error));
   EXPECT_FALSE(error.empty());
+}
+
+TEST(FrameSourceTest, DecodesProgressivePalRaw422Source) {
+  ProgressiveFrameSource frame_source;
+  FrameSourceImage image;
+  std::string error;
+
+  Section section;
+  section.type = "progressive";
+  section.source_pixel_format = "yuv422p10le";
+  section.source =
+      (std::filesystem::path(VIDEOSYNTH_SOURCE_DIR) /
+       "resources/assets/720x576/stills/raw/100_BARS.raw")
+          .string();
+
+  ASSERT_TRUE(frame_source.GenerateFrame(section, 0, Standard::kPal, &image, &error));
+  EXPECT_TRUE(error.empty());
+  EXPECT_EQ(image.width, 720);
+  EXPECT_EQ(image.height, 576);
+  EXPECT_EQ(image.active_x, 9);
+  EXPECT_EQ(image.active_width, 702);
+
+  std::ifstream stream(section.source, std::ios::binary);
+  ASSERT_TRUE(stream.is_open());
+  std::uint16_t components[4] = {0, 0, 0, 0};
+  stream.read(reinterpret_cast<char*>(components), sizeof(components));
+  ASSERT_TRUE(stream.good());
+
+  const std::uint16_t expected_y0 = static_cast<std::uint16_t>(components[0] & 0x03FFu);
+  const std::uint16_t expected_cb = static_cast<std::uint16_t>(components[1] & 0x03FFu);
+  const std::uint16_t expected_y1 = static_cast<std::uint16_t>(components[2] & 0x03FFu);
+  const std::uint16_t expected_cr = static_cast<std::uint16_t>(components[3] & 0x03FFu);
+
+  const YCbCr444Pixel& px0 = image.PixelAt(0, 0);
+  const YCbCr444Pixel& px1 = image.PixelAt(1, 0);
+  EXPECT_EQ(px0.y, expected_y0);
+  EXPECT_EQ(px0.cb, expected_cb);
+  EXPECT_EQ(px0.cr, expected_cr);
+  EXPECT_EQ(px1.y, expected_y1);
+  EXPECT_EQ(px1.cb, expected_cb);
+  EXPECT_EQ(px1.cr, expected_cr);
+}
+
+TEST(FrameSourceTest, RejectsProgressiveRawUnsupportedPixelFormat) {
+  const std::filesystem::path raw_path =
+  std::filesystem::temp_directory_path() / "videosynth_ntsc_raw_unsupported_format_test.raw";
+  {
+    std::ofstream stream(raw_path, std::ios::binary);
+    ASSERT_TRUE(stream.is_open());
+    std::uint16_t sample = 512;
+    stream.write(reinterpret_cast<const char*>(&sample), sizeof(sample));
+  }
+
+  ProgressiveFrameSource frame_source;
+  FrameSourceImage image;
+  std::string error;
+
+  Section section;
+  section.type = "progressive";
+  section.source = raw_path.string();
+  section.source_pixel_format = "yuv420p10le";
+
+  EXPECT_FALSE(frame_source.GenerateFrame(section, 0, Standard::kNtsc, &image, &error));
+  EXPECT_FALSE(error.empty());
+
+  std::filesystem::remove(raw_path);
+}
+
+TEST(FrameSourceTest, RejectsProgressiveRawWithInvalidByteSize) {
+  const std::filesystem::path raw_path =
+      std::filesystem::temp_directory_path() / "videosynth_invalid_raw_size_test.raw";
+  {
+    std::ofstream stream(raw_path, std::ios::binary);
+    ASSERT_TRUE(stream.is_open());
+    std::uint16_t sample = 123;
+    for (int i = 0; i < 100; ++i) {
+      stream.write(reinterpret_cast<const char*>(&sample), sizeof(sample));
+    }
+  }
+
+  ProgressiveFrameSource frame_source;
+  FrameSourceImage image;
+  std::string error;
+
+  Section section;
+  section.type = "progressive";
+  section.source = raw_path.string();
+  section.source_pixel_format = "yuv422p10le";
+
+  EXPECT_FALSE(frame_source.GenerateFrame(section, 0, Standard::kPal, &image, &error));
+  EXPECT_FALSE(error.empty());
+
+  std::filesystem::remove(raw_path);
 }
 
 }  // namespace

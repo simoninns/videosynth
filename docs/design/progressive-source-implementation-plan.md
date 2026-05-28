@@ -47,7 +47,8 @@ Supported profiles to implement:
 - MOV: ProRes 422 family (`yuv422p10le`) and ProRes 4444 (`yuv444p10le`) in MOV, with source frame rate matching selected output standard (`25 fps` PAL, `30000/1001 fps` NTSC).
 - MP4: H.264/AVC (`yuv420p`) in MP4, with source frame rate matching selected output standard (`25 fps` PAL, `30000/1001 fps` NTSC).
 - PNG: Single-frame PNG truecolour (RGB/RGBA, 8-bit or 16-bit integer channels).
-- RAW: Headerless raw still frame with explicit external format declaration using `yuv422p10le` or `yuv444p10le`.
+- RAW: Headerless raw still frame with explicit external format declaration using:
+  - `yuv422p10le`: packed `Y0 Cb Y1 Cr` component order; each component stored in a 16-bit little-endian word carrying a 10-bit code value.
 
 ## 3. Current Gap and Implementation Strategy
 
@@ -166,8 +167,7 @@ Phase ordering is strict:
 ### Work Items
 
 - Implement the supported RAW input profiles:
-  - `yuv422p10le`
-  - `yuv444p10le`
+  - `yuv422p10le` (packed `Y0 Cb Y1 Cr`, 16-bit little-endian words with 10-bit code values)
 - Implement RAW reader and mapping to normalized frame-source buffer.
 - Add fixture assets:
   - PAL RAW sample.

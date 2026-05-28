@@ -69,15 +69,15 @@ bool ValidateProgressiveSourceFamily(const videosynth::Section& section, std::st
   if (EndsWith(source, ".raw")) {
     if (section.source_pixel_format.empty()) {
       if (error != nullptr) {
-        *error = "Progressive RAW sections must set source_pixel_format to yuv422p10le or yuv444p10le.";
+        *error = "Progressive RAW sections must set source_pixel_format to yuv422p10le.";
       }
       return false;
     }
 
     const std::string pixel_format = Lowercase(section.source_pixel_format);
-    if (pixel_format != "yuv422p10le" && pixel_format != "yuv444p10le") {
+    if (pixel_format != "yuv422p10le") {
       if (error != nullptr) {
-        *error = "Progressive RAW sections only support source_pixel_format values yuv422p10le or yuv444p10le.";
+        *error = "Progressive RAW sections only support source_pixel_format value yuv422p10le.";
       }
       return false;
     }

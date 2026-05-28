@@ -128,6 +128,23 @@ TEST(ProjectValidatorTest, RejectsProgressiveSectionWithoutSource) {
   EXPECT_FALSE(result.is_valid);
 }
 
+TEST(ProjectValidatorTest, AcceptsProgressiveRawWithSupportedPixelFormat) {
+  Project project = MakeValidProject();
+  project.sections[0].type = "progressive";
+  project.sections[0].pattern.clear();
+  project.sections[0].source = CreateTemporarySourceFile("videosynth_progressive.raw");
+  project.sections[0].source_pixel_format = "yuv422p10le";
+  project.sections[0].duration_frames = 8;
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_TRUE(result.is_valid);
+  EXPECT_TRUE(result.errors.empty());
+
+  std::filesystem::remove(project.sections[0].source);
+}
+
 TEST(ProjectValidatorTest, RejectsProgressiveRawWithoutPixelFormat) {
   Project project = MakeValidProject();
   project.sections[0].type = "progressive";

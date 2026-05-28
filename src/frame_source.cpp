@@ -12,7 +12,9 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
+#include <fstream>
 #include <vector>
 
 #include <png.h>
@@ -55,6 +57,14 @@ YCbCr444Pixel MakePixel(int y_code, int cb_code, int cr_code) {
       .y = ClampYCode(y_code),
       .cb = ClampChromaCode(cb_code),
       .cr = ClampChromaCode(cr_code),
+  };
+}
+
+YCbCr444Pixel MakeRawPixel(std::uint16_t y_code, std::uint16_t cb_code, std::uint16_t cr_code) {
+  return YCbCr444Pixel{
+      .y = static_cast<std::int16_t>(ClampCode(static_cast<int>(y_code), 0, 1023)),
+      .cb = static_cast<std::int16_t>(ClampCode(static_cast<int>(cb_code), 0, 1023)),
+      .cr = static_cast<std::int16_t>(ClampCode(static_cast<int>(cr_code), 0, 1023)),
   };
 }
 
@@ -236,6 +246,134 @@ bool LoadPngFrame(const std::string& source,
   return true;
 }
 
+int RawHeightForStandard(Standard standard) {
+  if (standard == Standard::kPal) {
+    return kPalHeight;
+  }
+  if (standard == Standard::kNtsc) {
+    return kNtscHeight;
+  }
+  return 0;
+}
+
+bool InferRawWidthFromByteSize(std::size_t file_size,
+                               int height,
+                               const std::string& pixel_format,
+                               int* out_width) {
+  if (out_width == nullptr || height <= 0) {
+    return false;
+  }
+
+  const std::size_t bytes_per_sample = sizeof(std::uint16_t);
+  std::size_t expected_720 = 0;
+  std::size_t expected_704 = 0;
+  if (pixel_format == "yuv422p10le") {
+    expected_720 = static_cast<std::size_t>(720 * height * 2) * bytes_per_sample;
+    expected_704 = static_cast<std::size_t>(704 * height * 2) * bytes_per_sample;
+  } else {
+    return false;
+  }
+
+  if (file_size == expected_720) {
+    *out_width = 720;
+    return true;
+  }
+  if (file_size == expected_704) {
+    *out_width = 704;
+    return true;
+  }
+  return false;
+}
+
+bool LoadRawFrame(const Section& section,
+                  Standard standard,
+                  FrameSourceImage* out_image,
+                  std::string* error) {
+  if (out_image == nullptr) {
+    if (error != nullptr) {
+      *error = "Frame source output image pointer must not be null.";
+    }
+    return false;
+  }
+
+  std::string pixel_format = section.source_pixel_format;
+  std::transform(pixel_format.begin(), pixel_format.end(), pixel_format.begin(),
+                 [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+  if (pixel_format != "yuv422p10le") {
+    if (error != nullptr) {
+      *error = "Progressive RAW source_pixel_format must be yuv422p10le.";
+    }
+    return false;
+  }
+
+  const int height = RawHeightForStandard(standard);
+  if (height <= 0) {
+    if (error != nullptr) {
+      *error = "Unsupported video standard for RAW progressive source.";
+    }
+    return false;
+  }
+
+  std::ifstream stream(section.source, std::ios::binary | std::ios::ate);
+  if (!stream) {
+    if (error != nullptr) {
+      *error = "Unable to open progressive RAW source for reading.";
+    }
+    return false;
+  }
+
+  const std::size_t file_size = static_cast<std::size_t>(stream.tellg());
+  stream.seekg(0, std::ios::beg);
+
+  int source_width = 0;
+  if (!InferRawWidthFromByteSize(file_size, height, pixel_format, &source_width)) {
+    if (error != nullptr) {
+      *error = "Progressive RAW raster does not match 720/704 width for selected standard and pixel format.";
+    }
+    return false;
+  }
+
+  std::vector<std::uint16_t> samples(file_size / sizeof(std::uint16_t), 0);
+  stream.read(reinterpret_cast<char*>(samples.data()), static_cast<std::streamsize>(file_size));
+  if (!stream) {
+    if (error != nullptr) {
+      *error = "Failed while reading progressive RAW source.";
+    }
+    return false;
+  }
+
+  SetFrameGeometryForStandard(standard, out_image);
+  out_image->pixels.assign(static_cast<std::size_t>(out_image->width * out_image->height),
+                           MakePixel(64, 512, 512));
+
+  const int source_x_offset = source_width == 704 ? 8 : 0;
+  // yuv422p10le fixture RAW files are packed as Y0 Cb Y1 Cr in 16-bit little-endian words.
+  // Each word carries a 10-bit studio-domain code in the lower bits.
+  const std::uint16_t* packed = samples.data();
+  for (int y = 0; y < height; ++y) {
+    for (int x = 0; x < source_width; x += 2) {
+      const std::size_t pair_index = static_cast<std::size_t>(y * (source_width / 2) + (x / 2));
+      const std::size_t component_index = pair_index * 4;
+
+      const std::uint16_t y0 = static_cast<std::uint16_t>(packed[component_index + 0] & 0x03FFu);
+      const std::uint16_t cb = static_cast<std::uint16_t>(packed[component_index + 1] & 0x03FFu);
+      const std::uint16_t y1 = static_cast<std::uint16_t>(packed[component_index + 2] & 0x03FFu);
+      const std::uint16_t cr = static_cast<std::uint16_t>(packed[component_index + 3] & 0x03FFu);
+
+      const int dst_y = y;
+      const int dst_x0 = x + source_x_offset;
+      const int dst_x1 = dst_x0 + 1;
+
+      out_image->pixels[static_cast<std::size_t>(dst_y * out_image->width + dst_x0)] =
+          MakeRawPixel(y0, cb, cr);
+      out_image->pixels[static_cast<std::size_t>(dst_y * out_image->width + dst_x1)] =
+          MakeRawPixel(y1, cb, cr);
+    }
+  }
+
+  return true;
+}
+
 }  // namespace
 
 const YCbCr444Pixel& FrameSourceImage::PixelAt(int x, int y) const {
@@ -346,6 +484,10 @@ bool ProgressiveFrameSource::GenerateFrame(const Section& section,
     }
     *out_image = cached_png_frame_;
     return true;
+  }
+
+  if (EndsWithLowercase(source, ".raw")) {
+    return LoadRawFrame(section, standard, out_image, error);
   }
 
   if (error != nullptr) {

@@ -683,7 +683,7 @@ video_path: "out/pal_test_video.composite" # project-relative output file path
 4. **Progressive Sources**:
   - `source` must resolve to an accessible file after applying [File Path Resolution](#file-path-resolution) rules. If the resolved path does not exist, the YAML is considered **invalid**.
   - `source` must match one of the supported progressive source profiles defined in [Section 8.1](#81-frame-based-sections); container extension alone is not sufficient.
-  - For RAW sources, `source_pixel_format` is required and must be `yuv422p10le` or `yuv444p10le`.
+  - For RAW sources, `source_pixel_format` is required and must be `yuv422p10le` (packed `Y0 Cb Y1 Cr` words).
   - Progressive source dimensions must be standard-consistent and one of:
     - PAL: `720x576` or `704x576`
     - NTSC: `720x480` or `704x480`
@@ -807,8 +807,7 @@ Container names alone are not sufficient for validation; source files must match
 - **MP4 video**: H.264/AVC (`yuv420p`) in MP4 at dimensions valid for the selected output standard, and at a frame rate that matches the selected output standard (`25 fps` PAL, `30000/1001 fps` NTSC).
 - **PNG still image**: Single-frame PNG truecolour input (RGB/RGBA, 8-bit or 16-bit integer channels) at target dimensions.
 - **RAW still frame**: Headerless raw frame with external format declaration (project field or sidecar) using one supported pixel format:
-  - `yuv422p10le`
-  - `yuv444p10le`
+  - `yuv422p10le` (packed `Y0 Cb Y1 Cr` component order; each component stored as a 16-bit little-endian word carrying a 10-bit code value)
 
 Any other codec, chroma format, bit depth, or packing is outside scope and must fail validation.
 
@@ -820,7 +819,7 @@ Any other codec, chroma format, bit depth, or packing is outside scope and must 
 | `name`            | string         | Yes          | User-friendly name.                                                            | `"MOV Source"`       |
 | `type`            | string         | Yes          | Must be `"progressive"`.                                                       | `"progressive"`      |
 | `source`          | string         | Yes          | Path to the source file. May be a `builtin:` prefixed name, an absolute path, or a path relative to the project YAML. See [File Path Resolution](#file-path-resolution). | `"assets/test.mov"` |
-| `source_pixel_format` | string      | Conditionally | Required for `RAW` sources; ignored for MOV/MP4/PNG. Supported values: `yuv422p10le`, `yuv444p10le`. | `"yuv422p10le"` |
+| `source_pixel_format` | string      | Conditionally | Required for `RAW` sources; ignored for MOV/MP4/PNG. Supported value: `yuv422p10le` (packed `Y0 Cb Y1 Cr`). | `"yuv422p10le"` |
 | `start_frame`     | integer        | No           | First frame to use (default: `0`).                                             | `0`                  |
 | `duration_frames` | integer/string | No           | Number of frames to extract. Use `"all"` for all frames or a positive integer. | `100` or `"all"`     |
 
@@ -1499,7 +1498,7 @@ To simulate **analogue output**, the generator must:
 | Invalid VBI burst                          | "ntsc_laserdisc_vbi_burst can only be enabled for NTSC projects."                                                                        |
 | Invalid frame rate                         | "Input frame rate must match the output standard's frame rate (25 fps for PAL, ~29.97 fps for NTSC)."                                    |
 | Unsupported progressive source profile     | "Progressive source is not in a supported profile. Validate container, codec, chroma format, and bit depth against the supported profile list." |
-| Missing RAW pixel format declaration       | "RAW source requires source_pixel_format. Supported values are yuv422p10le and yuv444p10le." |
+| Missing RAW pixel format declaration       | "RAW source requires source_pixel_format. Supported value is yuv422p10le (packed Y0 Cb Y1 Cr words)." |
 | Invalid progressive source dimensions      | "Progressive source dimensions are invalid for the selected standard. PAL requires 720x576 or 704x576; NTSC requires 720x480 or 704x480." |
 | Scaling requested or implied               | "Progressive source scaling is not supported. Source dimensions must already match PAL 720x576/704x576 or NTSC 720x480/704x480." |
 

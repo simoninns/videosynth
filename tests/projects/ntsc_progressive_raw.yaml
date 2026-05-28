@@ -1,0 +1,110 @@
+project:
+  name: NTSCProgressiveRawFixture
+  version: "1.0"
+  description: NTSC progressive RAW fixture
+
+cvbs_presets:
+  video_standard_preset: NTSC
+  sample_encoding_preset: CVBS_TPG21_4FSC
+  signal_state_preset: STANDARD_TBC_LOCKED
+
+output:
+  video_path: tests/projects/output/videosynth_ntsc_progressive_raw.composite
+  metadata_path: tests/projects/output/videosynth_ntsc_progressive_raw.meta
+
+sections:
+  - name: NtscRaw100Bars
+    type: progressive
+    source: resources/assets/720x480/stills/raw/100_BARS.raw
+    source_pixel_format: yuv422p10le
+    duration_frames: 8
+  - name: NtscRaw75Bars
+    type: progressive
+    source: resources/assets/720x480/stills/raw/75_BARS.raw
+    source_pixel_format: yuv422p10le
+    duration_frames: 8
+  - name: NtscRaw75BarsRed
+    type: progressive
+    source: resources/assets/720x480/stills/raw/75_BARS_RED.raw
+    source_pixel_format: yuv422p10le
+    duration_frames: 8
+  - name: NtscRawChromaRamp
+    type: progressive
+    source: resources/assets/720x480/stills/raw/CHROMA_RAMP.raw
+    source_pixel_format: yuv422p10le
+    duration_frames: 8
+  - name: NtscRawFullRamp
+    type: progressive
+    source: resources/assets/720x480/stills/raw/FULL_RAMP.raw
+    source_pixel_format: yuv422p10le
+    duration_frames: 8
+  - name: NtscRawGrey10HStep
+    type: progressive
+    source: resources/assets/720x480/stills/raw/GREY_10H_STEP.raw
+    source_pixel_format: yuv422p10le
+    duration_frames: 8
+  - name: NtscRawLumaRamp
+    type: progressive
+    source: resources/assets/720x480/stills/raw/LUMA_RAMP.raw
+    source_pixel_format: yuv422p10le
+    duration_frames: 8
+  - name: NtscRawGrey10V
+    type: progressive
+    source: resources/assets/720x480/stills/raw/GREY_10V_STEP.raw
+    source_pixel_format: yuv422p10le
+    duration_frames: 8
+  - name: NtscRawGrey5HStep
+    type: progressive
+    source: resources/assets/720x480/stills/raw/GREY_5H_STEP.raw
+    source_pixel_format: yuv422p10le
+    duration_frames: 8
+  - name: NtscRawGrey5VStep
+    type: progressive
+    source: resources/assets/720x480/stills/raw/GREY_5V_STEP.raw
+    source_pixel_format: yuv422p10le
+    duration_frames: 8
+  - name: NtscRawLegalRamp
+    type: progressive
+    source: resources/assets/720x480/stills/raw/LEGAL_RAMP.raw
+    source_pixel_format: yuv422p10le
+    duration_frames: 8
+  - name: NtscRawLumaRampDown
+    type: progressive
+    source: resources/assets/720x480/stills/raw/LUMA_RAMP_DOWN.raw
+    source_pixel_format: yuv422p10le
+    duration_frames: 8
+  - name: NtscRawMultiburst
+    type: progressive
+    source: resources/assets/720x480/stills/raw/MULTIBURST.raw
+    source_pixel_format: yuv422p10le
+    duration_frames: 8
+  - name: NtscRawPluge
+    type: progressive
+    source: resources/assets/720x480/stills/raw/PLUGE.raw
+    source_pixel_format: yuv422p10le
+    duration_frames: 8
+  - name: NtscRawSmpteBars
+    type: progressive
+    source: resources/assets/720x480/stills/raw/SMPTE_BARS_001.raw
+    source_pixel_format: yuv422p10le
+    duration_frames: 8
+  - name: NtscRawTartan
+    type: progressive
+    source: resources/assets/720x480/stills/raw/TARTAN.raw
+    source_pixel_format: yuv422p10le
+    duration_frames: 8
+  - name: NtscRawValidRamps
+    type: progressive
+    source: resources/assets/720x480/stills/raw/VALID_RAMPS.raw
+    source_pixel_format: yuv422p10le
+    duration_frames: 8
+  - name: NtscRawVertLumaRamp
+    type: progressive
+    source: resources/assets/720x480/stills/raw/VERT_LUMA_RAMP.raw
+    source_pixel_format: yuv422p10le
+    duration_frames: 8
+  - name: NtscRawYCbCrRamps
+    type: progressive
+    source: resources/assets/720x480/stills/raw/Y_CB_CR_RAMPS.raw
+    source_pixel_format: yuv422p10le
+    duration_frames: 8
