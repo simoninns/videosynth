@@ -78,16 +78,19 @@ int ClampCode(int code, int lo, int hi) {
 
 ActiveRasterGeometry GetActiveRasterGeometry(Standard standard, double sample_rate_hz) {
   if (standard == Standard::kPal) {
-  // EBU Tech. 3280-E Section 1.2 defines PAL 4fsc line numbering with
-  // digital active samples at indices 0..947 and blanking at 948..1134.
-  // Relative to the sample following sync leading edge, active starts at
-  // +177 samples and spans 948 samples.
+  // PAL frame sources expose only the 52.0 us visible aperture derived from
+  // ITU-R BT.1700 line timing and mapped through BT.601's 13.5 MHz sampling
+  // model. Keep the established PAL line start anchor at +177 4fsc samples,
+  // but limit active-picture synthesis to the visible-aperture duration.
+    const int active_window_start = 177;
+    const int active_window_end = active_window_start +
+                                  std::max(1, static_cast<int>(std::lround(sample_rate_hz * 52.0e-6)));
     return ActiveRasterGeometry{
         .first_active_line_field1 = 23,
-        .first_active_line_field2 = 336,
+      .first_active_line_field2 = 335,
         .active_lines_per_field = 288,
-    .active_window_start_samples = 177,
-    .active_window_end_samples = 1125,
+        .active_window_start_samples = active_window_start,
+        .active_window_end_samples = active_window_end,
         .active_width_pixels = 720,
     };
   }
@@ -154,7 +157,7 @@ int InvertCenteredChromaCode(int code) {
 }
 
 double LumaMillivoltsFromCode(int y_code, const SignalLevels& levels) {
-  const int clamped = ClampCode(y_code, 64, 940);
+  const int clamped = ClampCode(y_code, 48, 940);
   const double y_norm = static_cast<double>(clamped - 64) / 876.0;
   return levels.black_mv + (y_norm * (levels.white_mv - levels.black_mv));
 }
@@ -381,7 +384,16 @@ bool GenerationStage::Generate(const Project& project,
   if (!BuildFramePatternSchedule(project, frame_source, &frame_patterns)) {
     errors->push_back(
       "Unsupported or missing software-generated pattern. Supported patterns are "
-        "'ebu_colour_bars', 'grayscale_ramp_horizontal', and 'pluge'.");
+        "'pal_ebu_colour_bars_100', 'pal_ebu_colour_bars_75', "
+        "'pal_linear_grayscale_ramp_horizontal', 'pal_linear_grayscale_ramp_vertical', "
+        "'pal_luma_checkerboard_8x8', 'pal_luma_checkerboard_16x16', "
+        "'pal_full_field_black', 'pal_full_field_white', "
+        "'pal_pluge_5patch_near_black', 'pal_crosshatch_visible_area_grid', "
+        "'ntsc_smpte_170m_colour_bars_100', 'ntsc_smpte_170m_colour_bars_75', "
+        "'ntsc_linear_grayscale_ramp_horizontal', 'ntsc_linear_grayscale_ramp_vertical', "
+        "'ntsc_luma_checkerboard_8x8', 'ntsc_luma_checkerboard_16x16', "
+        "'ntsc_full_field_black', 'ntsc_full_field_white', "
+        "'ntsc_pluge_5patch_near_black', and 'ntsc_crosshatch_visible_area_grid'.");
     return false;
   }
 
@@ -409,14 +421,6 @@ bool GenerationStage::Generate(const Project& project,
                                             : frame_error);
       return false;
     }
-
-    // NTSC: 525 lines/frame × π rad/line = 525π ≡ π (mod 2π) accumulated per frame,
-    // producing the 2-frame SC-H phase pattern defined in SMPTE 170M.
-    // PAL uses per-line/field sequence handling below.
-    const double frame_phase_offset =
-        (project.cvbs_presets.video_standard_preset == Standard::kNtsc)
-            ? static_cast<double>(frame_index % 2) * kPi
-            : 0.0;
 
     for (const LineTimingPrimitive& line : lines) {
       const int line_index = line.line_number_1based - 1;
@@ -455,7 +459,7 @@ bool GenerationStage::Generate(const Project& project,
         const bool burst_enabled =
           is_pal ? PalBurstEnabledForLine(frame_index, line) : line.burst_enabled;
         const double burst_phase_rad =
-          is_pal ? PalBurstPhaseRadForLine(frame_index, line) : (line.burst_phase_rad + frame_phase_offset);
+          is_pal ? PalBurstPhaseRadForLine(frame_index, line) : line.burst_phase_rad;
 
         if (burst_enabled) {
         const int burst_sample_start =
@@ -468,9 +472,7 @@ bool GenerationStage::Generate(const Project& project,
           const double envelope = ShapedGateEnvelope(relative_index,
                                burst_width_samples,
                                burst_rise_samples);
-          const double t = is_pal
-                     ? (static_cast<double>(i) / timing.sample_rate_4fsc_hz)
-                     : (static_cast<double>(i - line_base) / timing.sample_rate_4fsc_hz);
+          const double t = static_cast<double>(i) / timing.sample_rate_4fsc_hz;
           (*out_c_mv)[i] =
             burst_amplitude_mv * envelope * std::sin((2.0 * kPi * subcarrier_hz * t) + burst_phase_rad);
         }
@@ -501,17 +503,18 @@ bool GenerationStage::Generate(const Project& project,
           continue;
         }
 
-        int pixel_x = (x_sample * active.active_width_pixels) / active_window_samples;
-        pixel_x = std::min(active.active_width_pixels - 1, std::max(0, pixel_x));
+        int pixel_x = source_frame.active_x +
+                ((x_sample * source_frame.active_width) / active_window_samples);
+        pixel_x = std::min(source_frame.active_x + source_frame.active_width - 1,
+               std::max(source_frame.active_x, pixel_x));
 
-        // Map from interlaced field-line index to the progressive source row.
-        // Field 1 occupies even rows (0, 2, 4 …) and field 2 occupies odd rows
-        // (1, 3, 5 …) so that when a viewer deinterlaces by interleaving the two
-        // fields, each display row reads from the correct progressive source line.
+        // Map field lines onto progressive source rows by interleaving fields.
+        // Field 1 occupies even rows and field 2 occupies odd rows.
         const int field_line = active_y % active.active_lines_per_field;
-        const int source_row = (line.field_index_1based == 1)
-                                   ? (2 * field_line)
-                                   : (2 * field_line + 1);
+        const int source_row = source_frame.active_y +
+                   ((line.field_index_1based == 1)
+                  ? (2 * field_line)
+                  : (2 * field_line + 1));
 
         if (pixel_x >= source_frame.width || source_row >= source_frame.height) {
           continue;
@@ -535,12 +538,10 @@ bool GenerationStage::Generate(const Project& project,
           (*out_y_mv)[sample_index] = LumaMillivoltsFromCode(pixel.y, levels);
         }
 
-        const double t = is_pal
-                             ? (static_cast<double>(sample_index) / timing.sample_rate_4fsc_hz)
-                             : (static_cast<double>(sample_index - line_base) / timing.sample_rate_4fsc_hz);
+        const double t = static_cast<double>(sample_index) / timing.sample_rate_4fsc_hz;
         double carrier_phase = 0.0;
         if (project.cvbs_presets.video_standard_preset == Standard::kNtsc) {
-          carrier_phase = (2.0 * kPi * subcarrier_hz * t) + line.burst_phase_rad + frame_phase_offset;
+          carrier_phase = (2.0 * kPi * subcarrier_hz * t) + line.burst_phase_rad;
           // SMPTE 170M-2004 Section 10 defines wt using burst+180 deg as the
           // active chroma phase reference.
           carrier_phase += kPi;

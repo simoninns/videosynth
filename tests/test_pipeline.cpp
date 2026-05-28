@@ -86,7 +86,7 @@ Project MakeProject() {
   p.sections.push_back(
       Section{.name = "Valid",
               .type = "software_generated",
-              .pattern = "ebu_colour_bars",
+          .pattern = "pal_ebu_colour_bars_100",
               .duration_frames = 1});
   return p;
 }

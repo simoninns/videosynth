@@ -95,8 +95,9 @@ inline SyncPulseKind GetSyncPulseKind(Standard standard, int line_1based) {
 inline LineContentKind GetLineContentKind(Standard standard, int line_1based) {
   if (standard == Standard::kPal) {
     // ITU-R BT.1700 Annex 1 Part B Table 1 item 1a (576 active lines) implies
-    // active picture starts at lines 23 and 336 in 625-line PAL.
-    if (IsLineInRange(line_1based, 16, 22) || IsLineInRange(line_1based, 319, 335)) {
+    // active picture starts at lines 23 and 335 in this line-granular 625-line
+    // PAL model so all 576 source rows land on full active-picture lines.
+    if (IsLineInRange(line_1based, 16, 22) || IsLineInRange(line_1based, 319, 334)) {
       return LineContentKind::kVbiBlanking;
     }
     return LineContentKind::kActivePicture;
@@ -124,13 +125,13 @@ inline double BurstPhaseRad(Standard standard, int line_1based) {
   constexpr double kPi = 3.14159265358979323846;
 
   if (standard == Standard::kNtsc) {
-    // SMPTE 244M-2003 Section 4.1.1: 910 samples/line at 4fsc.
-    // The subcarrier advances 910 × (2π/4) = 455π ≡ π (mod 2π) per line,
-    // so each successive line starts with a π-radian phase offset relative to
-    // the previous. A +45 deg reference offset avoids the 0/π degenerate case
-    // where one burst polarity would land exactly on the zero-crossing samples.
+    // With absolute-time subcarrier synthesis in generation_stage, the line-to-line
+    // π-radian progression arises naturally from 910 samples/line at 4fsc.
+    // Keep a constant burst reference phase here so no artificial per-line phase
+    // discontinuity is injected at line boundaries.
     constexpr double kNtscReferencePhase = kPi / 4.0;
-    return kNtscReferencePhase + static_cast<double>((line_1based - 1) % 2) * kPi;
+    (void)line_1based;
+    return kNtscReferencePhase;
   }
 
   // ITU-R BT.1700 Annex 1 Part B Table 1 item 10f and Figure 8:

@@ -1,7 +1,7 @@
 project:
-  name: NTSC32BarsRamp
+  name: NTSCSoftwareGeneratedPatternSet
   version: "1.0"
-  description: NTSC regression fixture with 32 frames
+  description: NTSC regression fixture with all software-generated patterns
 
 cvbs_presets:
   video_standard_preset: NTSC
@@ -13,11 +13,43 @@ output:
   metadata_path: tests/projects/output/videosynth_ntsc_32f_bars_ramp.meta
 
 sections:
+  - name: NTSCBars100
+    type: software_generated
+    pattern: ntsc_smpte_170m_colour_bars_100
+    duration_frames: 8
   - name: NTSCBars75
     type: software_generated
-    pattern: colour_bars_75
-    duration_frames: 16
-  - name: NTSCRamp
+    pattern: ntsc_smpte_170m_colour_bars_75
+    duration_frames: 8
+  - name: HorizontalRamp
     type: software_generated
-    pattern: grayscale_ramp_horizontal
-    duration_frames: 16
+    pattern: ntsc_linear_grayscale_ramp_horizontal
+    duration_frames: 8
+  - name: VerticalRamp
+    type: software_generated
+    pattern: ntsc_linear_grayscale_ramp_vertical
+    duration_frames: 8
+  - name: Checkerboard8x8
+    type: software_generated
+    pattern: ntsc_luma_checkerboard_8x8
+    duration_frames: 8
+  - name: Checkerboard16x16
+    type: software_generated
+    pattern: ntsc_luma_checkerboard_16x16
+    duration_frames: 8
+  - name: FullFieldBlack
+    type: software_generated
+    pattern: ntsc_full_field_black
+    duration_frames: 8
+  - name: FullFieldWhite
+    type: software_generated
+    pattern: ntsc_full_field_white
+    duration_frames: 8
+  - name: Pluge5PatchNearBlack
+    type: software_generated
+    pattern: ntsc_pluge_5patch_near_black
+    duration_frames: 8
+  - name: CrosshatchAlignedGrid
+    type: software_generated
+    pattern: ntsc_crosshatch_visible_area_grid
+    duration_frames: 8

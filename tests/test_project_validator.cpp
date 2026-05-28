@@ -24,7 +24,7 @@ Project MakeValidProject() {
   project.sections.push_back(
       Section{.name = "Bars",
               .type = "software_generated",
-              .pattern = "ebu_colour_bars",
+          .pattern = "pal_ebu_colour_bars_100",
               .duration_frames = 1});
   return project;
 }
@@ -101,7 +101,29 @@ TEST(ProjectValidatorTest, RejectsMissingPatternOnSoftwareSection) {
 
 TEST(ProjectValidatorTest, RejectsUnsupportedPattern) {
   Project project = MakeValidProject();
-  project.sections[0].pattern = "checkerboard_8x8";
+  project.sections[0].pattern = "invalid_pattern_name";
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_FALSE(result.is_valid);
+}
+
+TEST(ProjectValidatorTest, RejectsNtscBarsPatternInPalProject) {
+  Project project = MakeValidProject();
+  project.cvbs_presets.video_standard_preset = Standard::kPal;
+  project.sections[0].pattern = "ntsc_smpte_170m_colour_bars_100";
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_FALSE(result.is_valid);
+}
+
+TEST(ProjectValidatorTest, RejectsPalBarsPatternInNtscProject) {
+  Project project = MakeValidProject();
+  project.cvbs_presets.video_standard_preset = Standard::kNtsc;
+  project.sections[0].pattern = "pal_ebu_colour_bars_100";
 
   ProjectValidator validator;
   const ValidationResult result = validator.Validate(project);

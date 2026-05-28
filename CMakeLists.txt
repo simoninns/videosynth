@@ -16,7 +16,9 @@ add_library(videosynth_core
     src/frame_source.cpp
     src/generation_stage.cpp
     src/logger.cpp
+    src/ntsc_pattern_generator.cpp
     src/output_stage.cpp
+    src/pal_pattern_generator.cpp
     src/pipeline.cpp
     src/project_validator.cpp
     src/signal_shaping.cpp

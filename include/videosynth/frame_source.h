@@ -26,6 +26,10 @@ struct YCbCr444Pixel {
 struct FrameSourceImage {
   int width = 0;
   int height = 0;
+  int active_x = 0;
+  int active_y = 0;
+  int active_width = 0;
+  int active_height = 0;
   std::vector<YCbCr444Pixel> pixels;
 
   const YCbCr444Pixel& PixelAt(int x, int y) const;
@@ -37,17 +41,6 @@ class TestPatternFrameSource {
 
   bool GenerateFrame(const std::string& pattern,
                      Standard standard,
-                     FrameSourceImage* out_image,
-                     std::string* error) const;
-
- private:
-  bool GenerateColourBars75(Standard standard,
-                            FrameSourceImage* out_image,
-                            std::string* error) const;
-  bool GenerateGrayscaleRamp(Standard standard,
-                             FrameSourceImage* out_image,
-                             std::string* error) const;
-  bool GeneratePluge(Standard standard,
                      FrameSourceImage* out_image,
                      std::string* error) const;
 };

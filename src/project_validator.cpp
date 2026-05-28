@@ -14,9 +14,31 @@
 namespace {
 
 bool IsSupportedPattern(const std::string& pattern) {
-  return pattern == "ebu_colour_bars" || pattern == "grayscale_ramp_horizontal" ||
-         pattern == "pluge" || pattern == "colour_bars_75" ||
-         pattern == "grayscale_ramp" || pattern == "pluge_basic";
+  return pattern == "pal_ebu_colour_bars_100" || pattern == "pal_ebu_colour_bars_75" ||
+         pattern == "pal_linear_grayscale_ramp_horizontal" ||
+         pattern == "pal_linear_grayscale_ramp_vertical" ||
+         pattern == "pal_luma_checkerboard_8x8" ||
+         pattern == "pal_luma_checkerboard_16x16" ||
+         pattern == "pal_full_field_black" || pattern == "pal_full_field_white" ||
+         pattern == "pal_pluge_5patch_near_black" || pattern == "pal_crosshatch_visible_area_grid" ||
+         pattern == "ntsc_smpte_170m_colour_bars_100" ||
+         pattern == "ntsc_smpte_170m_colour_bars_75" ||
+         pattern == "ntsc_linear_grayscale_ramp_horizontal" ||
+         pattern == "ntsc_linear_grayscale_ramp_vertical" ||
+         pattern == "ntsc_luma_checkerboard_8x8" ||
+         pattern == "ntsc_luma_checkerboard_16x16" ||
+         pattern == "ntsc_full_field_black" || pattern == "ntsc_full_field_white" ||
+         pattern == "ntsc_pluge_5patch_near_black" || pattern == "ntsc_crosshatch_visible_area_grid";
+}
+
+bool PatternSupportsStandard(const std::string& pattern, videosynth::Standard standard) {
+  if (pattern.rfind("pal_", 0) == 0) {
+    return standard == videosynth::Standard::kPal;
+  }
+  if (pattern.rfind("ntsc_", 0) == 0) {
+    return standard == videosynth::Standard::kNtsc;
+  }
+  return false;
 }
 
 bool IsSupportedGenerationEncodingPreset(const std::string& preset) {
@@ -107,7 +129,24 @@ ValidationResult ProjectValidator::Validate(const Project& project) {
       result.is_valid = false;
       result.errors.push_back(
           "MVP constraint violation: unsupported pattern. Supported patterns are "
-          "'ebu_colour_bars', 'grayscale_ramp_horizontal', and 'pluge'.");
+          "'pal_ebu_colour_bars_100', 'pal_ebu_colour_bars_75', "
+          "'pal_linear_grayscale_ramp_horizontal', 'pal_linear_grayscale_ramp_vertical', "
+          "'pal_luma_checkerboard_8x8', 'pal_luma_checkerboard_16x16', "
+          "'pal_full_field_black', 'pal_full_field_white', "
+          "'pal_pluge_5patch_near_black', 'pal_crosshatch_visible_area_grid', "
+          "'ntsc_smpte_170m_colour_bars_100', 'ntsc_smpte_170m_colour_bars_75', "
+          "'ntsc_linear_grayscale_ramp_horizontal', 'ntsc_linear_grayscale_ramp_vertical', "
+          "'ntsc_luma_checkerboard_8x8', 'ntsc_luma_checkerboard_16x16', "
+          "'ntsc_full_field_black', 'ntsc_full_field_white', "
+          "'ntsc_pluge_5patch_near_black', and 'ntsc_crosshatch_visible_area_grid'.");
+      break;
+    }
+
+    if (!PatternSupportsStandard(section.pattern, project.cvbs_presets.video_standard_preset)) {
+      result.is_valid = false;
+      result.errors.push_back(
+          "MVP constraint violation: section pattern does not match video standard. "
+          "Use 'pal_*' patterns for PAL and 'ntsc_*' patterns for NTSC.");
       break;
     }
   }

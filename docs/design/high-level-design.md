@@ -182,8 +182,25 @@ However, **line timing and source-row addressing inside that frame are field-awa
 For avoidance of doubt, the generator shall apply the following rules:
 
 - **NTSC active-picture line starts (1-indexed frame lines):** field 1 starts at line **22**; field 2 starts at line **284**. Line 21 (field-1 transition) and line 283 (field-2 transition) are not treated as full active-picture lines.
-- **PAL active-picture line starts (1-indexed frame lines):** field 1 starts at line **23**; field 2 starts at line **336**.
+- **PAL active-picture line starts (1-indexed frame lines):** field 1 starts at line **23**; field 2 starts at line **335**.
 - **Progressive-to-interlaced row mapping:** for a field-local active line index $n$ (starting at 0), field 1 samples source row $2n$ and field 2 samples source row $2n+1$.
+
+Frame-source visible aperture contract:
+
+- Frame-based source rasters remain fixed at `720x576` for PAL and `720x480` for NTSC.
+- Only the visible active aperture may carry picture content. Pixels outside that aperture must remain nominal black and must not be modified by test-pattern generation or progressive-source ingestion.
+- PAL aperture derivation:
+  - ITU-R BT.1700 Table 1 item `1a`: `576` active lines.
+  - ITU-R BT.1700 Table 2: `64.0 us` line period and `12.0 us` line blanking, giving `52.0 us` analogue active line duration.
+  - Under the shared ITU-R BT.601 `13.5 MHz` digital sampling model, `52.0 us * 13.5 MHz = 702` visible pixels.
+  - The `720`-sample frame-source raster therefore has `18` non-visible horizontal samples, which split evenly into `9` samples of left margin and `9` samples of right margin.
+  - The PAL frame-source visible aperture is therefore a centered `702x576` region at `x=9..710`, `y=0..575`.
+- NTSC aperture derivation:
+  - SMPTE 170M-2004 analogue timing yields an active picture interval of approximately `52.666 us`.
+  - Under the shared ITU-R BT.601 `13.5 MHz` digital sampling model, `52.666 us * 13.5 MHz = 711` visible pixels.
+  - The `720`-sample frame-source raster therefore has `9` non-visible horizontal samples. Because that remainder is odd, the nearest centered integer placement is `4` samples of left margin and `5` samples of right margin.
+  - The NTSC frame-source visible aperture is therefore a near-centered `711x480` region at `x=4..714`, `y=0..479`.
+  - The analogue standard defines `483` active lines, but VideoSynth frame-based sources expose the `480` full active lines used by the timing model; the three partly active transition lines are not addressable through the frame-source raster.
 
 The progressive source ingestion stage remains responsible for decoding and colour-space normalisation, but the generation stage is responsible for preserving the correct field sequence geometry when mapping normalised frame data into line-timed CVBS-domain Y/C waveforms.
 
@@ -482,8 +499,8 @@ For **PAL (625-line system)**, the vertical blanking interval (VBI) is defined a
 | 316      | EQ, EQ                 | Post-equalizing pulses.                        |
 | 317      | EQ, EQ                 | Post-equalizing pulses.                        |
 | 318      | EQ, BL                 | Transition out of sync block (mixed half-line).|
-| 319-335  | BL, BL                 | VBI lines.                                     |
-| 336-622  | Active Video           | Visible content.                               |
+| 319-334  | BL, BL                 | VBI lines.                                     |
+| 335-622  | Active Video           | Visible content.                               |
 | 623-625  | EQ, EQ                 | Pre-equalizing pulses for next frame boundary. |
 
 
@@ -514,12 +531,14 @@ For **NTSC (525-line system)**, the vertical blanking interval (VBI) is defined 
 | 19       | BL, BL                 | VBI (VIR signal; mandatory on NTSC laserdisc per IEC 60857 §9.1.3).              |
 | 20       | BL, BL                 | VBI (VITS composite test signal; recommended per IEC 60857 §9.1.4).              |
 | 21       | BL, BL                 | VBI (CEA-608 / closed caption).                                                   |
-| 22-520   | Active Video           | Visible content.                                   |
-| 521      | EQ, EQ                 | Pre-equalizing pulses (6 pulses total, 3H).        |
-| 522      | EQ, EQ                 | Pre-equalizing pulses.                             |
-| 523      | VS, VS                 | Vertical sync pulse (start).                       |
-| 524      | VS, VS                 | Vertical sync pulse.                               |
-| 525      | VS, VS                 | Vertical sync pulse (end).                         |
+| 22-262   | Active Video           | Visible content in field 1 through the field boundary lead-in. |
+| 263      | SY, EQ                 | Field-transition lead-in (mixed half-line; horizontal-sync then equalizing). |
+| 264-265  | EQ, EQ                 | Pre-equalizing pulses.                             |
+| 266      | EQ, VS                 | Transition into broad-sync block (mixed half-line). |
+| 267-268  | VS, VS                 | Vertical sync pulses.                              |
+| 269      | VS, EQ                 | Transition out of broad-sync block (mixed half-line). |
+| 270-271  | EQ, EQ                 | Post-equalizing pulses.                            |
+| 272      | EQ, BL                 | Final transition to blanking (mixed half-line).    |
 
 
 #### **Field 2 (Even Field)**
@@ -535,7 +554,9 @@ For **NTSC (525-line system)**, the vertical blanking interval (VBI) is defined 
 | 270-271  | EQ, EQ                 | Post-equalizing pulses.                      |
 | 272      | EQ, BL                 | Final transition to blanking (mixed half-line). |
 | 273-282  | BL, BL                 | VBI lines.                                   |
-| 283-525  | Active Video           | Visible content in field 2 tail through end of frame. |
+| 283      | BL, BL                 | Field-2 transition line; not treated as full active picture. |
+| 284-520  | Active Video           | Visible content in field 2.                         |
+| 521-525  | EQ/VS                  | Frame-end sync block; no active picture.            |
 
 
 ---
@@ -581,7 +602,7 @@ sections:
   - name: "Colour Bars with VITS and Laserdisc"
     type: software_generated   # Frame-based content
     duration_frames: 10
-    pattern: "smpte_170m_100_7_5_100_7_5_colour_bars"
+    pattern: "pal_ebu_colour_bars_100"
     line_injections:           # Line-based injections for this section
       - type: vits
         target_lines: [10, 11, 12]
@@ -686,7 +707,7 @@ Generates static or dynamic test patterns. Each test pattern is **predefined** a
 | `name`            | string   | Yes          | User-friendly name.             | `"Colour Bars"`                              |
 | `type`            | string   | Yes          | Must be `"software_generated"`. | `"software_generated"`                       |
 | `duration_frames` | integer  | Yes          | Number of frames to generate.   | `10`                                         |
-| `pattern`         | string   | Yes          | Name of the test pattern.       | `"smpte_170m_100_7_5_100_7_5_colour_bars"` |
+| `pattern`         | string   | Yes          | Name of the test pattern.       | `"pal_ebu_colour_bars_100"` |
 | `line_injections` | list     | No           | List of line-based injections.  | (See [Line Injections](#82-line-injections)) |
 
 
@@ -694,31 +715,56 @@ Generates static or dynamic test patterns. Each test pattern is **predefined** a
 
 Each pattern is **unique** and has no configurable options. Variations (e.g., 75% vs. 100% colour bars) are separate patterns.
 
+Pattern names are split by output format:
+
+- PAL projects use only `pal_*` pattern names.
+- NTSC projects use only `ntsc_*` pattern names.
+
 Authoritative pattern definitions (waveform, geometry, levels, and deterministic mapping rules) are specified in [Software-Generated Patterns](software-generated-patterns.md).
+
+
+**PAL patterns**
 
 
 | **Pattern Name**                              | **Description**                                     |
 | --------------------------------------------- | --------------------------------------------------- |
-| `smpte_170m_100_7_5_100_7_5_colour_bars`     | SMPTE 170M 100/7.5/100/7.5 colour bars.             |
-| `ebu_tech_3280_100_0_100_0_colour_bars`      | EBU Tech. 3280-E 100/0/100/0 colour bars.           |
-| `linear_grayscale_ramp_horizontal`            | Horizontal linear grayscale ramp.                    |
-| `linear_grayscale_ramp_vertical`              | Vertical linear grayscale ramp.                      |
-| `luma_checkerboard_8x8`                       | Luma-only checkerboard with 8x8 pixel tiles.        |
-| `luma_checkerboard_16x16`                     | Luma-only checkerboard with 16x16 pixel tiles.      |
-| `full_field_black`                            | Full-field black level.                              |
-| `full_field_white`                            | Full-field white level.                              |
-| `pluge_3bar_near_black`                        | Three-bar PLUGE around black reference.              |
-| `crosshatch_75_grid`                          | 75-pixel grid crosshatch alignment pattern.          |
+| `pal_ebu_colour_bars_100`                    | PAL colour bars, 100% saturation variant.           |
+| `pal_ebu_colour_bars_75`                     | PAL colour bars, 75% saturation variant.            |
+| `pal_linear_grayscale_ramp_horizontal`       | Horizontal linear grayscale ramp (PAL geometry).    |
+| `pal_linear_grayscale_ramp_vertical`         | Vertical linear grayscale ramp (PAL geometry).      |
+| `pal_luma_checkerboard_8x8`                  | Luma-only checkerboard with 8x8 pixel tiles.        |
+| `pal_luma_checkerboard_16x16`                | Luma-only checkerboard with 16x16 pixel tiles.      |
+| `pal_full_field_black`                       | Full-field black level.                             |
+| `pal_full_field_white`                       | Full-field white level.                             |
+| `pal_pluge_5patch_near_black`                | PLUGE near-black strip (five-patch anchored layout) around PAL black reference.             |
+| `pal_crosshatch_visible_area_grid`           | PAL crosshatch grid confined to the visible active aperture. |
+
+
+**NTSC patterns**
+
+
+| **Pattern Name**                              | **Description**                                     |
+| --------------------------------------------- | --------------------------------------------------- |
+| `ntsc_smpte_170m_colour_bars_100`            | NTSC SMPTE multi-region colour bars, 100% variant. |
+| `ntsc_smpte_170m_colour_bars_75`             | NTSC SMPTE multi-region colour bars, 75% variant.  |
+| `ntsc_linear_grayscale_ramp_horizontal`      | Horizontal linear grayscale ramp (NTSC geometry).   |
+| `ntsc_linear_grayscale_ramp_vertical`        | Vertical linear grayscale ramp (NTSC geometry).     |
+| `ntsc_luma_checkerboard_8x8`                 | Luma-only checkerboard with 8x8 pixel tiles.        |
+| `ntsc_luma_checkerboard_16x16`               | Luma-only checkerboard with 16x16 pixel tiles.      |
+| `ntsc_full_field_black`                      | Full-field black level.                             |
+| `ntsc_full_field_white`                      | Full-field white level.                             |
+| `ntsc_pluge_5patch_near_black`               | PLUGE near-black strip (five-patch anchored layout) around NTSC black reference.            |
+| `ntsc_crosshatch_visible_area_grid`          | NTSC crosshatch grid confined to the visible active aperture. |
 
 
 ##### **Example**
 
 ```yaml
 sections:
-  - name: "SMPTE Colour Bars"
+  - name: "PAL Colour Bars"
     type: software_generated
     duration_frames: 5
-    pattern: "smpte_170m_100_7_5_100_7_5_colour_bars"
+    pattern: "pal_ebu_colour_bars_100"
     line_injections:
       - type: vits
         target_lines: [10, 11, 12]

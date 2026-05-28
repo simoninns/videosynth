@@ -104,13 +104,14 @@ TEST(ProjectFixturesTest, PalAndNtscProjectsParseAndValidate) {
     const ValidationResult validation = validator.Validate(parsed.project);
     ASSERT_TRUE(validation.is_valid) << fixture;
 
-    ASSERT_EQ(parsed.project.sections.size(), 2U);
-    EXPECT_EQ(parsed.project.sections[0].duration_frames, 16);
-    EXPECT_EQ(parsed.project.sections[1].duration_frames, 16);
+    ASSERT_EQ(parsed.project.sections.size(), 10U);
+    for (const Section& section : parsed.project.sections) {
+      EXPECT_EQ(section.duration_frames, 8);
+    }
   }
 }
 
-TEST(ProjectFixturesTest, FixtureProjectsGenerateCompositeOutputWith32Frames) {
+TEST(ProjectFixturesTest, FixtureProjectsGenerateCompositeOutputWith80Frames) {
   YamlProjectParser parser;
   ProjectValidator validator;
   GenerationStage generation;
@@ -139,7 +140,7 @@ TEST(ProjectFixturesTest, FixtureProjectsGenerateCompositeOutputWith32Frames) {
       GetTimingConstants(project.cvbs_presets.video_standard_preset);
     const std::size_t frame_span = static_cast<std::size_t>(
         SamplesPerFrame4fsc(project.cvbs_presets.video_standard_preset));
-    ASSERT_EQ(y_mv.size(), frame_span * 32U) << fixture;
+    ASSERT_EQ(y_mv.size(), frame_span * 80U) << fixture;
     ASSERT_EQ(c_mv.size(), y_mv.size()) << fixture;
 
     const std::filesystem::path output_path = project.output.video_path;
@@ -154,7 +155,7 @@ TEST(ProjectFixturesTest, FixtureProjectsGenerateCompositeOutputWith32Frames) {
 
     int64_t frame_count_from_metadata = 0;
     ASSERT_TRUE(QueryCvbsMetadataFrameCount(metadata_path, &frame_count_from_metadata)) << fixture;
-    EXPECT_EQ(frame_count_from_metadata, 32) << fixture;
+    EXPECT_EQ(frame_count_from_metadata, 80) << fixture;
 
     std::filesystem::remove(output_path);
     std::filesystem::remove(metadata_path);
@@ -173,8 +174,8 @@ TEST(ProjectFixturesTest, FixtureOutputHashesRemainStable) {
   };
 
   const std::vector<FixtureExpectation> expectations = {
-      {"pal_32f_bars_ramp.yaml", 14151778140809625571ULL},
-      {"ntsc_32f_bars_ramp.yaml", 4652568662636059011ULL},
+      {"pal_32f_bars_ramp.yaml", 1340608207007215683ULL},
+      {"ntsc_32f_bars_ramp.yaml", 15539170933938555203ULL},
   };
 
   for (const FixtureExpectation& expectation : expectations) {

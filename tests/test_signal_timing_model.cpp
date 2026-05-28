@@ -38,6 +38,7 @@ TEST(SignalTimingModelTest, ClassifiesPalSyncBlocksAndLineKinds) {
   EXPECT_EQ(GetLineContentKind(Standard::kPal, 23), LineContentKind::kActivePicture);
   EXPECT_EQ(GetLineContentKind(Standard::kPal, 320), LineContentKind::kVbiBlanking);
   EXPECT_EQ(GetLineContentKind(Standard::kPal, 332), LineContentKind::kVbiBlanking);
+  EXPECT_EQ(GetLineContentKind(Standard::kPal, 335), LineContentKind::kActivePicture);
   EXPECT_EQ(GetLineContentKind(Standard::kPal, 336), LineContentKind::kActivePicture);
 }
 
@@ -67,16 +68,15 @@ TEST(SignalTimingModelTest, ModelsHalfLinePairingAndBurstPolicy) {
   EXPECT_FALSE(BurstEnabledForLine(SyncPulseKind::kVerticalSync));
 }
 
-TEST(SignalTimingModelTest, ModelsPalAlternatingAndNtscSubcarrierAlternatingBurstPhase) {
+TEST(SignalTimingModelTest, ModelsPalAlternatingAndNtscConstantBurstReferencePhase) {
   constexpr double kPi = 3.14159265358979323846;
 
-  // NTSC: 910 samples/line at 4fsc → phase advance per line = 910 × (2π/4) = 455π ≡ π (mod 2π).
-  // Consecutive lines must therefore have phases that differ by π; lines of the same parity
-  // must have equal phases.
+  // NTSC line-to-line subcarrier progression is handled by absolute-time synthesis
+  // in generation_stage. Timing model burst reference is constant per line.
   const double ntsc_line20 = BurstPhaseRad(Standard::kNtsc, 20);
   const double ntsc_line21 = BurstPhaseRad(Standard::kNtsc, 21);
   const double ntsc_line22 = BurstPhaseRad(Standard::kNtsc, 22);
-  EXPECT_NEAR(std::abs(ntsc_line21 - ntsc_line20), kPi, 1e-9);
+  EXPECT_DOUBLE_EQ(ntsc_line21, ntsc_line20);
   EXPECT_DOUBLE_EQ(ntsc_line22, ntsc_line20);
 
   // PAL burst phase alternates +135°/−135° line-to-line (ITU-R BT.1700 Figure 8).
@@ -85,10 +85,10 @@ TEST(SignalTimingModelTest, ModelsPalAlternatingAndNtscSubcarrierAlternatingBurs
   EXPECT_DOUBLE_EQ(pal_line20, -pal_line21);
 }
 
-TEST(SignalTimingModelTest, PalSecondFieldVbiBoundaryStartsActiveAtLine336) {
+TEST(SignalTimingModelTest, PalSecondFieldVbiBoundaryStartsActiveAtLine335) {
   // Guard against off-by-one regressions around PAL field-2 vertical blanking.
-  EXPECT_EQ(GetLineContentKind(Standard::kPal, 335), LineContentKind::kVbiBlanking);
-  EXPECT_EQ(GetLineContentKind(Standard::kPal, 336), LineContentKind::kActivePicture);
+  EXPECT_EQ(GetLineContentKind(Standard::kPal, 334), LineContentKind::kVbiBlanking);
+  EXPECT_EQ(GetLineContentKind(Standard::kPal, 335), LineContentKind::kActivePicture);
 }
 
 }  // namespace

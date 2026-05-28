@@ -1,7 +1,7 @@
 project:
-  name: PAL32BarsRamp
+  name: PALSoftwareGeneratedPatternSet
   version: "1.0"
-  description: PAL regression fixture with 32 frames
+  description: PAL regression fixture with all software-generated patterns
 
 cvbs_presets:
   video_standard_preset: PAL
@@ -13,11 +13,43 @@ output:
   metadata_path: tests/projects/output/videosynth_pal_32f_bars_ramp.meta
 
 sections:
-  - name: PALBars
+  - name: PALBars100
     type: software_generated
-    pattern: colour_bars_75
-    duration_frames: 16
-  - name: PALRamp
+    pattern: pal_ebu_colour_bars_100
+    duration_frames: 8
+  - name: PALBars75
     type: software_generated
-    pattern: grayscale_ramp_horizontal
-    duration_frames: 16
+    pattern: pal_ebu_colour_bars_75
+    duration_frames: 8
+  - name: HorizontalRamp
+    type: software_generated
+    pattern: pal_linear_grayscale_ramp_horizontal
+    duration_frames: 8
+  - name: VerticalRamp
+    type: software_generated
+    pattern: pal_linear_grayscale_ramp_vertical
+    duration_frames: 8
+  - name: Checkerboard8x8
+    type: software_generated
+    pattern: pal_luma_checkerboard_8x8
+    duration_frames: 8
+  - name: Checkerboard16x16
+    type: software_generated
+    pattern: pal_luma_checkerboard_16x16
+    duration_frames: 8
+  - name: FullFieldBlack
+    type: software_generated
+    pattern: pal_full_field_black
+    duration_frames: 8
+  - name: FullFieldWhite
+    type: software_generated
+    pattern: pal_full_field_white
+    duration_frames: 8
+  - name: Pluge5PatchNearBlack
+    type: software_generated
+    pattern: pal_pluge_5patch_near_black
+    duration_frames: 8
+  - name: CrosshatchAlignedGrid
+    type: software_generated
+    pattern: pal_crosshatch_visible_area_grid
+    duration_frames: 8
