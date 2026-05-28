@@ -54,7 +54,7 @@
 - Support for multiple sample rates: **4fsc**, **20MSPS**, **40MSPS**, or custom.
 - **Frame-based content** from:
   - Software-generated test patterns (e.g., colour bars, grayscale ramps).
-  - Progressive sources (e.g., MOV, MP4, PNG, RAW files).
+  - Progressive sources from constrained, validated file profiles (MOV/MP4/PNG/RAW).
 - **Line-based injections** for VBI content:
   - **VITS** (Vertical Interval Test Signals).
   - **Laserdisc biphase encoding** (IEC 60856/60857).
@@ -258,7 +258,14 @@ $$
 
 **Test patterns** naturally produce values in this space directly.
 
-**Progressive sources** (MOV, MP4, PNG, RAW, etc.) are converted during ingestion by `progressive_source`. Any source colour space — RGB, YUV 4:2:0, YUV 4:2:2, or other — must be converted and upsampled to 10-bit 4:4:4 YCbCr BT.601 studio swing **before** the frame data is passed to the generator. The precise conversion path depends on the source's declared colour primaries, transfer characteristics, and matrix coefficients; these must be read from the source container metadata where available and applied correctly.
+**Progressive sources** are converted during ingestion by `progressive_source`, but only when they match one of the supported source profiles defined in [Section 8.1](#81-frame-based-sections). Inputs that do not match a supported profile are invalid.
+
+All accepted progressive inputs are normalized to **10-bit 4:4:4 YCbCr BT.601 studio swing** before frame data is passed to the generator. The conversion path uses source metadata (primaries, transfer, matrix, range) when present.
+
+Source-range capability note:
+
+- **MOV and RAW supported profiles** are required to preserve 10-bit studio-domain detail, including below-black and above-white code excursions when present in the source.
+- **PNG and MP4 supported profiles** do not provide a reliable path for preserving studio-domain below-black and above-white excursions end-to-end; they are supported for standard in-range content only.
 
 ---
 
@@ -675,9 +682,12 @@ video_path: "out/pal_test_video.composite" # project-relative output file path
   - **A `vitc` injection and a `laserdisc` injection must not appear in the same section.** Laserdisc does not use VITC.
 4. **Progressive Sources**:
   - `source` must resolve to an accessible file after applying [File Path Resolution](#file-path-resolution) rules. If the resolved path does not exist, the YAML is considered **invalid**.
+  - `source` must match one of the supported progressive source profiles defined in [Section 8.1](#81-frame-based-sections); container extension alone is not sufficient.
+  - For RAW sources, `source_pixel_format` is required and must be `yuv422p10le` or `yuv444p10le`.
   - Progressive source dimensions must be standard-consistent and one of:
     - PAL: `720x576` or `704x576`
     - NTSC: `720x480` or `704x480`
+  - Scaling/resizing is not supported. Any source outside the accepted dimensions is invalid.
   - `704`-wide progressive sources are normalized to the internal `720`-wide raster with `8` pixels of nominal-black side padding on each side.
   - Decoder/container padding must be cropped to the declared display aperture before applying 704/720 normalization.
   - `duration_frames` must be either:
@@ -785,7 +795,22 @@ sections:
 
 #### **Progressive Sources**
 
-Ingests progressive sources (MOV, MP4, PNG, RAW) and converts them to interlaced signals.
+Ingests progressive sources and converts them to interlaced signals, subject to strict profile validation.
+
+##### **Supported Source Profiles (Normative)**
+
+Container names alone are not sufficient for validation; source files must match one of the following profiles:
+
+- **MOV video**: Apple ProRes in MOV at dimensions valid for the selected output standard, and at a frame rate that matches the selected output standard (`25 fps` PAL, `30000/1001 fps` NTSC):
+  - `prores_ks` / ProRes 422 family (`yuv422p10le`)
+  - `prores_ks` / ProRes 4444 (`yuv444p10le`)
+- **MP4 video**: H.264/AVC (`yuv420p`) in MP4 at dimensions valid for the selected output standard, and at a frame rate that matches the selected output standard (`25 fps` PAL, `30000/1001 fps` NTSC).
+- **PNG still image**: Single-frame PNG truecolour input (RGB/RGBA, 8-bit or 16-bit integer channels) at target dimensions.
+- **RAW still frame**: Headerless raw frame with external format declaration (project field or sidecar) using one supported pixel format:
+  - `yuv422p10le`
+  - `yuv444p10le`
+
+Any other codec, chroma format, bit depth, or packing is outside scope and must fail validation.
 
 ##### **Fields**
 
@@ -795,19 +820,24 @@ Ingests progressive sources (MOV, MP4, PNG, RAW) and converts them to interlaced
 | `name`            | string         | Yes          | User-friendly name.                                                            | `"MOV Source"`       |
 | `type`            | string         | Yes          | Must be `"progressive"`.                                                       | `"progressive"`      |
 | `source`          | string         | Yes          | Path to the source file. May be a `builtin:` prefixed name, an absolute path, or a path relative to the project YAML. See [File Path Resolution](#file-path-resolution). | `"assets/test.mov"` |
+| `source_pixel_format` | string      | Conditionally | Required for `RAW` sources; ignored for MOV/MP4/PNG. Supported values: `yuv422p10le`, `yuv444p10le`. | `"yuv422p10le"` |
 | `start_frame`     | integer        | No           | First frame to use (default: `0`).                                             | `0`                  |
 | `duration_frames` | integer/string | No           | Number of frames to extract. Use `"all"` for all frames or a positive integer. | `100` or `"all"`     |
 
 
 ##### **Colour Space and Frame Rate**
 
-- **Colour Space**: Determined by the input source type (e.g., MOV files are typically YUV, PNG files are RGB).
+- **Colour Space**: Source data is converted into 10-bit 4:4:4 YCbCr BT.601 studio swing at ingestion.
 - **Frame Rate**: **Fixed by the output standard** (25 fps for PAL, ~29.97 fps for NTSC). Input sources **must match** this frame rate.
+- **10-bit studio-range preservation**:
+  - MOV and RAW supported profiles must preserve studio-domain sub-black and over-white excursions when present.
+  - PNG and MP4 supported profiles are valid for standard in-range content, but are not required to preserve sub-black/over-white excursions.
 
 ##### **Accepted Dimensions and Padding Behavior**
 
 - PAL progressive sources: `720x576` or `704x576`.
 - NTSC progressive sources: `720x480` or `704x480`.
+- Scaling or resampling is **not supported** for progressive-source ingestion. Sources must already be in one of the accepted dimensions.
 - `704`-wide sources are mapped to the internal `720`-wide raster by adding `8` nominal-black pixels on both left and right sides.
 - For codecs/containers that store padded coded dimensions, the decoder must apply crop/display-aperture metadata first. Validation and normalization then operate on the cropped display frame.
 
@@ -1436,8 +1466,10 @@ To simulate **analogue output**, the generator must:
     - Frame-based content (`software_generated` or `progressive`).
     - Line injections (`line_injections`).
   - For `progressive` sections, `source` must point to a valid file.
-  - **Input source frame rate must match the required output format**.
+  - **Input source frame rate must match the required output format (including MOV and MP4 sources)**.
+  - **Progressive source must match a supported source profile (container + codec + pixel format/bit depth as applicable)**.
   - **Progressive source dimensions must be PAL: `720x576` or `704x576`; NTSC: `720x480` or `704x480`**.
+  - **Scaling/resizing of progressive sources is not supported**.
   - **When source width is `704`, ingestion must normalize to the internal `720`-wide raster using `8` pixels of nominal-black side padding on each side**.
 3. **Line Injection Constraints**:
   - `target_lines` must be within the valid range for the standard (1-625 for PAL, 1-525 for NTSC).
@@ -1466,7 +1498,10 @@ To simulate **analogue output**, the generator must:
 | Invalid pilot burst                        | "pal_laserdisc_pilot_burst can only be enabled for PAL projects."                                                                        |
 | Invalid VBI burst                          | "ntsc_laserdisc_vbi_burst can only be enabled for NTSC projects."                                                                        |
 | Invalid frame rate                         | "Input frame rate must match the output standard's frame rate (25 fps for PAL, ~29.97 fps for NTSC)."                                    |
+| Unsupported progressive source profile     | "Progressive source is not in a supported profile. Validate container, codec, chroma format, and bit depth against the supported profile list." |
+| Missing RAW pixel format declaration       | "RAW source requires source_pixel_format. Supported values are yuv422p10le and yuv444p10le." |
 | Invalid progressive source dimensions      | "Progressive source dimensions are invalid for the selected standard. PAL requires 720x576 or 704x576; NTSC requires 720x480 or 704x480." |
+| Scaling requested or implied               | "Progressive source scaling is not supported. Source dimensions must already match PAL 720x576/704x576 or NTSC 720x480/704x480." |
 
 
 ---
@@ -1533,7 +1568,7 @@ videosynth --project ntsc_test.yaml --validate
 - **Build System**: Nix.
 - **Dependencies**:
   - **YAML Parsing**: [yaml-cpp](https://github.com/jbeder/yaml-cpp).
-  - **Image/Video Decoding**: [FFmpeg](https://ffmpeg.org/) (for MOV/MP4/PNG/RAW).
+  - **Image/Video Decoding**: [FFmpeg](https://ffmpeg.org/) (for the constrained progressive source profiles in Section 8.1).
   - **Sample Rate Conversion**: [soxr](https://sourceforge.net/p/soxr/).
   - **Logging**: [spdlog](https://github.com/gabime/spdlog).
   - **Testing**: [Google Test](https://github.com/google/googletest).
