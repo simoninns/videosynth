@@ -29,6 +29,13 @@ double SCurve01(double x) {
 
 double InverseSCurve01(double y) {
   const double target = ClampUnitInterval(y);
+  if (target <= 0.0) {
+    return 0.0;
+  }
+  if (target >= 1.0) {
+    return 1.0;
+  }
+
   double lo = 0.0;
   double hi = 1.0;
 
