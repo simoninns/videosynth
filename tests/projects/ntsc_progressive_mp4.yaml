@@ -16,4 +16,4 @@ sections:
   - name: NtscMp4Nynashamn
     type: progressive
     source: resources/assets/720x480/video/mp4_29_97/nynashamn.mp4
-    duration_frames: all
+    duration_frames: 60

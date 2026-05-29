@@ -16,4 +16,4 @@ sections:
   - name: PalMp4Nynashamn
     type: progressive
     source: resources/assets/720x576/video/mp4_25_00/nynashamn.mp4
-    duration_frames: all
+    duration_frames: 50

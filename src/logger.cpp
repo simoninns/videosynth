@@ -42,7 +42,7 @@ SpdlogLogger::SpdlogLogger(LogLevel level, const std::string& log_file) {
 
   logger_ = std::make_shared<spdlog::logger>("videosynth", sinks.begin(), sinks.end());
   logger_->set_level(ToSpdlogLevel(level));
-  logger_->set_pattern("[%^%l%$] %v");
+  logger_->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%^%l%$] %v");
 }
 
 void SpdlogLogger::Info(const std::string& message) { logger_->info(message); }
