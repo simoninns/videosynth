@@ -1,13 +1,13 @@
 /*
- * File:        progressive_source_probe.cpp
- * Module:      progressive_source_probe
+ * File:        progressive_frame_source_probe.cpp
+ * Module:      progressive_frame_source_probe
  * Purpose:     Probes progressive source metadata for profile validation and frame-count semantics.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Simon Inns
  */
 
-#include "videosynth/progressive_source_probe.h"
+#include "videosynth/progressive_frame_source_probe.h"
 
 #include <algorithm>
 #include <array>
@@ -109,7 +109,7 @@ int ParseIntegerOrZero(const std::string& value) {
 }
 
 bool ProbePng(const Section& section,
-              ProgressiveSourceProfile* out_profile,
+              ProgressiveFrameSourceProfile* out_profile,
               std::string* error) {
   FILE* file = std::fopen(section.source.c_str(), "rb");
   if (file == nullptr) {
@@ -193,7 +193,7 @@ bool InferRawWidthFromByteSize(std::size_t file_size,
 }
 
 bool ProbeRaw(const Section& section,
-              ProgressiveSourceProfile* out_profile,
+              ProgressiveFrameSourceProfile* out_profile,
               std::string* error) {
   std::string pixel_format = Lowercase(section.source_pixel_format);
   if (pixel_format != "yuv422p10le") {
@@ -231,7 +231,7 @@ bool ProbeRaw(const Section& section,
 }
 
 bool ProbeWithFfprobe(const std::string& source,
-                      ProgressiveSourceProfile* out_profile,
+                      ProgressiveFrameSourceProfile* out_profile,
                       std::string* error) {
   const std::string escaped_source = EscapeForSingleQuotedShell(source);
   const std::string command =
@@ -292,9 +292,9 @@ bool ProbeWithFfprobe(const std::string& source,
 
 }  // namespace
 
-bool ProgressiveSourceProbe::Probe(const Section& section,
-                                   ProgressiveSourceProfile* out_profile,
-                                   std::string* error) {
+bool ProgressiveFrameSourceProbe::Probe(const Section& section,
+                                        ProgressiveFrameSourceProfile* out_profile,
+                                        std::string* error) {
   if (out_profile == nullptr) {
     if (error != nullptr) {
       *error = "Progressive source probe output profile pointer must not be null.";

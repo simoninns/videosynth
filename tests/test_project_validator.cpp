@@ -39,14 +39,14 @@ std::string CreateTemporarySourceFile(const std::string& file_name) {
   return path.string();
 }
 
-class MockProgressiveSourceProbe final : public IProgressiveSourceProbe {
+class MockProgressiveFrameSourceProbe final : public IProgressiveFrameSourceProbe {
  public:
   bool should_succeed = true;
-  ProgressiveSourceProfile profile;
+  ProgressiveFrameSourceProfile profile;
   std::string error_message;
 
   bool Probe(const Section&,
-             ProgressiveSourceProfile* out_profile,
+             ProgressiveFrameSourceProfile* out_profile,
              std::string* error) override {
     if (!should_succeed) {
       if (error != nullptr) {
@@ -254,7 +254,7 @@ TEST(ProjectValidatorTest, AcceptsProgressiveMp4WithSupportedProfile) {
   project.sections[0].duration_frames_all = true;
   project.sections[0].duration_frames = 0;
 
-  MockProgressiveSourceProbe probe;
+  MockProgressiveFrameSourceProbe probe;
   probe.profile.container = "mov,mp4,m4a,3gp,3g2,mj2";
   probe.profile.codec = "h264";
   probe.profile.pixel_format = "yuv420p";
@@ -282,7 +282,7 @@ TEST(ProjectValidatorTest, RejectsProgressiveMp4WithUnsupportedPixelFormat) {
   project.sections[0].duration_frames_all = true;
   project.sections[0].duration_frames = 0;
 
-  MockProgressiveSourceProbe probe;
+  MockProgressiveFrameSourceProbe probe;
   probe.profile.container = "mov,mp4,m4a,3gp,3g2,mj2";
   probe.profile.codec = "h264";
   probe.profile.pixel_format = "yuv420p10le";
@@ -310,7 +310,7 @@ TEST(ProjectValidatorTest, AcceptsProgressiveMovWithSupportedV210Profile) {
   project.sections[0].duration_frames_all = true;
   project.sections[0].duration_frames = 0;
 
-  MockProgressiveSourceProbe probe;
+  MockProgressiveFrameSourceProbe probe;
   probe.profile.container = "mov";
   probe.profile.codec = "v210";
   probe.profile.pixel_format = "yuv422p10le";
@@ -338,7 +338,7 @@ TEST(ProjectValidatorTest, RejectsProgressiveMovWithUnsupportedCodecProfile) {
   project.sections[0].duration_frames_all = true;
   project.sections[0].duration_frames = 0;
 
-  MockProgressiveSourceProbe probe;
+  MockProgressiveFrameSourceProbe probe;
   probe.profile.container = "mov";
   probe.profile.codec = "h264";
   probe.profile.pixel_format = "yuv420p";

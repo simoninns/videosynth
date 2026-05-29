@@ -17,7 +17,7 @@
 
 #include "videosynth/chroma_encoder.h"
 #include "videosynth/fixed_point.h"
-#include "videosynth/frame_source.h"
+#include "videosynth/progressive_frame_source.h"
 #include "videosynth/signal_timing_model.h"
 #include "videosynth/signal_shaping.h"
 #include "videosynth/timing_constants.h"

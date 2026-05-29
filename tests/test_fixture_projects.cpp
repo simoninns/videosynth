@@ -18,9 +18,9 @@
 #include <gtest/gtest.h>
 
 #include "videosynth/generation_stage.h"
-#include "videosynth/frame_source.h"
+#include "videosynth/progressive_frame_source.h"
 #include "videosynth/output_stage.h"
-#include "videosynth/progressive_source_probe.h"
+#include "videosynth/progressive_frame_source_probe.h"
 #include "videosynth/project_validator.h"
 #include "videosynth/timing_constants.h"
 #include "videosynth/yaml_project_parser.h"
@@ -132,8 +132,8 @@ TEST(ProjectFixturesTest, PalAndNtscProjectsParseAndValidate) {
 
 TEST(ProjectFixturesTest, ProgressivePngFixturesParseAndValidate) {
   YamlProjectParser parser;
-  ProgressiveSourceProbe progressive_source_probe;
-  ProjectValidator validator(&progressive_source_probe);
+  ProgressiveFrameSourceProbe progressive_frame_source_probe;
+  ProjectValidator validator(&progressive_frame_source_probe);
 
   const std::vector<std::string> fixtures = {
       "pal_progressive_png.yaml", "ntsc_progressive_png.yaml"};
@@ -158,8 +158,8 @@ TEST(ProjectFixturesTest, ProgressivePngFixturesParseAndValidate) {
 
 TEST(ProjectFixturesTest, ProgressiveRawFixturesParseAndValidate) {
   YamlProjectParser parser;
-  ProgressiveSourceProbe progressive_source_probe;
-  ProjectValidator validator(&progressive_source_probe);
+  ProgressiveFrameSourceProbe progressive_frame_source_probe;
+  ProjectValidator validator(&progressive_frame_source_probe);
 
   const std::vector<std::string> fixtures = {
       "pal_progressive_raw.yaml", "ntsc_progressive_raw.yaml"};
@@ -185,8 +185,8 @@ TEST(ProjectFixturesTest, ProgressiveRawFixturesParseAndValidate) {
 
 TEST(ProjectFixturesTest, ProgressiveMp4FixturesParseAndValidate) {
   YamlProjectParser parser;
-  ProgressiveSourceProbe progressive_source_probe;
-  ProjectValidator validator(&progressive_source_probe);
+  ProgressiveFrameSourceProbe progressive_frame_source_probe;
+  ProjectValidator validator(&progressive_frame_source_probe);
 
   const std::vector<std::string> fixtures = {
       "pal_progressive_mp4.yaml", "ntsc_progressive_mp4.yaml"};
@@ -211,8 +211,8 @@ TEST(ProjectFixturesTest, ProgressiveMp4FixturesParseAndValidate) {
 
 TEST(ProjectFixturesTest, ProgressiveMovFixturesParseAndValidate) {
   YamlProjectParser parser;
-  ProgressiveSourceProbe progressive_source_probe;
-  ProjectValidator validator(&progressive_source_probe);
+  ProgressiveFrameSourceProbe progressive_frame_source_probe;
+  ProjectValidator validator(&progressive_frame_source_probe);
 
   const std::vector<std::string> fixtures = {
       "pal_progressive_mov.yaml", "ntsc_progressive_mov.yaml"};
@@ -386,8 +386,8 @@ TEST(ProjectFixturesTest, ProgressiveRawFixturesGenerateCompositeOutputWith152Fr
 
 TEST(ProjectFixturesTest, ProgressiveMp4FixturesGenerateCompositeOutputForConfiguredDuration) {
   YamlProjectParser parser;
-  ProgressiveSourceProbe progressive_source_probe;
-  ProjectValidator validator(&progressive_source_probe);
+  ProgressiveFrameSourceProbe progressive_frame_source_probe;
+  ProjectValidator validator(&progressive_frame_source_probe);
   GenerationStage generation;
   OutputStage output;
   ProgressiveFrameSource progressive_source;
@@ -447,8 +447,8 @@ TEST(ProjectFixturesTest, ProgressiveMp4FixturesGenerateCompositeOutputForConfig
 
 TEST(ProjectFixturesTest, ProgressiveMovFixturesGenerateCompositeOutputForFullSourceLength) {
   YamlProjectParser parser;
-  ProgressiveSourceProbe progressive_source_probe;
-  ProjectValidator validator(&progressive_source_probe);
+  ProgressiveFrameSourceProbe progressive_frame_source_probe;
+  ProjectValidator validator(&progressive_frame_source_probe);
   GenerationStage generation;
   OutputStage output;
   ProgressiveFrameSource progressive_source;

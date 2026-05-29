@@ -47,7 +47,7 @@ class IProjectValidator {
   virtual ValidationResult Validate(const Project& project) = 0;
 };
 
-struct ProgressiveSourceProfile {
+struct ProgressiveFrameSourceProfile {
   std::string container;
   std::string codec;
   std::string pixel_format;
@@ -58,11 +58,11 @@ struct ProgressiveSourceProfile {
   int frame_count = 0;
 };
 
-class IProgressiveSourceProbe {
+class IProgressiveFrameSourceProbe {
  public:
-  virtual ~IProgressiveSourceProbe() = default;
+  virtual ~IProgressiveFrameSourceProbe() = default;
   virtual bool Probe(const Section& section,
-                     ProgressiveSourceProfile* out_profile,
+                     ProgressiveFrameSourceProfile* out_profile,
                      std::string* error) = 0;
 };
 

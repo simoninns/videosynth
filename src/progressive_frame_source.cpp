@@ -1,13 +1,13 @@
 /*
- * File:        frame_source.cpp
- * Module:      frame_source
+ * File:        progressive_frame_source.cpp
+ * Module:      progressive_frame_source
  * Purpose:     Generates fixed-format 10-bit 4:4:4 BT.601 frame data for frame-based sources.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Simon Inns
  */
 
-#include "videosynth/frame_source.h"
+#include "videosynth/progressive_frame_source.h"
 
 #include <algorithm>
 #include <array>

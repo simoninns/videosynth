@@ -1,6 +1,6 @@
 /*
- * File:        progressive_source_probe.h
- * Module:      progressive_source_probe
+ * File:        progressive_frame_source_probe.h
+ * Module:      progressive_frame_source_probe
  * Purpose:     Probes progressive source metadata for profile validation and frame-count semantics.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
@@ -13,10 +13,10 @@
 
 namespace videosynth {
 
-class ProgressiveSourceProbe final : public IProgressiveSourceProbe {
+class ProgressiveFrameSourceProbe final : public IProgressiveFrameSourceProbe {
  public:
   bool Probe(const Section& section,
-             ProgressiveSourceProfile* out_profile,
+             ProgressiveFrameSourceProfile* out_profile,
              std::string* error) override;
 };
 

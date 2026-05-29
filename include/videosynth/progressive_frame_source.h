@@ -1,6 +1,6 @@
 /*
- * File:        frame_source.h
- * Module:      frame_source
+ * File:        progressive_frame_source.h
+ * Module:      progressive_frame_source
  * Purpose:     Defines fixed-format frame-source buffers for frame-based content.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later

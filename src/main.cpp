@@ -14,7 +14,7 @@
 #include "videosynth/logger.h"
 #include "videosynth/output_stage.h"
 #include "videosynth/pipeline.h"
-#include "videosynth/progressive_source_probe.h"
+#include "videosynth/progressive_frame_source_probe.h"
 #include "videosynth/project_validator.h"
 #include "videosynth/yaml_project_parser.h"
 
@@ -85,8 +85,8 @@ int main(int argc, char** argv) {
   }
 
   videosynth::YamlProjectParser parser(&logger);
-  videosynth::ProgressiveSourceProbe progressive_source_probe;
-  videosynth::ProjectValidator validator(&progressive_source_probe, &logger);
+  videosynth::ProgressiveFrameSourceProbe progressive_frame_source_probe;
+  videosynth::ProjectValidator validator(&progressive_frame_source_probe, &logger);
   videosynth::GenerationStage generation(&logger);
   videosynth::OutputStage output(&logger);
 

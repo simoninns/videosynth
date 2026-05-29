@@ -154,7 +154,7 @@ bool ContainsCsvToken(const std::string& csv, const std::string& token) {
 }
 
 bool ValidateProfileBySourceFamily(const videosynth::Section& section,
-                                   const videosynth::ProgressiveSourceProfile& profile,
+                                   const videosynth::ProgressiveFrameSourceProfile& profile,
                                    std::string* error) {
   const std::string source = Lowercase(section.source);
   const std::string container = Lowercase(profile.container);
@@ -238,9 +238,9 @@ bool ValidateProfileBySourceFamily(const videosynth::Section& section,
 
 namespace videosynth {
 
-ProjectValidator::ProjectValidator(IProgressiveSourceProbe* progressive_source_probe,
+ProjectValidator::ProjectValidator(IProgressiveFrameSourceProbe* progressive_frame_source_probe,
                                    ILogger* logger)
-    : progressive_source_probe_(progressive_source_probe), logger_(logger) {}
+    : progressive_frame_source_probe_(progressive_frame_source_probe), logger_(logger) {}
 
 ValidationResult ProjectValidator::Validate(const Project& project) {
   ValidationResult result;
@@ -385,10 +385,10 @@ ValidationResult ProjectValidator::Validate(const Project& project) {
         break;
       }
 
-      if (progressive_source_probe_ != nullptr) {
-        ProgressiveSourceProfile profile;
+      if (progressive_frame_source_probe_ != nullptr) {
+        ProgressiveFrameSourceProfile profile;
         std::string probe_error;
-        if (!progressive_source_probe_->Probe(section, &profile, &probe_error)) {
+        if (!progressive_frame_source_probe_->Probe(section, &profile, &probe_error)) {
           result.is_valid = false;
           result.errors.push_back(
               probe_error.empty()

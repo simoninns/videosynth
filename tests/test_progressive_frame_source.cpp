@@ -1,6 +1,6 @@
 /*
- * File:        test_frame_source.cpp
- * Module:      frame_source_tests
+ * File:        test_progressive_frame_source.cpp
+ * Module:      progressive_frame_source_tests
  * Purpose:     Validates fixed-format frame generation for software patterns.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
@@ -15,7 +15,7 @@
 
 #include <gtest/gtest.h>
 
-#include "videosynth/frame_source.h"
+#include "videosynth/progressive_frame_source.h"
 
 namespace videosynth {
 namespace {

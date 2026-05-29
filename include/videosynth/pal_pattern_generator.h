@@ -11,7 +11,7 @@
 
 #include <string>
 
-#include "videosynth/frame_source.h"
+#include "videosynth/progressive_frame_source.h"
 
 namespace videosynth {
 

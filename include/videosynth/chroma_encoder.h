@@ -13,7 +13,7 @@
 #include <vector>
 
 #include "videosynth/fixed_point.h"
-#include "videosynth/frame_source.h"
+#include "videosynth/progressive_frame_source.h"
 #include "videosynth/model.h"
 
 namespace videosynth {
