@@ -64,5 +64,15 @@ TEST(SignalLevelsTest, SupportsZeroIreNtscBlackSetup) {
   EXPECT_DOUBLE_EQ(levels.white_mv, 714.3);
 }
 
+TEST(TimingConstantsTest, ResolvesSampleFrameCountsForSupportedOutputEncodings) {
+  EXPECT_EQ(SamplesPerFrameForEncodingPreset(Standard::kPal, "CVBS_U16_4FSC"),
+            static_cast<std::size_t>(SamplesPerFrame4fsc(Standard::kPal)));
+  EXPECT_EQ(SamplesPerFrameForEncodingPreset(Standard::kPal, "RAW_S16_28M"), 1120000U);
+  EXPECT_EQ(SamplesPerFrameForEncodingPreset(Standard::kPal, "RAW_S16_40M"), 1600000U);
+
+  EXPECT_EQ(SamplesPerFrameForEncodingPreset(Standard::kNtsc, "RAW_S16_28M"), 934267U);
+  EXPECT_EQ(SamplesPerFrameForEncodingPreset(Standard::kNtsc, "RAW_S16_40M"), 1334667U);
+}
+
 }  // namespace
 }  // namespace videosynth

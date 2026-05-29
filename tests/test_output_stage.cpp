@@ -204,6 +204,81 @@ TEST(OutputStageTest, WritesCompositeSamplesUsingTpg21EncodingPreset) {
   std::filesystem::remove(metadata_path);
 }
 
+TEST(OutputStageTest, WritesCompositeSamplesUsingUint16EncodingPreset) {
+  OutputStage output;
+  Project project = MakeProject(Standard::kPal);
+  project.cvbs_presets.sample_encoding_preset = "CVBS_U16_4FSC";
+  const std::size_t frame_span = static_cast<std::size_t>(SamplesPerFrame4fsc(Standard::kPal));
+
+  std::vector<SampleFixed> y(frame_span, MillivoltsToSampleFixed(0.0));
+  std::vector<SampleFixed> c(frame_span, MillivoltsToSampleFixed(0.0));
+  y[0] = MillivoltsToSampleFixed(0.0);
+  y[1] = MillivoltsToSampleFixed(700.0);
+  y[2] = MillivoltsToSampleFixed(-300.0);
+
+  const std::filesystem::path video_path =
+      std::filesystem::temp_directory_path() / "videosynth_output_stage_u16.composite";
+  const std::filesystem::path metadata_path =
+      std::filesystem::temp_directory_path() / "videosynth_output_stage_u16.meta";
+  project.output.video_path = video_path.string();
+  project.output.metadata_path = metadata_path.string();
+  std::filesystem::remove(video_path);
+  std::filesystem::remove(metadata_path);
+
+  std::vector<std::string> errors;
+  ASSERT_TRUE(output.Write(project, y, c, &errors));
+
+  const std::vector<std::int16_t> samples = ReadSamples(video_path, 3);
+  ASSERT_EQ(samples.size(), 3U);
+  EXPECT_EQ(samples[0], 256);
+  EXPECT_EQ(samples[1], 844);
+  EXPECT_EQ(samples[2], 4);
+  EXPECT_EQ(std::filesystem::file_size(video_path), frame_span * sizeof(std::int16_t));
+
+  CvbsMetadata metadata;
+  ASSERT_TRUE(ReadCvbsMetadata(metadata_path, &metadata));
+  EXPECT_EQ(metadata.sample_encoding_preset, "CVBS_U16_4FSC");
+
+  std::filesystem::remove(video_path);
+  std::filesystem::remove(metadata_path);
+}
+
+TEST(OutputStageTest, ResamplesRawSamplesUsingTwentyEightMegasamplePreset) {
+  OutputStage output;
+  Project project = MakeProject(Standard::kPal);
+  project.cvbs_presets.sample_encoding_preset = "RAW_S16_28M";
+  const std::size_t input_frame_span = static_cast<std::size_t>(SamplesPerFrame4fsc(Standard::kPal));
+  const std::size_t output_frame_span = SamplesPerFrameForEncodingPreset(Standard::kPal, "RAW_S16_28M");
+
+  std::vector<SampleFixed> y(input_frame_span, MillivoltsToSampleFixed(0.0));
+  std::vector<SampleFixed> c(input_frame_span, MillivoltsToSampleFixed(0.0));
+  for (std::size_t i = 0; i < input_frame_span; ++i) {
+    const double ramp = 1000.0 * static_cast<double>(i) / static_cast<double>(input_frame_span - 1U);
+    y[i] = MillivoltsToSampleFixed(ramp);
+  }
+
+  const std::filesystem::path video_path =
+      std::filesystem::temp_directory_path() / "videosynth_output_stage_raw_28m.composite";
+  const std::filesystem::path metadata_path =
+      std::filesystem::temp_directory_path() / "videosynth_output_stage_raw_28m.meta";
+  project.output.video_path = video_path.string();
+  project.output.metadata_path = metadata_path.string();
+  std::filesystem::remove(video_path);
+  std::filesystem::remove(metadata_path);
+
+  std::vector<std::string> errors;
+  ASSERT_TRUE(output.Write(project, y, c, &errors));
+
+  EXPECT_EQ(std::filesystem::file_size(video_path), output_frame_span * sizeof(std::int16_t));
+
+  CvbsMetadata metadata;
+  ASSERT_TRUE(ReadCvbsMetadata(metadata_path, &metadata));
+  EXPECT_EQ(metadata.sample_encoding_preset, "RAW_S16_28M");
+
+  std::filesystem::remove(video_path);
+  std::filesystem::remove(metadata_path);
+}
+
 TEST(OutputStageTest, SumsYAndCBeforeQuantizationInNtscProfile) {
   OutputStage output;
   Project project = MakeProject(Standard::kNtsc);
@@ -324,7 +399,7 @@ TEST(OutputStageTest, RejectsInvalidOutputConstraints) {
   EXPECT_FALSE(errors.empty());
 
   errors.clear();
-  project.cvbs_presets.sample_encoding_preset = "RAW_S16_40M";
+  project.cvbs_presets.sample_encoding_preset = "NOT_A_SUPPORTED_PRESET";
   const std::size_t frame_span = static_cast<std::size_t>(SamplesPerFrame4fsc(Standard::kPal));
   y.assign(frame_span, MillivoltsToSampleFixed(0.0));
   c.assign(frame_span, MillivoltsToSampleFixed(0.0));

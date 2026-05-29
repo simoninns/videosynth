@@ -123,10 +123,19 @@ For file-based frame sources, both 720-wide and 704-wide rasters are valid for e
 
 ### **Output Modes**
 
-- **Locked**: Timing derived from a reference clock.
-- **Unlocked**: Free-running timing.
+Current implementation status:
+
+- **Locked**: Implemented. The runtime requires `signal_state_preset: STANDARD_TBC_LOCKED`.
+- **Unlocked**: Target design only; not implemented in the current runtime.
 
 ### **Sample Rates**
+
+
+Current implementation status:
+
+- **4fsc**: Implemented for PAL and NTSC.
+- **20MSPS / 40MSPS / Custom**: Design targets only; not implemented in the current runtime.
+- The current validator and output path accept `CVBS_U10_4FSC`, `CVBS_U16_4FSC`, `CVBS_TPG21_4FSC`, `RAW_S16_28M`, and `RAW_S16_40M`. The 4fsc encodings remain locked to the 4fsc lattice, while raw encodings are resampled by the output stage.
 
 
 | **Sample Rate** | **PAL (Hz)** | **NTSC (Hz)** | **Notes**                        |
@@ -147,18 +156,19 @@ At `4fsc`, NTSC frame cadence is orthogonal (`910 x 525 = 477,750` samples/frame
 
 ### **Specification Cross-Check (Section 3)**
 
-- The two-stage split (time-domain generation then sampled digital output) is an implementation architecture; it is consistent with composite-signal decomposition in [SMPTE 170M-2004](../analogue-video-specifications/docs/video_formats/SMPTE-170M-2004/SMPTE-170M-2004.md) §3, §7-§10 and [ITU-R BT.1700](../analogue-video-specifications/docs/video_formats/BT-1700-E/BT-1700-E.md) Part A/Part B.
+- The current implementation uses a sampled-domain split: frame-scoped CVBS-domain Y/C synthesis directly on the `4fsc` lattice, followed by composite quantisation and file output. This remains consistent with composite-signal decomposition in [SMPTE 170M-2004](../analogue-video-specifications/docs/video_formats/SMPTE-170M-2004/SMPTE-170M-2004.md) §3, §7-§10 and [ITU-R BT.1700](../analogue-video-specifications/docs/video_formats/BT-1700-E/BT-1700-E.md) Part A/Part B, but it is not a continuous-time then sampled split.
 - Independent luma/chroma generation with later composition maps to luminance/chrominance model definitions in [SMPTE 170M-2004](../analogue-video-specifications/docs/video_formats/SMPTE-170M-2004/SMPTE-170M-2004.md) §6-§10 and [ITU-R BT.470-6](../analogue-video-specifications/docs/video_formats/BT-470-6-1998/BT-470-6-1998.md), Table 2 item 2.5.
 
-VideoSynth follows a **two-stage architecture** to ensure **separation of concerns** and **flexibility**:
+VideoSynth currently follows a **two-stage sampled-domain architecture**:
 
-1. **[Generation Stage](#generation-stage)**: Generates **time-based representations** of **luma (Y)** and **chroma (C)** signals.
-2. **[Output Stage](#output-stage)**: Handles **sampling, combining, and formatting** into the final CVBS output.
+1. **[Generation Stage](#generation-stage)**: Synthesizes **4fsc-discrete fixed-point mV representations** of **luma (Y)** and **chroma (C)** for complete frame batches.
+2. **[Output Stage](#output-stage)**: Validates frame-span alignment, combines Y and C, quantises to the active digital interface code space, and formats the final CVBS output files.
 
 ### **Key Principles**
 
 - **Independent Y and C Generation**: Luma and chroma are generated separately and combined only at the output stage.
-- **Time-Based Generation**: Signals are generated using **time-based parameters** (e.g., line period, field rate).
+- **Sampled-Domain Generation**: Signals are synthesized directly on the locked `4fsc` sample lattice using analogue-derived timing and level parameters.
+- **Analogue Parameterization in the Digital Domain**: Pulse widths, burst placement, signal levels, and active-picture apertures are derived from PAL/NTSC analogue specifications but realized directly as digital sample sequences.
 - **Analogue Compliance**: Strict adherence to PAL/NTSC standards for timing, sync pulses, and colour encoding.
 
 ---
@@ -206,6 +216,54 @@ Frame-source visible aperture contract:
   - The `720`-sample frame-source raster therefore has `9` non-visible horizontal samples. Because that remainder is odd, the nearest centered integer placement is `4` samples of left margin and `5` samples of right margin.
   - The NTSC frame-source visible aperture is therefore a near-centered `711x480` region at `x=4..714`, `y=0..479`.
   - The analogue standard defines `483` active lines, but VideoSynth frame-based sources expose the `480` full active lines used by the timing model; the three partly active transition lines are not addressable through the frame-source raster.
+
+### **Progressive Horizontal Mapping to 4fsc Active Samples (Normative)**
+
+To preserve deterministic `4fsc` behavior from progressive inputs, horizontal mapping from frame-source pixels to active-line `4fsc` samples is defined as an exact integer-domain rule.
+
+Definitions:
+
+- Let $N_a$ be the number of active-line samples in the selected standard's `4fsc` active window.
+- Let $W$ be the active source width used for mapping (`720` for full-width progressive sources, `704` for active-picture-aligned progressive sources after normalization context is applied).
+- Let $x_0$ be the source active window left offset (`0` for `720`, `8` for `704` normalized into the `720` working raster).
+- Let $s \in [0, N_a-1]$ be the active-line sample index.
+- Let $p(s)$ be the mapped source pixel index.
+
+Normative mapping equation:
+
+$$
+p(s) = x_0 + \left\lfloor \frac{s \cdot W}{N_a} \right\rfloor
+$$
+
+This mapping is mandatory for progressive-source ingestion in the generation stage.
+
+Per-standard active-sample counts used by this mapping in current `4fsc` runtime:
+
+- PAL: $N_a = \operatorname{round}(17{,}734{,}475 \times 52.0\,\mu s) = 922$
+- NTSC: $N_a = \operatorname{round}(14{,}318{,}180 \times 52.0\,\mu s) = 745$
+
+Properties required by this mapping:
+
+- Every active sample maps to exactly one source pixel.
+- The first and last active samples map exactly to the first and last pixels of the active source window.
+- Every source active pixel maps to one or more active samples (no dropped source pixels).
+- Mapping is deterministic and purely integer-domain (no floating-point coordinate interpolation in the mapping rule).
+
+Equivalent per-pixel sample-span form (for reasoning and tests):
+
+$$
+s_{start}(i) = \left\lceil \frac{i \cdot N_a}{W} \right\rceil, \quad
+s_{end}(i) = \left\lceil \frac{(i+1) \cdot N_a}{W} \right\rceil - 1
+$$
+
+for $i \in [0, W-1]$.
+
+Practical width handling:
+
+- `720`-wide progressive sources: use $x_0=0$, $W=720$.
+- `704`-wide progressive sources: preserve active-picture alignment by centering into the internal `720` raster with `8` nominal-black samples on each side, then map using $x_0=8$, $W=704$.
+
+This rule applies identically to PAL and NTSC; only $N_a$ differs by standard.
 
 The progressive source ingestion stage remains responsible for decoding and colour-space normalisation, but the generation stage is responsible for preserving the correct field sequence geometry when mapping normalised frame data into line-timed CVBS-domain Y/C waveforms.
 
@@ -292,7 +350,7 @@ Source-range capability note:
 
 ### **Outputs**
 
-- Time-based **luma (Y)** and **chroma (C)** signals as **high-resolution fixed-point mV values**, emitted as whole-frame batches (typically small bounded groups of frames) for immediate downstream writing. Values are relative to blanking and are stored internally as signed integers scaled by $2^{20}$ before final quantisation.
+- `4fsc`-discrete **luma (Y)** and **chroma (C)** sample buffers as **high-resolution fixed-point mV values**, emitted as whole-frame batches (typically small bounded groups of frames) for immediate downstream writing. Values are relative to blanking and are stored internally as signed integers scaled by $2^{20}$ before final quantisation.
 - Metadata (field order, dominance, timing).
 
 ---
@@ -312,11 +370,11 @@ Source-range capability note:
 
 | **Responsibility**      | **Description**                                                         | **Reference**                     |
 | ----------------------- | ----------------------------------------------------------------------- | --------------------------------- |
-| **Sampling**            | Sample Y and C signals at the specified rate (e.g., 4fsc, 20MSPS).      | CVBS File Format Specification    |
+| **Batch Validation**    | Validate that incoming Y and C buffers match whole-frame `4fsc` timing for the selected standard. | CVBS File Format Specification    |
 | **mV to Integer Conversion** | Quantise fixed-point mV values to 10-bit integers per EBU 3280 (PAL) or SMPTE 244M (NTSC). | EBU Tech. 3280-E, SMPTE 244M-2003 |
 | **Combining Y and C**   | Combine quantised luma and chroma into composite signal (CVBS).         | CVBS File Format Specification    |
-| **Output Formatting**   | Format the sampled signal into the output files (video and metadata).   | CVBS File Format Specification    |
-| **Subcarrier Locking**  | Lock sample clock to colour subcarrier for 4fsc using NCO.              | SMPTE 244M-2003, EBU Tech. 3280-E |
+| **Output Formatting**   | Format the quantised composite signal into the output files (video and metadata).   | CVBS File Format Specification    |
+| **Locked 4fsc Enforcement**  | Enforce the current runtime requirement that output remains locked `4fsc` only. | SMPTE 244M-2003, EBU Tech. 3280-E |
 | **Metadata Generation** | Generate CVBS file metadata (magic number, version, sample rate, etc.). | CVBS File Format Specification    |
 
 
@@ -329,7 +387,7 @@ The output stage generates **two files** as per the [CVBS File Format Specificat
 
 ### **Inputs**
 
-- Time-based Y and C signals from the generation stage.
+- `4fsc`-discrete fixed-point Y and C signal buffers from the generation stage.
 - CVBS presets (sample rate, subcarrier lock, endianness).
 
 ### **Outputs**
@@ -594,6 +652,18 @@ For **NTSC (525-line system)**, the vertical blanking interval (VBI) is defined 
 
 ---
 
+### **Current Implementation Status**
+
+The current parser, validator, and runtime implement only a subset of the YAML surface described in this section:
+
+- Implemented top-level presets: `video_standard_preset`, `sample_encoding_preset`, `signal_state_preset`, `ntsc_black_setup_ire`, `output.video_path`, and `output.metadata_path`.
+- Implemented section fields: `name`, `type`, `pattern`, `source`, `source_pixel_format`, `start_frame`, and `duration_frames`.
+- The `line_injections` schema and the laserdisc-specific CVBS preset flags described below remain target design and are not yet represented in the current runtime data model.
+
+The remainder of Section 7 should therefore be read as the intended project-file design rather than the currently implemented parser surface.
+
+---
+
 ### **Top-Level Structure**
 
 ```yaml
@@ -716,6 +786,15 @@ video_path: "out/pal_test_video.composite" # project-relative output file path
 - Progressive-source frame-rate matching to output standards is grounded in [ITU-R BT.470-6](../analogue-video-specifications/docs/video_formats/BT-470-6-1998/BT-470-6-1998.md), Annex 1, Table 1 and [SMPTE 170M-2004](../analogue-video-specifications/docs/video_formats/SMPTE-170M-2004/SMPTE-170M-2004.md) §11.3.
 - Laserdisc code-type definitions and per-line placement are grounded in [IEC 60856](../analogue-video-specifications/docs/laserdisc/IEC-60856-1986-Laservision-PAL/IEC-60856-1986-Laservision-PAL.md) §10.1 and [IEC 60857](../analogue-video-specifications/docs/laserdisc/IEC-60857-1986-Laservision-NTSC/IEC-60857-1986-Laservision-NTSC.md) §10.1/§10.2, plus Amendment 2 updates for CLV picture-number behavior.
 - VITC fields (`timecode`, flags, CRC) are grounded in [IEC 60461:2010](../analogue-video-specifications/docs/video_metadata/IEC-60461-2010-Time-and-control-code/IEC-60461-2010-Time-and-control-code.md) §9.2 and §9.5-§9.6.
+
+---
+
+### **Current Implementation Status**
+
+- **Implemented**: `software_generated` and `progressive` frame-based sections in Section 8.1.
+- **Not yet implemented**: line-injection handling from Section 8.2, including VITS, laserdisc, VITC, and custom per-line content.
+
+Section 8.2 remains the intended design contract for later implementation work.
 
 ---
 
@@ -1272,6 +1351,13 @@ For **4fsc sampling**, refer to:
 ### **4fsc Sampling Modes**
 
 
+Current implementation status:
+
+- Only **locked `4fsc`** operation is implemented.
+- The current runtime does **not** implement a free-running mode.
+- The current runtime does **not** expose a separate NCO-driven sample-clock subsystem; instead it synthesizes carrier phase directly from the absolute sample index on the `4fsc` lattice.
+
+
 | **Mode**                 | **Description**                                                                                                                  | **Use Case**                                                                         | **Reference**                     |
 | ------------------------ | -------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ | --------------------------------- |
 | **Locked to Subcarrier** | Sample clock is **phase-locked** to the colour subcarrier (e.g., 4 × f_sc) using an **NCO (Numerically Controlled Oscillator)**. | Studio applications, testing, or when phase coherence is critical.                   | SMPTE 244M-2003, EBU Tech. 3280-E |
@@ -1282,14 +1368,16 @@ For **4fsc sampling**, refer to:
 
 ### **Subcarrier Lock Implementation**
 
-For **testing applications**, the subcarrier locking implementation **must meet or exceed** the phase accuracy specified in the PAL/NTSC standards. The following approach is used:
+For **testing applications**, the subcarrier locking implementation **must meet or exceed** the phase accuracy specified in the PAL/NTSC standards. The current implementation achieves lock implicitly by synthesizing Y/C directly on the `4fsc` sample lattice; a dedicated NCO-based clocking subsystem remains a target design for future extension to alternate sampling modes.
 
-- **Numerically Controlled Oscillator (NCO)**:
-  - Use an **NCO** for precise frequency synthesis and phase alignment.
-  - **Phase Accuracy**: The NCO must achieve **≤ ±1° phase error** relative to the subcarrier, as specified in [ITU-R BT.470-6](../analogue-video-specifications/docs/video_formats/BT-470-6-1998/BT-470-6-1998.md) and [SMPTE 170M-2004](../analogue-video-specifications/docs/video_formats/SMPTE-170M-2004/SMPTE-170M-2004.md).
-  - **Frequency Accuracy**: The NCO must generate a sample clock with **≤ 1 Hz error** relative to the ideal 4fsc rate (17.734475 MHz for PAL, 14.31818 MHz for NTSC).
-  - **Alignment**:
-    - Samples must align with the **U-axis (PAL)** or **I-axis (NTSC)** zero-crossings of the colour subcarrier.
+- **Current sampled-domain lock model**:
+  - Use the normative `4fsc` sample rate for the selected standard.
+  - Derive burst and active-picture carrier phase from the absolute sample index so line-to-line phase progression follows the standard-specific `4fsc` geometry.
+  - Preserve whole-frame sample counts defined by the active standard (`709,379` PAL, `477,750` NTSC).
+
+- **Future extension target**:
+  - Introduce an explicit **NCO** or equivalent phase-accumulator abstraction when unlocked modes or alternate sample-rate outputs are implemented.
+  - Demonstrate **≤ ±1° phase error** and suitable frequency accuracy relative to the ideal subcarrier-locked rate.
 
 ---
 
@@ -1305,11 +1393,12 @@ cvbs_presets:
 
 ### **Implementation Notes**
 
-- **Locked Mode**:
-  - Use an **NCO** to generate samples at `4 × f_sc` with **≤ ±1° phase error**.
-  - Align samples to the **U-axis (PAL)** or **I-axis (NTSC)** zero-crossings.
-- **Free-Running Mode**:
-  - Use a **fixed sample rate** (e.g., 17.734475 MHz for PAL) without phase locking.
+- **Current runtime**:
+  - Generate complete frame batches directly at `4 × f_sc`.
+  - Use absolute-sample-index carrier synthesis for PAL/NTSC burst and active-picture chroma.
+  - Reject non-locked and non-`4fsc` output requests during validation.
+- **Future runtime extensions**:
+  - Add explicit unlocked and non-`4fsc` output modes behind a dedicated sample-clock abstraction.
 
 ---
 
@@ -1327,6 +1416,11 @@ cvbs_presets:
 - VITC location constraints used for conflict checks are grounded in [IEC 60461:2010](../analogue-video-specifications/docs/video_metadata/IEC-60461-2010-Time-and-control-code/IEC-60461-2010-Time-and-control-code.md) §9.6.2 and §9.6.3.
 
 VBI line allocations differ between PAL and NTSC and between Laserdisc and non-Laserdisc use. The laserdisc standards define exclusive reserved ranges that must not overlap with any other injection type.
+
+Current implementation status:
+
+- The baseline runtime currently synthesizes sync, burst, blanking, and active-picture placement only.
+- The laserdisc, VITS, VITC, and other VBI allocation rules in this section remain target design constraints for future line-injection implementation.
 
 ---
 
@@ -1393,41 +1487,46 @@ The runtime uses a **central pipeline module** to process sections and combine t
 #### **1. Validation Stage**
 
 - Parse the YAML file and validate all fields.
-- Check for conflicts (e.g., overlapping `target_lines` in line injections).
+- In the current runtime, validate the implemented subset of fields and constraints only.
 - Ensure the selected `signal_state_preset` denotes locked operation when using a 4fsc `sample_encoding_preset`.
 - **Fail validation if any errors are found.**
 
 #### **2. Generation Stage**
 
 - **Input**: Validated YAML project file.
-- **Output**: Time-based representations of **luma (Y)** and **chroma (C)** signals.
+- **Output**: `4fsc`-discrete fixed-point representations of **luma (Y)** and **chroma (C)** signals.
 - **Steps**:
   1. For each section:
     - Generate the **frame-based content** (`software_generated` or `progressive`).
     - For each frame in the section:
-      - Apply **all line injections** for that section to the frame's VBI lines.
       - Insert **sync pulses** and **colour burst** (see [ITU-R BT.470-6](../analogue-video-specifications/docs/video_formats/BT-470-6-1998/BT-470-6-1998.md), [ITU-R BT.1700](../analogue-video-specifications/docs/video_formats/BT-1700-E/BT-1700-E.md)).
       - Apply **ramping and transition smoothing** to simulate analogue behavior (see [ITU-R BT.470-6](../analogue-video-specifications/docs/video_formats/BT-470-6-1998/BT-470-6-1998.md) for ramping requirements).
-    - Emit **time-based Y and C signals** in bounded frame batches (not yet quantised), ready for immediate handoff to output.
+    - Emit bounded batches of `4fsc` Y and C sample buffers in fixed-point mV units, ready for immediate handoff to output.
+
+Current implementation note:
+
+- Line injections, laserdisc overlays, and VITC/VITS generation are not yet applied in the runtime path.
 
 #### **3. Output Stage**
 
-- **Input**: Time-based Y and C signal batches from the generation stage.
+- **Input**: `4fsc`-discrete Y and C signal batches from the generation stage.
 - **Output**: CVBS file (video + metadata).
 - **Steps**:
   1. **Generate Metadata**:
     - Create the CVBS file header with all required metadata (see [CVBS File Format Specification](../cvbs-file-format-specification/docs/index.md)).
-  2. **Sampling**:
-    - Sample the time-based Y and C signals at the specified rate (e.g., 4fsc, 20MSPS).
-    - For **4fsc encodings with `signal_state_preset: STANDARD_TBC_LOCKED`**, use an **NCO** to lock the sample clock to the colour subcarrier.
-  3. **mV to Integer Conversion**:
-    - Map each `double` mV sample to a 10-bit integer using the normative linear mapping for the active standard (EBU Tech. 3280-E for PAL, SMPTE 244M-2003 for NTSC). See [§6.1](#61-signal-levels) for the formulae.
+  2. **Composite Formation and Quantisation**:
+    - Combine the fixed-point luma and chroma sample buffers into a composite sample stream.
+    - Map each fixed-point mV composite sample to a 10-bit integer using the normative linear mapping for the active standard (EBU Tech. 3280-E for PAL, SMPTE 244M-2003 for NTSC). See [§6.1](#61-signal-levels) for the formulae.
     - Clamp to the legal code range; excluded values (codes 0–3 and 1020–1023) must not appear in output.
-  4. **Combining Y and C**:
-    - Combine the quantised luma and chroma integer samples into a composite signal (CVBS).
-  5. **Output Formatting**:
+  3. **mV to Integer Conversion**:
+    - Encode the quantised composite code stream into the active output preset representation.
+  4. **Output Formatting**:
     - Append each generated batch directly to the **video file** as it completes.
     - Finalize by writing metadata to the **metadata file** once all expected frames have been written.
+
+Current implementation note:
+
+- The output stage currently accepts only locked `4fsc` batches and does not perform a separate resampling or NCO-driven sampling step.
 
 ---
 
@@ -1454,6 +1553,17 @@ To simulate **analogue output**, the generator must:
 - Laserdisc reserved-range conflicts and laserdisc-only placement logic map to [IEC 60856](../analogue-video-specifications/docs/laserdisc/IEC-60856-1986-Laservision-PAL/IEC-60856-1986-Laservision-PAL.md) §9.1.4/§10 and [IEC 60857](../analogue-video-specifications/docs/laserdisc/IEC-60857-1986-Laservision-NTSC/IEC-60857-1986-Laservision-NTSC.md) §9.1.5/§10.
 - VITC constraints (including incompatibility decisions when laserdisc is active in the same section) map to [IEC 60461:2010](../analogue-video-specifications/docs/video_metadata/IEC-60461-2010-Time-and-control-code/IEC-60461-2010-Time-and-control-code.md) Clause 9 and laserdisc Clause 10 families.
 - Frame-rate checks map to [ITU-R BT.470-6](../analogue-video-specifications/docs/video_formats/BT-470-6-1998/BT-470-6-1998.md), Annex 1 Table 1 and [SMPTE 170M-2004](../analogue-video-specifications/docs/video_formats/SMPTE-170M-2004/SMPTE-170M-2004.md) §11.3.
+
+---
+
+### **Current Implementation Status**
+
+The current validator enforces a narrower subset than the full design intent in this section:
+
+- Implemented today: standard selection, locked `4fsc` preset constraints, output-path requirements, progressive source profile checks, accepted raster checks, and NTSC black-setup constraints.
+- Not yet implemented in the validator/runtime pair: line-injection conflict validation, laserdisc-specific line reservations, VITC/laserdisc incompatibility checks, and other constraints that depend on parsed `line_injections` data.
+
+The full rule set below therefore remains the intended validation contract for later implementation work.
 
 ---
 

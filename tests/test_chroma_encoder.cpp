@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -19,10 +20,6 @@
 
 namespace videosynth {
 namespace {
-
-std::vector<double> ConstantPhaseLine(std::size_t sample_count, double phase_rad) {
-  return std::vector<double>(sample_count, phase_rad);
-}
 
 double RootMeanSquare(const std::vector<SampleFixed>& values) {
   double square_sum = 0.0;
@@ -67,8 +64,8 @@ TEST(ChromaEncoderTest, NeutralChromaProducesNoSubcarrierEnergy) {
   ASSERT_NE(pal, nullptr);
   ASSERT_NE(ntsc, nullptr);
 
-  pal->EncodeLine(neutral_line, ConstantPhaseLine(neutral_line.size(), 0.0), &pal_output);
-  ntsc->EncodeLine(neutral_line, ConstantPhaseLine(neutral_line.size(), 0.0), &ntsc_output);
+  pal->EncodeLineFromPhaseStart(neutral_line, 0.0, &pal_output);
+  ntsc->EncodeLineFromPhaseStart(neutral_line, 0.0, &ntsc_output);
 
   for (SampleFixed value : pal_output) {
     EXPECT_NEAR(SampleFixedToMillivolts(value), 0.0, 1e-12);
@@ -88,8 +85,8 @@ TEST(ChromaEncoderTest, PalAndNtscUseConsistentQuadratureMappingForStaticCbCrInp
   ASSERT_NE(pal, nullptr);
   ASSERT_NE(ntsc, nullptr);
 
-  pal->EncodeLine(saturated_line, ConstantPhaseLine(saturated_line.size(), 0.75), &pal_output);
-  ntsc->EncodeLine(saturated_line, ConstantPhaseLine(saturated_line.size(), 0.75), &ntsc_output);
+  pal->EncodeLineFromPhaseStart(saturated_line, 0.75, &pal_output);
+  ntsc->EncodeLineFromPhaseStart(saturated_line, 0.75, &ntsc_output);
 
   EXPECT_NEAR(SampleFixedToMillivolts(pal_output[32]), SampleFixedToMillivolts(ntsc_output[32]), 1e-9);
 }
@@ -106,8 +103,8 @@ TEST(ChromaEncoderTest, PalLowPassAttenuatesHighFrequencyChromaMoreThanLowFreque
   const auto high_line = MakeCbSinusoidLine(256, 0.35, 0.18);
 
   // PAL uses E'U on the sin() axis, so use +90 deg carrier phase to isolate Cb.
-  pal->EncodeLine(low_line, ConstantPhaseLine(low_line.size(), M_PI / 2.0), &low_output);
-  pal->EncodeLine(high_line, ConstantPhaseLine(high_line.size(), M_PI / 2.0), &high_output);
+  pal->EncodeLineFromPhaseStart(low_line, M_PI / 2.0, &low_output);
+  pal->EncodeLineFromPhaseStart(high_line, M_PI / 2.0, &high_output);
 
   EXPECT_GT(RootMeanSquare(low_output), RootMeanSquare(high_output) * 3.0);
 }
@@ -123,14 +120,33 @@ TEST(ChromaEncoderTest, NtscCbAndCrAxesUseSymmetricBandwidth) {
   const auto cb_line = MakeCbSinusoidLine(256, 0.35, 0.06);
   const auto cr_line = MakeCrSinusoidLine(256, 0.35, 0.06);
 
-  ntsc->EncodeLine(cb_line, ConstantPhaseLine(cb_line.size(), M_PI / 2.0), &cb_output);
-  ntsc->EncodeLine(cr_line, ConstantPhaseLine(cr_line.size(), 0.0), &cr_output);
+  ntsc->EncodeLineFromPhaseStart(cb_line, M_PI / 2.0, &cb_output);
+  ntsc->EncodeLineFromPhaseStart(cr_line, 0.0, &cr_output);
 
   const double cb_rms = RootMeanSquare(cb_output);
   const double cr_rms = RootMeanSquare(cr_output);
   EXPECT_GT(cb_rms, 1.0);
   EXPECT_GT(cr_rms, 1.0);
   EXPECT_NEAR(cb_rms, cr_rms, std::max(cb_rms, cr_rms) * 0.1);
+}
+
+TEST(ChromaEncoderTest, PhaseStartEncodingIsDeterministic) {
+  const TimingConstants ntsc_timing = GetTimingConstants(Standard::kNtsc);
+  const auto ntsc = CreateChromaEncoder(Standard::kNtsc, ntsc_timing.sample_rate_4fsc_hz);
+  ASSERT_NE(ntsc, nullptr);
+
+  std::vector<YCbCr444Pixel> line(128, YCbCr444Pixel{.y = 512, .cb = 760, .cr = 300});
+  const double phase_start = M_PI / 6.0;
+
+  std::vector<SampleFixed> first_run;
+  std::vector<SampleFixed> second_run;
+  ntsc->EncodeLineFromPhaseStart(line, phase_start, &first_run);
+  ntsc->EncodeLineFromPhaseStart(line, phase_start, &second_run);
+
+  ASSERT_EQ(first_run.size(), second_run.size());
+  for (std::size_t i = 0; i < first_run.size(); ++i) {
+    EXPECT_EQ(first_run[i], second_run[i]);
+  }
 }
 
 }  // namespace

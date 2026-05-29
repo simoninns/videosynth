@@ -109,6 +109,44 @@ bool QueryCvbsMetadataFrameCount(const std::filesystem::path& path, int64_t* fra
   return result;
 }
 
+bool QueryCvbsMetadataEncodingAndFrameCount(const std::filesystem::path& path,
+                                            std::string* sample_encoding_preset,
+                                            int64_t* frame_count) {
+  if (sample_encoding_preset == nullptr || frame_count == nullptr) {
+    return false;
+  }
+
+  sqlite3* db = nullptr;
+  if (sqlite3_open(path.c_str(), &db) != SQLITE_OK) {
+    sqlite3_close(db);
+    return false;
+  }
+
+  const char* query_sql =
+      "SELECT sample_encoding_preset, number_of_sequential_frames FROM cvbs_file LIMIT 1;";
+  sqlite3_stmt* stmt = nullptr;
+
+  if (sqlite3_prepare_v2(db, query_sql, -1, &stmt, nullptr) != SQLITE_OK) {
+    sqlite3_finalize(stmt);
+    sqlite3_close(db);
+    return false;
+  }
+
+  bool result = false;
+  if (sqlite3_step(stmt) == SQLITE_ROW) {
+    const char* encoding = reinterpret_cast<const char*>(sqlite3_column_text(stmt, 0));
+    if (encoding != nullptr) {
+      *sample_encoding_preset = encoding;
+      *frame_count = sqlite3_column_int64(stmt, 1);
+      result = true;
+    }
+  }
+
+  sqlite3_finalize(stmt);
+  sqlite3_close(db);
+  return result;
+}
+
 TEST(ProjectFixturesTest, PalAndNtscProjectsParseAndValidate) {
   YamlProjectParser parser;
   ProjectValidator validator;
@@ -556,6 +594,69 @@ TEST(ProjectFixturesTest, FixtureOutputHashesRemainStable) {
 
     std::filesystem::remove(output_path);
     std::filesystem::remove(metadata_path);
+  }
+}
+
+TEST(ProjectFixturesTest, FixtureProjectsCoverSupportedOutputEncodingFamilies) {
+  YamlProjectParser parser;
+  ProjectValidator validator;
+  GenerationStage generation;
+  OutputStage output;
+
+  const std::vector<std::string> fixtures = {
+    "pal_32f_bars_ramp.yaml", "ntsc_32f_bars_ramp.yaml"};
+  const std::vector<std::string> output_presets = {
+    "CVBS_U10_4FSC", "CVBS_U16_4FSC", "CVBS_TPG21_4FSC", "RAW_S16_28M", "RAW_S16_40M"};
+
+  for (const std::string& fixture : fixtures) {
+  const ParseResult parsed = parser.ParseFile(FixturePath(fixture));
+  ASSERT_TRUE(parsed.ok) << fixture;
+  Project base_project = parsed.project;
+  ASSERT_TRUE(validator.Validate(base_project).is_valid) << fixture;
+
+  std::vector<SampleFixed> y_mv;
+  std::vector<SampleFixed> c_mv;
+  std::vector<std::string> generation_errors;
+  ASSERT_TRUE(generation.Generate(base_project, &y_mv, &c_mv, &generation_errors)) << fixture;
+
+  const int64_t expected_frame_count = 80;
+  for (const std::string& output_preset : output_presets) {
+    Project project = base_project;
+    project.cvbs_presets.sample_encoding_preset = output_preset;
+
+    const std::filesystem::path output_path =
+      std::filesystem::temp_directory_path() /
+      ("videosynth_stage4_" + fixture + "_" + output_preset + ".composite");
+    const std::filesystem::path metadata_path =
+      std::filesystem::temp_directory_path() /
+      ("videosynth_stage4_" + fixture + "_" + output_preset + ".meta");
+    project.output.video_path = output_path.string();
+    project.output.metadata_path = metadata_path.string();
+
+    std::filesystem::remove(output_path);
+    std::filesystem::remove(metadata_path);
+
+    std::vector<std::string> output_errors;
+    ASSERT_TRUE(output.Write(project, y_mv, c_mv, &output_errors))
+      << fixture << " / " << output_preset;
+
+    const std::size_t expected_samples =
+      SamplesPerFrameForEncodingPreset(project.cvbs_presets.video_standard_preset, output_preset) *
+      static_cast<std::size_t>(expected_frame_count);
+    EXPECT_EQ(std::filesystem::file_size(output_path), expected_samples * sizeof(std::int16_t))
+      << fixture << " / " << output_preset;
+
+    std::string written_output_preset;
+    int64_t frame_count = 0;
+    ASSERT_TRUE(
+      QueryCvbsMetadataEncodingAndFrameCount(metadata_path, &written_output_preset, &frame_count))
+      << fixture << " / " << output_preset;
+    EXPECT_EQ(written_output_preset, output_preset) << fixture << " / " << output_preset;
+    EXPECT_EQ(frame_count, expected_frame_count) << fixture << " / " << output_preset;
+
+    std::filesystem::remove(output_path);
+    std::filesystem::remove(metadata_path);
+  }
   }
 }
 

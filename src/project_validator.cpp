@@ -45,10 +45,6 @@ bool PatternSupportsStandard(const std::string& pattern, videosynth::Standard st
   return false;
 }
 
-bool IsSupportedGenerationEncodingPreset(const std::string& preset) {
-  return preset == "CVBS_U10_4FSC" || preset == "CVBS_TPG21_4FSC";
-}
-
 std::string Lowercase(std::string value) {
   std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
     return static_cast<char>(std::tolower(c));
@@ -234,6 +230,55 @@ bool ValidateProfileBySourceFamily(const videosynth::Section& section,
   return true;
 }
 
+void ValidateDeferredLaserdiscPresetFlags(const videosynth::Project& project,
+                                          videosynth::ValidationResult* result) {
+  if (result == nullptr) {
+    return;
+  }
+
+  if (project.cvbs_presets.pal_laserdisc_pilot_burst &&
+      project.cvbs_presets.video_standard_preset != videosynth::Standard::kPal) {
+    result->is_valid = false;
+    result->errors.push_back(
+        "MVP constraint violation: pal_laserdisc_pilot_burst can only be enabled for PAL projects.");
+    return;
+  }
+
+  if (project.cvbs_presets.ntsc_laserdisc_vbi_burst &&
+      project.cvbs_presets.video_standard_preset != videosynth::Standard::kNtsc) {
+    result->is_valid = false;
+    result->errors.push_back(
+        "MVP constraint violation: ntsc_laserdisc_vbi_burst can only be enabled for NTSC projects.");
+    return;
+  }
+
+  if (project.cvbs_presets.pal_laserdisc_pilot_burst) {
+    result->is_valid = false;
+    result->errors.push_back(
+        "MVP constraint violation: pal_laserdisc_pilot_burst is parsed but not implemented in the current runtime.");
+    return;
+  }
+
+  if (project.cvbs_presets.ntsc_laserdisc_vbi_burst) {
+    result->is_valid = false;
+    result->errors.push_back(
+        "MVP constraint violation: ntsc_laserdisc_vbi_burst is parsed but not implemented in the current runtime.");
+  }
+}
+
+void ValidateDeferredLineInjectionSupport(const videosynth::Section& section,
+                                          videosynth::ValidationResult* result) {
+  if (result == nullptr) {
+    return;
+  }
+
+  if (!section.line_injections.empty()) {
+    result->is_valid = false;
+    result->errors.push_back(
+        "MVP constraint violation: line_injections are parsed but not implemented in the current runtime.");
+  }
+}
+
 }  // namespace
 
 namespace videosynth {
@@ -256,16 +301,10 @@ ValidationResult ProjectValidator::Validate(const Project& project) {
     result.errors.push_back("MVP constraint violation: video_standard_preset must be 'PAL' or 'NTSC'.");
   }
 
-  if (!Is4fscSampleEncodingPreset(project.cvbs_presets.sample_encoding_preset)) {
+  if (!IsSupportedSampleEncodingPreset(project.cvbs_presets.sample_encoding_preset)) {
     result.is_valid = false;
     result.errors.push_back(
-        "MVP constraint violation: sample_encoding_preset must be a 4fsc preset.");
-  }
-
-    if (!IsSupportedGenerationEncodingPreset(project.cvbs_presets.sample_encoding_preset)) {
-    result.is_valid = false;
-    result.errors.push_back(
-      "MVP constraint violation: sample_encoding_preset must be 'CVBS_U10_4FSC' or 'CVBS_TPG21_4FSC'.");
+        "MVP constraint violation: sample_encoding_preset must be one of the supported CVBS or raw presets.");
   }
 
   if (project.cvbs_presets.signal_state_preset != "STANDARD_TBC_LOCKED") {
@@ -278,6 +317,8 @@ ValidationResult ProjectValidator::Validate(const Project& project) {
     result.is_valid = false;
     result.errors.push_back("MVP constraint violation: signal_state_preset must indicate locked state.");
   }
+
+  ValidateDeferredLaserdiscPresetFlags(project, &result);
 
   if (project.cvbs_presets.video_standard_preset != Standard::kNtsc &&
       project.cvbs_presets.ntsc_black_setup_ire_specified) {
@@ -321,6 +362,11 @@ ValidationResult ProjectValidator::Validate(const Project& project) {
     }
 
     if (section.type == "software_generated") {
+      ValidateDeferredLineInjectionSupport(section, &result);
+      if (!result.is_valid) {
+        break;
+      }
+
       if (section.pattern.empty()) {
         result.is_valid = false;
         result.errors.push_back(
@@ -363,6 +409,11 @@ ValidationResult ProjectValidator::Validate(const Project& project) {
     }
 
     if (section.type == "progressive") {
+      ValidateDeferredLineInjectionSupport(section, &result);
+      if (!result.is_valid) {
+        break;
+      }
+
       if (section.source.empty()) {
         result.is_valid = false;
         result.errors.push_back(

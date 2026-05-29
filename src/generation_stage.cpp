@@ -16,6 +16,7 @@
 #include <vector>
 
 #include "videosynth/chroma_encoder.h"
+#include "videosynth/active_sample_mapping.h"
 #include "videosynth/fixed_point.h"
 #include "videosynth/progressive_frame_source.h"
 #include "videosynth/signal_timing_model.h"
@@ -42,6 +43,26 @@ struct LinePulseSegment {
   int offset_samples = 0;
   SyncPulseKind kind = SyncPulseKind::kHorizontal;
 };
+
+struct SampledSynthesisContext {
+  Standard standard = Standard::kUnknown;
+  double sample_rate_hz = 0.0;
+  int frame_samples = 0;
+  std::vector<int> line_sample_counts;
+  std::vector<int> line_sample_offsets;
+  int max_line_samples = 0;
+  std::vector<LineTimingPrimitive> frame_lines;
+  int burst_start_samples = 0;
+  int burst_end_samples = 0;
+  int sync_rise_samples = 0;
+  int burst_rise_samples = 0;
+  ActiveRasterGeometry active;
+};
+
+int BurstStartSamples(double sample_rate_hz);
+int BurstEndSamples(double sample_rate_hz);
+double SyncEdgeRiseTimeSeconds(Standard standard);
+double BurstEnvelopeRiseTimeSeconds(Standard standard);
 
 std::vector<int> BuildLineSampleCounts(Standard standard, int lines_per_frame, int nominal_samples) {
   std::vector<int> counts(static_cast<std::size_t>(lines_per_frame), nominal_samples);
@@ -112,6 +133,27 @@ ActiveRasterGeometry GetActiveRasterGeometry(Standard standard, double sample_ra
       .active_window_end_samples = active_window_end,
       .active_width_pixels = 720,
   };
+}
+
+SampledSynthesisContext BuildSampledSynthesisContext(Standard standard) {
+  const TimingConstants timing = GetTimingConstants(standard);
+  SampledSynthesisContext context;
+  context.standard = standard;
+  context.sample_rate_hz = timing.sample_rate_4fsc_hz;
+  context.frame_samples = SamplesPerFrame4fsc(standard);
+  context.line_sample_counts =
+    BuildLineSampleCounts(standard, timing.lines_per_frame, timing.samples_per_line_4fsc);
+  context.line_sample_offsets = BuildLineSampleOffsets(context.line_sample_counts);
+  context.max_line_samples = MaxLineSamples(context.line_sample_counts);
+  context.frame_lines = BuildFrameTimingPrimitives(standard);
+  context.burst_start_samples = BurstStartSamples(context.sample_rate_hz);
+  context.burst_end_samples = BurstEndSamples(context.sample_rate_hz);
+  context.sync_rise_samples =
+    RiseTimeToRampSamples(SyncEdgeRiseTimeSeconds(standard), context.sample_rate_hz);
+  context.burst_rise_samples =
+    RiseTimeToRampSamples(BurstEnvelopeRiseTimeSeconds(standard), context.sample_rate_hz);
+  context.active = GetActiveRasterGeometry(standard, context.sample_rate_hz);
+  return context;
 }
 
 bool BuildFramePatternSchedule(const Project& project,
@@ -466,28 +508,12 @@ bool GenerationStage::GenerateFrameBatch(const Project& project,
     return true;
   }
 
-  const TimingConstants timing = GetTimingConstants(project.cvbs_presets.video_standard_preset);
+    const TimingConstants timing = GetTimingConstants(project.cvbs_presets.video_standard_preset);
   const SignalLevels levels = GetSignalLevels(project.cvbs_presets);
-  const std::vector<int> line_sample_counts =
-      BuildLineSampleCounts(project.cvbs_presets.video_standard_preset,
-                            timing.lines_per_frame,
-                            timing.samples_per_line_4fsc);
-  const std::vector<int> line_sample_offsets = BuildLineSampleOffsets(line_sample_counts);
-  const int frame_samples = SamplesPerFrame4fsc(project.cvbs_presets.video_standard_preset);
-  const int max_line_samples = MaxLineSamples(line_sample_counts);
-  const std::vector<LineTimingPrimitive> lines =
-      BuildFrameTimingPrimitives(project.cvbs_presets.video_standard_preset);
+    const SampledSynthesisContext synth =
+      BuildSampledSynthesisContext(project.cvbs_presets.video_standard_preset);
+    const int frame_samples = synth.frame_samples;
   const double burst_amplitude_mv = 150.0;
-  const int burst_start = BurstStartSamples(timing.sample_rate_4fsc_hz);
-  const int burst_end = BurstEndSamples(timing.sample_rate_4fsc_hz);
-  const int sync_rise_samples =
-      RiseTimeToRampSamples(SyncEdgeRiseTimeSeconds(project.cvbs_presets.video_standard_preset),
-                            timing.sample_rate_4fsc_hz);
-  const int burst_rise_samples =
-      RiseTimeToRampSamples(BurstEnvelopeRiseTimeSeconds(project.cvbs_presets.video_standard_preset),
-                            timing.sample_rate_4fsc_hz);
-  const ActiveRasterGeometry active =
-      GetActiveRasterGeometry(project.cvbs_presets.video_standard_preset, timing.sample_rate_4fsc_hz);
   const TestPatternFrameSource pattern_source;
   std::unique_ptr<IChromaEncoder> chroma_encoder =
       CreateChromaEncoder(project.cvbs_presets.video_standard_preset, timing.sample_rate_4fsc_hz);
@@ -500,9 +526,10 @@ bool GenerationStage::GenerateFrameBatch(const Project& project,
   const std::size_t sample_count = frame_count * static_cast<std::size_t>(frame_samples);
 
   const int active_window_start =
-      std::max(0, std::min(active.active_window_start_samples, max_line_samples - 1));
+      std::max(0, std::min(synth.active.active_window_start_samples, synth.max_line_samples - 1));
   const int active_window_end =
-      std::max(active_window_start + 1, std::min(active.active_window_end_samples, max_line_samples));
+      std::max(active_window_start + 1,
+           std::min(synth.active.active_window_end_samples, synth.max_line_samples));
   const int active_window_samples = active_window_end - active_window_start;
 
   const SampleFixed blanking_fixed = MillivoltsToSampleFixed(levels.blanking_mv);
@@ -526,7 +553,6 @@ bool GenerationStage::GenerateFrameBatch(const Project& project,
 
   std::vector<YCbCr444Pixel> line_source_samples(
       static_cast<std::size_t>(active_window_samples), YCbCr444Pixel{});
-  std::vector<double> carrier_phases_rad(static_cast<std::size_t>(active_window_samples), 0.0);
   std::vector<int> active_sample_indices(static_cast<std::size_t>(active_window_samples), 0);
   std::vector<SampleFixed> encoded_line_chroma(
       static_cast<std::size_t>(active_window_samples), MillivoltsToSampleFixed(0.0));
@@ -572,12 +598,13 @@ bool GenerationStage::GenerateFrameBatch(const Project& project,
     const int local_frame_base = static_cast<int>(local_frame_index * static_cast<std::size_t>(frame_samples));
     const int absolute_frame_base = static_cast<int>(global_frame_index * static_cast<std::size_t>(frame_samples));
 
-    for (const LineTimingPrimitive& line : lines) {
+    for (const LineTimingPrimitive& line : synth.frame_lines) {
       const int line_index = line.line_number_1based - 1;
-      const int local_line_base = local_frame_base + line_sample_offsets[static_cast<std::size_t>(line_index)];
+      const int local_line_base =
+          local_frame_base + synth.line_sample_offsets[static_cast<std::size_t>(line_index)];
       const int absolute_line_base =
-          absolute_frame_base + line_sample_offsets[static_cast<std::size_t>(line_index)];
-      const int line_samples = line_sample_counts[static_cast<std::size_t>(line_index)];
+          absolute_frame_base + synth.line_sample_offsets[static_cast<std::size_t>(line_index)];
+      const int line_samples = synth.line_sample_counts[static_cast<std::size_t>(line_index)];
       const int local_line_end = local_line_base + line_samples;
       const int half_line_samples = (line_samples + 1) / 2;
 
@@ -599,7 +626,7 @@ bool GenerationStage::GenerateFrameBatch(const Project& project,
           SetYMillivolts(static_cast<std::size_t>(i),
                          ShapedPulseLevel(relative_index,
                                           pulse_width_samples,
-                                          sync_rise_samples,
+                                          synth.sync_rise_samples,
                                           levels.blanking_mv,
                                           levels.sync_tip_mv));
         }
@@ -612,9 +639,11 @@ bool GenerationStage::GenerateFrameBatch(const Project& project,
           is_pal ? PalBurstPhaseRadForLine(global_frame_index, line) : line.burst_phase_rad;
 
       if (burst_enabled) {
-        const int burst_sample_start =
-            std::min(local_line_base + burst_start, local_line_end > 0 ? local_line_end - 1 : local_line_base);
-        const int burst_sample_end = std::min(local_line_base + burst_end, local_line_end);
+        const int burst_sample_start = std::min(local_line_base + synth.burst_start_samples,
+                            local_line_end > 0 ? local_line_end - 1
+                                       : local_line_base);
+        const int burst_sample_end =
+          std::min(local_line_base + synth.burst_end_samples, local_line_end);
         const int burst_width_samples = burst_sample_end - burst_sample_start;
         const int burst_sample_start_absolute =
             absolute_line_base + (burst_sample_start - local_line_base);
@@ -627,7 +656,7 @@ bool GenerationStage::GenerateFrameBatch(const Project& project,
         for (int i = burst_sample_start; i < burst_sample_end; ++i) {
           const int relative_index = i - burst_sample_start;
           const double envelope =
-              ShapedGateEnvelope(relative_index, burst_width_samples, burst_rise_samples);
+              ShapedGateEnvelope(relative_index, burst_width_samples, synth.burst_rise_samples);
           SetCMillivolts(static_cast<std::size_t>(i), burst_amplitude_mv * envelope * burst_sin);
 
           const double next_sin = burst_cos;
@@ -643,7 +672,7 @@ bool GenerationStage::GenerateFrameBatch(const Project& project,
       }
 
       const int active_y = ActiveFrameLineIndex(
-          active, project.cvbs_presets.video_standard_preset, line.line_number_1based);
+          synth.active, project.cvbs_presets.video_standard_preset, line.line_number_1based);
       if (active_y < 0) {
         continue;
       }
@@ -657,12 +686,8 @@ bool GenerationStage::GenerateFrameBatch(const Project& project,
       // reference for NTSC.
       const double phase_offset =
           (project.cvbs_presets.video_standard_preset == Standard::kNtsc) ? (line.burst_phase_rad + kPi) : 0.0;
-      const double phase_start =
+        const double phase_start =
           (kQuarterWaveRad * static_cast<double>(active_window_line_start_absolute)) + phase_offset;
-      for (int x_sample = 0; x_sample < active_window_samples; ++x_sample) {
-        carrier_phases_rad[static_cast<std::size_t>(x_sample)] =
-            phase_start + (kQuarterWaveRad * static_cast<double>(x_sample));
-      }
 
       for (int x_sample = 0; x_sample < active_window_samples; ++x_sample) {
         const int sample_index = local_line_base + active_window_start + x_sample;
@@ -670,15 +695,13 @@ bool GenerationStage::GenerateFrameBatch(const Project& project,
           continue;
         }
 
-        int pixel_x =
-            source_frame.active_x + ((x_sample * source_frame.active_width) / active_window_samples);
-        pixel_x = std::min(source_frame.active_x + source_frame.active_width - 1,
-                           std::max(source_frame.active_x, pixel_x));
+        const int pixel_x = MapActiveSampleToSourcePixel(
+          x_sample, active_window_samples, source_frame.active_width, source_frame.active_x);
 
         // Map field lines onto progressive source rows by interleaving fields.
         // Progressive imports use field-2-dominant row pairing, so field 1
         // consumes odd rows and field 2 consumes even rows.
-        const int field_line = active_y % active.active_lines_per_field;
+        const int field_line = active_y % synth.active.active_lines_per_field;
         const bool progressive_section = section->type == "progressive";
         const int source_row = source_frame.active_y +
                                ((line.field_index_1based == 1)
@@ -709,7 +732,8 @@ bool GenerationStage::GenerateFrameBatch(const Project& project,
         }
       }
 
-      chroma_encoder->EncodeLine(line_source_samples, carrier_phases_rad, &encoded_line_chroma);
+      chroma_encoder->EncodeLineFromPhaseStart(
+          line_source_samples, phase_start, &encoded_line_chroma);
       for (int x_sample = 0; x_sample < active_window_samples; ++x_sample) {
         AddCFixed(static_cast<std::size_t>(
                       active_sample_indices[static_cast<std::size_t>(x_sample)]),

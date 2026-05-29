@@ -21,45 +21,39 @@ namespace videosynth {
 class IChromaEncoder {
  public:
   virtual ~IChromaEncoder() = default;
-  virtual void EncodeLine(const std::vector<YCbCr444Pixel>& source_samples,
-                          const std::vector<double>& carrier_phases_rad,
-                          std::vector<SampleFixed>* out_chroma_mv) const = 0;
+  virtual void EncodeLineFromPhaseStart(const std::vector<YCbCr444Pixel>& source_samples,
+                                        double carrier_phase_start_rad,
+                                        std::vector<SampleFixed>* out_chroma_mv) const = 0;
 };
 
 class PalChromaEncoder final : public IChromaEncoder {
  public:
   explicit PalChromaEncoder(double sample_rate_hz);
 
-  void EncodeLine(const std::vector<YCbCr444Pixel>& source_samples,
-                  const std::vector<double>& carrier_phases_rad,
-                  std::vector<SampleFixed>* out_chroma_mv) const override;
+  void EncodeLineFromPhaseStart(const std::vector<YCbCr444Pixel>& source_samples,
+                                double carrier_phase_start_rad,
+                                std::vector<SampleFixed>* out_chroma_mv) const override;
 
  private:
   std::vector<double> u_filter_taps_;
   std::vector<double> v_filter_taps_;
-  mutable std::vector<double> cb_axis_workspace_;
-  mutable std::vector<double> cr_axis_workspace_;
   mutable std::vector<double> filtered_u_workspace_;
   mutable std::vector<double> filtered_v_workspace_;
-  mutable std::vector<double> fir_pad_workspace_;
 };
 
 class NtscChromaEncoder final : public IChromaEncoder {
  public:
   explicit NtscChromaEncoder(double sample_rate_hz);
 
-  void EncodeLine(const std::vector<YCbCr444Pixel>& source_samples,
-                  const std::vector<double>& carrier_phases_rad,
-                  std::vector<SampleFixed>* out_chroma_mv) const override;
+  void EncodeLineFromPhaseStart(const std::vector<YCbCr444Pixel>& source_samples,
+                                double carrier_phase_start_rad,
+                                std::vector<SampleFixed>* out_chroma_mv) const override;
 
  private:
   std::vector<double> cb_filter_taps_;
   std::vector<double> cr_filter_taps_;
-  mutable std::vector<double> cb_axis_workspace_;
-  mutable std::vector<double> cr_axis_workspace_;
   mutable std::vector<double> filtered_cb_workspace_;
   mutable std::vector<double> filtered_cr_workspace_;
-  mutable std::vector<double> fir_pad_workspace_;
 };
 
 std::unique_ptr<IChromaEncoder> CreateChromaEncoder(Standard standard, double sample_rate_hz);

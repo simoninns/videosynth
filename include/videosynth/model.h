@@ -46,6 +46,8 @@ struct CvbsPresets {
   Standard video_standard_preset = Standard::kUnknown;
   std::string sample_encoding_preset = "CVBS_U10_4FSC";
   std::string signal_state_preset = "STANDARD_TBC_LOCKED";
+  bool pal_laserdisc_pilot_burst = false;
+  bool ntsc_laserdisc_vbi_burst = false;
   double ntsc_black_setup_ire = 7.5;
   bool ntsc_black_setup_ire_specified = false;
 };
@@ -58,6 +60,11 @@ inline bool IsSupportedNtscBlackSetupIre(double setup_ire) {
 inline bool Is4fscSampleEncodingPreset(const std::string& preset) {
   return preset == "CVBS_U10_4FSC" || preset == "CVBS_U16_4FSC" ||
          preset == "CVBS_TPG21_4FSC";
+}
+
+inline bool IsSupportedSampleEncodingPreset(const std::string& preset) {
+  return Is4fscSampleEncodingPreset(preset) || preset == "RAW_S16_28M" ||
+         preset == "RAW_S16_40M";
 }
 
 inline std::string SampleRateModeFromEncodingPreset(const std::string& preset) {
@@ -78,9 +85,28 @@ inline bool IsLockedSignalStatePreset(const std::string& preset) {
 }
 
 struct Section {
+  struct LineInjectionCode {
+    std::string code_type;
+    int start_value = 0;
+    bool start_value_specified = false;
+    int chapter = 0;
+    bool chapter_specified = false;
+    std::string programme_status;
+    bool programme_status_specified = false;
+  };
+
+  struct LineInjection {
+    std::string type;
+    std::vector<int> target_lines;
+    std::string vits_type;
+    std::string disc_type;
+    std::vector<LineInjectionCode> codes;
+  };
+
   std::string name;
   std::string type;
   std::string pattern;
+  std::vector<LineInjection> line_injections;
   std::string source;
   std::string source_pixel_format;
   bool duration_frames_all = false;

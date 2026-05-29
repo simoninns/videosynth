@@ -9,6 +9,8 @@
 
 #pragma once
 
+#include <cmath>
+#include <cstddef>
 #include <stdexcept>
 
 #include "videosynth/model.h"
@@ -122,6 +124,38 @@ inline int SamplesPerFrame4fsc(Standard standard) {
   }
 
   throw std::invalid_argument("Frame sample count requested for unknown standard");
+}
+
+inline double SampleRateHzForEncodingPreset(Standard standard, const std::string& preset) {
+  const TimingConstants timing = GetTimingConstants(standard);
+  if (Is4fscSampleEncodingPreset(preset)) {
+    return timing.sample_rate_4fsc_hz;
+  }
+  if (preset == "RAW_S16_28M") {
+    return 28000000.0;
+  }
+  if (preset == "RAW_S16_40M") {
+    return 40000000.0;
+  }
+  return 0.0;
+}
+
+inline std::size_t SamplesPerFrameForEncodingPreset(Standard standard, const std::string& preset) {
+  const TimingConstants timing = GetTimingConstants(standard);
+  const double sample_rate_hz = SampleRateHzForEncodingPreset(standard, preset);
+  if (sample_rate_hz <= 0.0) {
+    return 0U;
+  }
+
+  if (Is4fscSampleEncodingPreset(preset)) {
+    return static_cast<std::size_t>(SamplesPerFrame4fsc(standard));
+  }
+
+  if (timing.frame_rate_hz <= 0.0) {
+    return 0U;
+  }
+
+  return static_cast<std::size_t>(std::llround(sample_rate_hz / timing.frame_rate_hz));
 }
 
 }  // namespace videosynth

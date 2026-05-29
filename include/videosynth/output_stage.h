@@ -43,7 +43,8 @@ class OutputStage final : public IOutputStage {
   std::ofstream video_stream_;
   std::size_t expected_frame_count_ = 0;
   std::size_t written_samples_ = 0;
-  std::size_t frame_span_ = 0;
+  std::size_t input_frame_span_ = 0;
+  std::size_t output_frame_span_ = 0;
   bool has_nonstandard_ = false;
 };
 

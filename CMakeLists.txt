@@ -52,7 +52,9 @@ target_link_libraries(videosynth
 enable_testing()
 
 add_executable(videosynth_tests
+    tests/test_active_sample_mapping.cpp
     tests/test_chroma_encoder.cpp
+    tests/test_compliance_harness.cpp
     tests/test_progressive_frame_source.cpp
     tests/test_fixture_projects.cpp
     tests/test_generation_stage.cpp
@@ -91,7 +93,9 @@ set(videosynth_functional_test_patterns
 )
 
 set(videosynth_unit_test_patterns
+    "^ActiveSampleMappingTest\\."
     "^ChromaEncoderTest\\."
+    "^ComplianceHarnessTest\\."
     "^FrameSourceTest\\.(Generates|KeepsPixelsInsideBt601StudioSwingContract|RejectsNtscBarsPatternForPal|RejectsPalBarsPatternForNtsc)"
     "^GenerationStageTimingTest\\."
     "^GenerationStagePatternTest\\."

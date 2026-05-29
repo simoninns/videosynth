@@ -9,11 +9,14 @@
 
 #include "videosynth/output_stage.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <fstream>
+#include <limits>
 #include <string>
+#include <vector>
 
 #include <sqlite3.h>
 
@@ -37,7 +40,9 @@ struct QuantizationProfile {
 
 enum class OutputEncoding {
   kCvbsU10,
+  kCvbsU16,
   kCvbsTpg21,
+  kRawS16,
 };
 
 bool BuildQuantizationProfile(Standard standard, QuantizationProfile* profile) {
@@ -108,20 +113,80 @@ bool ResolveOutputEncoding(const std::string& preset, OutputEncoding* output_enc
     return true;
   }
 
+  if (preset == "CVBS_U16_4FSC") {
+    *output_encoding = OutputEncoding::kCvbsU16;
+    return true;
+  }
+
   if (preset == "CVBS_TPG21_4FSC") {
     *output_encoding = OutputEncoding::kCvbsTpg21;
+    return true;
+  }
+
+  if (preset == "RAW_S16_28M" || preset == "RAW_S16_40M") {
+    *output_encoding = OutputEncoding::kRawS16;
     return true;
   }
 
   return false;
 }
 
-std::int16_t EncodeCompositeSample(OutputEncoding encoding, int quantized_code) {
-  if (encoding == OutputEncoding::kCvbsU10) {
-    return static_cast<std::int16_t>(quantized_code);
+std::vector<SampleFixed> ResampleFrame(const std::vector<SampleFixed>& input,
+                                       std::size_t target_count) {
+  if (target_count == 0U) {
+    return {};
   }
-  const int tpg21_encoded = (quantized_code - 508) * 64;
-  return static_cast<std::int16_t>(tpg21_encoded);
+  if (input.empty()) {
+    return std::vector<SampleFixed>(target_count, 0);
+  }
+  if (input.size() == target_count) {
+    return input;
+  }
+  if (target_count == 1U) {
+    return std::vector<SampleFixed>(1U, input.front());
+  }
+  if (input.size() == 1U) {
+    return std::vector<SampleFixed>(target_count, input.front());
+  }
+
+  std::vector<SampleFixed> output(target_count, 0);
+  const double source_last_index = static_cast<double>(input.size() - 1U);
+  const double target_last_index = static_cast<double>(target_count - 1U);
+
+  for (std::size_t i = 0; i < target_count; ++i) {
+    const double source_position =
+        source_last_index * (static_cast<double>(i) / target_last_index);
+    const std::size_t left_index = static_cast<std::size_t>(source_position);
+    const std::size_t right_index = std::min(left_index + 1U, input.size() - 1U);
+    const double fraction = source_position - static_cast<double>(left_index);
+    const double interpolated =
+        (1.0 - fraction) * static_cast<double>(input[left_index]) +
+        fraction * static_cast<double>(input[right_index]);
+    output[i] = static_cast<SampleFixed>(std::llround(interpolated));
+  }
+
+  return output;
+}
+
+std::int16_t EncodeCompositeSample(OutputEncoding encoding,
+                                  SampleFixed composite_mv_fixed,
+                                  const QuantizationProfile& profile) {
+  if (encoding == OutputEncoding::kRawS16) {
+    const int raw_mv = static_cast<int>(std::lround(SampleFixedToMillivolts(composite_mv_fixed)));
+    const int clamped_raw_mv =
+        std::max(static_cast<int>(std::numeric_limits<std::int16_t>::min()),
+                 std::min(static_cast<int>(std::numeric_limits<std::int16_t>::max()), raw_mv));
+    return static_cast<std::int16_t>(clamped_raw_mv);
+  }
+
+  const int mapped = MapCompositeFixedToCode(composite_mv_fixed, profile);
+  const int quantized_code = ClampToLegalCodeRange(mapped, profile);
+  if (encoding == OutputEncoding::kCvbsTpg21) {
+    const int tpg21_encoded = (quantized_code - 508) * 64;
+    return static_cast<std::int16_t>(tpg21_encoded);
+  }
+
+  return static_cast<std::int16_t>(quantized_code);
 }
 
 bool IsNonstandardMappedCode(int mapped_code, const QuantizationProfile& profile) {
@@ -303,19 +368,21 @@ bool OutputStage::BeginWrite(const Project& project,
     errors->push_back("Output and metadata paths must be different files.");
     return false;
   }
-  if (!Is4fscSampleEncodingPreset(project.cvbs_presets.sample_encoding_preset)) {
-    errors->push_back("Output stage requires a 4fsc sample_encoding_preset.");
+  if (!IsSupportedSampleEncodingPreset(project.cvbs_presets.sample_encoding_preset)) {
+    errors->push_back("Output stage requires a supported sample_encoding_preset.");
     return false;
   }
   if (!IsLockedSignalStatePreset(project.cvbs_presets.signal_state_preset)) {
-    errors->push_back("Output stage requires a locked signal_state_preset for 4fsc output.");
+    errors->push_back("Output stage requires a locked signal_state_preset.");
     return false;
   }
 
-  const std::size_t frame_span =
+  const std::size_t input_frame_span =
       static_cast<std::size_t>(SamplesPerFrame4fsc(project.cvbs_presets.video_standard_preset));
-  if (frame_span == 0U) {
-    errors->push_back("Generated sample count does not align to whole-frame 4fsc timing.");
+  const std::size_t output_frame_span = SamplesPerFrameForEncodingPreset(
+      project.cvbs_presets.video_standard_preset, project.cvbs_presets.sample_encoding_preset);
+  if (input_frame_span == 0U || output_frame_span == 0U) {
+    errors->push_back("Generated sample count does not align to supported output timing.");
     return false;
   }
 
@@ -329,7 +396,8 @@ bool OutputStage::BeginWrite(const Project& project,
   video_stream_ = std::move(stream);
   expected_frame_count_ = expected_frame_count;
   written_samples_ = 0U;
-  frame_span_ = frame_span;
+  input_frame_span_ = input_frame_span;
+  output_frame_span_ = output_frame_span;
   has_nonstandard_ = false;
   write_session_open_ = true;
 
@@ -356,8 +424,8 @@ bool OutputStage::AppendSamples(const std::vector<SampleFixed>& y_mv,
     errors->push_back("Internal error: Y and C sample vectors must be same size.");
     return false;
   }
-  if (frame_span_ == 0U || (y_mv.size() % frame_span_) != 0U) {
-    errors->push_back("Generated sample count does not align to whole-frame 4fsc timing.");
+  if (input_frame_span_ == 0U || (y_mv.size() % input_frame_span_) != 0U) {
+    errors->push_back("Generated sample count does not align to supported input timing.");
     return false;
   }
 
@@ -374,16 +442,29 @@ bool OutputStage::AppendSamples(const std::vector<SampleFixed>& y_mv,
     return false;
   }
 
-  for (std::size_t i = 0; i < y_mv.size(); ++i) {
-    const SampleFixed composite_mv_fixed = y_mv[i] + c_mv[i];
-    const int mapped = MapCompositeFixedToCode(composite_mv_fixed, quantization);
-    if (IsNonstandardMappedCode(mapped, quantization)) {
-      has_nonstandard_ = true;
+  for (std::size_t frame_start = 0U; frame_start < y_mv.size(); frame_start += input_frame_span_) {
+    std::vector<SampleFixed> composite_frame;
+    composite_frame.reserve(input_frame_span_);
+    for (std::size_t i = 0; i < input_frame_span_; ++i) {
+      composite_frame.push_back(y_mv[frame_start + i] + c_mv[frame_start + i]);
     }
 
-    const int quantized_code = ClampToLegalCodeRange(mapped, quantization);
-    const std::int16_t encoded_sample = EncodeCompositeSample(output_encoding, quantized_code);
-    video_stream_.write(reinterpret_cast<const char*>(&encoded_sample), sizeof(encoded_sample));
+    if (output_frame_span_ != input_frame_span_) {
+      composite_frame = ResampleFrame(composite_frame, output_frame_span_);
+    }
+
+    for (const SampleFixed composite_mv_fixed : composite_frame) {
+      if (output_encoding != OutputEncoding::kRawS16) {
+        const int mapped = MapCompositeFixedToCode(composite_mv_fixed, quantization);
+        if (IsNonstandardMappedCode(mapped, quantization)) {
+          has_nonstandard_ = true;
+        }
+      }
+
+      const std::int16_t encoded_sample =
+          EncodeCompositeSample(output_encoding, composite_mv_fixed, quantization);
+      video_stream_.write(reinterpret_cast<const char*>(&encoded_sample), sizeof(encoded_sample));
+    }
   }
 
   if (!video_stream_) {
@@ -391,7 +472,7 @@ bool OutputStage::AppendSamples(const std::vector<SampleFixed>& y_mv,
     return false;
   }
 
-  written_samples_ += y_mv.size();
+  written_samples_ += (y_mv.size() / input_frame_span_) * output_frame_span_;
   return true;
 }
 
@@ -405,7 +486,7 @@ bool OutputStage::FinalizeWrite(std::vector<std::string>* errors) {
     return false;
   }
 
-  const std::size_t expected_samples = expected_frame_count_ * frame_span_;
+  const std::size_t expected_samples = expected_frame_count_ * output_frame_span_;
   if (written_samples_ != expected_samples) {
     errors->push_back("Output session sample count mismatch before finalization.");
     video_stream_.close();

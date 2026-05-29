@@ -77,6 +77,114 @@ bool ParseDurationFrames(const YAML::Node& section_node,
   }
 }
 
+bool ParseLineInjectionCodes(const YAML::Node& codes_node,
+                             Section::LineInjection* injection,
+                             std::vector<std::string>* errors) {
+  if (!codes_node || !codes_node.IsSequence() || injection == nullptr || errors == nullptr) {
+    return false;
+  }
+
+  for (const YAML::Node& code_node : codes_node) {
+    if (!code_node.IsMap()) {
+      errors->push_back("line_injections[].codes[] must be a map/object.");
+      return false;
+    }
+
+    const std::set<std::string> code_keys = {
+        "code_type", "start_value", "chapter", "programme_status"};
+    ValidateAllowedKeys(code_node, code_keys, "line_injections[].codes[]", errors);
+    if (!errors->empty()) {
+      return false;
+    }
+
+    Section::LineInjectionCode code;
+    code.code_type = code_node["code_type"].as<std::string>("");
+    if (code.code_type.empty()) {
+      errors->push_back("line_injections[].codes[] is missing required field: 'code_type'.");
+      return false;
+    }
+
+    if (code_node["start_value"]) {
+      code.start_value = code_node["start_value"].as<int>();
+      code.start_value_specified = true;
+    }
+    if (code_node["chapter"]) {
+      code.chapter = code_node["chapter"].as<int>();
+      code.chapter_specified = true;
+    }
+    if (code_node["programme_status"]) {
+      code.programme_status = code_node["programme_status"].as<std::string>("");
+      code.programme_status_specified = true;
+    }
+
+    injection->codes.push_back(code);
+  }
+
+  return true;
+}
+
+bool ParseLineInjections(const YAML::Node& section_node,
+                         Section* section,
+                         std::vector<std::string>* errors) {
+  if (section == nullptr || errors == nullptr) {
+    return false;
+  }
+
+  if (!section_node["line_injections"]) {
+    return true;
+  }
+
+  const YAML::Node line_injections_node = section_node["line_injections"];
+  if (!line_injections_node.IsSequence()) {
+    errors->push_back("section field 'line_injections' must be a list/sequence.");
+    return false;
+  }
+
+  for (const YAML::Node& injection_node : line_injections_node) {
+    if (!injection_node.IsMap()) {
+      errors->push_back("line_injections[] must be a map/object.");
+      return false;
+    }
+
+    const std::set<std::string> injection_keys = {
+      "type", "target_lines", "vits_type", "disc_type", "codes"};
+    ValidateAllowedKeys(injection_node, injection_keys, "line_injections[]", errors);
+    if (!errors->empty()) {
+      return false;
+    }
+
+    Section::LineInjection injection;
+    injection.type = injection_node["type"].as<std::string>("");
+    if (injection.type.empty()) {
+      errors->push_back("line_injections[] is missing required field: 'type'.");
+      return false;
+    }
+
+    if (injection_node["target_lines"]) {
+      const YAML::Node target_lines_node = injection_node["target_lines"];
+      if (!target_lines_node.IsSequence()) {
+        errors->push_back("line_injections[].target_lines must be a list/sequence.");
+        return false;
+      }
+      for (const YAML::Node& target_line : target_lines_node) {
+        injection.target_lines.push_back(target_line.as<int>());
+      }
+    }
+
+    injection.vits_type = injection_node["vits_type"].as<std::string>("");
+    injection.disc_type = injection_node["disc_type"].as<std::string>("");
+
+    if (injection_node["codes"] &&
+        !ParseLineInjectionCodes(injection_node["codes"], &injection, errors)) {
+      return false;
+    }
+
+    section->line_injections.push_back(injection);
+  }
+
+  return true;
+}
+
 }  // namespace
 
 ParseResult YamlProjectParser::ParseFile(const std::string& path) {
@@ -131,6 +239,8 @@ ParseResult YamlProjectParser::ParseFile(const std::string& path) {
       "video_standard_preset",
       "sample_encoding_preset",
       "signal_state_preset",
+      "pal_laserdisc_pilot_burst",
+      "ntsc_laserdisc_vbi_burst",
       "ntsc_black_setup_ire"};
     ValidateAllowedKeys(presets, preset_keys, "cvbs_presets", &result.errors);
     if (!result.errors.empty()) {
@@ -146,6 +256,12 @@ ParseResult YamlProjectParser::ParseFile(const std::string& path) {
     result.project.cvbs_presets.signal_state_preset =
       presets["signal_state_preset"].as<std::string>(
         result.project.cvbs_presets.signal_state_preset);
+    result.project.cvbs_presets.pal_laserdisc_pilot_burst =
+      presets["pal_laserdisc_pilot_burst"].as<bool>(
+        result.project.cvbs_presets.pal_laserdisc_pilot_burst);
+    result.project.cvbs_presets.ntsc_laserdisc_vbi_burst =
+      presets["ntsc_laserdisc_vbi_burst"].as<bool>(
+        result.project.cvbs_presets.ntsc_laserdisc_vbi_burst);
     if (presets["ntsc_black_setup_ire"]) {
       result.project.cvbs_presets.ntsc_black_setup_ire =
           presets["ntsc_black_setup_ire"].as<double>();
@@ -183,6 +299,9 @@ ParseResult YamlProjectParser::ParseFile(const std::string& path) {
       section.source = section_node["source"].as<std::string>("");
       section.source_pixel_format = section_node["source_pixel_format"].as<std::string>("");
       section.start_frame = section_node["start_frame"].as<int>(0);
+      if (!ParseLineInjections(section_node, &section, &result.errors)) {
+        return result;
+      }
       if (!ParseDurationFrames(section_node, &section, &result.errors)) {
         return result;
       }

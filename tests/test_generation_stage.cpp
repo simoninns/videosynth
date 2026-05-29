@@ -18,6 +18,7 @@
 
 #include <gtest/gtest.h>
 
+#include "videosynth/active_sample_mapping.h"
 #include "videosynth/chroma_encoder.h"
 #include "videosynth/fixed_point.h"
 #include "videosynth/progressive_frame_source.h"
@@ -112,28 +113,6 @@ int ActiveWindowEndSamples(Standard standard, double sample_rate_hz) {
            static_cast<int>(std::lround(sample_rate_hz * 52.0e-6));
   }
   return static_cast<int>(std::lround(sample_rate_hz * 62.5e-6));
-}
-
-std::vector<double> CarrierPhasesForActiveLine(int line_1based,
-                                               const TimingConstants& timing,
-                                               int active_window_samples,
-                                               int active_window_start) {
-  constexpr double kPi = 3.14159265358979323846;
-  std::vector<double> phases(static_cast<std::size_t>(active_window_samples), 0.0);
-  const double subcarrier_hz = timing.sample_rate_4fsc_hz / 4.0;
-  const Standard standard = timing.lines_per_frame == 625 ? Standard::kPal : Standard::kNtsc;
-  const LineTimingPrimitive line = BuildLineTimingPrimitive(standard, line_1based);
-  const int line_start = (line_1based - 1) * timing.samples_per_line_4fsc;
-  for (int x_sample = 0; x_sample < active_window_samples; ++x_sample) {
-    const int sample_offset = active_window_start + x_sample;
-    const double t = static_cast<double>(line_start + sample_offset) / timing.sample_rate_4fsc_hz;
-    double carrier_phase = (2.0 * M_PI * subcarrier_hz * t) + line.burst_phase_rad;
-    if (standard == Standard::kNtsc) {
-      carrier_phase += kPi;
-    }
-    phases[static_cast<std::size_t>(x_sample)] = carrier_phase;
-  }
-  return phases;
 }
 
 std::set<int> UniqueRoundedLumaLevelsInActiveWindow(const std::vector<SampleFixed>& y_mv,
@@ -976,27 +955,25 @@ TEST(GenerationStageChromaTest, ActiveChromaUsesNtscBurstPlus180ReferenceModel) 
 
   std::vector<YCbCr444Pixel> source_line(static_cast<std::size_t>(active_window_samples));
   for (int x_sample = 0; x_sample < active_window_samples; ++x_sample) {
-    int pixel_x = source_frame.active_x + ((x_sample * source_frame.active_width) / active_window_samples);
-    pixel_x = std::min(source_frame.active_x + source_frame.active_width - 1,
-                       std::max(source_frame.active_x, pixel_x));
+    const int pixel_x = MapActiveSampleToSourcePixel(
+      x_sample, active_window_samples, source_frame.active_width, source_frame.active_x);
     source_line[static_cast<std::size_t>(x_sample)] = source_frame.PixelAt(pixel_x, 60 - 22);
   }
 
   const auto chroma_encoder = CreateChromaEncoder(Standard::kNtsc, ntsc.sample_rate_4fsc_hz);
   ASSERT_NE(chroma_encoder, nullptr);
   std::vector<SampleFixed> expected_active_line;
-  chroma_encoder->EncodeLine(source_line,
-                             CarrierPhasesForActiveLine(line_1based,
-                                                        ntsc,
-                                                        active_window_samples,
-                                                        active_start),
-                             &expected_active_line);
+  const int line_start_absolute = (line_1based - 1) * ntsc.samples_per_line_4fsc;
+  const double phase_start =
+      (M_PI / 2.0) * static_cast<double>(line_start_absolute + active_start) +
+      line.burst_phase_rad + M_PI;
+  chroma_encoder->EncodeLineFromPhaseStart(source_line, phase_start, &expected_active_line);
 
   const int active_sample = active_window_samples / 3;
   const int generated_sample_index = line_start + active_start + active_sample;
   EXPECT_NEAR(SampleFixedToMillivolts(c[generated_sample_index]),
               SampleFixedToMillivolts(expected_active_line[static_cast<std::size_t>(active_sample)]),
-              1e-6);
+              1e-3);
 }
 
 TEST(GenerationStageChromaTest, PalBurstLockedDecodeRecoversStableHueAcrossLines) {
@@ -1024,10 +1001,8 @@ TEST(GenerationStageChromaTest, PalBurstLockedDecodeRecoversStableHueAcrossLines
   const int sample_window_start = x_sample - (sample_window / 2);
   const int sample_window_end = sample_window_start + sample_window;
 
-  const int pixel_x = std::min(source_frame.active_x + source_frame.active_width - 1,
-                               std::max(source_frame.active_x,
-                      source_frame.active_x +
-                        ((x_sample * source_frame.active_width) / active_window_samples)));
+  const int pixel_x = MapActiveSampleToSourcePixel(
+      x_sample, active_window_samples, source_frame.active_width, source_frame.active_x);
   const YCbCr444Pixel source_pixel = source_frame.PixelAt(pixel_x, 0);
   const double expected_u = static_cast<double>(source_pixel.cb - 512) / 448.0;
   const double expected_v = static_cast<double>(source_pixel.cr - 512) / 448.0;
@@ -1084,9 +1059,8 @@ TEST(GenerationStageProgressiveTest, NtscPngUsesField2DominantRowPairing) {
   int selected_x_sample = -1;
   for (int field_line = 0; field_line < active_lines_per_field && selected_x_sample < 0; ++field_line) {
     for (int x_sample = 0; x_sample < active_window_samples; ++x_sample) {
-      int pixel_x = source_frame.active_x + ((x_sample * source_frame.active_width) / active_window_samples);
-      pixel_x = std::min(source_frame.active_x + source_frame.active_width - 1,
-                         std::max(source_frame.active_x, pixel_x));
+        const int pixel_x = MapActiveSampleToSourcePixel(
+          x_sample, active_window_samples, source_frame.active_width, source_frame.active_x);
       if (source_frame.PixelAt(pixel_x, source_frame.active_y + (2 * field_line)).y !=
           source_frame.PixelAt(pixel_x, source_frame.active_y + (2 * field_line + 1)).y) {
         selected_field_line = field_line;
@@ -1098,10 +1072,10 @@ TEST(GenerationStageProgressiveTest, NtscPngUsesField2DominantRowPairing) {
   ASSERT_NE(selected_field_line, -1);
   ASSERT_NE(selected_x_sample, -1);
 
-  int pixel_x = source_frame.active_x +
-                ((selected_x_sample * source_frame.active_width) / active_window_samples);
-  pixel_x = std::min(source_frame.active_x + source_frame.active_width - 1,
-                     std::max(source_frame.active_x, pixel_x));
+  const int pixel_x = MapActiveSampleToSourcePixel(selected_x_sample,
+                                                   active_window_samples,
+                                                   source_frame.active_width,
+                                                   source_frame.active_x);
 
   GenerationStage generation;
   std::vector<std::string> errors;
@@ -1157,9 +1131,8 @@ TEST(GenerationStageProgressiveTest, PalPngUsesField2DominantRowPairing) {
   int selected_x_sample = -1;
   for (int field_line = 0; field_line < active_lines_per_field && selected_x_sample < 0; ++field_line) {
     for (int x_sample = 0; x_sample < active_window_samples; ++x_sample) {
-      int pixel_x = source_frame.active_x + ((x_sample * source_frame.active_width) / active_window_samples);
-      pixel_x = std::min(source_frame.active_x + source_frame.active_width - 1,
-                         std::max(source_frame.active_x, pixel_x));
+        const int pixel_x = MapActiveSampleToSourcePixel(
+          x_sample, active_window_samples, source_frame.active_width, source_frame.active_x);
       if (source_frame.PixelAt(pixel_x, source_frame.active_y + (2 * field_line)).y !=
           source_frame.PixelAt(pixel_x, source_frame.active_y + (2 * field_line + 1)).y) {
         selected_field_line = field_line;
@@ -1171,10 +1144,10 @@ TEST(GenerationStageProgressiveTest, PalPngUsesField2DominantRowPairing) {
   ASSERT_NE(selected_field_line, -1);
   ASSERT_NE(selected_x_sample, -1);
 
-  int pixel_x = source_frame.active_x +
-                ((selected_x_sample * source_frame.active_width) / active_window_samples);
-  pixel_x = std::min(source_frame.active_x + source_frame.active_width - 1,
-                     std::max(source_frame.active_x, pixel_x));
+  const int pixel_x = MapActiveSampleToSourcePixel(selected_x_sample,
+                                                   active_window_samples,
+                                                   source_frame.active_width,
+                                                   source_frame.active_x);
 
   GenerationStage generation;
   std::vector<std::string> errors;

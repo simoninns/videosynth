@@ -11,6 +11,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <vector>
 
 #include "videosynth/project_validator.h"
 
@@ -81,6 +82,22 @@ TEST(ProjectValidatorTest, AcceptsTpg21SampleEncodingPreset) {
   EXPECT_TRUE(result.errors.empty());
 }
 
+TEST(ProjectValidatorTest, AcceptsSupportedSampleEncodingPresets) {
+  const std::vector<std::string> presets = {
+      "CVBS_U10_4FSC", "CVBS_U16_4FSC", "RAW_S16_28M", "RAW_S16_40M", "CVBS_TPG21_4FSC"};
+
+  for (const std::string& preset : presets) {
+    Project project = MakeValidProject();
+    project.cvbs_presets.sample_encoding_preset = preset;
+
+    ProjectValidator validator;
+    const ValidationResult result = validator.Validate(project);
+
+    EXPECT_TRUE(result.is_valid) << preset;
+    EXPECT_TRUE(result.errors.empty()) << preset;
+  }
+}
+
 TEST(ProjectValidatorTest, RejectsInvalidStandard) {
   Project project = MakeValidProject();
   project.cvbs_presets.video_standard_preset = Standard::kUnknown;
@@ -90,16 +107,6 @@ TEST(ProjectValidatorTest, RejectsInvalidStandard) {
 
   EXPECT_FALSE(result.is_valid);
   EXPECT_FALSE(result.errors.empty());
-}
-
-TEST(ProjectValidatorTest, RejectsSampleRateOtherThan4fsc) {
-  Project project = MakeValidProject();
-  project.cvbs_presets.sample_encoding_preset = "RAW_S16_40M";
-
-  ProjectValidator validator;
-  const ValidationResult result = validator.Validate(project);
-
-  EXPECT_FALSE(result.is_valid);
 }
 
 TEST(ProjectValidatorTest, RejectsSubcarrierLockDisabled) {
@@ -150,6 +157,78 @@ TEST(ProjectValidatorTest, RejectsNtscBlackSetupOnPalProject) {
 
   EXPECT_FALSE(result.is_valid);
   EXPECT_FALSE(result.errors.empty());
+}
+
+TEST(ProjectValidatorTest, RejectsPalLaserdiscPilotBurstOnNtscProject) {
+  Project project = MakeValidProject();
+  project.cvbs_presets.video_standard_preset = Standard::kNtsc;
+  project.sections[0].pattern = "ntsc_smpte_170m_colour_bars_100";
+  project.cvbs_presets.pal_laserdisc_pilot_burst = true;
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_FALSE(result.is_valid);
+  ASSERT_EQ(result.errors.size(), 1U);
+  EXPECT_EQ(result.errors[0],
+            "MVP constraint violation: pal_laserdisc_pilot_burst can only be enabled for PAL projects.");
+}
+
+TEST(ProjectValidatorTest, RejectsNtscLaserdiscVbiBurstOnPalProject) {
+  Project project = MakeValidProject();
+  project.cvbs_presets.ntsc_laserdisc_vbi_burst = true;
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_FALSE(result.is_valid);
+  ASSERT_EQ(result.errors.size(), 1U);
+  EXPECT_EQ(result.errors[0],
+            "MVP constraint violation: ntsc_laserdisc_vbi_burst can only be enabled for NTSC projects.");
+}
+
+TEST(ProjectValidatorTest, RejectsPalLaserdiscPilotBurstAsDeferredFeature) {
+  Project project = MakeValidProject();
+  project.cvbs_presets.pal_laserdisc_pilot_burst = true;
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_FALSE(result.is_valid);
+  ASSERT_EQ(result.errors.size(), 1U);
+  EXPECT_EQ(result.errors[0],
+            "MVP constraint violation: pal_laserdisc_pilot_burst is parsed but not implemented in the current runtime.");
+}
+
+TEST(ProjectValidatorTest, RejectsNtscLaserdiscVbiBurstAsDeferredFeature) {
+  Project project = MakeValidProject();
+  project.cvbs_presets.video_standard_preset = Standard::kNtsc;
+  project.sections[0].pattern = "ntsc_smpte_170m_colour_bars_100";
+  project.cvbs_presets.ntsc_laserdisc_vbi_burst = true;
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_FALSE(result.is_valid);
+  ASSERT_EQ(result.errors.size(), 1U);
+  EXPECT_EQ(result.errors[0],
+            "MVP constraint violation: ntsc_laserdisc_vbi_burst is parsed but not implemented in the current runtime.");
+}
+
+TEST(ProjectValidatorTest, RejectsLineInjectionsAsDeferredFeature) {
+  Project project = MakeValidProject();
+  Section::LineInjection injection;
+  injection.type = "vits";
+  injection.target_lines = {19};
+  project.sections[0].line_injections.push_back(injection);
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_FALSE(result.is_valid);
+  ASSERT_EQ(result.errors.size(), 1U);
+  EXPECT_EQ(result.errors[0],
+            "MVP constraint violation: line_injections are parsed but not implemented in the current runtime.");
 }
 
 TEST(ProjectValidatorTest, RejectsNonSoftwareSections) {
