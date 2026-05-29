@@ -8,11 +8,17 @@
 
 ## Unit Testing Requirements
 - Follow `TESTING.md` as the source of truth.
+- Unit testing is the primary testing methodology for this repository.
+- Prefer unit tests first for all new or modified behavior.
 - Unit tests must mock dependencies and stay deterministic.
-- Unit tests must not depend on network, system clock, database, or external services.
+- Unit tests must not depend on the filesystem, network, system clock, database, or external services.
 - Unit tests should remain isolated and fast.
 - Prefer interface-based dependency inversion and constructor injection.
 - Keep test names behavior-focused and explicit.
+- New or modified tests must be explicitly classified in `CMakeLists.txt` as either `unit` or `functional`.
+- Use functional tests only when a required test objective cannot be achieved with unit tests alone.
+- Tests that touch the filesystem, database, real media assets, or full pipeline rendering must be classified as `functional`, never `unit`.
+- The default CI unit-test lane must remain focused on fast mocked tests; do not add functional coverage to that lane.
 
 ## Logging Requirements
 - Use `info` for normal lifecycle messages, successful stage transitions, validation summaries, and other user-facing status output.

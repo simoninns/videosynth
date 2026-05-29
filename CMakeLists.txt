@@ -78,4 +78,72 @@ target_link_libraries(videosynth_tests
 )
 
 include(GoogleTest)
-gtest_discover_tests(videosynth_tests)
+gtest_discover_tests(videosynth_tests TEST_LIST videosynth_discovered_tests)
+
+set(videosynth_functional_test_patterns
+    "^FrameSourceTest\\.(DecodesProgressive|RejectsProgressive)"
+    "^ProjectFixturesTest\\."
+    "^GenerationStageTimingTest\\.ReportsProgressiveSourceReadError$"
+    "^GenerationStageProgressiveTest\\."
+    "^OutputStageTest\\."
+    "^ProjectValidatorTest\\."
+    "^YamlProjectParserTest\\."
+)
+
+set(videosynth_unit_test_patterns
+    "^ChromaEncoderTest\\."
+    "^FrameSourceTest\\.(Generates|KeepsPixelsInsideBt601StudioSwingContract|RejectsNtscBarsPatternForPal|RejectsPalBarsPatternForNtsc)"
+    "^GenerationStageTimingTest\\."
+    "^GenerationStagePatternTest\\."
+    "^GenerationStageChromaTest\\."
+    "^PipelineTest\\."
+    "^SignalShapingTest\\."
+    "^SignalTimingModelTest\\."
+    "^TimingConstantsTest\\."
+    "^SignalLevelsTest\\."
+)
+
+set(videosynth_test_label_script "set(videosynth_functional_test_patterns\n")
+foreach(pattern IN LISTS videosynth_functional_test_patterns)
+    string(APPEND videosynth_test_label_script "  [=[${pattern}]=]\n")
+endforeach()
+string(APPEND videosynth_test_label_script ")\n\n")
+
+string(APPEND videosynth_test_label_script "set(videosynth_unit_test_patterns\n")
+foreach(pattern IN LISTS videosynth_unit_test_patterns)
+    string(APPEND videosynth_test_label_script "  [=[${pattern}]=]\n")
+endforeach()
+string(APPEND videosynth_test_label_script ")\n\n")
+
+string(APPEND videosynth_test_label_script
+    "foreach(test_name IN LISTS videosynth_discovered_tests)\n"
+    "  set(test_classification \"\")\n"
+    "\n"
+    "  foreach(pattern IN LISTS videosynth_functional_test_patterns)\n"
+    "    if(\"\${test_name}\" MATCHES \"\${pattern}\")\n"
+    "      set(test_classification \"functional\")\n"
+    "      break()\n"
+    "    endif()\n"
+    "  endforeach()\n"
+    "\n"
+    "  if(test_classification STREQUAL \"\")\n"
+    "    foreach(pattern IN LISTS videosynth_unit_test_patterns)\n"
+    "      if(\"\${test_name}\" MATCHES \"\${pattern}\")\n"
+    "        set(test_classification \"unit\")\n"
+    "        break()\n"
+    "      endif()\n"
+    "    endforeach()\n"
+    "  endif()\n"
+    "\n"
+    "  if(test_classification STREQUAL \"\")\n"
+    "    message(FATAL_ERROR \"Discovered test '\${test_name}' is not classified as unit or functional. Update CMakeLists.txt test label patterns.\")\n"
+    "  endif()\n"
+    "\n"
+    "  set_tests_properties(\"\${test_name}\" PROPERTIES LABELS \"\${test_classification}\")\n"
+    "endforeach()\n")
+
+file(GENERATE
+    OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/videosynth_test_labels.cmake"
+    CONTENT "${videosynth_test_label_script}")
+set_property(DIRECTORY APPEND PROPERTY TEST_INCLUDE_FILES
+    "${CMAKE_CURRENT_BINARY_DIR}/videosynth_test_labels.cmake")
