@@ -40,6 +40,29 @@ class MockGeneration final : public IGenerationStage {
  public:
   bool called = false;
 
+  bool BuildFrameSchedule(const Project& project,
+                          std::vector<FrameScheduleItem>* out_schedule,
+                          std::vector<std::string>* errors) override {
+    out_schedule->clear();
+    out_schedule->push_back(FrameScheduleItem{.section = &project.sections[0], .source_frame_index = 0});
+    errors->clear();
+    return true;
+  }
+
+  bool GenerateFrameBatch(const Project&,
+                          const std::vector<FrameScheduleItem>&,
+                          std::size_t,
+                          std::size_t,
+                          std::vector<SampleFixed>* out_y_mv,
+                          std::vector<SampleFixed>* out_c_mv,
+                          std::vector<std::string>* errors) override {
+    called = true;
+    out_y_mv->assign(8, 0);
+    out_c_mv->assign(8, 0);
+    errors->clear();
+    return true;
+  }
+
   bool Generate(const Project&,
                 std::vector<SampleFixed>* out_y_mv,
                 std::vector<SampleFixed>* out_c_mv,
@@ -55,6 +78,24 @@ class MockGeneration final : public IGenerationStage {
 class MockOutput final : public IOutputStage {
  public:
   bool called = false;
+
+  bool BeginWrite(const Project&, std::size_t, std::vector<std::string>* errors) override {
+    errors->clear();
+    return true;
+  }
+
+  bool AppendSamples(const std::vector<SampleFixed>&,
+                     const std::vector<SampleFixed>&,
+                     std::vector<std::string>* errors) override {
+    called = true;
+    errors->clear();
+    return true;
+  }
+
+  bool FinalizeWrite(std::vector<std::string>* errors) override {
+    errors->clear();
+    return true;
+  }
 
   bool Write(const Project&,
              const std::vector<SampleFixed>&,

@@ -9,6 +9,7 @@
 
 #pragma once
 
+#include <cstddef>
 #include <string>
 #include <vector>
 
@@ -80,6 +81,23 @@ class IProgressiveFrameProvider {
 class IGenerationStage {
  public:
   virtual ~IGenerationStage() = default;
+  struct FrameScheduleItem {
+    const Section* section = nullptr;
+    int source_frame_index = 0;
+  };
+
+  virtual bool BuildFrameSchedule(const Project& project,
+                                  std::vector<FrameScheduleItem>* out_schedule,
+                                  std::vector<std::string>* errors) = 0;
+
+  virtual bool GenerateFrameBatch(const Project& project,
+                                  const std::vector<FrameScheduleItem>& schedule,
+                                  std::size_t start_frame,
+                                  std::size_t frame_count,
+                                  std::vector<SampleFixed>* out_y_mv,
+                                  std::vector<SampleFixed>* out_c_mv,
+                                  std::vector<std::string>* errors) = 0;
+
   virtual bool Generate(const Project& project,
                 std::vector<SampleFixed>* out_y_mv,
                 std::vector<SampleFixed>* out_c_mv,
@@ -89,6 +107,17 @@ class IGenerationStage {
 class IOutputStage {
  public:
   virtual ~IOutputStage() = default;
+
+  virtual bool BeginWrite(const Project& project,
+                          std::size_t expected_frame_count,
+                          std::vector<std::string>* errors) = 0;
+
+  virtual bool AppendSamples(const std::vector<SampleFixed>& y_mv,
+                             const std::vector<SampleFixed>& c_mv,
+                             std::vector<std::string>* errors) = 0;
+
+  virtual bool FinalizeWrite(std::vector<std::string>* errors) = 0;
+
   virtual bool Write(const Project& project,
               const std::vector<SampleFixed>& y_mv,
               const std::vector<SampleFixed>& c_mv,

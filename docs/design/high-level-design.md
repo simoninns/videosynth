@@ -177,7 +177,7 @@ VideoSynth follows a **two-stage architecture** to ensure **separation of concer
 
 ### **Key Principle: Frame-Based Generation**
 
-**All generation is frame-scoped.** A frame (two sequential fields) is the **smallest unit of output** from the generation stage.
+**All generation is frame-scoped.** A frame (two sequential fields) is the **smallest synthesis unit** in the generation stage, and frames are emitted downstream in bounded frame batches for streaming output.
 
 However, **line timing and source-row addressing inside that frame are field-aware by definition**. This is required to keep interlaced field sequence and active-picture placement compliant with the NTSC/PAL timing models.
 
@@ -292,7 +292,7 @@ Source-range capability note:
 
 ### **Outputs**
 
-- Time-based **luma (Y)** and **chroma (C)** signals as **high-resolution fixed-point mV values**, one complete frame at a time. Values are relative to blanking and are stored internally as signed integers scaled by $2^{20}$ before final quantisation.
+- Time-based **luma (Y)** and **chroma (C)** signals as **high-resolution fixed-point mV values**, emitted as whole-frame batches (typically small bounded groups of frames) for immediate downstream writing. Values are relative to blanking and are stored internally as signed integers scaled by $2^{20}$ before final quantisation.
 - Metadata (field order, dominance, timing).
 
 ---
@@ -1368,12 +1368,12 @@ VBI line allocations differ between PAL and NTSC and between Laserdisc and non-L
 
 ---
 
-The generator uses a **modular pipeline** to process sections and combine them into the final output. The pipeline is divided into the **Generation Stage** and **Output Stage**.
+The runtime uses a **central pipeline module** to process sections and combine them into the final output. The pipeline controls schedule construction, batched generation, streamed output writes, and progress logging, and is divided into the **Generation Stage** and **Output Stage**.
 
 ### **Pipeline Overview**
 
 ```
-[YAML Project File] → [Validation] → [Generation Stage] → [Output Stage] → [CVBS File (Video + Metadata)]
+[YAML Project File] → [Validation] → [Pipeline Controller (schedule + progress)] → [Generation Stage (batched frames)] → [Output Stage (append + finalize)] → [CVBS File (Video + Metadata)]
 ```
 
 ---
@@ -1398,11 +1398,11 @@ The generator uses a **modular pipeline** to process sections and combine them i
       - Apply **all line injections** for that section to the frame's VBI lines.
       - Insert **sync pulses** and **colour burst** (see [ITU-R BT.470-6](../analogue-video-specifications/docs/video_formats/BT-470-6-1998/BT-470-6-1998.md), [ITU-R BT.1700](../analogue-video-specifications/docs/video_formats/BT-1700-E/BT-1700-E.md)).
       - Apply **ramping and transition smoothing** to simulate analogue behavior (see [ITU-R BT.470-6](../analogue-video-specifications/docs/video_formats/BT-470-6-1998/BT-470-6-1998.md) for ramping requirements).
-    - Output **time-based Y and C signals** (not yet sampled).
+    - Emit **time-based Y and C signals** in bounded frame batches (not yet quantised), ready for immediate handoff to output.
 
 #### **3. Output Stage**
 
-- **Input**: Time-based Y and C signals from the generation stage.
+- **Input**: Time-based Y and C signal batches from the generation stage.
 - **Output**: CVBS file (video + metadata).
 - **Steps**:
   1. **Generate Metadata**:
@@ -1416,8 +1416,8 @@ The generator uses a **modular pipeline** to process sections and combine them i
   4. **Combining Y and C**:
     - Combine the quantised luma and chroma integer samples into a composite signal (CVBS).
   5. **Output Formatting**:
-    - Write the metadata header to the **metadata file**.
-    - Write the raw samples to the **video file**.
+    - Append each generated batch directly to the **video file** as it completes.
+    - Finalize by writing metadata to the **metadata file** once all expected frames have been written.
 
 ---
 

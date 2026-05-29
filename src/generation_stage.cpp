@@ -405,17 +405,65 @@ bool PalInvertVAxisForLine(std::size_t frame_index, const LineTimingPrimitive& l
 
 GenerationStage::GenerationStage(ILogger* logger) : logger_(logger) {}
 
-bool GenerationStage::Generate(const Project& project,
-                               std::vector<SampleFixed>* out_y_mv,
-                               std::vector<SampleFixed>* out_c_mv,
-                               std::vector<std::string>* errors) {
+bool GenerationStage::BuildFrameSchedule(const Project& project,
+                                         std::vector<FrameScheduleItem>* out_schedule,
+                                         std::vector<std::string>* errors) {
+  if (out_schedule == nullptr || errors == nullptr) {
+    return false;
+  }
+
+  out_schedule->clear();
+  const TestPatternFrameSource pattern_source;
+  const ProgressiveFrameSource progressive_source;
+  std::vector<std::pair<const Section*, int>> frame_sections;
+  std::string schedule_error;
+  if (!BuildFramePatternSchedule(project,
+                                 pattern_source,
+                                 progressive_source,
+                                 project.cvbs_presets.video_standard_preset,
+                                 &frame_sections,
+                                 &schedule_error)) {
+    errors->push_back(
+        schedule_error.empty() ? "Unable to build section frame schedule." : schedule_error);
+    return false;
+  }
+
+  out_schedule->reserve(frame_sections.size());
+  for (const std::pair<const Section*, int>& frame_section : frame_sections) {
+    out_schedule->push_back(FrameScheduleItem{
+        .section = frame_section.first,
+        .source_frame_index = frame_section.second,
+    });
+  }
+
+  if (logger_ != nullptr) {
+    logger_->Debug("Built frame schedule for " + std::to_string(out_schedule->size()) +
+                   " frame(s).");
+  }
+
+  return true;
+}
+
+bool GenerationStage::GenerateFrameBatch(const Project& project,
+                                         const std::vector<FrameScheduleItem>& schedule,
+                                         std::size_t start_frame,
+                                         std::size_t frame_count,
+                                         std::vector<SampleFixed>* out_y_mv,
+                                         std::vector<SampleFixed>* out_c_mv,
+                                         std::vector<std::string>* errors) {
   if (out_y_mv == nullptr || out_c_mv == nullptr || errors == nullptr) {
     return false;
   }
 
-  if (logger_ != nullptr) {
-    logger_->Debug("Generating frame buffers for " + std::to_string(project.sections.size()) +
-                   " section(s).");
+  if (start_frame > schedule.size() || (start_frame + frame_count) > schedule.size()) {
+    errors->push_back("Requested frame batch is out of schedule bounds.");
+    return false;
+  }
+
+  if (frame_count == 0U) {
+    out_y_mv->clear();
+    out_c_mv->clear();
+    return true;
   }
 
   const TimingConstants timing = GetTimingConstants(project.cvbs_presets.video_standard_preset);
@@ -434,47 +482,28 @@ bool GenerationStage::Generate(const Project& project,
   const int burst_end = BurstEndSamples(timing.sample_rate_4fsc_hz);
   const int sync_rise_samples =
       RiseTimeToRampSamples(SyncEdgeRiseTimeSeconds(project.cvbs_presets.video_standard_preset),
-                timing.sample_rate_4fsc_hz);
+                            timing.sample_rate_4fsc_hz);
   const int burst_rise_samples =
       RiseTimeToRampSamples(BurstEnvelopeRiseTimeSeconds(project.cvbs_presets.video_standard_preset),
-                timing.sample_rate_4fsc_hz);
+                            timing.sample_rate_4fsc_hz);
   const ActiveRasterGeometry active =
       GetActiveRasterGeometry(project.cvbs_presets.video_standard_preset, timing.sample_rate_4fsc_hz);
-    const TestPatternFrameSource pattern_source;
-    const ProgressiveFrameSource progressive_source;
+  const TestPatternFrameSource pattern_source;
+  const ProgressiveFrameSource progressive_source;
   std::unique_ptr<IChromaEncoder> chroma_encoder =
       CreateChromaEncoder(project.cvbs_presets.video_standard_preset, timing.sample_rate_4fsc_hz);
-    std::vector<std::pair<const Section*, int>> frame_sections;
 
   if (chroma_encoder == nullptr) {
     errors->push_back("Unsupported video standard for chroma encoding.");
     return false;
   }
 
-  std::string schedule_error;
-  if (!BuildFramePatternSchedule(project,
-                                 pattern_source,
-                                 progressive_source,
-                                 project.cvbs_presets.video_standard_preset,
-                                 &frame_sections,
-                                 &schedule_error)) {
-    errors->push_back(
-      schedule_error.empty() ? "Unable to build section frame schedule." : schedule_error);
-    return false;
-  }
-
-  const std::size_t frame_count = frame_sections.size();
-    const std::size_t sample_count = frame_count * static_cast<std::size_t>(frame_samples);
-
-  if (logger_ != nullptr) {
-    logger_->Debug("Built frame schedule for " + std::to_string(frame_count) + " frame(s).");
-  }
+  const std::size_t sample_count = frame_count * static_cast<std::size_t>(frame_samples);
 
   const int active_window_start =
       std::max(0, std::min(active.active_window_start_samples, max_line_samples - 1));
   const int active_window_end =
-      std::max(active_window_start + 1,
-         std::min(active.active_window_end_samples, max_line_samples));
+      std::max(active_window_start + 1, std::min(active.active_window_end_samples, max_line_samples));
   const int active_window_samples = active_window_end - active_window_start;
 
   const SampleFixed blanking_fixed = MillivoltsToSampleFixed(levels.blanking_mv);
@@ -494,9 +523,7 @@ bool GenerationStage::Generate(const Project& project,
     (*out_c_mv)[index] += value_fixed;
   };
 
-  auto IsYAtOrAboveBlanking = [&](std::size_t index) {
-    return (*out_y_mv)[index] >= blanking_fixed;
-  };
+  auto IsYAtOrAboveBlanking = [&](std::size_t index) { return (*out_y_mv)[index] >= blanking_fixed; };
 
   std::vector<YCbCr444Pixel> line_source_samples(
       static_cast<std::size_t>(active_window_samples), YCbCr444Pixel{});
@@ -505,17 +532,19 @@ bool GenerationStage::Generate(const Project& project,
   std::vector<SampleFixed> encoded_line_chroma(
       static_cast<std::size_t>(active_window_samples), MillivoltsToSampleFixed(0.0));
 
-  for (std::size_t frame_index = 0; frame_index < frame_count; ++frame_index) {
-    const Section* section = frame_sections[frame_index].first;
-    const int source_frame_index = frame_sections[frame_index].second;
+  for (std::size_t local_frame_index = 0; local_frame_index < frame_count; ++local_frame_index) {
+    const std::size_t global_frame_index = start_frame + local_frame_index;
+    const FrameScheduleItem& frame_item = schedule[global_frame_index];
+    const Section* section = frame_item.section;
+    const int source_frame_index = frame_item.source_frame_index;
     if (section == nullptr) {
       errors->push_back("Internal generation error: null section in frame schedule.");
       return false;
     }
 
-    if (logger_ != nullptr) {
-      logger_->Trace("Generating frame " + std::to_string(frame_index + 1) + " of " +
-                     std::to_string(frame_count) + " from section '" + section->name +
+    if (logger_ != nullptr && schedule.size() <= 120U) {
+      logger_->Trace("Generating frame " + std::to_string(global_frame_index + 1U) + " of " +
+                     std::to_string(schedule.size()) + " from section '" + section->name +
                      "' (" + section->type + ").");
     }
 
@@ -541,18 +570,20 @@ bool GenerationStage::Generate(const Project& project,
       return false;
     }
 
+    const int local_frame_base = static_cast<int>(local_frame_index * static_cast<std::size_t>(frame_samples));
+    const int absolute_frame_base = static_cast<int>(global_frame_index * static_cast<std::size_t>(frame_samples));
+
     for (const LineTimingPrimitive& line : lines) {
       const int line_index = line.line_number_1based - 1;
-      const int frame_base = static_cast<int>(frame_index * static_cast<std::size_t>(frame_samples));
-      const int line_base = frame_base + line_sample_offsets[static_cast<std::size_t>(line_index)];
+      const int local_line_base = local_frame_base + line_sample_offsets[static_cast<std::size_t>(line_index)];
+      const int absolute_line_base =
+          absolute_frame_base + line_sample_offsets[static_cast<std::size_t>(line_index)];
       const int line_samples = line_sample_counts[static_cast<std::size_t>(line_index)];
-      const int line_end = line_base + line_samples;
+      const int local_line_end = local_line_base + line_samples;
       const int half_line_samples = (line_samples + 1) / 2;
 
       const std::vector<LinePulseSegment> pulse_schedule =
-          BuildLinePulseSchedule(line,
-                                 project.cvbs_presets.video_standard_preset,
-                                 half_line_samples);
+          BuildLinePulseSchedule(line, project.cvbs_presets.video_standard_preset, half_line_samples);
 
       for (const LinePulseSegment& segment : pulse_schedule) {
         const int pulse_width =
@@ -560,8 +591,8 @@ bool GenerationStage::Generate(const Project& project,
                               project.cvbs_presets.video_standard_preset,
                               timing.sample_rate_4fsc_hz);
         const int pulse_offset = segment.offset_samples;
-        const int pulse_start = line_base + std::min(pulse_offset, line_samples - 1);
-        const int pulse_end = std::min(pulse_start + pulse_width, line_end);
+        const int pulse_start = local_line_base + std::min(pulse_offset, line_samples - 1);
+        const int pulse_end = std::min(pulse_start + pulse_width, local_line_end);
         const int pulse_width_samples = pulse_end - pulse_start;
 
         for (int i = pulse_start; i < pulse_end; ++i) {
@@ -575,28 +606,29 @@ bool GenerationStage::Generate(const Project& project,
         }
       }
 
-        const bool is_pal = project.cvbs_presets.video_standard_preset == Standard::kPal;
-        const bool burst_enabled =
-          is_pal ? PalBurstEnabledForLine(frame_index, line) : line.burst_enabled;
-        const double burst_phase_rad =
-          is_pal ? PalBurstPhaseRadForLine(frame_index, line) : line.burst_phase_rad;
+      const bool is_pal = project.cvbs_presets.video_standard_preset == Standard::kPal;
+      const bool burst_enabled =
+          is_pal ? PalBurstEnabledForLine(global_frame_index, line) : line.burst_enabled;
+      const double burst_phase_rad =
+          is_pal ? PalBurstPhaseRadForLine(global_frame_index, line) : line.burst_phase_rad;
 
       if (burst_enabled) {
         const int burst_sample_start =
-            std::min(line_base + burst_start, line_end > 0 ? line_end - 1 : line_base);
-        const int burst_sample_end = std::min(line_base + burst_end, line_end);
+            std::min(local_line_base + burst_start, local_line_end > 0 ? local_line_end - 1 : local_line_base);
+        const int burst_sample_end = std::min(local_line_base + burst_end, local_line_end);
         const int burst_width_samples = burst_sample_end - burst_sample_start;
+        const int burst_sample_start_absolute =
+            absolute_line_base + (burst_sample_start - local_line_base);
 
-        double burst_sin = std::sin((kQuarterWaveRad * static_cast<double>(burst_sample_start)) +
-                                    burst_phase_rad);
-        double burst_cos = std::cos((kQuarterWaveRad * static_cast<double>(burst_sample_start)) +
-                                    burst_phase_rad);
+        double burst_sin =
+            std::sin((kQuarterWaveRad * static_cast<double>(burst_sample_start_absolute)) + burst_phase_rad);
+        double burst_cos =
+            std::cos((kQuarterWaveRad * static_cast<double>(burst_sample_start_absolute)) + burst_phase_rad);
 
         for (int i = burst_sample_start; i < burst_sample_end; ++i) {
           const int relative_index = i - burst_sample_start;
-          const double envelope = ShapedGateEnvelope(relative_index,
-                               burst_width_samples,
-                               burst_rise_samples);
+          const double envelope =
+              ShapedGateEnvelope(relative_index, burst_width_samples, burst_rise_samples);
           SetCMillivolts(static_cast<std::size_t>(i), burst_amplitude_mv * envelope * burst_sin);
 
           const double next_sin = burst_cos;
@@ -611,39 +643,38 @@ bool GenerationStage::Generate(const Project& project,
         continue;
       }
 
-      const int active_y = ActiveFrameLineIndex(active,
-                    project.cvbs_presets.video_standard_preset,
-                    line.line_number_1based);
+      const int active_y = ActiveFrameLineIndex(
+          active, project.cvbs_presets.video_standard_preset, line.line_number_1based);
       if (active_y < 0) {
         continue;
       }
 
       std::fill(line_source_samples.begin(), line_source_samples.end(), YCbCr444Pixel{});
-      std::fill(active_sample_indices.begin(), active_sample_indices.end(), line_base);
+      std::fill(active_sample_indices.begin(), active_sample_indices.end(), local_line_base);
 
-      const bool invert_pal_v_axis = is_pal && PalInvertVAxisForLine(frame_index, line);
-      const int active_window_line_start = line_base + active_window_start;
+      const bool invert_pal_v_axis = is_pal && PalInvertVAxisForLine(global_frame_index, line);
+      const int active_window_line_start_absolute = absolute_line_base + active_window_start;
       // SMPTE 170M-2004 Section 10 defines active chroma with burst+180 deg
       // reference for NTSC.
       const double phase_offset =
           (project.cvbs_presets.video_standard_preset == Standard::kNtsc) ? (line.burst_phase_rad + kPi) : 0.0;
       const double phase_start =
-          (kQuarterWaveRad * static_cast<double>(active_window_line_start)) + phase_offset;
+          (kQuarterWaveRad * static_cast<double>(active_window_line_start_absolute)) + phase_offset;
       for (int x_sample = 0; x_sample < active_window_samples; ++x_sample) {
         carrier_phases_rad[static_cast<std::size_t>(x_sample)] =
             phase_start + (kQuarterWaveRad * static_cast<double>(x_sample));
       }
 
       for (int x_sample = 0; x_sample < active_window_samples; ++x_sample) {
-        const int sample_index = line_base + active_window_start + x_sample;
-        if (sample_index < line_base || sample_index >= line_end) {
+        const int sample_index = local_line_base + active_window_start + x_sample;
+        if (sample_index < local_line_base || sample_index >= local_line_end) {
           continue;
         }
 
-        int pixel_x = source_frame.active_x +
-                ((x_sample * source_frame.active_width) / active_window_samples);
+        int pixel_x =
+            source_frame.active_x + ((x_sample * source_frame.active_width) / active_window_samples);
         pixel_x = std::min(source_frame.active_x + source_frame.active_width - 1,
-               std::max(source_frame.active_x, pixel_x));
+                           std::max(source_frame.active_x, pixel_x));
 
         // Map field lines onto progressive source rows by interleaving fields.
         // Progressive imports use field-2-dominant row pairing, so field 1
@@ -651,9 +682,9 @@ bool GenerationStage::Generate(const Project& project,
         const int field_line = active_y % active.active_lines_per_field;
         const bool progressive_section = section->type == "progressive";
         const int source_row = source_frame.active_y +
-             ((line.field_index_1based == 1)
-            ? (2 * field_line + (progressive_section ? 1 : 0))
-            : (2 * field_line + (progressive_section ? 0 : 1)));
+                               ((line.field_index_1based == 1)
+                                    ? (2 * field_line + (progressive_section ? 1 : 0))
+                                    : (2 * field_line + (progressive_section ? 0 : 1)));
 
         if (pixel_x >= source_frame.width || source_row >= source_frame.height) {
           continue;
@@ -674,21 +705,53 @@ bool GenerationStage::Generate(const Project& project,
         // Preserve any sync-domain sample already placed for this line; only
         // paint active luma where the waveform is at/above blanking level.
         if (IsYAtOrAboveBlanking(static_cast<std::size_t>(sample_index))) {
-          SetYMillivolts(static_cast<std::size_t>(sample_index), LumaMillivoltsFromCode(pixel.y, levels));
+          SetYMillivolts(static_cast<std::size_t>(sample_index),
+                         LumaMillivoltsFromCode(pixel.y, levels));
         }
       }
 
       chroma_encoder->EncodeLine(line_source_samples, carrier_phases_rad, &encoded_line_chroma);
       for (int x_sample = 0; x_sample < active_window_samples; ++x_sample) {
-        AddCFixed(
-            static_cast<std::size_t>(active_sample_indices[static_cast<std::size_t>(x_sample)]),
-          encoded_line_chroma[static_cast<std::size_t>(x_sample)]);
+        AddCFixed(static_cast<std::size_t>(
+                      active_sample_indices[static_cast<std::size_t>(x_sample)]),
+                  encoded_line_chroma[static_cast<std::size_t>(x_sample)]);
       }
     }
   }
 
+  return true;
+}
+
+bool GenerationStage::Generate(const Project& project,
+                               std::vector<SampleFixed>* out_y_mv,
+                               std::vector<SampleFixed>* out_c_mv,
+                               std::vector<std::string>* errors) {
+  if (out_y_mv == nullptr || out_c_mv == nullptr || errors == nullptr) {
+    return false;
+  }
+
   if (logger_ != nullptr) {
-    logger_->Info("Generated " + std::to_string(frame_count) + " frame(s) of signal data.");
+    logger_->Debug("Generating full frame buffer for " + std::to_string(project.sections.size()) +
+                   " section(s).");
+  }
+
+  std::vector<FrameScheduleItem> schedule;
+  if (!BuildFrameSchedule(project, &schedule, errors)) {
+    return false;
+  }
+
+  if (!GenerateFrameBatch(project,
+                          schedule,
+                          0,
+                          schedule.size(),
+                          out_y_mv,
+                          out_c_mv,
+                          errors)) {
+    return false;
+  }
+
+  if (logger_ != nullptr) {
+    logger_->Info("Generated " + std::to_string(schedule.size()) + " frame(s) of signal data.");
   }
 
   return true;
