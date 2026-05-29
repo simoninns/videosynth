@@ -62,39 +62,14 @@ bool EndsWith(const std::string& value, const std::string& suffix) {
 bool ValidateProgressiveSourceFamily(const videosynth::Section& section, std::string* error) {
   const std::string source = Lowercase(section.source);
 
-  if (EndsWith(source, ".raw")) {
-    if (section.source_pixel_format.empty()) {
-      if (error != nullptr) {
-        *error = "Progressive RAW sections must set source_pixel_format to yuv422p10le.";
-      }
-      return false;
-    }
-
-    const std::string pixel_format = Lowercase(section.source_pixel_format);
-    if (pixel_format != "yuv422p10le") {
-      if (error != nullptr) {
-        *error = "Progressive RAW sections only support source_pixel_format value yuv422p10le.";
-      }
-      return false;
-    }
-
-    return true;
-  }
-
-  if (!section.source_pixel_format.empty()) {
-    if (error != nullptr) {
-      *error = "source_pixel_format is only valid for RAW progressive sections.";
-    }
-    return false;
-  }
-
-  if (EndsWith(source, ".png") || EndsWith(source, ".mp4") || EndsWith(source, ".mov")) {
+  if (EndsWith(source, ".png") || EndsWith(source, ".exr") ||
+      EndsWith(source, ".mp4") || EndsWith(source, ".mov")) {
     return true;
   }
 
   if (error != nullptr) {
     *error =
-        "Unsupported progressive source family. Supported source families are PNG, RAW, MP4, and MOV.";
+        "Unsupported progressive source family. Supported source families are PNG, EXR, MP4, and MOV.";
   }
   return false;
 }
@@ -185,17 +160,35 @@ bool ValidateProfileBySourceFamily(const videosynth::Section& section,
     return true;
   }
 
-  if (EndsWith(source, ".raw")) {
-    if (pixel_format != "yuv422p10le") {
-      if (error != nullptr) {
-        *error = "Progressive RAW sections only support yuv422p10le profile.";
-      }
-      return false;
-    }
+  if (EndsWith(source, ".png")) {
     return true;
   }
 
-  if (EndsWith(source, ".png")) {
+  if (EndsWith(source, ".exr")) {
+    if (container != "exr") {
+      if (error != nullptr) {
+        *error = "Progressive EXR sections require an EXR container profile.";
+      }
+      return false;
+    }
+    if (codec != "openexr") {
+      if (error != nullptr) {
+        *error = "Progressive EXR sections only support OpenEXR codec profile.";
+      }
+      return false;
+    }
+    if (pixel_format != "rgbh" && pixel_format != "rgbf") {
+      if (error != nullptr) {
+        *error = "Progressive EXR sections require RGB HALF or FLOAT channel profile.";
+      }
+      return false;
+    }
+    if (profile.bit_depth != 16 && profile.bit_depth != 32) {
+      if (error != nullptr) {
+        *error = "Progressive EXR sections only support 16-bit HALF or 32-bit FLOAT channels.";
+      }
+      return false;
+    }
     return true;
   }
 

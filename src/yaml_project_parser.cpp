@@ -286,7 +286,7 @@ ParseResult YamlProjectParser::ParseFile(const std::string& path) {
 
       const std::set<std::string> section_keys = {
           "name", "type", "pattern", "duration_frames", "line_injections", "source",
-          "source_pixel_format", "start_frame"};
+          "start_frame"};
       ValidateAllowedKeys(section_node, section_keys, "section", &result.errors);
       if (!result.errors.empty()) {
         return result;
@@ -297,7 +297,6 @@ ParseResult YamlProjectParser::ParseFile(const std::string& path) {
       section.type = section_node["type"].as<std::string>("");
       section.pattern = section_node["pattern"].as<std::string>("");
       section.source = section_node["source"].as<std::string>("");
-      section.source_pixel_format = section_node["source_pixel_format"].as<std::string>("");
       section.start_frame = section_node["start_frame"].as<int>(0);
       if (!ParseLineInjections(section_node, &section, &result.errors)) {
         return result;

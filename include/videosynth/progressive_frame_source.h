@@ -69,6 +69,11 @@ class ProgressiveFrameSource final : public IProgressiveFrameProvider {
   mutable Standard cached_png_standard_ = Standard::kUnknown;
   mutable FrameSourceImage cached_png_frame_;
 
+  mutable bool has_cached_exr_frame_ = false;
+  mutable std::string cached_exr_source_;
+  mutable Standard cached_exr_standard_ = Standard::kUnknown;
+  mutable FrameSourceImage cached_exr_frame_;
+
   mutable bool has_cached_mp4_frames_ = false;
   mutable std::string cached_mp4_source_;
   mutable Standard cached_mp4_standard_ = Standard::kUnknown;

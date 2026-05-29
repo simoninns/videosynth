@@ -13,15 +13,24 @@
 #include <array>
 #include <cctype>
 #include <cmath>
+#include <cstddef>
 #include <cstdlib>
 #include <cstdint>
 #include <cstdio>
+#include <exception>
 #include <fstream>
 #include <map>
 #include <sstream>
 #include <utility>
 #include <vector>
 
+#include <Imath/half.h>
+#include <OpenEXR/ImfChannelList.h>
+#include <OpenEXR/ImfFrameBuffer.h>
+#include <OpenEXR/ImfHeader.h>
+#include <OpenEXR/ImfInputFile.h>
+#include <OpenEXR/ImfIntAttribute.h>
+#include <OpenEXR/ImfStringAttribute.h>
 #include <png.h>
 
 #include "videosynth/ntsc_pattern_generator.h"
@@ -30,6 +39,9 @@
 namespace videosynth {
 
 namespace {
+
+namespace Imf = OPENEXR_IMF_NAMESPACE;
+namespace ImathNs = IMATH_NAMESPACE;
 
 constexpr int kPalWidth = 720;
 constexpr int kPalHeight = 576;
@@ -660,6 +672,258 @@ YCbCr444Pixel ConvertRgbToBt601Studio(std::uint16_t r,
   return MakePixel(y_code, cb_code, cr_code);
 }
 
+YCbCr444Pixel ConvertRgbFloatToBt601(std::float_t r,
+                                     std::float_t g,
+                                     std::float_t b) {
+  const double r_norm = static_cast<double>(r);
+  const double g_norm = static_cast<double>(g);
+  const double b_norm = static_cast<double>(b);
+
+  const double y = (0.299 * r_norm) + (0.587 * g_norm) + (0.114 * b_norm);
+  const double cb = (-0.168736 * r_norm) - (0.331264 * g_norm) + (0.5 * b_norm);
+  const double cr = (0.5 * r_norm) - (0.418688 * g_norm) - (0.081312 * b_norm);
+
+  const int y_code = static_cast<int>(std::lround(64.0 + (876.0 * y)));
+  const int cb_code = static_cast<int>(std::lround(512.0 + (896.0 * cb)));
+  const int cr_code = static_cast<int>(std::lround(512.0 + (896.0 * cr)));
+  return MakeRawPixel(static_cast<std::uint16_t>(ClampCode(y_code, 0, 1023)),
+                      static_cast<std::uint16_t>(ClampCode(cb_code, 0, 1023)),
+                      static_cast<std::uint16_t>(ClampCode(cr_code, 0, 1023)));
+}
+
+bool ReadRequiredExrStringAttribute(const Imf::Header& header,
+                                    const char* attribute_name,
+                                    const std::string& expected_value,
+                                    std::string* error) {
+  const Imf::StringAttribute* attribute =
+      header.findTypedAttribute<Imf::StringAttribute>(attribute_name);
+  if (attribute == nullptr) {
+    if (error != nullptr) {
+      *error = std::string("Progressive EXR is missing required metadata attribute: ") +
+               attribute_name + ".";
+    }
+    return false;
+  }
+
+  if (attribute->value() != expected_value) {
+    if (error != nullptr) {
+      *error = std::string("Progressive EXR metadata attribute '") + attribute_name +
+               "' must be '" + expected_value + "'.";
+    }
+    return false;
+  }
+
+  return true;
+}
+
+bool ReadRequiredExrIntAttribute(const Imf::Header& header,
+                                 const char* attribute_name,
+                                 int expected_value,
+                                 std::string* error) {
+  const Imf::IntAttribute* attribute =
+      header.findTypedAttribute<Imf::IntAttribute>(attribute_name);
+  if (attribute == nullptr) {
+    if (error != nullptr) {
+      *error = std::string("Progressive EXR is missing required metadata attribute: ") +
+               attribute_name + ".";
+    }
+    return false;
+  }
+
+  if (attribute->value() != expected_value) {
+    if (error != nullptr) {
+      *error = std::string("Progressive EXR metadata attribute '") + attribute_name +
+               "' must be " + std::to_string(expected_value) + ".";
+    }
+    return false;
+  }
+
+  return true;
+}
+
+bool ValidateExrMetadata(const Imf::Header& header,
+                         int width,
+                         int height,
+                         Standard standard,
+                         std::string* error) {
+  const std::string standard_hint =
+      standard == Standard::kPal ? "PAL" : (standard == Standard::kNtsc ? "NTSC" : "");
+  if (standard_hint.empty()) {
+    if (error != nullptr) {
+      *error = "Unsupported video standard for progressive EXR source.";
+    }
+    return false;
+  }
+
+  if (!ReadRequiredExrStringAttribute(
+          header, "videosynth.source_pixel_format", "yuv422p10le", error) ||
+      !ReadRequiredExrStringAttribute(
+          header, "videosynth.source_sampling", "422_to_444_expanded", error) ||
+      !ReadRequiredExrStringAttribute(header, "videosynth.color_model", "rgb", error) ||
+      !ReadRequiredExrStringAttribute(
+          header, "videosynth.color_primaries", "bt601", error) ||
+      !ReadRequiredExrStringAttribute(header, "videosynth.transfer", "bt601", error) ||
+      !ReadRequiredExrStringAttribute(
+          header, "videosynth.matrix", "bt601_ycbcr_to_rgb", error) ||
+      !ReadRequiredExrStringAttribute(header, "videosynth.code_range", "studio", error) ||
+      !ReadRequiredExrStringAttribute(
+          header, "videosynth.standard_hint", standard_hint, error) ||
+      !ReadRequiredExrIntAttribute(header, "videosynth.source_width", width, error) ||
+      !ReadRequiredExrIntAttribute(header, "videosynth.source_height", height, error)) {
+    return false;
+  }
+
+  return true;
+}
+
+bool LoadExrFrame(const std::string& source,
+                  Standard standard,
+                  FrameSourceImage* out_image,
+                  std::string* error) {
+  if (out_image == nullptr) {
+    if (error != nullptr) {
+      *error = "Frame source output image pointer must not be null.";
+    }
+    return false;
+  }
+
+  try {
+    Imf::InputFile input_file(source.c_str());
+    const Imf::Header& header = input_file.header();
+    const ImathNs::Box2i data_window = header.dataWindow();
+    const int width = (data_window.max.x - data_window.min.x) + 1;
+    const int height = (data_window.max.y - data_window.min.y) + 1;
+
+    const bool is_pal = standard == Standard::kPal;
+    const int expected_height = is_pal ? kPalHeight : kNtscHeight;
+    if (height != expected_height || (width != 720 && width != 704)) {
+      if (error != nullptr) {
+        *error =
+            "Progressive EXR raster must be 720x576 or 704x576 for PAL, and 720x480 or 704x480 for NTSC.";
+      }
+      return false;
+    }
+
+    const Imf::ChannelList& channels = header.channels();
+    const Imf::Channel* r_channel = channels.findChannel("R");
+    const Imf::Channel* g_channel = channels.findChannel("G");
+    const Imf::Channel* b_channel = channels.findChannel("B");
+    if (r_channel == nullptr || g_channel == nullptr || b_channel == nullptr) {
+      if (error != nullptr) {
+        *error = "Progressive EXR must provide R, G, and B channels.";
+      }
+      return false;
+    }
+
+    if (r_channel->type != g_channel->type || r_channel->type != b_channel->type) {
+      if (error != nullptr) {
+        *error = "Progressive EXR channels R/G/B must use a single shared channel type.";
+      }
+      return false;
+    }
+
+    const Imf::PixelType channel_type = r_channel->type;
+    if (channel_type != Imf::HALF && channel_type != Imf::FLOAT) {
+      if (error != nullptr) {
+        *error = "Progressive EXR channels R/G/B must use HALF or FLOAT type.";
+      }
+      return false;
+    }
+
+    if (!ValidateExrMetadata(header, width, height, standard, error)) {
+      return false;
+    }
+
+    SetFrameGeometryForStandard(standard, out_image);
+    out_image->pixels.assign(static_cast<std::size_t>(out_image->width * out_image->height),
+                             MakePixel(64, 512, 512));
+
+    const int source_x_offset = width == 704 ? 8 : 0;
+    const std::ptrdiff_t pixel_offset = static_cast<std::ptrdiff_t>(data_window.min.x) +
+                                        (static_cast<std::ptrdiff_t>(data_window.min.y) * width);
+    Imf::FrameBuffer frame_buffer;
+
+    if (channel_type == Imf::FLOAT) {
+      std::vector<float> red(static_cast<std::size_t>(width * height), 0.0F);
+      std::vector<float> green(static_cast<std::size_t>(width * height), 0.0F);
+      std::vector<float> blue(static_cast<std::size_t>(width * height), 0.0F);
+
+      frame_buffer.insert(
+          "R", Imf::Slice(Imf::FLOAT,
+                           reinterpret_cast<char*>(red.data() - pixel_offset),
+                           sizeof(float),
+                           static_cast<std::size_t>(sizeof(float) * width)));
+      frame_buffer.insert(
+          "G", Imf::Slice(Imf::FLOAT,
+                           reinterpret_cast<char*>(green.data() - pixel_offset),
+                           sizeof(float),
+                           static_cast<std::size_t>(sizeof(float) * width)));
+      frame_buffer.insert(
+          "B", Imf::Slice(Imf::FLOAT,
+                           reinterpret_cast<char*>(blue.data() - pixel_offset),
+                           sizeof(float),
+                           static_cast<std::size_t>(sizeof(float) * width)));
+
+      input_file.setFrameBuffer(frame_buffer);
+      input_file.readPixels(data_window.min.y, data_window.max.y);
+
+      for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+          const std::size_t source_index = static_cast<std::size_t>(y * width + x);
+          const int dst_x = x + source_x_offset;
+          out_image->pixels[static_cast<std::size_t>((y * out_image->width) + dst_x)] =
+              ConvertRgbFloatToBt601(red[source_index], green[source_index], blue[source_index]);
+        }
+      }
+      return true;
+    }
+
+    std::vector<ImathNs::half> red(static_cast<std::size_t>(width * height), ImathNs::half(0.0F));
+    std::vector<ImathNs::half> green(static_cast<std::size_t>(width * height), ImathNs::half(0.0F));
+    std::vector<ImathNs::half> blue(static_cast<std::size_t>(width * height), ImathNs::half(0.0F));
+
+    frame_buffer.insert(
+        "R",
+        Imf::Slice(Imf::HALF,
+                   reinterpret_cast<char*>(red.data() - pixel_offset),
+                   sizeof(ImathNs::half),
+                   static_cast<std::size_t>(sizeof(ImathNs::half) * width)));
+    frame_buffer.insert(
+        "G",
+        Imf::Slice(Imf::HALF,
+                   reinterpret_cast<char*>(green.data() - pixel_offset),
+                   sizeof(ImathNs::half),
+                   static_cast<std::size_t>(sizeof(ImathNs::half) * width)));
+    frame_buffer.insert(
+        "B",
+        Imf::Slice(Imf::HALF,
+                   reinterpret_cast<char*>(blue.data() - pixel_offset),
+                   sizeof(ImathNs::half),
+                   static_cast<std::size_t>(sizeof(ImathNs::half) * width)));
+
+    input_file.setFrameBuffer(frame_buffer);
+    input_file.readPixels(data_window.min.y, data_window.max.y);
+
+    for (int y = 0; y < height; ++y) {
+      for (int x = 0; x < width; ++x) {
+        const std::size_t source_index = static_cast<std::size_t>(y * width + x);
+        const int dst_x = x + source_x_offset;
+        out_image->pixels[static_cast<std::size_t>((y * out_image->width) + dst_x)] =
+            ConvertRgbFloatToBt601(static_cast<float>(red[source_index]),
+                                   static_cast<float>(green[source_index]),
+                                   static_cast<float>(blue[source_index]));
+      }
+    }
+
+    return true;
+  } catch (const std::exception& ex) {
+    if (error != nullptr) {
+      *error = std::string("Failed while decoding progressive EXR source: ") + ex.what();
+    }
+    return false;
+  }
+}
+
 bool LoadPngFrame(const std::string& source,
                   Standard standard,
                   FrameSourceImage* out_image,
@@ -793,134 +1057,6 @@ bool LoadPngFrame(const std::string& source,
   return true;
 }
 
-int RawHeightForStandard(Standard standard) {
-  if (standard == Standard::kPal) {
-    return kPalHeight;
-  }
-  if (standard == Standard::kNtsc) {
-    return kNtscHeight;
-  }
-  return 0;
-}
-
-bool InferRawWidthFromByteSize(std::size_t file_size,
-                               int height,
-                               const std::string& pixel_format,
-                               int* out_width) {
-  if (out_width == nullptr || height <= 0) {
-    return false;
-  }
-
-  const std::size_t bytes_per_sample = sizeof(std::uint16_t);
-  std::size_t expected_720 = 0;
-  std::size_t expected_704 = 0;
-  if (pixel_format == "yuv422p10le") {
-    expected_720 = static_cast<std::size_t>(720 * height * 2) * bytes_per_sample;
-    expected_704 = static_cast<std::size_t>(704 * height * 2) * bytes_per_sample;
-  } else {
-    return false;
-  }
-
-  if (file_size == expected_720) {
-    *out_width = 720;
-    return true;
-  }
-  if (file_size == expected_704) {
-    *out_width = 704;
-    return true;
-  }
-  return false;
-}
-
-bool LoadRawFrame(const Section& section,
-                  Standard standard,
-                  FrameSourceImage* out_image,
-                  std::string* error) {
-  if (out_image == nullptr) {
-    if (error != nullptr) {
-      *error = "Frame source output image pointer must not be null.";
-    }
-    return false;
-  }
-
-  std::string pixel_format = section.source_pixel_format;
-  std::transform(pixel_format.begin(), pixel_format.end(), pixel_format.begin(),
-                 [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-  if (pixel_format != "yuv422p10le") {
-    if (error != nullptr) {
-      *error = "Progressive RAW source_pixel_format must be yuv422p10le.";
-    }
-    return false;
-  }
-
-  const int height = RawHeightForStandard(standard);
-  if (height <= 0) {
-    if (error != nullptr) {
-      *error = "Unsupported video standard for RAW progressive source.";
-    }
-    return false;
-  }
-
-  std::ifstream stream(section.source, std::ios::binary | std::ios::ate);
-  if (!stream) {
-    if (error != nullptr) {
-      *error = "Unable to open progressive RAW source for reading.";
-    }
-    return false;
-  }
-
-  const std::size_t file_size = static_cast<std::size_t>(stream.tellg());
-  stream.seekg(0, std::ios::beg);
-
-  int source_width = 0;
-  if (!InferRawWidthFromByteSize(file_size, height, pixel_format, &source_width)) {
-    if (error != nullptr) {
-      *error = "Progressive RAW raster does not match 720/704 width for selected standard and pixel format.";
-    }
-    return false;
-  }
-
-  std::vector<std::uint16_t> samples(file_size / sizeof(std::uint16_t), 0);
-  stream.read(reinterpret_cast<char*>(samples.data()), static_cast<std::streamsize>(file_size));
-  if (!stream) {
-    if (error != nullptr) {
-      *error = "Failed while reading progressive RAW source.";
-    }
-    return false;
-  }
-
-  SetFrameGeometryForStandard(standard, out_image);
-  out_image->pixels.assign(static_cast<std::size_t>(out_image->width * out_image->height),
-                           MakePixel(64, 512, 512));
-
-  const int source_x_offset = source_width == 704 ? 8 : 0;
-  // yuv422p10le fixture RAW files are packed as Y0 Cb Y1 Cr in 16-bit little-endian words.
-  // Each word carries a 10-bit studio-domain code in the lower bits.
-  const std::uint16_t* packed = samples.data();
-  for (int y = 0; y < height; ++y) {
-    for (int x = 0; x < source_width; x += 2) {
-      const std::size_t pair_index = static_cast<std::size_t>(y * (source_width / 2) + (x / 2));
-      const std::size_t component_index = pair_index * 4;
-
-      const std::uint16_t y0 = static_cast<std::uint16_t>(packed[component_index + 0] & 0x03FFu);
-      const std::uint16_t cb = static_cast<std::uint16_t>(packed[component_index + 1] & 0x03FFu);
-      const std::uint16_t y1 = static_cast<std::uint16_t>(packed[component_index + 2] & 0x03FFu);
-      const std::uint16_t cr = static_cast<std::uint16_t>(packed[component_index + 3] & 0x03FFu);
-
-      const int dst_y = y;
-      const int dst_x0 = x + source_x_offset;
-      const int dst_x1 = dst_x0 + 1;
-
-      out_image->pixels[static_cast<std::size_t>(dst_y * out_image->width + dst_x0)] =
-          MakeRawPixel(y0, cb, cr);
-      out_image->pixels[static_cast<std::size_t>(dst_y * out_image->width + dst_x1)] =
-          MakeRawPixel(y1, cb, cr);
-    }
-  }
-
-  return true;
-}
-
 }  // namespace
 
 const YCbCr444Pixel& FrameSourceImage::PixelAt(int x, int y) const {
@@ -977,9 +1113,9 @@ bool ProgressiveFrameSource::SupportsSection(const Section& section) const {
   std::transform(source.begin(), source.end(), source.begin(), [](unsigned char c) {
     return static_cast<char>(std::tolower(c));
   });
-    return source.size() >= 4 &&
+  return source.size() >= 4 &&
       (EndsWithLowercase(source, ".png") ||
-       EndsWithLowercase(source, ".raw") ||
+       EndsWithLowercase(source, ".exr") ||
        EndsWithLowercase(source, ".mp4") ||
        EndsWithLowercase(source, ".mov"));
 }
@@ -989,6 +1125,11 @@ void ProgressiveFrameSource::ClearCache() const {
   cached_png_source_.clear();
   cached_png_standard_ = Standard::kUnknown;
   cached_png_frame_ = FrameSourceImage{};
+
+  has_cached_exr_frame_ = false;
+  cached_exr_source_.clear();
+  cached_exr_standard_ = Standard::kUnknown;
+  cached_exr_frame_ = FrameSourceImage{};
 
   has_cached_mp4_frames_ = false;
   cached_mp4_source_.clear();
@@ -1026,7 +1167,7 @@ bool ProgressiveFrameSource::ResolveFrameCount(const Section& section,
     return static_cast<char>(std::tolower(c));
   });
 
-  if (EndsWithLowercase(source, ".png") || EndsWithLowercase(source, ".raw")) {
+  if (EndsWithLowercase(source, ".png") || EndsWithLowercase(source, ".exr")) {
     *out_frame_count = 1;
     return true;
   }
@@ -1122,8 +1263,34 @@ bool ProgressiveFrameSource::GenerateFrame(const Section& section,
     return true;
   }
 
-  if (EndsWithLowercase(source, ".raw")) {
-    return LoadRawFrame(section, standard, out_image, error);
+  if (EndsWithLowercase(source, ".exr")) {
+    const bool cache_hit = has_cached_exr_frame_ &&
+                           cached_exr_source_ == section.source &&
+                           cached_exr_standard_ == standard;
+    if (!cache_hit) {
+      FrameSourceImage decoded;
+      std::string decode_error;
+      if (!LoadExrFrame(section.source, standard, &decoded, &decode_error)) {
+        if (error != nullptr) {
+          *error = decode_error.empty() ? "Failed to decode progressive EXR source."
+                                        : decode_error;
+        }
+        return false;
+      }
+      cached_exr_frame_ = decoded;
+      cached_exr_source_ = section.source;
+      cached_exr_standard_ = standard;
+      has_cached_exr_frame_ = true;
+    }
+
+    if (out_image == nullptr) {
+      if (error != nullptr) {
+        *error = "Frame source output image pointer must not be null.";
+      }
+      return false;
+    }
+    *out_image = cached_exr_frame_;
+    return true;
   }
 
   if (EndsWithLowercase(source, ".mp4")) {

@@ -258,6 +258,22 @@ TEST(ProjectValidatorTest, AcceptsProgressivePngSectionWithFixedDuration) {
   std::filesystem::remove(project.sections[0].source);
 }
 
+TEST(ProjectValidatorTest, AcceptsProgressiveExrSectionWithFixedDuration) {
+  Project project = MakeValidProject();
+  project.sections[0].type = "progressive";
+  project.sections[0].pattern.clear();
+  project.sections[0].source = CreateTemporarySourceFile("videosynth_progressive.exr");
+  project.sections[0].duration_frames = 8;
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_TRUE(result.is_valid);
+  EXPECT_TRUE(result.errors.empty());
+
+  std::filesystem::remove(project.sections[0].source);
+}
+
 TEST(ProjectValidatorTest, RejectsProgressiveSectionWithoutSource) {
   Project project = MakeValidProject();
   project.sections[0].type = "progressive";
@@ -270,34 +286,18 @@ TEST(ProjectValidatorTest, RejectsProgressiveSectionWithoutSource) {
   EXPECT_FALSE(result.is_valid);
 }
 
-TEST(ProjectValidatorTest, AcceptsProgressiveRawWithSupportedPixelFormat) {
+TEST(ProjectValidatorTest, RejectsProgressiveRawSourceFamily) {
   Project project = MakeValidProject();
   project.sections[0].type = "progressive";
   project.sections[0].pattern.clear();
   project.sections[0].source = CreateTemporarySourceFile("videosynth_progressive.raw");
-  project.sections[0].source_pixel_format = "yuv422p10le";
-  project.sections[0].duration_frames = 8;
-
-  ProjectValidator validator;
-  const ValidationResult result = validator.Validate(project);
-
-  EXPECT_TRUE(result.is_valid);
-  EXPECT_TRUE(result.errors.empty());
-
-  std::filesystem::remove(project.sections[0].source);
-}
-
-TEST(ProjectValidatorTest, RejectsProgressiveRawWithoutPixelFormat) {
-  Project project = MakeValidProject();
-  project.sections[0].type = "progressive";
-  project.sections[0].pattern.clear();
-  project.sections[0].source = CreateTemporarySourceFile("videosynth_progressive.raw");
-  project.sections[0].source_pixel_format.clear();
 
   ProjectValidator validator;
   const ValidationResult result = validator.Validate(project);
 
   EXPECT_FALSE(result.is_valid);
+  EXPECT_FALSE(result.errors.empty());
+  EXPECT_NE(result.errors[0].find("Unsupported progressive source family"), std::string::npos);
 
   std::filesystem::remove(project.sections[0].source);
 }
@@ -466,6 +466,60 @@ TEST(ProjectValidatorTest, RejectsProgressiveMovWithUnsupportedCodecProfile) {
   probe.profile.height = 480;
   probe.profile.frame_rate_hz = 30000.0 / 1001.0;
   probe.profile.frame_count = 90;
+
+  ProjectValidator validator(&probe);
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_FALSE(result.is_valid);
+  ASSERT_FALSE(result.errors.empty());
+
+  std::filesystem::remove(project.sections[0].source);
+}
+
+TEST(ProjectValidatorTest, AcceptsProgressiveExrWithSupportedProfile) {
+  Project project = MakeValidProject();
+  project.cvbs_presets.video_standard_preset = Standard::kPal;
+  project.sections[0].type = "progressive";
+  project.sections[0].pattern.clear();
+  project.sections[0].source = CreateTemporarySourceFile("videosynth_progressive_ok.exr");
+  project.sections[0].duration_frames = 1;
+
+  MockProgressiveFrameSourceProbe probe;
+  probe.profile.container = "exr";
+  probe.profile.codec = "openexr";
+  probe.profile.pixel_format = "rgbf";
+  probe.profile.bit_depth = 32;
+  probe.profile.width = 720;
+  probe.profile.height = 576;
+  probe.profile.frame_rate_hz = 0.0;
+  probe.profile.frame_count = 1;
+
+  ProjectValidator validator(&probe);
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_TRUE(result.is_valid);
+  EXPECT_TRUE(result.errors.empty());
+
+  std::filesystem::remove(project.sections[0].source);
+}
+
+TEST(ProjectValidatorTest, RejectsProgressiveExrWithUnsupportedPixelProfile) {
+  Project project = MakeValidProject();
+  project.cvbs_presets.video_standard_preset = Standard::kNtsc;
+  project.sections[0].type = "progressive";
+  project.sections[0].pattern.clear();
+  project.sections[0].source = CreateTemporarySourceFile("videosynth_progressive_bad.exr");
+  project.sections[0].duration_frames = 1;
+
+  MockProgressiveFrameSourceProbe probe;
+  probe.profile.container = "exr";
+  probe.profile.codec = "openexr";
+  probe.profile.pixel_format = "rgb24";
+  probe.profile.bit_depth = 24;
+  probe.profile.width = 720;
+  probe.profile.height = 480;
+  probe.profile.frame_rate_hz = 0.0;
+  probe.profile.frame_count = 1;
 
   ProjectValidator validator(&probe);
   const ValidationResult result = validator.Validate(project);

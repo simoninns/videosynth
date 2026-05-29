@@ -54,7 +54,7 @@
 - Support for multiple sample rates: **4fsc**, **20MSPS**, **40MSPS**, or custom.
 - **Frame-based content** from:
   - Software-generated test patterns (e.g., colour bars, grayscale ramps).
-  - Progressive sources from constrained, validated file profiles (MOV/MP4/PNG/RAW).
+  - Progressive sources from constrained, validated file profiles (MOV/MP4/PNG/EXR).
 - **Line-based injections** for VBI content:
   - **VITS** (Vertical Interval Test Signals).
   - **Laserdisc biphase encoding** (IEC 60856/60857).
@@ -322,7 +322,7 @@ All accepted progressive inputs are normalized to **10-bit 4:4:4 YCbCr BT.601 st
 
 Source-range capability note:
 
-- **MOV and RAW supported profiles** are required to preserve 10-bit studio-domain detail, including below-black and above-white code excursions when present in the source.
+- **MOV and EXR supported profiles** are required to preserve 10-bit studio-domain detail, including below-black and above-white code excursions when present in the source.
 - **PNG and MP4 supported profiles** do not provide a reliable path for preserving studio-domain below-black and above-white excursions end-to-end; they are supported for standard in-range content only.
 
 ---
@@ -657,7 +657,7 @@ For **NTSC (525-line system)**, the vertical blanking interval (VBI) is defined 
 The current parser, validator, and runtime implement only a subset of the YAML surface described in this section:
 
 - Implemented top-level presets: `video_standard_preset`, `sample_encoding_preset`, `signal_state_preset`, `ntsc_black_setup_ire`, `output.video_path`, and `output.metadata_path`.
-- Implemented section fields: `name`, `type`, `pattern`, `source`, `source_pixel_format`, `start_frame`, and `duration_frames`.
+- Implemented section fields: `name`, `type`, `pattern`, `source`, `start_frame`, and `duration_frames`.
 - The `line_injections` schema and the laserdisc-specific CVBS preset flags described below remain target design and are not yet represented in the current runtime data model.
 
 The remainder of Section 7 should therefore be read as the intended project-file design rather than the currently implemented parser surface.
@@ -763,7 +763,7 @@ video_path: "out/pal_test_video.composite" # project-relative output file path
 4. **Progressive Sources**:
   - `source` must resolve to an accessible file after applying [File Path Resolution](#file-path-resolution) rules. If the resolved path does not exist, the YAML is considered **invalid**.
   - `source` must match one of the supported progressive source profiles defined in [Section 8.1](#81-frame-based-sections); container extension alone is not sufficient.
-  - For RAW sources, `source_pixel_format` is required and must be `yuv422p10le` (packed `Y0 Cb Y1 Cr` words).
+  - For EXR sources, metadata attributes listed in [Progressive Sources](#progressive-sources) are required and validated.
   - Progressive source dimensions must be standard-consistent and one of:
     - PAL: `720x576` or `704x576`
     - NTSC: `720x480` or `704x480`
@@ -893,8 +893,7 @@ Container names alone are not sufficient for validation; source files must match
 - **MOV video**: `v210` in MOV (`yuv422p10le`) at dimensions valid for the selected output standard, and at a frame rate that matches the selected output standard (`25 fps` PAL, `30000/1001 fps` NTSC).
 - **MP4 video**: H.264/AVC (`yuv420p`) in MP4 at dimensions valid for the selected output standard, and at a frame rate that matches the selected output standard (`25 fps` PAL, `30000/1001 fps` NTSC).
 - **PNG still image**: Single-frame PNG truecolour input (RGB/RGBA, 8-bit or 16-bit integer channels) at target dimensions.
-- **RAW still frame**: Headerless raw frame with external format declaration (project field or sidecar) using one supported pixel format:
-  - `yuv422p10le` (packed `Y0 Cb Y1 Cr` component order; each component stored as a 16-bit little-endian word carrying a 10-bit code value)
+- **EXR still image**: Single-frame OpenEXR scanline input with `R/G/B` channels in `HALF` or `FLOAT`, validated `videosynth.*` metadata, and target dimensions.
 
 Any other codec, chroma format, bit depth, or packing is outside scope and must fail validation.
 
@@ -906,7 +905,6 @@ Any other codec, chroma format, bit depth, or packing is outside scope and must 
 | `name`            | string         | Yes          | User-friendly name.                                                            | `"MOV Source"`       |
 | `type`            | string         | Yes          | Must be `"progressive"`.                                                       | `"progressive"`      |
 | `source`          | string         | Yes          | Path to the source file. May be a `builtin:` prefixed name, an absolute path, or a path relative to the project YAML. See [File Path Resolution](#file-path-resolution). | `"assets/test.mov"` |
-| `source_pixel_format` | string      | Conditionally | Required for `RAW` sources; ignored for MOV/MP4/PNG. Supported value: `yuv422p10le` (packed `Y0 Cb Y1 Cr`). | `"yuv422p10le"` |
 | `start_frame`     | integer        | No           | First frame to use (default: `0`).                                             | `0`                  |
 | `duration_frames` | integer/string | No           | Number of frames to extract. Use `"all"` for all frames or a positive integer. | `100` or `"all"`     |
 
@@ -916,7 +914,7 @@ Any other codec, chroma format, bit depth, or packing is outside scope and must 
 - **Colour Space**: Source data is converted into 10-bit 4:4:4 YCbCr BT.601 studio swing at ingestion.
 - **Frame Rate**: **Fixed by the output standard** (25 fps for PAL, ~29.97 fps for NTSC). Input sources **must match** this frame rate.
 - **10-bit studio-range preservation**:
-  - MOV and RAW supported profiles must preserve studio-domain sub-black and over-white excursions when present.
+  - MOV and EXR supported profiles must preserve studio-domain sub-black and over-white excursions when present.
   - PNG and MP4 supported profiles are valid for standard in-range content, but are not required to preserve sub-black/over-white excursions.
 
 ##### **Accepted Dimensions and Padding Behavior**
@@ -1620,7 +1618,6 @@ The full rule set below therefore remains the intended validation contract for l
 | Invalid NTSC black setup value             | "ntsc_black_setup_ire must be 7.5 or 0.0."                                                                                               |
 | Invalid frame rate                         | "Input frame rate must match the output standard's frame rate (25 fps for PAL, ~29.97 fps for NTSC)."                                    |
 | Unsupported progressive source profile     | "Progressive source is not in a supported profile. Validate container, codec, chroma format, and bit depth against the supported profile list." |
-| Missing RAW pixel format declaration       | "RAW source requires source_pixel_format. Supported value is yuv422p10le (packed Y0 Cb Y1 Cr words)." |
 | Invalid progressive source dimensions      | "Progressive source dimensions are invalid for the selected standard. PAL requires 720x576 or 704x576; NTSC requires 720x480 or 704x480." |
 | Scaling requested or implied               | "Progressive source scaling is not supported. Source dimensions must already match PAL 720x576/704x576 or NTSC 720x480/704x480." |
 

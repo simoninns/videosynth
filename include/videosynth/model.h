@@ -108,7 +108,6 @@ struct Section {
   std::string pattern;
   std::vector<LineInjection> line_injections;
   std::string source;
-  std::string source_pixel_format;
   bool duration_frames_all = false;
   int duration_frames = 0;
   int start_frame = 0;

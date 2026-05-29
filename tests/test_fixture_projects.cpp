@@ -194,13 +194,13 @@ TEST(ProjectFixturesTest, ProgressivePngFixturesParseAndValidate) {
   }
 }
 
-TEST(ProjectFixturesTest, ProgressiveRawFixturesParseAndValidate) {
+TEST(ProjectFixturesTest, ProgressiveExrFixturesParseAndValidate) {
   YamlProjectParser parser;
   ProgressiveFrameSourceProbe progressive_frame_source_probe;
   ProjectValidator validator(&progressive_frame_source_probe);
 
   const std::vector<std::string> fixtures = {
-      "pal_progressive_raw.yaml", "ntsc_progressive_raw.yaml"};
+      "pal_progressive_exr.yaml", "ntsc_progressive_exr.yaml"};
 
   for (const std::string& fixture : fixtures) {
     const ParseResult parsed = parser.ParseFile(FixturePath(fixture));
@@ -214,7 +214,6 @@ TEST(ProjectFixturesTest, ProgressiveRawFixturesParseAndValidate) {
     ASSERT_EQ(project.sections.size(), 19U);
     for (const Section& section : project.sections) {
       EXPECT_EQ(section.type, "progressive");
-      EXPECT_EQ(section.source_pixel_format, "yuv422p10le");
       EXPECT_EQ(section.duration_frames, 8);
       EXPECT_FALSE(section.duration_frames_all);
     }
@@ -374,14 +373,14 @@ TEST(ProjectFixturesTest, ProgressivePngFixturesGenerateCompositeOutputWith72Fra
   }
 }
 
-TEST(ProjectFixturesTest, ProgressiveRawFixturesGenerateCompositeOutputWith152Frames) {
+TEST(ProjectFixturesTest, ProgressiveExrFixturesGenerateCompositeOutputWith152Frames) {
   YamlProjectParser parser;
   ProjectValidator validator;
   GenerationStage generation;
   OutputStage output;
 
   const std::vector<std::string> fixtures = {
-      "pal_progressive_raw.yaml", "ntsc_progressive_raw.yaml"};
+      "pal_progressive_exr.yaml", "ntsc_progressive_exr.yaml"};
 
   for (const std::string& fixture : fixtures) {
     const ParseResult parsed = parser.ParseFile(FixturePath(fixture));

@@ -28,6 +28,7 @@
             gtest
             sqlite
             libpng
+            openexr
             zlib
             ffmpeg
           ];
@@ -58,6 +59,7 @@
             gtest
             sqlite
             libpng
+            openexr
             zlib
             ffmpeg
           ];

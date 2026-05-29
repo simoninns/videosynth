@@ -224,5 +224,36 @@ TEST(YamlProjectParserTest, RejectsUnsupportedLineInjectionField) {
   std::filesystem::remove(path);
 }
 
+TEST(YamlProjectParserTest, RejectsDeprecatedSourcePixelFormatField) {
+  const std::string path = WriteTempYaml(
+      "videosynth_parser_rejects_source_pixel_format.yaml",
+      "project:\n"
+      "  name: DeprecatedField\n"
+      "  version: \"1.0\"\n"
+      "cvbs_presets:\n"
+      "  video_standard_preset: PAL\n"
+      "  sample_encoding_preset: CVBS_U10_4FSC\n"
+      "  signal_state_preset: STANDARD_TBC_LOCKED\n"
+      "output:\n"
+      "  video_path: out.composite\n"
+      "  metadata_path: out.meta\n"
+      "sections:\n"
+      "  - name: ProgressiveStill\n"
+      "    type: progressive\n"
+      "    source: fixture.exr\n"
+      "    source_pixel_format: yuv422p10le\n"
+      "    duration_frames: 8\n");
+
+  YamlProjectParser parser;
+  const ParseResult result = parser.ParseFile(path);
+
+  EXPECT_FALSE(result.ok);
+  ASSERT_FALSE(result.errors.empty());
+  EXPECT_NE(result.errors[0].find("unsupported field"), std::string::npos);
+  EXPECT_NE(result.errors[0].find("source_pixel_format"), std::string::npos);
+
+  std::filesystem::remove(path);
+}
+
 }  // namespace
 }  // namespace videosynth
