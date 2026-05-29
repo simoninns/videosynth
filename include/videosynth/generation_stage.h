@@ -10,6 +10,7 @@
 #pragma once
 
 #include "videosynth/interfaces.h"
+#include "videosynth/progressive_frame_source.h"
 
 namespace videosynth {
 
@@ -36,6 +37,7 @@ class GenerationStage final : public IGenerationStage {
 
  private:
   ILogger* logger_;
+  ProgressiveFrameSource progressive_source_;
 };
 
 }  // namespace videosynth

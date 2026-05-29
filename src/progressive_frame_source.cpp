@@ -234,6 +234,7 @@ bool ProbeVideoFrameCountWithFfprobe(const std::string& source,
 
 bool DecodeMp4Frames(const std::string& source,
                      Standard standard,
+                     int max_frames,
                      std::vector<FrameSourceImage>* out_frames,
                      std::string* error) {
   if (out_frames == nullptr) {
@@ -267,9 +268,12 @@ bool DecodeMp4Frames(const std::string& source,
   }
 
   const std::string escaped_source = EscapeForSingleQuotedShell(source);
+    const std::string frame_limit_arg =
+      max_frames > 0 ? (" -frames:v " + std::to_string(max_frames)) : "";
   const std::string command =
       "ffmpeg -v error -i '" + escaped_source +
-      "' -an -sn -dn -pix_fmt yuv420p -vsync 0 -f rawvideo - 2>/dev/null";
+      "' -an -sn -dn" + frame_limit_arg +
+      " -pix_fmt yuv420p -vsync 0 -f rawvideo - 2>/dev/null";
 
   FILE* pipe = popen(command.c_str(), "r");
   if (pipe == nullptr) {
@@ -355,8 +359,60 @@ bool DecodeMp4Frames(const std::string& source,
   return true;
 }
 
+bool EnsureMp4Cache(const Section& section,
+                    Standard standard,
+                    int min_required_frames,
+                    bool require_complete,
+                    std::vector<FrameSourceImage>* cached_frames,
+                    std::string* cached_source,
+                    Standard* cached_standard,
+                    bool* has_cache,
+                    bool* is_complete,
+                    std::string* error) {
+  if (cached_frames == nullptr || cached_source == nullptr || cached_standard == nullptr ||
+      has_cache == nullptr || is_complete == nullptr) {
+    if (error != nullptr) {
+      *error = "Internal progressive MP4 cache pointers must not be null.";
+    }
+    return false;
+  }
+
+  if (min_required_frames < 0) {
+    min_required_frames = 0;
+  }
+
+  const bool key_matches = *has_cache && *cached_source == section.source && *cached_standard == standard;
+  if (key_matches) {
+    const bool has_required_frames =
+        static_cast<int>(cached_frames->size()) >= min_required_frames;
+    if ((require_complete && *is_complete) || (!require_complete && has_required_frames) ||
+        (*is_complete && !has_required_frames)) {
+      return true;
+    }
+  }
+
+  std::vector<FrameSourceImage> decoded_frames;
+  std::string decode_error;
+  const int decode_limit = require_complete ? 0 : min_required_frames;
+  if (!DecodeMp4Frames(section.source, standard, decode_limit, &decoded_frames, &decode_error)) {
+    if (error != nullptr) {
+      *error = decode_error.empty() ? "Failed to decode progressive MP4 source."
+                                    : decode_error;
+    }
+    return false;
+  }
+
+  *cached_frames = std::move(decoded_frames);
+  *cached_source = section.source;
+  *cached_standard = standard;
+  *has_cache = true;
+  *is_complete = require_complete;
+  return true;
+}
+
 bool DecodeMovFrames(const std::string& source,
                      Standard standard,
+                     int max_frames,
                      std::vector<FrameSourceImage>* out_frames,
                      std::string* error) {
   if (out_frames == nullptr) {
@@ -388,9 +444,12 @@ bool DecodeMovFrames(const std::string& source,
   }
 
   const std::string escaped_source = EscapeForSingleQuotedShell(source);
+    const std::string frame_limit_arg =
+      max_frames > 0 ? (" -frames:v " + std::to_string(max_frames)) : "";
   const std::string command =
       "ffmpeg -v error -i '" + escaped_source +
-      "' -an -sn -dn -pix_fmt yuv422p10le -vsync 0 -f rawvideo - 2>/dev/null";
+      "' -an -sn -dn" + frame_limit_arg +
+      " -pix_fmt yuv422p10le -vsync 0 -f rawvideo - 2>/dev/null";
 
   FILE* pipe = popen(command.c_str(), "r");
   if (pipe == nullptr) {
@@ -420,9 +479,24 @@ bool DecodeMovFrames(const std::string& source,
     return false;
   }
 
-  const std::size_t bytes_per_frame = decoded_bytes.size() / static_cast<std::size_t>(source_frame_count);
-  if (source_frame_count <= 0 ||
-      decoded_bytes.size() != bytes_per_frame * static_cast<std::size_t>(source_frame_count)) {
+  if (source_frame_count <= 0) {
+    if (error != nullptr) {
+      *error = "Unable to determine progressive source frame count.";
+    }
+    return false;
+  }
+
+  const int expected_frames = max_frames > 0 ? std::min(source_frame_count, max_frames) : source_frame_count;
+  if (expected_frames <= 0) {
+    if (error != nullptr) {
+      *error = "Progressive MOV source does not contain decodable video frames.";
+    }
+    return false;
+  }
+
+  const std::size_t bytes_per_frame = decoded_bytes.size() / static_cast<std::size_t>(expected_frames);
+  if (decoded_bytes.empty() ||
+      decoded_bytes.size() != bytes_per_frame * static_cast<std::size_t>(expected_frames)) {
     if (error != nullptr) {
       *error = "Decoded MOV frame payload size is not aligned to frame boundaries.";
     }
@@ -447,7 +521,7 @@ bool DecodeMovFrames(const std::string& source,
     return false;
   }
 
-  const std::size_t frame_count = static_cast<std::size_t>(source_frame_count);
+  const std::size_t frame_count = static_cast<std::size_t>(expected_frames);
   const std::size_t y_plane_size = static_cast<std::size_t>(decoded_width * source_height);
   const std::size_t chroma_plane_size = static_cast<std::size_t>((decoded_width / 2) * source_height);
   const std::size_t frame_size = (y_plane_size + chroma_plane_size + chroma_plane_size) *
@@ -494,6 +568,57 @@ bool DecodeMovFrames(const std::string& source,
     out_frames->push_back(std::move(frame));
   }
 
+  return true;
+}
+
+bool EnsureMovCache(const Section& section,
+                    Standard standard,
+                    int min_required_frames,
+                    bool require_complete,
+                    std::vector<FrameSourceImage>* cached_frames,
+                    std::string* cached_source,
+                    Standard* cached_standard,
+                    bool* has_cache,
+                    bool* is_complete,
+                    std::string* error) {
+  if (cached_frames == nullptr || cached_source == nullptr || cached_standard == nullptr ||
+      has_cache == nullptr || is_complete == nullptr) {
+    if (error != nullptr) {
+      *error = "Internal progressive MOV cache pointers must not be null.";
+    }
+    return false;
+  }
+
+  if (min_required_frames < 0) {
+    min_required_frames = 0;
+  }
+
+  const bool key_matches = *has_cache && *cached_source == section.source && *cached_standard == standard;
+  if (key_matches) {
+    const bool has_required_frames =
+        static_cast<int>(cached_frames->size()) >= min_required_frames;
+    if ((require_complete && *is_complete) || (!require_complete && has_required_frames) ||
+        (*is_complete && !has_required_frames)) {
+      return true;
+    }
+  }
+
+  std::vector<FrameSourceImage> decoded_frames;
+  std::string decode_error;
+  const int decode_limit = require_complete ? 0 : min_required_frames;
+  if (!DecodeMovFrames(section.source, standard, decode_limit, &decoded_frames, &decode_error)) {
+    if (error != nullptr) {
+      *error = decode_error.empty() ? "Failed to decode progressive MOV source."
+                                    : decode_error;
+    }
+    return false;
+  }
+
+  *cached_frames = std::move(decoded_frames);
+  *cached_source = section.source;
+  *cached_standard = standard;
+  *has_cache = true;
+  *is_complete = require_complete;
   return true;
 }
 
@@ -859,6 +984,25 @@ bool ProgressiveFrameSource::SupportsSection(const Section& section) const {
        EndsWithLowercase(source, ".mov"));
 }
 
+void ProgressiveFrameSource::ClearCache() const {
+  has_cached_png_frame_ = false;
+  cached_png_source_.clear();
+  cached_png_standard_ = Standard::kUnknown;
+  cached_png_frame_ = FrameSourceImage{};
+
+  has_cached_mp4_frames_ = false;
+  cached_mp4_source_.clear();
+  cached_mp4_standard_ = Standard::kUnknown;
+  cached_mp4_is_complete_ = false;
+  cached_mp4_frames_.clear();
+
+  has_cached_mov_frames_ = false;
+  cached_mov_source_.clear();
+  cached_mov_standard_ = Standard::kUnknown;
+  cached_mov_is_complete_ = false;
+  cached_mov_frames_.clear();
+}
+
 bool ProgressiveFrameSource::ResolveFrameCount(const Section& section,
                                                Standard standard,
                                                int* out_frame_count,
@@ -888,23 +1032,17 @@ bool ProgressiveFrameSource::ResolveFrameCount(const Section& section,
   }
 
   if (EndsWithLowercase(source, ".mp4")) {
-    const bool cache_hit = has_cached_mp4_frames_ &&
-                           cached_mp4_source_ == section.source &&
-                           cached_mp4_standard_ == standard;
-    if (!cache_hit) {
-      std::vector<FrameSourceImage> decoded_frames;
-      std::string decode_error;
-      if (!DecodeMp4Frames(section.source, standard, &decoded_frames, &decode_error)) {
-        if (error != nullptr) {
-          *error = decode_error.empty() ? "Failed to decode progressive MP4 source."
-                                        : decode_error;
-        }
-        return false;
-      }
-      cached_mp4_frames_ = std::move(decoded_frames);
-      cached_mp4_source_ = section.source;
-      cached_mp4_standard_ = standard;
-      has_cached_mp4_frames_ = true;
+    if (!EnsureMp4Cache(section,
+                        standard,
+                        0,
+                        true,
+                        &cached_mp4_frames_,
+                        &cached_mp4_source_,
+                        &cached_mp4_standard_,
+                        &has_cached_mp4_frames_,
+                        &cached_mp4_is_complete_,
+                        error)) {
+      return false;
     }
 
     *out_frame_count = static_cast<int>(cached_mp4_frames_.size());
@@ -912,23 +1050,17 @@ bool ProgressiveFrameSource::ResolveFrameCount(const Section& section,
   }
 
   if (EndsWithLowercase(source, ".mov")) {
-    const bool cache_hit = has_cached_mov_frames_ &&
-                           cached_mov_source_ == section.source &&
-                           cached_mov_standard_ == standard;
-    if (!cache_hit) {
-      std::vector<FrameSourceImage> decoded_frames;
-      std::string decode_error;
-      if (!DecodeMovFrames(section.source, standard, &decoded_frames, &decode_error)) {
-        if (error != nullptr) {
-          *error = decode_error.empty() ? "Failed to decode progressive MOV source."
-                                        : decode_error;
-        }
-        return false;
-      }
-      cached_mov_frames_ = std::move(decoded_frames);
-      cached_mov_source_ = section.source;
-      cached_mov_standard_ = standard;
-      has_cached_mov_frames_ = true;
+    if (!EnsureMovCache(section,
+                        standard,
+                        0,
+                        true,
+                        &cached_mov_frames_,
+                        &cached_mov_source_,
+                        &cached_mov_standard_,
+                        &has_cached_mov_frames_,
+                        &cached_mov_is_complete_,
+                        error)) {
+      return false;
     }
 
     *out_frame_count = static_cast<int>(cached_mov_frames_.size());
@@ -1002,17 +1134,25 @@ bool ProgressiveFrameSource::GenerateFrame(const Section& section,
       return false;
     }
 
-    int frame_count = 0;
-    std::string frame_count_error;
-    if (!ResolveFrameCount(section, standard, &frame_count, &frame_count_error)) {
-      if (error != nullptr) {
-        *error = frame_count_error.empty() ? "Failed to resolve progressive MP4 frame count."
-                                           : frame_count_error;
-      }
+    int required_frames = frame_index + 1;
+    if (!section.duration_frames_all && section.duration_frames > 0) {
+      required_frames = section.start_frame + section.duration_frames;
+    }
+
+    if (!EnsureMp4Cache(section,
+                        standard,
+                        required_frames,
+                        section.duration_frames_all,
+                        &cached_mp4_frames_,
+                        &cached_mp4_source_,
+                        &cached_mp4_standard_,
+                        &has_cached_mp4_frames_,
+                        &cached_mp4_is_complete_,
+                        error)) {
       return false;
     }
 
-    if (frame_index >= frame_count) {
+    if (frame_index >= static_cast<int>(cached_mp4_frames_.size())) {
       if (error != nullptr) {
         *error = "Requested frame index exceeds decoded progressive MP4 source length.";
       }
@@ -1038,17 +1178,25 @@ bool ProgressiveFrameSource::GenerateFrame(const Section& section,
       return false;
     }
 
-    int frame_count = 0;
-    std::string frame_count_error;
-    if (!ResolveFrameCount(section, standard, &frame_count, &frame_count_error)) {
-      if (error != nullptr) {
-        *error = frame_count_error.empty() ? "Failed to resolve progressive MOV frame count."
-                                           : frame_count_error;
-      }
+    int required_frames = frame_index + 1;
+    if (!section.duration_frames_all && section.duration_frames > 0) {
+      required_frames = section.start_frame + section.duration_frames;
+    }
+
+    if (!EnsureMovCache(section,
+                        standard,
+                        required_frames,
+                        section.duration_frames_all,
+                        &cached_mov_frames_,
+                        &cached_mov_source_,
+                        &cached_mov_standard_,
+                        &has_cached_mov_frames_,
+                        &cached_mov_is_complete_,
+                        error)) {
       return false;
     }
 
-    if (frame_index >= frame_count) {
+    if (frame_index >= static_cast<int>(cached_mov_frames_.size())) {
       if (error != nullptr) {
         *error = "Requested frame index exceeds decoded progressive MOV source length.";
       }

@@ -414,12 +414,12 @@ bool GenerationStage::BuildFrameSchedule(const Project& project,
 
   out_schedule->clear();
   const TestPatternFrameSource pattern_source;
-  const ProgressiveFrameSource progressive_source;
+  progressive_source_.ClearCache();
   std::vector<std::pair<const Section*, int>> frame_sections;
   std::string schedule_error;
   if (!BuildFramePatternSchedule(project,
                                  pattern_source,
-                                 progressive_source,
+                                 progressive_source_,
                                  project.cvbs_presets.video_standard_preset,
                                  &frame_sections,
                                  &schedule_error)) {
@@ -489,7 +489,6 @@ bool GenerationStage::GenerateFrameBatch(const Project& project,
   const ActiveRasterGeometry active =
       GetActiveRasterGeometry(project.cvbs_presets.video_standard_preset, timing.sample_rate_4fsc_hz);
   const TestPatternFrameSource pattern_source;
-  const ProgressiveFrameSource progressive_source;
   std::unique_ptr<IChromaEncoder> chroma_encoder =
       CreateChromaEncoder(project.cvbs_presets.video_standard_preset, timing.sample_rate_4fsc_hz);
 
@@ -557,11 +556,11 @@ bool GenerationStage::GenerateFrameBatch(const Project& project,
                                                &source_frame,
                                                &frame_error);
     } else if (section->type == "progressive") {
-      generated = progressive_source.GenerateFrame(*section,
-                                                   source_frame_index,
-                                                   project.cvbs_presets.video_standard_preset,
-                                                   &source_frame,
-                                                   &frame_error);
+      generated = progressive_source_.GenerateFrame(*section,
+                                                    source_frame_index,
+                                                    project.cvbs_presets.video_standard_preset,
+                                                    &source_frame,
+                                                    &frame_error);
     }
 
     if (!generated) {
