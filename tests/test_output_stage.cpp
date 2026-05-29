@@ -76,6 +76,7 @@ struct CvbsMetadata {
   std::string decoder;
   int64_t number_of_sequential_frames = 0;
   int32_t black_level = 0;
+  bool has_black_level = false;
   bool has_nonstandard_values = false;
 };
 
@@ -107,7 +108,10 @@ bool ReadCvbsMetadata(const std::filesystem::path& path, CvbsMetadata* metadata)
     metadata->signal_type = std::string(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3)));
     metadata->decoder = std::string(reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4)));
     metadata->number_of_sequential_frames = sqlite3_column_int64(stmt, 5);
-    metadata->black_level = sqlite3_column_int(stmt, 6);
+    metadata->has_black_level = sqlite3_column_type(stmt, 6) != SQLITE_NULL;
+    if (metadata->has_black_level) {
+      metadata->black_level = sqlite3_column_int(stmt, 6);
+    }
     metadata->has_nonstandard_values = sqlite3_column_int(stmt, 7) != 0;
     result = true;
   }
@@ -154,7 +158,7 @@ TEST(OutputStageTest, WritesCompositeSamplesUsingPalQuantizationProfile) {
   EXPECT_EQ(metadata.signal_state_preset, "STANDARD_TBC_LOCKED");
   EXPECT_EQ(metadata.decoder, "videosynth");
   EXPECT_EQ(metadata.number_of_sequential_frames, 1);
-  EXPECT_EQ(metadata.black_level, 256);
+  EXPECT_FALSE(metadata.has_black_level);
   EXPECT_FALSE(metadata.has_nonstandard_values);
 
   std::filesystem::remove(video_path);
@@ -229,6 +233,37 @@ TEST(OutputStageTest, SumsYAndCBeforeQuantizationInNtscProfile) {
   CvbsMetadata metadata;
   ASSERT_TRUE(ReadCvbsMetadata(metadata_path, &metadata));
   EXPECT_EQ(metadata.preset, "NTSC");
+  EXPECT_FALSE(metadata.has_black_level);
+
+  std::filesystem::remove(video_path);
+  std::filesystem::remove(metadata_path);
+}
+
+TEST(OutputStageTest, WritesExplicitBlackLevelOverrideForNtscZeroIreSetup) {
+  OutputStage output;
+  Project project = MakeProject(Standard::kNtsc);
+  project.cvbs_presets.ntsc_black_setup_ire = 0.0;
+  project.cvbs_presets.ntsc_black_setup_ire_specified = true;
+  const std::size_t frame_span = static_cast<std::size_t>(SamplesPerFrame4fsc(Standard::kNtsc));
+
+  std::vector<SampleFixed> y(frame_span, MillivoltsToSampleFixed(0.0));
+  std::vector<SampleFixed> c(frame_span, MillivoltsToSampleFixed(0.0));
+
+  const std::filesystem::path video_path =
+      std::filesystem::temp_directory_path() / "videosynth_output_stage_ntsc_zero_black.composite";
+  const std::filesystem::path metadata_path =
+      std::filesystem::temp_directory_path() / "videosynth_output_stage_ntsc_zero_black.meta";
+  project.output.video_path = video_path.string();
+  project.output.metadata_path = metadata_path.string();
+  std::filesystem::remove(video_path);
+  std::filesystem::remove(metadata_path);
+
+  std::vector<std::string> errors;
+  ASSERT_TRUE(output.Write(project, y, c, &errors));
+
+  CvbsMetadata metadata;
+  ASSERT_TRUE(ReadCvbsMetadata(metadata_path, &metadata));
+  EXPECT_TRUE(metadata.has_black_level);
   EXPECT_EQ(metadata.black_level, 240);
 
   std::filesystem::remove(video_path);

@@ -130,7 +130,8 @@ ParseResult YamlProjectParser::ParseFile(const std::string& path) {
     const std::set<std::string> preset_keys = {
       "video_standard_preset",
       "sample_encoding_preset",
-      "signal_state_preset"};
+      "signal_state_preset",
+      "ntsc_black_setup_ire"};
     ValidateAllowedKeys(presets, preset_keys, "cvbs_presets", &result.errors);
     if (!result.errors.empty()) {
       return result;
@@ -145,6 +146,11 @@ ParseResult YamlProjectParser::ParseFile(const std::string& path) {
     result.project.cvbs_presets.signal_state_preset =
       presets["signal_state_preset"].as<std::string>(
         result.project.cvbs_presets.signal_state_preset);
+    if (presets["ntsc_black_setup_ire"]) {
+      result.project.cvbs_presets.ntsc_black_setup_ire =
+          presets["ntsc_black_setup_ire"].as<double>();
+      result.project.cvbs_presets.ntsc_black_setup_ire_specified = true;
+    }
 
     const YAML::Node output = root["output"];
     const std::set<std::string> output_keys = {"video_path", "metadata_path"};

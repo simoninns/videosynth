@@ -9,6 +9,7 @@
 
 #pragma once
 
+#include <cmath>
 #include <string>
 #include <vector>
 
@@ -45,7 +46,14 @@ struct CvbsPresets {
   Standard video_standard_preset = Standard::kUnknown;
   std::string sample_encoding_preset = "CVBS_U10_4FSC";
   std::string signal_state_preset = "STANDARD_TBC_LOCKED";
+  double ntsc_black_setup_ire = 7.5;
+  bool ntsc_black_setup_ire_specified = false;
 };
+
+inline bool IsSupportedNtscBlackSetupIre(double setup_ire) {
+  constexpr double kEpsilon = 1e-9;
+  return std::abs(setup_ire - 7.5) < kEpsilon || std::abs(setup_ire) < kEpsilon;
+}
 
 inline bool Is4fscSampleEncodingPreset(const std::string& preset) {
   return preset == "CVBS_U10_4FSC" || preset == "CVBS_U16_4FSC" ||

@@ -93,6 +93,22 @@ inline SignalLevels GetSignalLevels(Standard standard) {
   throw std::invalid_argument("Signal levels requested for unknown standard");
 }
 
+inline SignalLevels GetSignalLevels(const CvbsPresets& presets) {
+  if (presets.video_standard_preset != Standard::kNtsc) {
+    return GetSignalLevels(presets.video_standard_preset);
+  }
+
+  if (!IsSupportedNtscBlackSetupIre(presets.ntsc_black_setup_ire)) {
+    throw std::invalid_argument("Signal levels requested for unsupported NTSC black setup IRE");
+  }
+
+  SignalLevels levels = GetSignalLevels(Standard::kNtsc);
+  if (std::abs(presets.ntsc_black_setup_ire) < 1e-9) {
+    levels.black_mv = levels.blanking_mv;
+  }
+  return levels;
+}
+
 inline int SamplesPerFrame4fsc(Standard standard) {
   if (standard == Standard::kPal) {
     // EBU Tech. 3280-E Section 1.2: PAL 4fsc has 1135.0064 samples/line,

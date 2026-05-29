@@ -279,6 +279,20 @@ ValidationResult ProjectValidator::Validate(const Project& project) {
     result.errors.push_back("MVP constraint violation: signal_state_preset must indicate locked state.");
   }
 
+  if (project.cvbs_presets.video_standard_preset != Standard::kNtsc &&
+      project.cvbs_presets.ntsc_black_setup_ire_specified) {
+    result.is_valid = false;
+    result.errors.push_back(
+        "MVP constraint violation: ntsc_black_setup_ire can only be specified for NTSC projects.");
+  }
+
+  if (project.cvbs_presets.video_standard_preset == Standard::kNtsc &&
+      !IsSupportedNtscBlackSetupIre(project.cvbs_presets.ntsc_black_setup_ire)) {
+    result.is_valid = false;
+    result.errors.push_back(
+        "MVP constraint violation: ntsc_black_setup_ire must be 7.5 or 0.0.");
+  }
+
   if (project.output.video_path.empty()) {
     result.is_valid = false;
     result.errors.push_back("MVP constraint violation: output.video_path must be set.");

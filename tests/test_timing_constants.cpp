@@ -50,5 +50,19 @@ TEST(SignalLevelsTest, ProvidesNtscLevels) {
   EXPECT_DOUBLE_EQ(levels.white_mv, 714.3);
 }
 
+TEST(SignalLevelsTest, SupportsZeroIreNtscBlackSetup) {
+  CvbsPresets presets;
+  presets.video_standard_preset = Standard::kNtsc;
+  presets.ntsc_black_setup_ire = 0.0;
+  presets.ntsc_black_setup_ire_specified = true;
+
+  const SignalLevels levels = GetSignalLevels(presets);
+
+  EXPECT_DOUBLE_EQ(levels.sync_tip_mv, -285.7);
+  EXPECT_DOUBLE_EQ(levels.blanking_mv, 0.0);
+  EXPECT_DOUBLE_EQ(levels.black_mv, 0.0);
+  EXPECT_DOUBLE_EQ(levels.white_mv, 714.3);
+}
+
 }  // namespace
 }  // namespace videosynth

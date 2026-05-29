@@ -85,6 +85,36 @@ TEST(YamlProjectParserTest, ParsesProgressiveSectionWithIntegerDuration) {
   std::filesystem::remove(path);
 }
 
+TEST(YamlProjectParserTest, ParsesOptionalNtscBlackSetupIre) {
+  const std::string path = WriteTempYaml(
+      "videosynth_parser_ntsc_black_setup.yaml",
+      "project:\n"
+      "  name: NtscZeroSetup\n"
+      "  version: \"1.0\"\n"
+      "cvbs_presets:\n"
+      "  video_standard_preset: NTSC\n"
+      "  sample_encoding_preset: CVBS_U10_4FSC\n"
+      "  signal_state_preset: STANDARD_TBC_LOCKED\n"
+      "  ntsc_black_setup_ire: 0.0\n"
+      "output:\n"
+      "  video_path: out.composite\n"
+      "  metadata_path: out.meta\n"
+      "sections:\n"
+      "  - name: ProgressiveStill\n"
+      "    type: progressive\n"
+      "    source: fixture.png\n"
+      "    duration_frames: 8\n");
+
+  YamlProjectParser parser;
+  const ParseResult result = parser.ParseFile(path);
+
+  ASSERT_TRUE(result.ok);
+  EXPECT_TRUE(result.project.cvbs_presets.ntsc_black_setup_ire_specified);
+  EXPECT_DOUBLE_EQ(result.project.cvbs_presets.ntsc_black_setup_ire, 0.0);
+
+  std::filesystem::remove(path);
+}
+
 TEST(YamlProjectParserTest, RejectsInvalidDurationFramesScalar) {
   const std::string path = WriteTempYaml(
       "videosynth_parser_progressive_bad_duration.yaml",

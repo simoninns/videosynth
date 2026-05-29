@@ -467,7 +467,7 @@ bool GenerationStage::GenerateFrameBatch(const Project& project,
   }
 
   const TimingConstants timing = GetTimingConstants(project.cvbs_presets.video_standard_preset);
-  const SignalLevels levels = GetSignalLevels(project.cvbs_presets.video_standard_preset);
+  const SignalLevels levels = GetSignalLevels(project.cvbs_presets);
   const std::vector<int> line_sample_counts =
       BuildLineSampleCounts(project.cvbs_presets.video_standard_preset,
                             timing.lines_per_frame,

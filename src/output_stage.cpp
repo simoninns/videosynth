@@ -240,7 +240,19 @@ bool WriteMetadataDatabase(const Project& project,
   sqlite3_bind_null(insert_stmt, 6);
   sqlite3_bind_null(insert_stmt, 7);
   sqlite3_bind_int64(insert_stmt, 8, static_cast<sqlite3_int64>(frame_count));
-  sqlite3_bind_int(insert_stmt, 9, quantization.blanking_code);
+
+  const bool has_explicit_black_level_override =
+      project.cvbs_presets.video_standard_preset == Standard::kNtsc &&
+      project.cvbs_presets.ntsc_black_setup_ire_specified &&
+      std::abs(project.cvbs_presets.ntsc_black_setup_ire) < 1e-9;
+  if (has_explicit_black_level_override) {
+    const SignalLevels levels = GetSignalLevels(project.cvbs_presets);
+    const int black_level_code = MapCompositeMillivoltsToCode(levels.black_mv, quantization);
+    sqlite3_bind_int(insert_stmt, 9, black_level_code);
+  } else {
+    sqlite3_bind_null(insert_stmt, 9);
+  }
+
   sqlite3_bind_int(insert_stmt, 10, has_nonstandard ? 1 : 0);
   sqlite3_bind_null(insert_stmt, 11);
 

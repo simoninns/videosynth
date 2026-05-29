@@ -105,7 +105,7 @@ To avoid ambiguity, this specification uses **PAL** and **NTSC** with the follow
 
 The following are **out of scope** for this specification unless explicitly added in a future revision:
 
-- PAL-M, PAL-N, PAL-60, NTSC-J, NTSC 4.43, SECAM, and other non-625/50-PAL or non-NTSC-M variants.
+- PAL-M, PAL-N, PAL-60, NTSC 4.43, SECAM, and other non-625/50-PAL or non-NTSC-M variants.
 - RF transmission/channel-plan differences (for example PAL-I RF sound spacing), because this document defines **baseband CVBS generation** rather than broadcast RF modulation.
 
 Practical interpretation:
@@ -387,6 +387,13 @@ The IRE scale is defined relative to blanking:
 | Black           | 7.5 IRE | 53.6 mV                       | Set-up (pedestal), used in NTSC USA. |
 | White           | 100 IRE | 714.3 mV                      | 100% white (luminance peak).         |
 
+VideoSynth supports an NTSC-specific black-level parameter under the NTSC-M timing model:
+
+- **Standard NTSC setup**: black at **7.5 IRE** (`53.6 mV` above blanking).
+- **Optional 0 IRE setup**: black at **0 IRE** (`0 mV`, equal to blanking). This matches the black-level convention often associated with NTSC-J usage, but in VideoSynth it is exposed only as a black-level parameter and does not define a separate video format.
+
+This option affects **black reference and luma mapping only**. It does **not** change NTSC line timing, field cadence, sync amplitudes, burst behavior, subcarrier frequency, or 4fsc sample-rate rules.
+
 **Conversion formula** (IRE ↔ mV, both relative to blanking):
 
 $$\text{mV} = \text{IRE} \times 7.143$$
@@ -398,12 +405,12 @@ This derives from the NTSC definition that 100 IRE = 714.3 mV (the luminance ran
 
 #### **Summary Comparison**
 
-| **Level**   | **PAL (mV)** | **NTSC (mV)** | **NTSC (IRE)** |
-| ----------- | ------------ | ------------- | -------------- |
-| Sync tip    | −300 mV      | −285.7 mV     | −40 IRE        |
-| Blanking    | 0 mV         | 0 mV          | 0 IRE          |
-| Black       | 0 mV         | 53.6 mV       | 7.5 IRE        |
-| White       | 700 mV       | 714.3 mV      | 100 IRE        |
+| **Level**   | **PAL (mV)** | **NTSC standard (mV / IRE)** | **NTSC 0 IRE option (mV / IRE)** |
+| ----------- | ------------ | ----------------------------- | --------------------------------- |
+| Sync tip    | −300 mV      | −285.7 mV / −40 IRE          | −285.7 mV / −40 IRE              |
+| Blanking    | 0 mV         | 0 mV / 0 IRE                 | 0 mV / 0 IRE                     |
+| Black       | 0 mV         | 53.6 mV / 7.5 IRE            | 0 mV / 0 IRE                     |
+| White       | 700 mV       | 714.3 mV / 100 IRE           | 714.3 mV / 100 IRE               |
 
 ---
 
@@ -602,6 +609,7 @@ cvbs_presets:
   mode: locked                   # locked or unlocked
   pal_laserdisc_pilot_burst: false  # PAL only; inject 3.75 MHz pilot burst on all sync pulses (IEC 60856 §9.1.2); default: false
   ntsc_laserdisc_vbi_burst: false   # NTSC only; insert colour burst on equalizing and broad sync pulses (IEC 60857 §9.1.2); default: false
+  ntsc_black_setup_ire: 7.5     # NTSC only; allowed values: 7.5 (standard setup) or 0.0 (black = blanking); default: 7.5
   field_order: upper_first      # upper_first or lower_first (default: upper_first)
   field_dominance: field1       # field1 or field2 (default: field1 for PAL, field2 for NTSC)
   endianness: little            # little or big (default: little)
@@ -668,6 +676,8 @@ video_path: "out/pal_test_video.composite" # project-relative output file path
   - 4fsc generation requires a 4fsc `sample_encoding_preset` and a locked `signal_state_preset`.
   - `pal_laserdisc_pilot_burst` can **only be enabled for PAL projects**. If enabled for NTSC, the YAML is considered **invalid**.
   - `ntsc_laserdisc_vbi_burst` can **only be enabled for NTSC projects**. If enabled for PAL, the YAML is considered **invalid**.
+  - `ntsc_black_setup_ire` can **only be specified for NTSC projects**. If specified for PAL, the YAML is considered **invalid**.
+  - `ntsc_black_setup_ire` allowed values are `7.5` and `0.0`. `7.5` selects standards-based NTSC setup; `0.0` moves NTSC black level to blanking (`0 IRE`).
 2. **Sections**:
   - Each section must have a valid `type` (`software_generated` or `progressive`).
   - Each section must have at least one of:
@@ -1457,6 +1467,8 @@ To simulate **analogue output**, the generator must:
   - 4fsc generation requires a 4fsc `sample_encoding_preset` and a locked `signal_state_preset`.
   - `pal_laserdisc_pilot_burst` can **only be enabled for PAL projects**. If enabled for NTSC, the YAML is considered **invalid**.
   - `ntsc_laserdisc_vbi_burst` can **only be enabled for NTSC projects**. If enabled for PAL, the YAML is considered **invalid**.
+  - `ntsc_black_setup_ire` can **only be specified for NTSC projects**. If specified for PAL, the YAML is considered **invalid**.
+  - `ntsc_black_setup_ire` must be either `7.5` or `0.0`.
 2. **Sections**:
   - Each section must have a valid `type` (`software_generated` or `progressive`).
   - Each section must have at least one of:
@@ -1494,6 +1506,8 @@ To simulate **analogue output**, the generator must:
 | Invalid signal state preset                | "signal_state_preset must indicate locked state for 4fsc generation."                                                                    |
 | Invalid pilot burst                        | "pal_laserdisc_pilot_burst can only be enabled for PAL projects."                                                                        |
 | Invalid VBI burst                          | "ntsc_laserdisc_vbi_burst can only be enabled for NTSC projects."                                                                        |
+| Invalid NTSC black setup scope             | "ntsc_black_setup_ire can only be specified for NTSC projects."                                                                          |
+| Invalid NTSC black setup value             | "ntsc_black_setup_ire must be 7.5 or 0.0."                                                                                               |
 | Invalid frame rate                         | "Input frame rate must match the output standard's frame rate (25 fps for PAL, ~29.97 fps for NTSC)."                                    |
 | Unsupported progressive source profile     | "Progressive source is not in a supported profile. Validate container, codec, chroma format, and bit depth against the supported profile list." |
 | Missing RAW pixel format declaration       | "RAW source requires source_pixel_format. Supported value is yuv422p10le (packed Y0 Cb Y1 Cr words)." |

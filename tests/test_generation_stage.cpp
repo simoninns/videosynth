@@ -57,6 +57,15 @@ Project MakeProject(Standard standard,
   return project;
 }
 
+Project MakeProjectWithNtscBlackSetup(double ntsc_black_setup_ire,
+                                      const std::string& pattern = "ntsc_full_field_black",
+                                      int duration_frames = 1) {
+  Project project = MakeProject(Standard::kNtsc, pattern, duration_frames);
+  project.cvbs_presets.ntsc_black_setup_ire = ntsc_black_setup_ire;
+  project.cvbs_presets.ntsc_black_setup_ire_specified = true;
+  return project;
+}
+
 Project MakeProgressivePngProject(Standard standard, const std::string& source_path) {
   Project project;
   project.cvbs_presets.video_standard_preset = standard;
@@ -818,6 +827,25 @@ TEST(GenerationStagePatternTest, PlugePatternContainsBelowBlackSamples) {
 
   ASSERT_TRUE(initialized);
   EXPECT_LT(min_y, levels.black_mv);
+}
+
+TEST(GenerationStagePatternTest, ZeroIreNtscBlackSetupMovesBlackPatternToBlanking) {
+  GenerationStage generation;
+  std::vector<std::string> errors;
+  std::vector<SampleFixed> y;
+  std::vector<SampleFixed> c;
+
+  ASSERT_TRUE(generation.Generate(MakeProjectWithNtscBlackSetup(0.0), &y, &c, &errors));
+
+  const TimingConstants ntsc = GetTimingConstants(Standard::kNtsc);
+  const int line_start = (30 - 1) * ntsc.samples_per_line_4fsc;
+  const int start = line_start + ActiveWindowStartSamples(Standard::kNtsc, ntsc.sample_rate_4fsc_hz);
+  const int end = std::min(line_start + ActiveWindowEndSamples(Standard::kNtsc, ntsc.sample_rate_4fsc_hz),
+                           line_start + ntsc.samples_per_line_4fsc);
+
+  for (int i = start; i < end; ++i) {
+    EXPECT_NEAR(SampleFixedToMillivolts(y[static_cast<std::size_t>(i)]), 0.0, 1e-6);
+  }
 }
 
 TEST(GenerationStagePatternTest, CrosshatchProducesMultipleVerticalTransitionsOnActiveLine) {

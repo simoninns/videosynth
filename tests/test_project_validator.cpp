@@ -112,6 +112,46 @@ TEST(ProjectValidatorTest, RejectsSubcarrierLockDisabled) {
   EXPECT_FALSE(result.is_valid);
 }
 
+TEST(ProjectValidatorTest, AcceptsSupportedNtscBlackSetupValues) {
+  Project project = MakeValidProject();
+  project.cvbs_presets.video_standard_preset = Standard::kNtsc;
+  project.sections[0].pattern = "ntsc_smpte_170m_colour_bars_100";
+  project.cvbs_presets.ntsc_black_setup_ire = 0.0;
+  project.cvbs_presets.ntsc_black_setup_ire_specified = true;
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_TRUE(result.is_valid);
+  EXPECT_TRUE(result.errors.empty());
+}
+
+TEST(ProjectValidatorTest, RejectsUnsupportedNtscBlackSetupValue) {
+  Project project = MakeValidProject();
+  project.cvbs_presets.video_standard_preset = Standard::kNtsc;
+  project.sections[0].pattern = "ntsc_smpte_170m_colour_bars_100";
+  project.cvbs_presets.ntsc_black_setup_ire = 1.0;
+  project.cvbs_presets.ntsc_black_setup_ire_specified = true;
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_FALSE(result.is_valid);
+  EXPECT_FALSE(result.errors.empty());
+}
+
+TEST(ProjectValidatorTest, RejectsNtscBlackSetupOnPalProject) {
+  Project project = MakeValidProject();
+  project.cvbs_presets.ntsc_black_setup_ire = 0.0;
+  project.cvbs_presets.ntsc_black_setup_ire_specified = true;
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_FALSE(result.is_valid);
+  EXPECT_FALSE(result.errors.empty());
+}
+
 TEST(ProjectValidatorTest, RejectsNonSoftwareSections) {
   Project project = MakeValidProject();
   project.sections[0].type = "progressive";
