@@ -46,10 +46,15 @@
 
 ## Nix Environment Requirements
 - The development environment is Nix.
-- When tools are needed (build, test, lint, format, codegen), run commands inside the Nix shell.
-- Preferred command style in this repository:
+- The provided project development shell is the default environment and is expected to contain all tools required to build, lint, format, and test this repository.
+- For normal project workflows, run commands in the project shell using:
   - `nix develop "path:$PWD" --command <command>`
-- If a plain shell command is suggested, provide its Nix-shell equivalent.
+- If additional tools are needed for temporary tasks (for example: experimentation, profiling, debugging, or one-off analysis), use a temporary ad-hoc Nix shell that includes those tools instead of installing them into the workspace environment.
+- Prefer command styles such as:
+  - `nix shell nixpkgs#<tool> --command <tool> <args>`
+  - `nix shell nixpkgs#<tool1> nixpkgs#<tool2> --command <command>`
+- Do not modify project Nix files (`flake.nix`, `default.nix`) just to add temporary tooling unless the user explicitly requests a persistent dependency change.
+- If a plain shell command is suggested, also provide its Nix-based equivalent.
 
 ## Definitive Specifications
 - For CVBS file format requirements, treat the `docs/cvbs-file-format-specification/` submodule as authoritative.
