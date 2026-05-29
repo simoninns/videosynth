@@ -37,33 +37,24 @@ int BurstEndSamples(double sample_rate_hz) {
   return static_cast<int>(std::lround(sample_rate_hz * 8.0e-6));
 }
 
-Project MakeProject(Standard standard,
-          const std::string& pattern = "",
-                    int duration_frames = 1) {
-  const std::string selected_pattern =
-    pattern.empty()
-      ? (standard == Standard::kPal
-         ? "pal_ebu_colour_bars_100"
-         : "ntsc_smpte_170m_colour_bars_100")
-      : pattern;
+std::string DefaultBarsPngPath(Standard standard) {
+  return (std::filesystem::path(VIDEOSYNTH_SOURCE_DIR) /
+          (standard == Standard::kPal
+               ? "resources/assets/720x576/stills/png/Color-Bars-Hori-Cont.png"
+               : "resources/assets/720x480/stills/png/Color-Bars-Hori-Cont.png"))
+      .string();
+}
+
+Project MakeProject(Standard standard, int duration_frames = 1) {
   Project project;
   project.cvbs_presets.video_standard_preset = standard;
   project.cvbs_presets.sample_encoding_preset = "CVBS_U10_4FSC";
   project.cvbs_presets.signal_state_preset = "STANDARD_TBC_LOCKED";
   project.sections.push_back(
       Section{.name = "SignalTiming",
-              .type = "software_generated",
-        .pattern = selected_pattern,
+              .type = "progressive",
+              .source = DefaultBarsPngPath(standard),
               .duration_frames = duration_frames});
-  return project;
-}
-
-Project MakeProjectWithNtscBlackSetup(double ntsc_black_setup_ire,
-                                      const std::string& pattern = "ntsc_full_field_black",
-                                      int duration_frames = 1) {
-  Project project = MakeProject(Standard::kNtsc, pattern, duration_frames);
-  project.cvbs_presets.ntsc_black_setup_ire = ntsc_black_setup_ire;
-  project.cvbs_presets.ntsc_black_setup_ire_specified = true;
   return project;
 }
 
@@ -297,7 +288,7 @@ TEST(GenerationStageTimingTest, ProducesDeterministicSampleCounts) {
 TEST(GenerationStageTimingTest, FixedPointModeMatchesFloatingReferenceAtCodeLevel) {
   GenerationStage generation;
   std::vector<std::string> errors;
-  const Project project = MakeProject(Standard::kPal, "pal_ebu_colour_bars_100", 1);
+  const Project project = MakeProject(Standard::kPal, 1);
 
   std::vector<SampleFixed> y_float;
   std::vector<SampleFixed> c_float;
@@ -344,8 +335,6 @@ TEST(GenerationStageTimingTest, FixedPointModeMatchesFloatingReferenceAtCodeLeve
 
 TEST(GenerationStageTimingTest, ReportsProgressiveSourceReadError) {
   Project project = MakeProject(Standard::kPal);
-  project.sections[0].type = "progressive";
-  project.sections[0].pattern.clear();
   project.sections[0].source = "fixture.png";
   project.sections[0].duration_frames = 1;
 
@@ -534,7 +523,7 @@ TEST(GenerationStageTimingTest, PalBurstPhaseFollowsFourFrameSequence) {
   std::vector<std::string> errors;
   std::vector<SampleFixed> y_pal;
   std::vector<SampleFixed> c_pal;
-  ASSERT_TRUE(generation.Generate(MakeProject(Standard::kPal, "pal_ebu_colour_bars_100", 4),
+  ASSERT_TRUE(generation.Generate(MakeProject(Standard::kPal, 4),
                                   &y_pal,
                                   &c_pal,
                                   &errors));
@@ -683,254 +672,14 @@ TEST(GenerationStageTimingTest, ShapesBothPositiveAndNegativeBurstLobesAtEdges) 
   EXPECT_GT(center_neg, 70.0);
 }
 
-TEST(GenerationStagePatternTest, ColourBarsProduceMultipleDiscreteLumaLevels) {
-  GenerationStage generation;
-  std::vector<std::string> errors;
-  std::vector<SampleFixed> y;
-  std::vector<SampleFixed> c;
-  ASSERT_TRUE(generation.Generate(
-      MakeProject(Standard::kPal, "pal_ebu_colour_bars_100"), &y, &c, &errors));
-
-  const TimingConstants pal = GetTimingConstants(Standard::kPal);
-  const std::set<int> levels = UniqueRoundedLumaLevelsInActiveWindow(y, 100, Standard::kPal, pal);
-
-  EXPECT_GE(levels.size(), 6U);
-}
-
-TEST(GenerationStagePatternTest, PalColourBarsFirstTransitionMatchesVisibleAperturePlacement) {
-  GenerationStage generation;
-  std::vector<std::string> errors;
-  std::vector<SampleFixed> y;
-  std::vector<SampleFixed> c;
-  ASSERT_TRUE(generation.Generate(
-      MakeProject(Standard::kPal, "pal_ebu_colour_bars_100"), &y, &c, &errors));
-
-  const TimingConstants pal = GetTimingConstants(Standard::kPal);
-  const int line_start = (23 - 1) * pal.samples_per_line_4fsc;
-
-  const int active_start = ActiveWindowStartSamples(Standard::kPal, pal.sample_rate_4fsc_hz);
-  const int active_window_samples =
-      ActiveWindowEndSamples(Standard::kPal, pal.sample_rate_4fsc_hz) - active_start;
-  const int expected_transition =
-      active_start + static_cast<int>(std::ceil((88.0 * active_window_samples) / 702.0));
-
-  // PAL visible content starts at +177 samples and spans only the 52.0 us
-  // visible aperture, not the older 948-sample 4fsc digital-active window.
-  int first_transition_sample = -1;
-  for (int sample = line_start + 240; sample < line_start + 360; ++sample) {
-    if ((y[sample - 1] - y[sample]) > 50.0) {
-      first_transition_sample = sample;
-      break;
-    }
-  }
-
-  ASSERT_NE(first_transition_sample, -1);
-  EXPECT_EQ(first_transition_sample - line_start, expected_transition);
-}
-
-TEST(GenerationStagePatternTest, GrayscaleRampRisesAcrossActiveRegion) {
-  GenerationStage generation;
-  std::vector<std::string> errors;
-  std::vector<SampleFixed> y;
-  std::vector<SampleFixed> c;
-  ASSERT_TRUE(
-      generation.Generate(MakeProject(Standard::kNtsc, "ntsc_linear_grayscale_ramp_horizontal"), &y, &c, &errors));
-
-  const TimingConstants ntsc = GetTimingConstants(Standard::kNtsc);
-  const int line_start = (60 - 1) * ntsc.samples_per_line_4fsc;
-  const int start = line_start + ActiveWindowStartSamples(Standard::kNtsc, ntsc.sample_rate_4fsc_hz);
-  const int end = std::min(line_start + ActiveWindowEndSamples(Standard::kNtsc, ntsc.sample_rate_4fsc_hz),
-                           line_start + ntsc.samples_per_line_4fsc);
-
-  ASSERT_LT(start + 2, end);
-  const double left = y[start + 1];
-  const double right = y[end - 1];
-  EXPECT_LT(left, right);
-}
-
-TEST(GenerationStagePatternTest, PlugePatternStaysNearBlackRange) {
-  GenerationStage generation;
-  std::vector<std::string> errors;
-  std::vector<SampleFixed> y;
-  std::vector<SampleFixed> c;
-  ASSERT_TRUE(generation.Generate(MakeProject(Standard::kPal, "pal_pluge_5patch_near_black"), &y, &c, &errors));
-
-  const SignalLevels levels = GetSignalLevels(Standard::kPal);
-
-  bool initialized = false;
-  double min_y = 0.0;
-  double max_y = 0.0;
-  for (SampleFixed sample : y) {
-    const double sample_mv = SampleFixedToMillivolts(sample);
-    if (sample_mv < levels.blanking_mv) {
-      continue;
-    }
-    if (!initialized) {
-      min_y = sample_mv;
-      max_y = sample_mv;
-      initialized = true;
-      continue;
-    }
-    min_y = std::min(min_y, sample_mv);
-    max_y = std::max(max_y, sample_mv);
-  }
-
-  ASSERT_TRUE(initialized);
-  EXPECT_GT(max_y - min_y, 10.0);
-  EXPECT_LT(max_y, 120.0);
-}
-
-TEST(GenerationStagePatternTest, PlugePatternContainsBelowBlackSamples) {
-  GenerationStage generation;
-  std::vector<std::string> errors;
-  std::vector<SampleFixed> y;
-  std::vector<SampleFixed> c;
-  ASSERT_TRUE(generation.Generate(MakeProject(Standard::kNtsc, "ntsc_pluge_5patch_near_black"), &y, &c, &errors));
-
-  const SignalLevels levels = GetSignalLevels(Standard::kNtsc);
-
-  bool initialized = false;
-  double min_y = 0.0;
-  for (SampleFixed sample : y) {
-    const double sample_mv = SampleFixedToMillivolts(sample);
-    if (sample_mv < levels.blanking_mv) {
-      continue;
-    }
-    if (!initialized) {
-      min_y = sample_mv;
-      initialized = true;
-      continue;
-    }
-    min_y = std::min(min_y, sample_mv);
-  }
-
-  ASSERT_TRUE(initialized);
-  EXPECT_LT(min_y, levels.black_mv);
-}
-
-TEST(GenerationStagePatternTest, ZeroIreNtscBlackSetupMovesBlackPatternToBlanking) {
-  GenerationStage generation;
-  std::vector<std::string> errors;
-  std::vector<SampleFixed> y;
-  std::vector<SampleFixed> c;
-
-  ASSERT_TRUE(generation.Generate(MakeProjectWithNtscBlackSetup(0.0), &y, &c, &errors));
-
-  const TimingConstants ntsc = GetTimingConstants(Standard::kNtsc);
-  const int line_start = (30 - 1) * ntsc.samples_per_line_4fsc;
-  const int start = line_start + ActiveWindowStartSamples(Standard::kNtsc, ntsc.sample_rate_4fsc_hz);
-  const int end = std::min(line_start + ActiveWindowEndSamples(Standard::kNtsc, ntsc.sample_rate_4fsc_hz),
-                           line_start + ntsc.samples_per_line_4fsc);
-
-  for (int i = start; i < end; ++i) {
-    EXPECT_NEAR(SampleFixedToMillivolts(y[static_cast<std::size_t>(i)]), 0.0, 1e-6);
-  }
-}
-
-TEST(GenerationStagePatternTest, CrosshatchProducesMultipleVerticalTransitionsOnActiveLine) {
-  GenerationStage generation;
-  std::vector<std::string> errors;
-  std::vector<SampleFixed> y;
-  std::vector<SampleFixed> c;
-  ASSERT_TRUE(generation.Generate(MakeProject(Standard::kNtsc, "ntsc_crosshatch_visible_area_grid"), &y, &c, &errors));
-
-  const TimingConstants ntsc = GetTimingConstants(Standard::kNtsc);
-  const int line_start = (100 - 1) * ntsc.samples_per_line_4fsc;
-  const int start = line_start + ActiveWindowStartSamples(Standard::kNtsc, ntsc.sample_rate_4fsc_hz);
-  const int end = std::min(line_start + ActiveWindowEndSamples(Standard::kNtsc, ntsc.sample_rate_4fsc_hz),
-                           line_start + ntsc.samples_per_line_4fsc);
-
-  int transitions = 0;
-  for (int i = start + 1; i < end; ++i) {
-    if (std::abs(SampleFixedToMillivolts(y[i]) - SampleFixedToMillivolts(y[i - 1])) > 200.0) {
-      ++transitions;
-    }
-  }
-
-  EXPECT_GE(transitions, 8);
-}
-
-TEST(GenerationStagePatternTest, PalCrosshatchIncludesBottomActiveLine) {
-  GenerationStage generation;
-  std::vector<std::string> errors;
-  std::vector<SampleFixed> y;
-  std::vector<SampleFixed> c;
-  ASSERT_TRUE(generation.Generate(MakeProject(Standard::kPal, "pal_crosshatch_visible_area_grid"),
-                                &y,
-                                &c,
-                                &errors));
-
-  const TimingConstants pal = GetTimingConstants(Standard::kPal);
-  const SignalLevels levels = GetSignalLevels(Standard::kPal);
-  const int line_start = (622 - 1) * pal.samples_per_line_4fsc;
-  const int active_start = ActiveWindowStartSamples(Standard::kPal, pal.sample_rate_4fsc_hz);
-  const int active_end = ActiveWindowEndSamples(Standard::kPal, pal.sample_rate_4fsc_hz);
-  const int center_sample = line_start + active_start + ((active_end - active_start) / 2);
-
-  ASSERT_LT(center_sample, static_cast<int>(y.size()));
-  EXPECT_NEAR(SampleFixedToMillivolts(y[static_cast<std::size_t>(center_sample)]),
-              levels.white_mv,
-              5.0);
-}
-
-TEST(GenerationStagePatternTest, EachPatternRendersForPalAndNtsc) {
-  GenerationStage generation;
-  std::vector<std::string> errors;
-
-  for (const auto& pair : std::vector<std::pair<Standard, std::string>>{
-           {Standard::kPal, "pal_ebu_colour_bars_100"},
-           {Standard::kPal, "pal_ebu_colour_bars_75"},
-           {Standard::kPal, "pal_linear_grayscale_ramp_horizontal"},
-           {Standard::kPal, "pal_linear_grayscale_ramp_vertical"},
-           {Standard::kPal, "pal_luma_checkerboard_8x8"},
-           {Standard::kPal, "pal_luma_checkerboard_16x16"},
-           {Standard::kPal, "pal_full_field_black"},
-           {Standard::kPal, "pal_full_field_white"},
-           {Standard::kPal, "pal_pluge_5patch_near_black"},
-           {Standard::kPal, "pal_crosshatch_visible_area_grid"},
-           {Standard::kNtsc, "ntsc_smpte_170m_colour_bars_100"},
-           {Standard::kNtsc, "ntsc_smpte_170m_colour_bars_75"},
-           {Standard::kNtsc, "ntsc_linear_grayscale_ramp_horizontal"},
-           {Standard::kNtsc, "ntsc_linear_grayscale_ramp_vertical"},
-           {Standard::kNtsc, "ntsc_luma_checkerboard_8x8"},
-           {Standard::kNtsc, "ntsc_luma_checkerboard_16x16"},
-           {Standard::kNtsc, "ntsc_full_field_black"},
-           {Standard::kNtsc, "ntsc_full_field_white"},
-           {Standard::kNtsc, "ntsc_pluge_5patch_near_black"},
-           {Standard::kNtsc, "ntsc_crosshatch_visible_area_grid"}}) {
-    std::vector<SampleFixed> y;
-    std::vector<SampleFixed> c;
-    ASSERT_TRUE(generation.Generate(MakeProject(pair.first, pair.second), &y, &c, &errors));
-    EXPECT_EQ(y.size(), static_cast<std::size_t>(SamplesPerFrame4fsc(pair.first)));
-    EXPECT_EQ(c.size(), y.size());
-  }
-}
-
-TEST(GenerationStagePatternTest, DurationFramesScalesOutputSampleCount) {
-  GenerationStage generation;
-  std::vector<std::string> errors;
-  std::vector<SampleFixed> y;
-  std::vector<SampleFixed> c;
-
-  ASSERT_TRUE(generation.Generate(
-                                  MakeProject(Standard::kPal,
-                                              "pal_ebu_colour_bars_100",
-                                              3),
-                                  &y,
-                                  &c,
-                                  &errors));
-  EXPECT_EQ(y.size(), static_cast<std::size_t>(3 * SamplesPerFrame4fsc(Standard::kPal)));
-  EXPECT_EQ(c.size(), y.size());
-}
-
 TEST(GenerationStageChromaTest, ActiveChromaUsesNtscBurstPlus180ReferenceModel) {
   GenerationStage generation;
   std::vector<std::string> errors;
   std::vector<SampleFixed> y;
   std::vector<SampleFixed> c;
 
-  ASSERT_TRUE(generation.Generate(
-      MakeProject(Standard::kNtsc, "ntsc_smpte_170m_colour_bars_100"), &y, &c, &errors));
+  const Project project = MakeProject(Standard::kNtsc);
+  ASSERT_TRUE(generation.Generate(project, &y, &c, &errors));
 
   const TimingConstants ntsc = GetTimingConstants(Standard::kNtsc);
   const int line_1based = 60;
@@ -947,17 +696,19 @@ TEST(GenerationStageChromaTest, ActiveChromaUsesNtscBurstPlus180ReferenceModel) 
   const int active_start = ActiveWindowStartSamples(Standard::kNtsc, ntsc.sample_rate_4fsc_hz);
   const int active_end = ActiveWindowEndSamples(Standard::kNtsc, ntsc.sample_rate_4fsc_hz);
   const int active_window_samples = active_end - active_start;
-  TestPatternFrameSource frame_source;
+    ProgressiveFrameSource frame_source;
   FrameSourceImage source_frame;
   std::string frame_error;
-  ASSERT_TRUE(frame_source.GenerateFrame(
-      "ntsc_smpte_170m_colour_bars_100", Standard::kNtsc, &source_frame, &frame_error));
+    ASSERT_TRUE(frame_source.GenerateFrame(
+      project.sections[0], 0, Standard::kNtsc, &source_frame, &frame_error));
 
   std::vector<YCbCr444Pixel> source_line(static_cast<std::size_t>(active_window_samples));
+    const int active_line_index = line_1based - 22;
+    const int source_y = source_frame.active_y + ((2 * active_line_index) + 1);
   for (int x_sample = 0; x_sample < active_window_samples; ++x_sample) {
     const int pixel_x = MapActiveSampleToSourcePixel(
       x_sample, active_window_samples, source_frame.active_width, source_frame.active_x);
-    source_line[static_cast<std::size_t>(x_sample)] = source_frame.PixelAt(pixel_x, 60 - 22);
+      source_line[static_cast<std::size_t>(x_sample)] = source_frame.PixelAt(pixel_x, source_y);
   }
 
   const auto chroma_encoder = CreateChromaEncoder(Standard::kNtsc, ntsc.sample_rate_4fsc_hz);
@@ -982,15 +733,15 @@ TEST(GenerationStageChromaTest, PalBurstLockedDecodeRecoversStableHueAcrossLines
   std::vector<SampleFixed> y;
   std::vector<SampleFixed> c;
 
-  ASSERT_TRUE(generation.Generate(
-      MakeProject(Standard::kPal, "pal_ebu_colour_bars_100"), &y, &c, &errors));
+    const Project project = MakeProject(Standard::kPal);
+    ASSERT_TRUE(generation.Generate(project, &y, &c, &errors));
 
   const TimingConstants pal = GetTimingConstants(Standard::kPal);
-  TestPatternFrameSource frame_source;
+    ProgressiveFrameSource frame_source;
   FrameSourceImage source_frame;
   std::string frame_error;
   ASSERT_TRUE(frame_source.GenerateFrame(
-      "pal_ebu_colour_bars_100", Standard::kPal, &source_frame, &frame_error));
+      project.sections[0], 0, Standard::kPal, &source_frame, &frame_error));
 
   // Use a window centered in the second EBU colour bar, away from transitions.
   const int active_start = ActiveWindowStartSamples(Standard::kPal, pal.sample_rate_4fsc_hz);
@@ -1003,7 +754,7 @@ TEST(GenerationStageChromaTest, PalBurstLockedDecodeRecoversStableHueAcrossLines
 
   const int pixel_x = MapActiveSampleToSourcePixel(
       x_sample, active_window_samples, source_frame.active_width, source_frame.active_x);
-  const YCbCr444Pixel source_pixel = source_frame.PixelAt(pixel_x, 0);
+  const YCbCr444Pixel source_pixel = source_frame.PixelAt(pixel_x, source_frame.active_y + 1);
   const double expected_u = static_cast<double>(source_pixel.cb - 512) / 448.0;
   const double expected_v = static_cast<double>(source_pixel.cr - 512) / 448.0;
   const double expected_hue = std::atan2(expected_v, expected_u);

@@ -105,7 +105,6 @@ struct Section {
 
   std::string name;
   std::string type;
-  std::string pattern;
   std::vector<LineInjection> line_injections;
   std::string source;
   bool duration_frames_all = false;

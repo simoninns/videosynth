@@ -129,8 +129,8 @@ Project MakeProject() {
   p.output.metadata_path = "/tmp/videosynth_pipeline_test.meta";
   p.sections.push_back(
       Section{.name = "Valid",
-              .type = "software_generated",
-          .pattern = "pal_ebu_colour_bars_100",
+          .type = "progressive",
+          .source = "/tmp/videosynth_pipeline_test.png",
               .duration_frames = 1});
   return p;
 }

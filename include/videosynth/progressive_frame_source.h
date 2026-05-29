@@ -36,16 +36,6 @@ struct FrameSourceImage {
   const YCbCr444Pixel& PixelAt(int x, int y) const;
 };
 
-class TestPatternFrameSource {
- public:
-  bool SupportsPattern(const std::string& pattern) const;
-
-  bool GenerateFrame(const std::string& pattern,
-                     Standard standard,
-                     FrameSourceImage* out_image,
-                     std::string* error) const;
-};
-
 class ProgressiveFrameSource final : public IProgressiveFrameProvider {
  public:
   bool SupportsSection(const Section& section) const;

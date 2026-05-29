@@ -18,9 +18,7 @@ add_library(videosynth_core
     src/progressive_frame_source.cpp
     src/generation_stage.cpp
     src/logger.cpp
-    src/ntsc_pattern_generator.cpp
     src/output_stage.cpp
-    src/pal_pattern_generator.cpp
     src/pipeline.cpp
     src/progressive_frame_source_probe.cpp
     src/project_validator.cpp
@@ -98,9 +96,7 @@ set(videosynth_unit_test_patterns
     "^ActiveSampleMappingTest\\."
     "^ChromaEncoderTest\\."
     "^ComplianceHarnessTest\\."
-    "^FrameSourceTest\\.(Generates|KeepsPixelsInsideBt601StudioSwingContract|RejectsNtscBarsPatternForPal|RejectsPalBarsPatternForNtsc)"
     "^GenerationStageTimingTest\\."
-    "^GenerationStagePatternTest\\."
     "^GenerationStageChromaTest\\."
     "^PipelineTest\\."
     "^SignalShapingTest\\."

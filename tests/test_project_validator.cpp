@@ -18,6 +18,12 @@
 namespace videosynth {
 namespace {
 
+std::string DefaultProgressiveSourcePath() {
+  return (std::filesystem::path(VIDEOSYNTH_SOURCE_DIR) /
+          "resources/assets/720x576/stills/png/Check-Gamma-Checker.png")
+      .string();
+}
+
 Project MakeValidProject() {
   Project project;
   project.cvbs_presets.video_standard_preset = Standard::kPal;
@@ -26,9 +32,9 @@ Project MakeValidProject() {
   project.output.video_path = "/tmp/videosynth_validator_test.composite";
   project.output.metadata_path = "/tmp/videosynth_validator_test.meta";
   project.sections.push_back(
-      Section{.name = "Bars",
-              .type = "software_generated",
-          .pattern = "pal_ebu_colour_bars_100",
+      Section{.name = "Progressive",
+          .type = "progressive",
+          .source = DefaultProgressiveSourcePath(),
               .duration_frames = 1});
   return project;
 }
@@ -122,7 +128,6 @@ TEST(ProjectValidatorTest, RejectsSubcarrierLockDisabled) {
 TEST(ProjectValidatorTest, AcceptsSupportedNtscBlackSetupValues) {
   Project project = MakeValidProject();
   project.cvbs_presets.video_standard_preset = Standard::kNtsc;
-  project.sections[0].pattern = "ntsc_smpte_170m_colour_bars_100";
   project.cvbs_presets.ntsc_black_setup_ire = 0.0;
   project.cvbs_presets.ntsc_black_setup_ire_specified = true;
 
@@ -136,7 +141,6 @@ TEST(ProjectValidatorTest, AcceptsSupportedNtscBlackSetupValues) {
 TEST(ProjectValidatorTest, RejectsUnsupportedNtscBlackSetupValue) {
   Project project = MakeValidProject();
   project.cvbs_presets.video_standard_preset = Standard::kNtsc;
-  project.sections[0].pattern = "ntsc_smpte_170m_colour_bars_100";
   project.cvbs_presets.ntsc_black_setup_ire = 1.0;
   project.cvbs_presets.ntsc_black_setup_ire_specified = true;
 
@@ -162,7 +166,6 @@ TEST(ProjectValidatorTest, RejectsNtscBlackSetupOnPalProject) {
 TEST(ProjectValidatorTest, RejectsPalLaserdiscPilotBurstOnNtscProject) {
   Project project = MakeValidProject();
   project.cvbs_presets.video_standard_preset = Standard::kNtsc;
-  project.sections[0].pattern = "ntsc_smpte_170m_colour_bars_100";
   project.cvbs_presets.pal_laserdisc_pilot_burst = true;
 
   ProjectValidator validator;
@@ -203,7 +206,6 @@ TEST(ProjectValidatorTest, RejectsPalLaserdiscPilotBurstAsDeferredFeature) {
 TEST(ProjectValidatorTest, RejectsNtscLaserdiscVbiBurstAsDeferredFeature) {
   Project project = MakeValidProject();
   project.cvbs_presets.video_standard_preset = Standard::kNtsc;
-  project.sections[0].pattern = "ntsc_smpte_170m_colour_bars_100";
   project.cvbs_presets.ntsc_laserdisc_vbi_burst = true;
 
   ProjectValidator validator;
@@ -231,10 +233,9 @@ TEST(ProjectValidatorTest, RejectsLineInjectionsAsDeferredFeature) {
             "MVP constraint violation: line_injections are parsed but not implemented in the current runtime.");
 }
 
-TEST(ProjectValidatorTest, RejectsNonSoftwareSections) {
+TEST(ProjectValidatorTest, RejectsUnsupportedSectionType) {
   Project project = MakeValidProject();
-  project.sections[0].type = "progressive";
-  project.sections[0].pattern.clear();
+  project.sections[0].type = "software_generated";
 
   ProjectValidator validator;
   const ValidationResult result = validator.Validate(project);
@@ -244,8 +245,6 @@ TEST(ProjectValidatorTest, RejectsNonSoftwareSections) {
 
 TEST(ProjectValidatorTest, AcceptsProgressivePngSectionWithFixedDuration) {
   Project project = MakeValidProject();
-  project.sections[0].type = "progressive";
-  project.sections[0].pattern.clear();
   project.sections[0].source = CreateTemporarySourceFile("videosynth_progressive.png");
   project.sections[0].duration_frames = 8;
 
@@ -260,8 +259,6 @@ TEST(ProjectValidatorTest, AcceptsProgressivePngSectionWithFixedDuration) {
 
 TEST(ProjectValidatorTest, AcceptsProgressiveExrSectionWithFixedDuration) {
   Project project = MakeValidProject();
-  project.sections[0].type = "progressive";
-  project.sections[0].pattern.clear();
   project.sections[0].source = CreateTemporarySourceFile("videosynth_progressive.exr");
   project.sections[0].duration_frames = 8;
 
@@ -276,8 +273,6 @@ TEST(ProjectValidatorTest, AcceptsProgressiveExrSectionWithFixedDuration) {
 
 TEST(ProjectValidatorTest, RejectsProgressiveSectionWithoutSource) {
   Project project = MakeValidProject();
-  project.sections[0].type = "progressive";
-  project.sections[0].pattern.clear();
   project.sections[0].source.clear();
 
   ProjectValidator validator;
@@ -288,8 +283,6 @@ TEST(ProjectValidatorTest, RejectsProgressiveSectionWithoutSource) {
 
 TEST(ProjectValidatorTest, RejectsProgressiveRawSourceFamily) {
   Project project = MakeValidProject();
-  project.sections[0].type = "progressive";
-  project.sections[0].pattern.clear();
   project.sections[0].source = CreateTemporarySourceFile("videosynth_progressive.raw");
 
   ProjectValidator validator;
@@ -302,56 +295,15 @@ TEST(ProjectValidatorTest, RejectsProgressiveRawSourceFamily) {
   std::filesystem::remove(project.sections[0].source);
 }
 
-TEST(ProjectValidatorTest, RejectsSoftwareGeneratedAllDurationSemantics) {
+TEST(ProjectValidatorTest, AcceptsProgressiveAllDurationSemantics) {
   Project project = MakeValidProject();
   project.sections[0].duration_frames_all = true;
+  project.sections[0].duration_frames = 0;
 
   ProjectValidator validator;
   const ValidationResult result = validator.Validate(project);
 
-  EXPECT_FALSE(result.is_valid);
-}
-
-TEST(ProjectValidatorTest, RejectsMissingPatternOnSoftwareSection) {
-  Project project = MakeValidProject();
-  project.sections[0].pattern.clear();
-
-  ProjectValidator validator;
-  const ValidationResult result = validator.Validate(project);
-
-  EXPECT_FALSE(result.is_valid);
-}
-
-TEST(ProjectValidatorTest, RejectsUnsupportedPattern) {
-  Project project = MakeValidProject();
-  project.sections[0].pattern = "invalid_pattern_name";
-
-  ProjectValidator validator;
-  const ValidationResult result = validator.Validate(project);
-
-  EXPECT_FALSE(result.is_valid);
-}
-
-TEST(ProjectValidatorTest, RejectsNtscBarsPatternInPalProject) {
-  Project project = MakeValidProject();
-  project.cvbs_presets.video_standard_preset = Standard::kPal;
-  project.sections[0].pattern = "ntsc_smpte_170m_colour_bars_100";
-
-  ProjectValidator validator;
-  const ValidationResult result = validator.Validate(project);
-
-  EXPECT_FALSE(result.is_valid);
-}
-
-TEST(ProjectValidatorTest, RejectsPalBarsPatternInNtscProject) {
-  Project project = MakeValidProject();
-  project.cvbs_presets.video_standard_preset = Standard::kNtsc;
-  project.sections[0].pattern = "pal_ebu_colour_bars_100";
-
-  ProjectValidator validator;
-  const ValidationResult result = validator.Validate(project);
-
-  EXPECT_FALSE(result.is_valid);
+  EXPECT_TRUE(result.is_valid);
 }
 
 TEST(ProjectValidatorTest, RejectsMissingDurationFrames) {
@@ -367,8 +319,6 @@ TEST(ProjectValidatorTest, RejectsMissingDurationFrames) {
 TEST(ProjectValidatorTest, AcceptsProgressiveMp4WithSupportedProfile) {
   Project project = MakeValidProject();
   project.cvbs_presets.video_standard_preset = Standard::kPal;
-  project.sections[0].type = "progressive";
-  project.sections[0].pattern.clear();
   project.sections[0].source = CreateTemporarySourceFile("videosynth_progressive_ok.mp4");
   project.sections[0].duration_frames_all = true;
   project.sections[0].duration_frames = 0;
@@ -395,8 +345,6 @@ TEST(ProjectValidatorTest, AcceptsProgressiveMp4WithSupportedProfile) {
 TEST(ProjectValidatorTest, RejectsProgressiveMp4WithUnsupportedPixelFormat) {
   Project project = MakeValidProject();
   project.cvbs_presets.video_standard_preset = Standard::kNtsc;
-  project.sections[0].type = "progressive";
-  project.sections[0].pattern.clear();
   project.sections[0].source = CreateTemporarySourceFile("videosynth_progressive_bad_pixfmt.mp4");
   project.sections[0].duration_frames_all = true;
   project.sections[0].duration_frames = 0;
@@ -423,8 +371,6 @@ TEST(ProjectValidatorTest, RejectsProgressiveMp4WithUnsupportedPixelFormat) {
 TEST(ProjectValidatorTest, AcceptsProgressiveMovWithSupportedV210Profile) {
   Project project = MakeValidProject();
   project.cvbs_presets.video_standard_preset = Standard::kPal;
-  project.sections[0].type = "progressive";
-  project.sections[0].pattern.clear();
   project.sections[0].source = CreateTemporarySourceFile("videosynth_progressive_ok.mov");
   project.sections[0].duration_frames_all = true;
   project.sections[0].duration_frames = 0;
@@ -451,8 +397,6 @@ TEST(ProjectValidatorTest, AcceptsProgressiveMovWithSupportedV210Profile) {
 TEST(ProjectValidatorTest, RejectsProgressiveMovWithUnsupportedCodecProfile) {
   Project project = MakeValidProject();
   project.cvbs_presets.video_standard_preset = Standard::kNtsc;
-  project.sections[0].type = "progressive";
-  project.sections[0].pattern.clear();
   project.sections[0].source = CreateTemporarySourceFile("videosynth_progressive_bad.mov");
   project.sections[0].duration_frames_all = true;
   project.sections[0].duration_frames = 0;
@@ -479,8 +423,6 @@ TEST(ProjectValidatorTest, RejectsProgressiveMovWithUnsupportedCodecProfile) {
 TEST(ProjectValidatorTest, AcceptsProgressiveExrWithSupportedProfile) {
   Project project = MakeValidProject();
   project.cvbs_presets.video_standard_preset = Standard::kPal;
-  project.sections[0].type = "progressive";
-  project.sections[0].pattern.clear();
   project.sections[0].source = CreateTemporarySourceFile("videosynth_progressive_ok.exr");
   project.sections[0].duration_frames = 1;
 
@@ -506,8 +448,6 @@ TEST(ProjectValidatorTest, AcceptsProgressiveExrWithSupportedProfile) {
 TEST(ProjectValidatorTest, RejectsProgressiveExrWithUnsupportedPixelProfile) {
   Project project = MakeValidProject();
   project.cvbs_presets.video_standard_preset = Standard::kNtsc;
-  project.sections[0].type = "progressive";
-  project.sections[0].pattern.clear();
   project.sections[0].source = CreateTemporarySourceFile("videosynth_progressive_bad.exr");
   project.sections[0].duration_frames = 1;
 

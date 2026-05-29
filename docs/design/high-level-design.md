@@ -53,7 +53,6 @@
 - **Time-based signal generation** for PAL and NTSC, closely following analogue standards.
 - Support for multiple sample rates: **4fsc**, **20MSPS**, **40MSPS**, or custom.
 - **Frame-based content** from:
-  - Software-generated test patterns (e.g., colour bars, grayscale ramps).
   - Progressive sources from constrained, validated file profiles (MOV/MP4/PNG/EXR).
 - **Line-based injections** for VBI content:
   - **VITS** (Vertical Interval Test Signals).
@@ -203,7 +202,7 @@ Frame-source visible aperture contract:
 - The internal frame-source working raster remains fixed at `720x576` for PAL and `720x480` for NTSC.
 - When a progressive source is `704` pixels wide, ingestion must center it in the `720`-sample raster and add `8` nominal-black pixels on the left and `8` nominal-black pixels on the right before field mapping.
 - If a decoded source reports coded-frame padding (for example, codec-mandated macroblock or even-pixel constraints), ingestion must apply container/codec crop metadata first, then enforce the 704/720 normalization rules above.
-- Only the visible active aperture may carry picture content. Pixels outside that aperture must remain nominal black and must not be modified by test-pattern generation or progressive-source ingestion.
+- Only the visible active aperture may carry picture content. Pixels outside that aperture must remain nominal black and must not be modified by progressive-source ingestion.
 - PAL aperture derivation:
   - ITU-R BT.1700 Table 1 item `1a`: `576` active lines.
   - ITU-R BT.1700 Table 2: `64.0 us` line period and `12.0 us` line blanking, giving `52.0 us` analogue active line duration.
@@ -271,7 +270,7 @@ The progressive source ingestion stage remains responsible for decoding and colo
 
 ### **Source Colour Space Requirement**
 
-**All frame-based sources — test patterns and progressive sources alike — must provide pixel data to the chroma encoder in the following representation:**
+**All frame-based sources must provide pixel data to the chroma encoder in the following representation:**
 
 > **10-bit 4:4:4 YCbCr, BT.601 studio swing**
 > - Y: 64–940 (black–white)
@@ -314,8 +313,6 @@ $$
 - The NTSC colour sequence is modeled as a 2-frame SC-H progression using a frame phase offset of $0$ then $\pi$, repeating (SMPTE 170M field/frame color-sequence behavior).
 - In baseline mode, burst is present on horizontal lines and suppressed on equalizing/broad-sync lines; when NTSC laserdisc VBI burst mode is enabled, burst is additionally inserted on equalizing and broad-sync pulses per [IEC 60857](../analogue-video-specifications/docs/laserdisc/IEC-60857-1986-Laservision-NTSC/IEC-60857-1986-Laservision-NTSC.md) §9.1.2.
 
-**Test patterns** naturally produce values in this space directly.
-
 **Progressive sources** are converted during ingestion by `progressive_source`, but only when they match one of the supported source profiles defined in [Section 8.1](#81-frame-based-sections). Inputs that do not match a supported profile are invalid.
 
 All accepted progressive inputs are normalized to **10-bit 4:4:4 YCbCr BT.601 studio swing** before frame data is passed to the generator. The conversion path uses source metadata (primaries, transfer, matrix, range) when present.
@@ -344,7 +341,7 @@ Source-range capability note:
 
 ### **Inputs**
 
-- Frame-based content in **10-bit 4:4:4 YCbCr BT.601 studio swing** (test patterns or normalised progressive sources).
+- Frame-based content in **10-bit 4:4:4 YCbCr BT.601 studio swing** from normalised progressive sources.
 - Line-based injections (VITS, Laserdisc biphase, VITC).
 - CVBS presets (video_standard_preset, sample_encoding_preset, signal_state_preset, mode).
 
@@ -657,7 +654,7 @@ For **NTSC (525-line system)**, the vertical blanking interval (VBI) is defined 
 The current parser, validator, and runtime implement only a subset of the YAML surface described in this section:
 
 - Implemented top-level presets: `video_standard_preset`, `sample_encoding_preset`, `signal_state_preset`, `ntsc_black_setup_ire`, `output.video_path`, and `output.metadata_path`.
-- Implemented section fields: `name`, `type`, `pattern`, `source`, `start_frame`, and `duration_frames`.
+- Implemented section fields: `name`, `type`, `source`, `start_frame`, and `duration_frames`.
 - The `line_injections` schema and the laserdisc-specific CVBS preset flags described below remain target design and are not yet represented in the current runtime data model.
 
 The remainder of Section 7 should therefore be read as the intended project-file design rather than the currently implemented parser surface.
@@ -689,10 +686,10 @@ output:
   metadata_path: "out/pal_test_metadata.meta"
 
 sections:
-  - name: "Colour Bars with VITS and Laserdisc"
-    type: software_generated   # Frame-based content
+  - name: "Progressive Source with VITS and Laserdisc"
+    type: progressive
+    source: "assets/test.mov"
     duration_frames: 10
-    pattern: "pal_ebu_colour_bars_100"
     line_injections:           # Line-based injections for this section
       - type: vits
         target_lines: [10, 11, 12]
@@ -749,9 +746,9 @@ video_path: "out/pal_test_video.composite" # project-relative output file path
   - `ntsc_black_setup_ire` can **only be specified for NTSC projects**. If specified for PAL, the YAML is considered **invalid**.
   - `ntsc_black_setup_ire` allowed values are `7.5` and `0.0`. `7.5` selects standards-based NTSC setup; `0.0` moves NTSC black level to blanking (`0 IRE`).
 2. **Sections**:
-  - Each section must have a valid `type` (`software_generated` or `progressive`).
+    - Each section must have a valid `type` (`progressive`).
   - Each section must have at least one of:
-    - Frame-based content (`software_generated` or `progressive`).
+      - Frame-based content (`progressive`).
     - Line injections (`line_injections`).
   - For `progressive` sections, `source` must point to a valid file.
 3. **Line Injection Constraints**:
@@ -782,7 +779,6 @@ video_path: "out/pal_test_video.composite" # project-relative output file path
 
 ### **Specification Cross-Check (Section 8)**
 
-- Software-generated pattern naming is an implementation catalog; waveform/level validity for test insertions maps to [PAL VITS Definitions](../analogue-video-specifications/docs/video_metadata/VITS/PAL-VITS.md), [NTSC VITS Definitions](../analogue-video-specifications/docs/video_metadata/VITS/NTSC-VITS.md), and analogue level limits in [ITU-R BT.1700](../analogue-video-specifications/docs/video_formats/BT-1700-E/BT-1700-E.md).
 - Progressive-source frame-rate matching to output standards is grounded in [ITU-R BT.470-6](../analogue-video-specifications/docs/video_formats/BT-470-6-1998/BT-470-6-1998.md), Annex 1, Table 1 and [SMPTE 170M-2004](../analogue-video-specifications/docs/video_formats/SMPTE-170M-2004/SMPTE-170M-2004.md) §11.3.
 - Laserdisc code-type definitions and per-line placement are grounded in [IEC 60856](../analogue-video-specifications/docs/laserdisc/IEC-60856-1986-Laservision-PAL/IEC-60856-1986-Laservision-PAL.md) §10.1 and [IEC 60857](../analogue-video-specifications/docs/laserdisc/IEC-60857-1986-Laservision-NTSC/IEC-60857-1986-Laservision-NTSC.md) §10.1/§10.2, plus Amendment 2 updates for CLV picture-number behavior.
 - VITC fields (`timecode`, flags, CRC) are grounded in [IEC 60461:2010](../analogue-video-specifications/docs/video_metadata/IEC-60461-2010-Time-and-control-code/IEC-60461-2010-Time-and-control-code.md) §9.2 and §9.5-§9.6.
@@ -791,7 +787,7 @@ video_path: "out/pal_test_video.composite" # project-relative output file path
 
 ### **Current Implementation Status**
 
-- **Implemented**: `software_generated` and `progressive` frame-based sections in Section 8.1.
+- **Implemented**: `progressive` frame-based sections in Section 8.1.
 - **Not yet implemented**: line-injection handling from Section 8.2, including VITS, laserdisc, VITC, and custom per-line content.
 
 Section 8.2 remains the intended design contract for later implementation work.
@@ -800,85 +796,7 @@ Section 8.2 remains the intended design contract for later implementation work.
 
 ### **8.1. Frame-Based Sections**
 
-These define the **primary content** for a set of frames.
-
----
-
-#### **Software-Generated Frames**
-
-Generates static or dynamic test patterns. Each test pattern is **predefined** and has a **unique name**.
-
-##### **Fields**
-
-
-| **Field**         | **Type** | **Required** | **Description**                 | **Example**                                  |
-| ----------------- | -------- | ------------ | ------------------------------- | -------------------------------------------- |
-| `name`            | string   | Yes          | User-friendly name.             | `"Colour Bars"`                              |
-| `type`            | string   | Yes          | Must be `"software_generated"`. | `"software_generated"`                       |
-| `duration_frames` | integer  | Yes          | Number of frames to generate.   | `10`                                         |
-| `pattern`         | string   | Yes          | Name of the test pattern.       | `"pal_ebu_colour_bars_100"` |
-| `line_injections` | list     | No           | List of line-based injections.  | (See [Line Injections](#82-line-injections)) |
-
-
-##### **Predefined Patterns**
-
-Each pattern is **unique** and has no configurable options. Variations (e.g., 75% vs. 100% colour bars) are separate patterns.
-
-Pattern names are split by output format:
-
-- PAL projects use only `pal_*` pattern names.
-- NTSC projects use only `ntsc_*` pattern names.
-
-Authoritative pattern definitions (waveform, geometry, levels, and deterministic mapping rules) are specified in [Software-Generated Patterns](software-generated-patterns.md).
-
-
-**PAL patterns**
-
-
-| **Pattern Name**                              | **Description**                                     |
-| --------------------------------------------- | --------------------------------------------------- |
-| `pal_ebu_colour_bars_100`                    | PAL colour bars, 100% saturation variant.           |
-| `pal_ebu_colour_bars_75`                     | PAL colour bars, 75% saturation variant.            |
-| `pal_linear_grayscale_ramp_horizontal`       | Horizontal linear grayscale ramp (PAL geometry).    |
-| `pal_linear_grayscale_ramp_vertical`         | Vertical linear grayscale ramp (PAL geometry).      |
-| `pal_luma_checkerboard_8x8`                  | Luma-only checkerboard with 8x8 pixel tiles.        |
-| `pal_luma_checkerboard_16x16`                | Luma-only checkerboard with 16x16 pixel tiles.      |
-| `pal_full_field_black`                       | Full-field black level.                             |
-| `pal_full_field_white`                       | Full-field white level.                             |
-| `pal_pluge_5patch_near_black`                | PLUGE near-black strip (five-patch anchored layout) around PAL black reference.             |
-| `pal_crosshatch_visible_area_grid`           | PAL crosshatch grid confined to the visible active aperture. |
-
-
-**NTSC patterns**
-
-
-| **Pattern Name**                              | **Description**                                     |
-| --------------------------------------------- | --------------------------------------------------- |
-| `ntsc_smpte_170m_colour_bars_100`            | NTSC SMPTE multi-region colour bars, 100% variant. |
-| `ntsc_smpte_170m_colour_bars_75`             | NTSC SMPTE multi-region colour bars, 75% variant.  |
-| `ntsc_linear_grayscale_ramp_horizontal`      | Horizontal linear grayscale ramp (NTSC geometry).   |
-| `ntsc_linear_grayscale_ramp_vertical`        | Vertical linear grayscale ramp (NTSC geometry).     |
-| `ntsc_luma_checkerboard_8x8`                 | Luma-only checkerboard with 8x8 pixel tiles.        |
-| `ntsc_luma_checkerboard_16x16`               | Luma-only checkerboard with 16x16 pixel tiles.      |
-| `ntsc_full_field_black`                      | Full-field black level.                             |
-| `ntsc_full_field_white`                      | Full-field white level.                             |
-| `ntsc_pluge_5patch_near_black`               | PLUGE near-black strip (five-patch anchored layout) around NTSC black reference.            |
-| `ntsc_crosshatch_visible_area_grid`          | NTSC crosshatch grid confined to the visible active aperture. |
-
-
-##### **Example**
-
-```yaml
-sections:
-  - name: "PAL Colour Bars"
-    type: software_generated
-    duration_frames: 5
-    pattern: "pal_ebu_colour_bars_100"
-    line_injections:
-      - type: vits
-        target_lines: [10, 11, 12]
-        vits_type: "virs"
-```
+These define the **primary content** for a set of frames. The current runtime supports only progressive frame sources in this section.
 
 ---
 
@@ -1495,7 +1413,7 @@ The runtime uses a **central pipeline module** to process sections and combine t
 - **Output**: `4fsc`-discrete fixed-point representations of **luma (Y)** and **chroma (C)** signals.
 - **Steps**:
   1. For each section:
-    - Generate the **frame-based content** (`software_generated` or `progressive`).
+    - Generate the **frame-based content** (`progressive`).
     - For each frame in the section:
       - Insert **sync pulses** and **colour burst** (see [ITU-R BT.470-6](../analogue-video-specifications/docs/video_formats/BT-470-6-1998/BT-470-6-1998.md), [ITU-R BT.1700](../analogue-video-specifications/docs/video_formats/BT-1700-E/BT-1700-E.md)).
       - Apply **ramping and transition smoothing** to simulate analogue behavior (see [ITU-R BT.470-6](../analogue-video-specifications/docs/video_formats/BT-470-6-1998/BT-470-6-1998.md) for ramping requirements).
@@ -1578,9 +1496,9 @@ The full rule set below therefore remains the intended validation contract for l
   - `ntsc_black_setup_ire` can **only be specified for NTSC projects**. If specified for PAL, the YAML is considered **invalid**.
   - `ntsc_black_setup_ire` must be either `7.5` or `0.0`.
 2. **Sections**:
-  - Each section must have a valid `type` (`software_generated` or `progressive`).
+  - Each section must have a valid `type` (`progressive`).
   - Each section must have at least one of:
-    - Frame-based content (`software_generated` or `progressive`).
+    - Frame-based content (`progressive`).
     - Line injections (`line_injections`).
   - For `progressive` sections, `source` must point to a valid file.
   - **Input source frame rate must match the required output format (including MOV and MP4 sources)**.

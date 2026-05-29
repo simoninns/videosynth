@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <filesystem>
 #include <vector>
 
 #include <gtest/gtest.h>
@@ -27,11 +28,14 @@ namespace {
 constexpr double kPi = 3.14159265358979323846;
 
 Project MakeProject(Standard standard,
-                    const std::string& pattern = "") {
-  const std::string selected_pattern =
-      pattern.empty() ? (standard == Standard::kPal ? "pal_ebu_colour_bars_100"
-                                                     : "ntsc_smpte_170m_colour_bars_100")
-                      : pattern;
+                    const std::string& source = "") {
+  const std::string selected_source = source.empty()
+      ? ((std::filesystem::path(VIDEOSYNTH_SOURCE_DIR) /
+          (standard == Standard::kPal
+               ? "resources/assets/720x576/stills/png/Color-Bars-Hori-Cont.png"
+               : "resources/assets/720x480/stills/png/Color-Bars-Hori-Cont.png"))
+             .string())
+      : source;
 
   Project project;
   project.cvbs_presets.video_standard_preset = standard;
@@ -39,8 +43,8 @@ Project MakeProject(Standard standard,
   project.cvbs_presets.signal_state_preset = "STANDARD_TBC_LOCKED";
   project.sections.push_back(
       Section{.name = "Compliance",
-              .type = "software_generated",
-              .pattern = selected_pattern,
+              .type = "progressive",
+              .source = selected_source,
               .duration_frames = 1});
   return project;
 }

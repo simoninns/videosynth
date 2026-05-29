@@ -157,7 +157,6 @@ SampledSynthesisContext BuildSampledSynthesisContext(Standard standard) {
 }
 
 bool BuildFramePatternSchedule(const Project& project,
-                               const TestPatternFrameSource& pattern_source,
                                const ProgressiveFrameSource& progressive_source,
                                Standard standard,
                                std::vector<std::pair<const Section*, int>>* out_frame_sections,
@@ -168,21 +167,6 @@ bool BuildFramePatternSchedule(const Project& project,
 
   out_frame_sections->clear();
   for (const Section& section : project.sections) {
-    if (section.type == "software_generated") {
-      if (!pattern_source.SupportsPattern(section.pattern) || section.duration_frames <= 0 ||
-          section.duration_frames_all) {
-        if (error != nullptr) {
-          *error = "Unsupported or missing software-generated pattern section configuration.";
-        }
-        return false;
-      }
-
-      for (int i = 0; i < section.duration_frames; ++i) {
-        out_frame_sections->push_back(std::make_pair(&section, i));
-      }
-      continue;
-    }
-
     if (section.type == "progressive") {
       if (!progressive_source.SupportsSection(section)) {
         if (error != nullptr) {
@@ -455,12 +439,10 @@ bool GenerationStage::BuildFrameSchedule(const Project& project,
   }
 
   out_schedule->clear();
-  const TestPatternFrameSource pattern_source;
   progressive_source_.ClearCache();
   std::vector<std::pair<const Section*, int>> frame_sections;
   std::string schedule_error;
   if (!BuildFramePatternSchedule(project,
-                                 pattern_source,
                                  progressive_source_,
                                  project.cvbs_presets.video_standard_preset,
                                  &frame_sections,
@@ -514,7 +496,6 @@ bool GenerationStage::GenerateFrameBatch(const Project& project,
       BuildSampledSynthesisContext(project.cvbs_presets.video_standard_preset);
     const int frame_samples = synth.frame_samples;
   const double burst_amplitude_mv = 150.0;
-  const TestPatternFrameSource pattern_source;
   std::unique_ptr<IChromaEncoder> chroma_encoder =
       CreateChromaEncoder(project.cvbs_presets.video_standard_preset, timing.sample_rate_4fsc_hz);
 
@@ -575,19 +556,11 @@ bool GenerationStage::GenerateFrameBatch(const Project& project,
 
     FrameSourceImage source_frame;
     std::string frame_error;
-    bool generated = false;
-    if (section->type == "software_generated") {
-      generated = pattern_source.GenerateFrame(section->pattern,
-                                               project.cvbs_presets.video_standard_preset,
-                                               &source_frame,
-                                               &frame_error);
-    } else if (section->type == "progressive") {
-      generated = progressive_source_.GenerateFrame(*section,
-                                                    source_frame_index,
-                                                    project.cvbs_presets.video_standard_preset,
-                                                    &source_frame,
-                                                    &frame_error);
-    }
+    const bool generated = progressive_source_.GenerateFrame(*section,
+                                                             source_frame_index,
+                                                             project.cvbs_presets.video_standard_preset,
+                                                             &source_frame,
+                                                             &frame_error);
 
     if (!generated) {
       errors->push_back(frame_error.empty() ? "Unable to generate frame-based source data."
