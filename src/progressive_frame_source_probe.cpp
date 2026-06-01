@@ -27,7 +27,6 @@
 #include <OpenEXR/ImfInputFile.h>
 #include <OpenEXR/ImfIntAttribute.h>
 #include <OpenEXR/ImfStringAttribute.h>
-#include <png.h>
 
 namespace videosynth {
 namespace {
@@ -111,64 +110,6 @@ int ParseIntegerOrZero(const std::string& value) {
     return 0;
   }
   return std::atoi(value.c_str());
-}
-
-bool ProbePng(const Section& section,
-              ProgressiveFrameSourceProfile* out_profile,
-              std::string* error) {
-  FILE* file = std::fopen(section.source.c_str(), "rb");
-  if (file == nullptr) {
-    if (error != nullptr) {
-      *error = "Unable to open progressive PNG source for probing.";
-    }
-    return false;
-  }
-
-  png_structp png_ptr = png_create_read_struct(PNG_LIBPNG_VER_STRING, nullptr, nullptr, nullptr);
-  if (png_ptr == nullptr) {
-    std::fclose(file);
-    if (error != nullptr) {
-      *error = "Failed to initialize PNG probe state.";
-    }
-    return false;
-  }
-
-  png_infop info_ptr = png_create_info_struct(png_ptr);
-  if (info_ptr == nullptr) {
-    png_destroy_read_struct(&png_ptr, nullptr, nullptr);
-    std::fclose(file);
-    if (error != nullptr) {
-      *error = "Failed to initialize PNG probe metadata state.";
-    }
-    return false;
-  }
-
-  if (setjmp(png_jmpbuf(png_ptr)) != 0) {
-    png_destroy_read_struct(&png_ptr, &info_ptr, nullptr);
-    std::fclose(file);
-    if (error != nullptr) {
-      *error = "Failed while probing progressive PNG source.";
-    }
-    return false;
-  }
-
-  png_init_io(png_ptr, file);
-  png_read_info(png_ptr, info_ptr);
-
-  const int bit_depth = png_get_bit_depth(png_ptr, info_ptr);
-  const int color_type = png_get_color_type(png_ptr, info_ptr);
-  out_profile->container = "png";
-  out_profile->codec = "png";
-  out_profile->pixel_format = (color_type == PNG_COLOR_TYPE_RGBA) ? "rgba" : "rgb";
-  out_profile->bit_depth = bit_depth;
-  out_profile->width = static_cast<int>(png_get_image_width(png_ptr, info_ptr));
-  out_profile->height = static_cast<int>(png_get_image_height(png_ptr, info_ptr));
-  out_profile->frame_rate_hz = 0.0;
-  out_profile->frame_count = 1;
-
-  png_destroy_read_struct(&png_ptr, &info_ptr, nullptr);
-  std::fclose(file);
-  return true;
 }
 
 bool ReadRequiredExrStringAttribute(const Imf::Header& header,
@@ -362,13 +303,10 @@ bool ProgressiveFrameSourceProbe::Probe(const Section& section,
   }
 
   const std::string source = Lowercase(section.source);
-  if (EndsWithLowercase(source, ".png")) {
-    return ProbePng(section, out_profile, error);
-  }
   if (EndsWithLowercase(source, ".exr")) {
     return ProbeExr(section, out_profile, error);
   }
-  if (EndsWithLowercase(source, ".mp4") || EndsWithLowercase(source, ".mov")) {
+  if (EndsWithLowercase(source, ".mov")) {
     return ProbeWithFfprobe(section.source, out_profile, error);
   }
 

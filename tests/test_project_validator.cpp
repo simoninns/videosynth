@@ -20,7 +20,7 @@ namespace {
 
 std::string DefaultProgressiveSourcePath() {
   return (std::filesystem::path(VIDEOSYNTH_SOURCE_DIR) /
-          "resources/assets/720x576/stills/png/Check-Gamma-Checker.png")
+          "resources/assets/720x576/stills/exr/100_BARS.exr")
       .string();
 }
 
@@ -243,20 +243,6 @@ TEST(ProjectValidatorTest, RejectsUnsupportedSectionType) {
   EXPECT_FALSE(result.is_valid);
 }
 
-TEST(ProjectValidatorTest, AcceptsProgressivePngSectionWithFixedDuration) {
-  Project project = MakeValidProject();
-  project.sections[0].source = CreateTemporarySourceFile("videosynth_progressive.png");
-  project.sections[0].duration_frames = 8;
-
-  ProjectValidator validator;
-  const ValidationResult result = validator.Validate(project);
-
-  EXPECT_TRUE(result.is_valid);
-  EXPECT_TRUE(result.errors.empty());
-
-  std::filesystem::remove(project.sections[0].source);
-}
-
 TEST(ProjectValidatorTest, AcceptsProgressiveExrSectionWithFixedDuration) {
   Project project = MakeValidProject();
   project.sections[0].source = CreateTemporarySourceFile("videosynth_progressive.exr");
@@ -314,58 +300,6 @@ TEST(ProjectValidatorTest, RejectsMissingDurationFrames) {
   const ValidationResult result = validator.Validate(project);
 
   EXPECT_FALSE(result.is_valid);
-}
-
-TEST(ProjectValidatorTest, AcceptsProgressiveMp4WithSupportedProfile) {
-  Project project = MakeValidProject();
-  project.cvbs_presets.video_standard_preset = Standard::kPal;
-  project.sections[0].source = CreateTemporarySourceFile("videosynth_progressive_ok.mp4");
-  project.sections[0].duration_frames_all = true;
-  project.sections[0].duration_frames = 0;
-
-  MockProgressiveFrameSourceProbe probe;
-  probe.profile.container = "mov,mp4,m4a,3gp,3g2,mj2";
-  probe.profile.codec = "h264";
-  probe.profile.pixel_format = "yuv420p";
-  probe.profile.bit_depth = 8;
-  probe.profile.width = 720;
-  probe.profile.height = 576;
-  probe.profile.frame_rate_hz = 25.0;
-  probe.profile.frame_count = 100;
-
-  ProjectValidator validator(&probe);
-  const ValidationResult result = validator.Validate(project);
-
-  EXPECT_TRUE(result.is_valid);
-  EXPECT_TRUE(result.errors.empty());
-
-  std::filesystem::remove(project.sections[0].source);
-}
-
-TEST(ProjectValidatorTest, RejectsProgressiveMp4WithUnsupportedPixelFormat) {
-  Project project = MakeValidProject();
-  project.cvbs_presets.video_standard_preset = Standard::kNtsc;
-  project.sections[0].source = CreateTemporarySourceFile("videosynth_progressive_bad_pixfmt.mp4");
-  project.sections[0].duration_frames_all = true;
-  project.sections[0].duration_frames = 0;
-
-  MockProgressiveFrameSourceProbe probe;
-  probe.profile.container = "mov,mp4,m4a,3gp,3g2,mj2";
-  probe.profile.codec = "h264";
-  probe.profile.pixel_format = "yuv420p10le";
-  probe.profile.bit_depth = 10;
-  probe.profile.width = 720;
-  probe.profile.height = 480;
-  probe.profile.frame_rate_hz = 30000.0 / 1001.0;
-  probe.profile.frame_count = 200;
-
-  ProjectValidator validator(&probe);
-  const ValidationResult result = validator.Validate(project);
-
-  EXPECT_FALSE(result.is_valid);
-  ASSERT_FALSE(result.errors.empty());
-
-  std::filesystem::remove(project.sections[0].source);
 }
 
 TEST(ProjectValidatorTest, AcceptsProgressiveMovWithSupportedV210Profile) {

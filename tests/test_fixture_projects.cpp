@@ -147,32 +147,6 @@ bool QueryCvbsMetadataEncodingAndFrameCount(const std::filesystem::path& path,
   return result;
 }
 
-TEST(ProjectFixturesTest, ProgressivePngFixturesParseAndValidate) {
-  YamlProjectParser parser;
-  ProgressiveFrameSourceProbe progressive_frame_source_probe;
-  ProjectValidator validator(&progressive_frame_source_probe);
-
-  const std::vector<std::string> fixtures = {
-      "pal_progressive_png.yaml", "ntsc_progressive_png.yaml"};
-
-  for (const std::string& fixture : fixtures) {
-    const ParseResult parsed = parser.ParseFile(FixturePath(fixture));
-    ASSERT_TRUE(parsed.ok) << fixture;
-
-    Project project = parsed.project;
-    ResolveProgressiveSourcePaths(&project);
-    const ValidationResult validation = validator.Validate(project);
-    ASSERT_TRUE(validation.is_valid) << fixture;
-
-    ASSERT_EQ(project.sections.size(), 9U);
-    for (const Section& section : project.sections) {
-      EXPECT_EQ(section.type, "progressive");
-      EXPECT_EQ(section.duration_frames, 8);
-      EXPECT_FALSE(section.duration_frames_all);
-    }
-  }
-}
-
 TEST(ProjectFixturesTest, ProgressiveExrFixturesParseAndValidate) {
   YamlProjectParser parser;
   ProgressiveFrameSourceProbe progressive_frame_source_probe;
@@ -196,32 +170,6 @@ TEST(ProjectFixturesTest, ProgressiveExrFixturesParseAndValidate) {
       EXPECT_EQ(section.duration_frames, 8);
       EXPECT_FALSE(section.duration_frames_all);
     }
-  }
-}
-
-TEST(ProjectFixturesTest, ProgressiveMp4FixturesParseAndValidate) {
-  YamlProjectParser parser;
-  ProgressiveFrameSourceProbe progressive_frame_source_probe;
-  ProjectValidator validator(&progressive_frame_source_probe);
-
-  const std::vector<std::string> fixtures = {
-      "pal_progressive_mp4.yaml", "ntsc_progressive_mp4.yaml"};
-
-  for (const std::string& fixture : fixtures) {
-    const ParseResult parsed = parser.ParseFile(FixturePath(fixture));
-    ASSERT_TRUE(parsed.ok) << fixture;
-
-    Project project = parsed.project;
-    ResolveProgressiveSourcePaths(&project);
-    const ValidationResult validation = validator.Validate(project);
-    ASSERT_TRUE(validation.is_valid) << fixture;
-
-    ASSERT_EQ(project.sections.size(), 1U);
-    EXPECT_EQ(project.sections[0].type, "progressive");
-    EXPECT_FALSE(project.sections[0].duration_frames_all);
-    const int expected_duration_frames =
-        fixture == "pal_progressive_mp4.yaml" ? 50 : 60;
-    EXPECT_EQ(project.sections[0].duration_frames, expected_duration_frames);
   }
 }
 
@@ -250,54 +198,6 @@ TEST(ProjectFixturesTest, ProgressiveMovFixturesParseAndValidate) {
       EXPECT_TRUE(section.duration_frames_all);
       EXPECT_EQ(section.duration_frames, 0);
     }
-  }
-}
-
-TEST(ProjectFixturesTest, ProgressivePngFixturesGenerateCompositeOutputWith72Frames) {
-  YamlProjectParser parser;
-  ProjectValidator validator;
-  GenerationStage generation;
-  OutputStage output;
-
-  const std::vector<std::string> fixtures = {
-      "pal_progressive_png.yaml", "ntsc_progressive_png.yaml"};
-
-  for (const std::string& fixture : fixtures) {
-    const ParseResult parsed = parser.ParseFile(FixturePath(fixture));
-    ASSERT_TRUE(parsed.ok) << fixture;
-    Project project = parsed.project;
-    project.output.video_path = ResolveFixtureOutputPath(project.output.video_path).string();
-    project.output.metadata_path =
-      ResolveFixtureOutputPath(project.output.metadata_path).string();
-    ResolveProgressiveSourcePaths(&project);
-    ASSERT_TRUE(validator.Validate(project).is_valid) << fixture;
-
-    std::vector<SampleFixed> y_mv;
-    std::vector<SampleFixed> c_mv;
-    std::vector<std::string> generation_errors;
-    ASSERT_TRUE(generation.Generate(project, &y_mv, &c_mv, &generation_errors))
-        << fixture;
-
-    const std::size_t frame_span = static_cast<std::size_t>(
-        SamplesPerFrame4fsc(project.cvbs_presets.video_standard_preset));
-    ASSERT_EQ(y_mv.size(), frame_span * 72U) << fixture;
-    ASSERT_EQ(c_mv.size(), y_mv.size()) << fixture;
-
-    const std::filesystem::path output_path = project.output.video_path;
-    const std::filesystem::path metadata_path = project.output.metadata_path;
-    std::filesystem::create_directories(output_path.parent_path());
-    std::filesystem::remove(output_path);
-    std::filesystem::remove(metadata_path);
-
-    std::vector<std::string> output_errors;
-    ASSERT_TRUE(output.Write(project, y_mv, c_mv, &output_errors)) << fixture;
-
-    int64_t frame_count_from_metadata = 0;
-    ASSERT_TRUE(QueryCvbsMetadataFrameCount(metadata_path, &frame_count_from_metadata)) << fixture;
-    EXPECT_EQ(frame_count_from_metadata, 72) << fixture;
-
-    std::filesystem::remove(output_path);
-    std::filesystem::remove(metadata_path);
   }
 }
 
@@ -349,65 +249,52 @@ TEST(ProjectFixturesTest, ProgressiveExrFixturesGenerateCompositeOutputWith152Fr
   }
 }
 
-TEST(ProjectFixturesTest, ProgressiveMp4FixturesGenerateCompositeOutputForConfiguredDuration) {
+TEST(ProjectFixturesTest, ProgressiveTestcardFFixtureGenerateCompositeOutputWith8Frames) {
   YamlProjectParser parser;
-  ProgressiveFrameSourceProbe progressive_frame_source_probe;
-  ProjectValidator validator(&progressive_frame_source_probe);
+  ProjectValidator validator;
   GenerationStage generation;
   OutputStage output;
-  ProgressiveFrameSource progressive_source;
 
-  const std::vector<std::string> fixtures = {
-      "pal_progressive_mp4.yaml", "ntsc_progressive_mp4.yaml"};
+  const ParseResult parsed = parser.ParseFile(FixturePath("pal_progressive_testcard_f.yaml"));
+  ASSERT_TRUE(parsed.ok);
 
-  for (const std::string& fixture : fixtures) {
-    const ParseResult parsed = parser.ParseFile(FixturePath(fixture));
-    ASSERT_TRUE(parsed.ok) << fixture;
-    Project project = parsed.project;
-    project.output.video_path = ResolveFixtureOutputPath(project.output.video_path).string();
-    project.output.metadata_path =
+  Project project = parsed.project;
+  project.output.video_path = ResolveFixtureOutputPath(project.output.video_path).string();
+  project.output.metadata_path =
       ResolveFixtureOutputPath(project.output.metadata_path).string();
-    ResolveProgressiveSourcePaths(&project);
-    ASSERT_TRUE(validator.Validate(project).is_valid) << fixture;
+  ResolveProgressiveSourcePaths(&project);
+  ASSERT_TRUE(validator.Validate(project).is_valid);
 
-    int expected_section_frames = project.sections[0].duration_frames;
-    if (project.sections[0].duration_frames_all) {
-      std::string count_error;
-      ASSERT_TRUE(progressive_source.ResolveFrameCount(project.sections[0],
-                                                       project.cvbs_presets.video_standard_preset,
-                                                       &expected_section_frames,
-                                                       &count_error))
-          << fixture << ": " << count_error;
-    }
-    ASSERT_GT(expected_section_frames, 0) << fixture;
+  ASSERT_EQ(project.sections.size(), 1U);
+  EXPECT_EQ(project.sections[0].type, "progressive");
+  EXPECT_EQ(project.sections[0].duration_frames, 8);
+  EXPECT_FALSE(project.sections[0].duration_frames_all);
 
-    std::vector<SampleFixed> y_mv;
-    std::vector<SampleFixed> c_mv;
-    std::vector<std::string> generation_errors;
-    ASSERT_TRUE(generation.Generate(project, &y_mv, &c_mv, &generation_errors))
-        << fixture;
+  std::vector<SampleFixed> y_mv;
+  std::vector<SampleFixed> c_mv;
+  std::vector<std::string> generation_errors;
+  ASSERT_TRUE(generation.Generate(project, &y_mv, &c_mv, &generation_errors));
 
-    const std::size_t frame_span = static_cast<std::size_t>(
-        SamplesPerFrame4fsc(project.cvbs_presets.video_standard_preset));
-    ASSERT_EQ(y_mv.size(), frame_span * static_cast<std::size_t>(expected_section_frames)) << fixture;
-    ASSERT_EQ(c_mv.size(), y_mv.size()) << fixture;
+  const std::size_t frame_span = static_cast<std::size_t>(
+      SamplesPerFrame4fsc(project.cvbs_presets.video_standard_preset));
+  ASSERT_EQ(y_mv.size(), frame_span * 8U);
+  ASSERT_EQ(c_mv.size(), y_mv.size());
 
-    const std::filesystem::path output_path = project.output.video_path;
-    const std::filesystem::path metadata_path = project.output.metadata_path;
-    std::filesystem::create_directories(output_path.parent_path());
-    std::filesystem::remove(output_path);
-    std::filesystem::remove(metadata_path);
+  const std::filesystem::path output_path = project.output.video_path;
+  const std::filesystem::path metadata_path = project.output.metadata_path;
+  std::filesystem::create_directories(output_path.parent_path());
+  std::filesystem::remove(output_path);
+  std::filesystem::remove(metadata_path);
 
-    std::vector<std::string> output_errors;
-    ASSERT_TRUE(output.Write(project, y_mv, c_mv, &output_errors)) << fixture;
+  std::vector<std::string> output_errors;
+  ASSERT_TRUE(output.Write(project, y_mv, c_mv, &output_errors));
 
-    int64_t frame_count_from_metadata = 0;
-    ASSERT_TRUE(QueryCvbsMetadataFrameCount(metadata_path, &frame_count_from_metadata)) << fixture;
-    EXPECT_EQ(frame_count_from_metadata, expected_section_frames) << fixture;
+  int64_t frame_count_from_metadata = 0;
+  ASSERT_TRUE(QueryCvbsMetadataFrameCount(metadata_path, &frame_count_from_metadata));
+  EXPECT_EQ(frame_count_from_metadata, 8);
 
-    std::filesystem::remove(output_path);
-    std::filesystem::remove(metadata_path);
-  }
+  std::filesystem::remove(output_path);
+  std::filesystem::remove(metadata_path);
 }
 
 TEST(ProjectFixturesTest, ProgressiveMovFixturesGenerateCompositeOutputForFullSourceLength) {
@@ -480,7 +367,7 @@ TEST(ProjectFixturesTest, FixtureProjectsCoverSupportedOutputEncodingFamilies) {
   OutputStage output;
 
   const std::vector<std::string> fixtures = {
-    "pal_progressive_png.yaml", "ntsc_progressive_png.yaml"};
+    "pal_progressive_exr.yaml", "ntsc_progressive_exr.yaml"};
   const std::vector<std::string> output_presets = {
     "CVBS_U10_4FSC", "CVBS_U16_4FSC", "CVBS_TPG21_4FSC", "RAW_S16_28M", "RAW_S16_40M"};
 
@@ -496,7 +383,7 @@ TEST(ProjectFixturesTest, FixtureProjectsCoverSupportedOutputEncodingFamilies) {
   std::vector<std::string> generation_errors;
   ASSERT_TRUE(generation.Generate(base_project, &y_mv, &c_mv, &generation_errors)) << fixture;
 
-  const int64_t expected_frame_count = 72;
+  const int64_t expected_frame_count = 152;
   for (const std::string& output_preset : output_presets) {
     Project project = base_project;
     project.cvbs_presets.sample_encoding_preset = output_preset;

@@ -53,7 +53,7 @@
 - **Time-based signal generation** for PAL and NTSC, closely following analogue standards.
 - Support for multiple sample rates: **4fsc**, **20MSPS**, **40MSPS**, or custom.
 - **Frame-based content** from:
-  - Progressive sources from constrained, validated file profiles (MOV/MP4/PNG/EXR).
+  - Progressive sources from constrained, validated file profiles (MOV/EXR).
 - **Line-based injections** for VBI content:
   - **VITS** (Vertical Interval Test Signals).
   - **Laserdisc biphase encoding** (IEC 60856/60857).
@@ -320,7 +320,6 @@ All accepted progressive inputs are normalized to **10-bit 4:4:4 YCbCr BT.601 st
 Source-range capability note:
 
 - **MOV and EXR supported profiles** are required to preserve 10-bit studio-domain detail, including below-black and above-white code excursions when present in the source.
-- **PNG and MP4 supported profiles** do not provide a reliable path for preserving studio-domain below-black and above-white excursions end-to-end; they are supported for standard in-range content only.
 
 ---
 
@@ -809,8 +808,6 @@ Ingests progressive sources and converts them to interlaced signals, subject to 
 Container names alone are not sufficient for validation; source files must match one of the following profiles:
 
 - **MOV video**: `v210` in MOV (`yuv422p10le`) at dimensions valid for the selected output standard, and at a frame rate that matches the selected output standard (`25 fps` PAL, `30000/1001 fps` NTSC).
-- **MP4 video**: H.264/AVC (`yuv420p`) in MP4 at dimensions valid for the selected output standard, and at a frame rate that matches the selected output standard (`25 fps` PAL, `30000/1001 fps` NTSC).
-- **PNG still image**: Single-frame PNG truecolour input (RGB/RGBA, 8-bit or 16-bit integer channels) at target dimensions.
 - **EXR still image**: Single-frame OpenEXR scanline input with `R/G/B` channels in `HALF` or `FLOAT`, validated `videosynth.*` metadata, and target dimensions.
 
 Any other codec, chroma format, bit depth, or packing is outside scope and must fail validation.
@@ -833,7 +830,6 @@ Any other codec, chroma format, bit depth, or packing is outside scope and must 
 - **Frame Rate**: **Fixed by the output standard** (25 fps for PAL, ~29.97 fps for NTSC). Input sources **must match** this frame rate.
 - **10-bit studio-range preservation**:
   - MOV and EXR supported profiles must preserve studio-domain sub-black and over-white excursions when present.
-  - PNG and MP4 supported profiles are valid for standard in-range content, but are not required to preserve sub-black/over-white excursions.
 
 ##### **Accepted Dimensions and Padding Behavior**
 
@@ -1501,7 +1497,7 @@ The full rule set below therefore remains the intended validation contract for l
     - Frame-based content (`progressive`).
     - Line injections (`line_injections`).
   - For `progressive` sections, `source` must point to a valid file.
-  - **Input source frame rate must match the required output format (including MOV and MP4 sources)**.
+  - **Input source frame rate must match the required output format (including MOV sources)**.
   - **Progressive source must match a supported source profile (container + codec + pixel format/bit depth as applicable)**.
   - **Progressive source dimensions must be PAL: `720x576` or `704x576`; NTSC: `720x480` or `704x480`**.
   - **Scaling/resizing of progressive sources is not supported**.

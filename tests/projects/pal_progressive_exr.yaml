@@ -89,3 +89,7 @@ sections:
     type: progressive
     source: resources/assets/720x576/stills/exr/Y_CB_CR_RAMPS.exr
     duration_frames: 8
+  - name: PalTestcardF
+    type: progressive
+    source: resources/assets/720x576/stills/exr/testcard-f-bt601-studio.exr
+    duration_frames: 8

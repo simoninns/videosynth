@@ -27,7 +27,6 @@
             spdlog
             gtest
             sqlite
-            libpng
             openexr
             zlib
             ffmpeg
@@ -58,7 +57,6 @@
             spdlog
             gtest
             sqlite
-            libpng
             openexr
             zlib
             ffmpeg

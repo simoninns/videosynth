@@ -34,14 +34,13 @@ bool EndsWith(const std::string& value, const std::string& suffix) {
 bool ValidateProgressiveSourceFamily(const videosynth::Section& section, std::string* error) {
   const std::string source = Lowercase(section.source);
 
-  if (EndsWith(source, ".png") || EndsWith(source, ".exr") ||
-      EndsWith(source, ".mp4") || EndsWith(source, ".mov")) {
+  if (EndsWith(source, ".exr") || EndsWith(source, ".mov")) {
     return true;
   }
 
   if (error != nullptr) {
     *error =
-        "Unsupported progressive source family. Supported source families are PNG, EXR, MP4, and MOV.";
+        "Unsupported progressive source family. Supported source families are EXR and MOV.";
   }
   return false;
 }
@@ -103,38 +102,6 @@ bool ValidateProfileBySourceFamily(const videosynth::Section& section,
   const std::string container = Lowercase(profile.container);
   const std::string codec = Lowercase(profile.codec);
   const std::string pixel_format = Lowercase(profile.pixel_format);
-
-  if (EndsWith(source, ".mp4")) {
-    if (!ContainsCsvToken(container, "mp4")) {
-      if (error != nullptr) {
-        *error = "Progressive MP4 sections require an MP4 container profile.";
-      }
-      return false;
-    }
-    if (codec != "h264") {
-      if (error != nullptr) {
-        *error = "Progressive MP4 sections only support H.264/AVC video codec.";
-      }
-      return false;
-    }
-    if (pixel_format != "yuv420p") {
-      if (error != nullptr) {
-        *error = "Progressive MP4 sections only support yuv420p pixel format.";
-      }
-      return false;
-    }
-    if (profile.bit_depth > 0 && profile.bit_depth != 8) {
-      if (error != nullptr) {
-        *error = "Progressive MP4 sections only support 8-bit sample depth.";
-      }
-      return false;
-    }
-    return true;
-  }
-
-  if (EndsWith(source, ".png")) {
-    return true;
-  }
 
   if (EndsWith(source, ".exr")) {
     if (container != "exr") {

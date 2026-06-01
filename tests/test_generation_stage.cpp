@@ -37,11 +37,11 @@ int BurstEndSamples(double sample_rate_hz) {
   return static_cast<int>(std::lround(sample_rate_hz * 8.0e-6));
 }
 
-std::string DefaultBarsPngPath(Standard standard) {
+std::string DefaultBarsExrPath(Standard standard) {
   return (std::filesystem::path(VIDEOSYNTH_SOURCE_DIR) /
           (standard == Standard::kPal
-               ? "resources/assets/720x576/stills/png/Color-Bars-Hori-Cont.png"
-               : "resources/assets/720x480/stills/png/Color-Bars-Hori-Cont.png"))
+               ? "resources/assets/720x576/stills/exr/100_BARS.exr"
+               : "resources/assets/720x480/stills/exr/100_BARS.exr"))
       .string();
 }
 
@@ -53,12 +53,12 @@ Project MakeProject(Standard standard, int duration_frames = 1) {
   project.sections.push_back(
       Section{.name = "SignalTiming",
               .type = "progressive",
-              .source = DefaultBarsPngPath(standard),
+              .source = DefaultBarsExrPath(standard),
               .duration_frames = duration_frames});
   return project;
 }
 
-Project MakeProgressivePngProject(Standard standard, const std::string& source_path) {
+Project MakeProgressiveSourceProject(Standard standard, const std::string& source_path) {
   Project project;
   project.cvbs_presets.video_standard_preset = standard;
   project.cvbs_presets.sample_encoding_preset = "CVBS_U10_4FSC";
@@ -68,20 +68,6 @@ Project MakeProgressivePngProject(Standard standard, const std::string& source_p
               .type = "progressive",
               .source = source_path,
               .duration_frames = 1});
-  return project;
-}
-
-Project MakeProgressiveMp4Project(Standard standard, const std::string& source_path) {
-  Project project;
-  project.cvbs_presets.video_standard_preset = standard;
-  project.cvbs_presets.sample_encoding_preset = "CVBS_U10_4FSC";
-  project.cvbs_presets.signal_state_preset = "STANDARD_TBC_LOCKED";
-  project.sections.push_back(
-      Section{.name = "ProgressiveVideo",
-              .type = "progressive",
-              .source = source_path,
-              .duration_frames_all = true,
-              .duration_frames = 0});
   return project;
 }
 
@@ -335,7 +321,7 @@ TEST(GenerationStageTimingTest, FixedPointModeMatchesFloatingReferenceAtCodeLeve
 
 TEST(GenerationStageTimingTest, ReportsProgressiveSourceReadError) {
   Project project = MakeProject(Standard::kPal);
-  project.sections[0].source = "fixture.png";
+  project.sections[0].source = "fixture.exr";
   project.sections[0].duration_frames = 1;
 
   GenerationStage generation;
@@ -785,10 +771,10 @@ TEST(GenerationStageChromaTest, PalBurstLockedDecodeRecoversStableHueAcrossLines
   EXPECT_NEAR(WrappedPhaseDeltaAbs(decoded_hues[2], decoded_hues[3]), 0.0, 0.15);
 }
 
-TEST(GenerationStageProgressiveTest, NtscPngUsesField2DominantRowPairing) {
+TEST(GenerationStageProgressiveTest, NtscMovUsesField2DominantRowPairing) {
   const std::string source_path =
       (std::filesystem::path(VIDEOSYNTH_SOURCE_DIR) /
-       "resources/assets/720x480/stills/png/Check-Gamma-Checker.png")
+  "resources/assets/704x480/video/mov_29_97/MOVING_ZONE_2H.mov")
           .string();
 
   ProgressiveFrameSource progressive_source;
@@ -832,7 +818,7 @@ TEST(GenerationStageProgressiveTest, NtscPngUsesField2DominantRowPairing) {
   std::vector<std::string> errors;
   std::vector<SampleFixed> y;
   std::vector<SampleFixed> c;
-  ASSERT_TRUE(generation.Generate(MakeProgressivePngProject(Standard::kNtsc, source_path),
+  ASSERT_TRUE(generation.Generate(MakeProgressiveSourceProject(Standard::kNtsc, source_path),
                                   &y,
                                   &c,
                                   &errors));
@@ -855,109 +841,6 @@ TEST(GenerationStageProgressiveTest, NtscPngUsesField2DominantRowPairing) {
   EXPECT_NEAR(SampleFixedToMillivolts(y[static_cast<std::size_t>(field2_line_start + sample_offset)]),
               expected_field2,
               1.0);
-}
-
-TEST(GenerationStageProgressiveTest, PalPngUsesField2DominantRowPairing) {
-  const std::string source_path =
-      (std::filesystem::path(VIDEOSYNTH_SOURCE_DIR) /
-       "resources/assets/720x576/stills/png/Check-Gamma-Checker.png")
-          .string();
-
-  ProgressiveFrameSource progressive_source;
-  FrameSourceImage source_frame;
-  std::string source_error;
-  Section section;
-  section.type = "progressive";
-  section.source = source_path;
-  ASSERT_TRUE(
-      progressive_source.GenerateFrame(section, 0, Standard::kPal, &source_frame, &source_error));
-
-  const TimingConstants pal = GetTimingConstants(Standard::kPal);
-  const int active_start = ActiveWindowStartSamples(Standard::kPal, pal.sample_rate_4fsc_hz);
-  const int active_window_samples =
-      ActiveWindowEndSamples(Standard::kPal, pal.sample_rate_4fsc_hz) - active_start;
-
-  const int active_lines_per_field = 288;
-  int selected_field_line = -1;
-  int selected_x_sample = -1;
-  for (int field_line = 0; field_line < active_lines_per_field && selected_x_sample < 0; ++field_line) {
-    for (int x_sample = 0; x_sample < active_window_samples; ++x_sample) {
-        const int pixel_x = MapActiveSampleToSourcePixel(
-          x_sample, active_window_samples, source_frame.active_width, source_frame.active_x);
-      if (source_frame.PixelAt(pixel_x, source_frame.active_y + (2 * field_line)).y !=
-          source_frame.PixelAt(pixel_x, source_frame.active_y + (2 * field_line + 1)).y) {
-        selected_field_line = field_line;
-        selected_x_sample = x_sample;
-        break;
-      }
-    }
-  }
-  ASSERT_NE(selected_field_line, -1);
-  ASSERT_NE(selected_x_sample, -1);
-
-  const int pixel_x = MapActiveSampleToSourcePixel(selected_x_sample,
-                                                   active_window_samples,
-                                                   source_frame.active_width,
-                                                   source_frame.active_x);
-
-  GenerationStage generation;
-  std::vector<std::string> errors;
-  std::vector<SampleFixed> y;
-  std::vector<SampleFixed> c;
-  ASSERT_TRUE(generation.Generate(MakeProgressivePngProject(Standard::kPal, source_path),
-                                  &y,
-                                  &c,
-                                  &errors));
-
-  const SignalLevels levels = GetSignalLevels(Standard::kPal);
-    const int field1_line_start = ((23 + selected_field_line) - 1) * pal.samples_per_line_4fsc;
-    const int field2_line_start = ((335 + selected_field_line) - 1) * pal.samples_per_line_4fsc;
-  const int sample_offset = active_start + selected_x_sample;
-
-  const double expected_field1 = LumaMillivoltsFromCodeForTest(
-      source_frame.PixelAt(pixel_x, source_frame.active_y + (2 * selected_field_line + 1)).y,
-      levels);
-  const double expected_field2 = LumaMillivoltsFromCodeForTest(
-      source_frame.PixelAt(pixel_x, source_frame.active_y + (2 * selected_field_line)).y,
-      levels);
-
-  EXPECT_NEAR(SampleFixedToMillivolts(y[static_cast<std::size_t>(field1_line_start + sample_offset)]),
-              expected_field1,
-              1.0);
-  EXPECT_NEAR(SampleFixedToMillivolts(y[static_cast<std::size_t>(field2_line_start + sample_offset)]),
-              expected_field2,
-              1.0);
-}
-
-TEST(GenerationStageProgressiveTest, ProgressiveMp4AllDurationGeneratesEntireSource) {
-  const std::string source_path =
-      (std::filesystem::path(VIDEOSYNTH_SOURCE_DIR) /
-       "resources/assets/720x576/video/mp4_25_00/nynashamn.mp4")
-          .string();
-
-  ProgressiveFrameSource progressive_source;
-  Section section;
-  section.type = "progressive";
-  section.source = source_path;
-
-  int expected_frame_count = 0;
-  std::string count_error;
-  ASSERT_TRUE(progressive_source.ResolveFrameCount(
-      section, Standard::kPal, &expected_frame_count, &count_error));
-  ASSERT_GT(expected_frame_count, 0);
-
-  GenerationStage generation;
-  std::vector<std::string> errors;
-  std::vector<SampleFixed> y;
-  std::vector<SampleFixed> c;
-  ASSERT_TRUE(generation.Generate(MakeProgressiveMp4Project(Standard::kPal, source_path),
-                                  &y,
-                                  &c,
-                                  &errors));
-
-  const std::size_t frame_span = static_cast<std::size_t>(SamplesPerFrame4fsc(Standard::kPal));
-  EXPECT_EQ(y.size(), frame_span * static_cast<std::size_t>(expected_frame_count));
-  EXPECT_EQ(c.size(), y.size());
 }
 
 }  // namespace

@@ -130,7 +130,7 @@ Project MakeProject() {
   p.sections.push_back(
       Section{.name = "Valid",
           .type = "progressive",
-          .source = "/tmp/videosynth_pipeline_test.png",
+        .source = "/tmp/videosynth_pipeline_test.exr",
               .duration_frames = 1});
   return p;
 }

@@ -41,7 +41,7 @@ TEST(YamlProjectParserTest, ParsesProgressiveSectionWithAllDuration) {
       "sections:\n"
       "  - name: ProgressiveVideo\n"
       "    type: progressive\n"
-      "    source: fixture.mp4\n"
+      "    source: fixture.mov\n"
       "    duration_frames: all\n");
 
   YamlProjectParser parser;
@@ -71,7 +71,7 @@ TEST(YamlProjectParserTest, ParsesProgressiveSectionWithIntegerDuration) {
       "sections:\n"
       "  - name: ProgressiveStill\n"
       "    type: progressive\n"
-      "    source: fixture.png\n"
+      "    source: fixture.exr\n"
       "    duration_frames: 8\n");
 
   YamlProjectParser parser;
@@ -102,7 +102,7 @@ TEST(YamlProjectParserTest, ParsesOptionalNtscBlackSetupIre) {
       "sections:\n"
       "  - name: ProgressiveStill\n"
       "    type: progressive\n"
-      "    source: fixture.png\n"
+      "    source: fixture.exr\n"
       "    duration_frames: 8\n");
 
   YamlProjectParser parser;
@@ -161,7 +161,7 @@ TEST(YamlProjectParserTest, ParsesLineInjectionsAndLaserdiscPresetFlags) {
       "sections:\n"
       "  - name: ProgressiveWithInjections\n"
       "    type: progressive\n"
-      "    source: fixture.png\n"
+      "    source: fixture.exr\n"
       "    duration_frames: 4\n"
       "    line_injections:\n"
       "      - type: vits\n"
@@ -209,7 +209,7 @@ TEST(YamlProjectParserTest, RejectsUnsupportedLineInjectionField) {
       "sections:\n"
       "  - name: ProgressiveWithInjections\n"
       "    type: progressive\n"
-      "    source: fixture.png\n"
+      "    source: fixture.exr\n"
       "    duration_frames: 4\n"
       "    line_injections:\n"
       "      - type: vits\n"

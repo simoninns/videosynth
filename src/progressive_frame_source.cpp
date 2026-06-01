@@ -31,7 +31,6 @@
 #include <OpenEXR/ImfInputFile.h>
 #include <OpenEXR/ImfIntAttribute.h>
 #include <OpenEXR/ImfStringAttribute.h>
-#include <png.h>
 
 namespace videosynth {
 
@@ -238,184 +237,6 @@ bool ProbeVideoFrameCountWithFfprobe(const std::string& source,
     return false;
   }
 
-  return true;
-}
-
-bool DecodeMp4Frames(const std::string& source,
-                     Standard standard,
-                     int max_frames,
-                     std::vector<FrameSourceImage>* out_frames,
-                     std::string* error) {
-  if (out_frames == nullptr) {
-    if (error != nullptr) {
-      *error = "Decoded MP4 frame output pointer must not be null.";
-    }
-    return false;
-  }
-
-  int source_width = 0;
-  int source_height = 0;
-  if (!ProbeVideoRasterWithFfprobe(source, &source_width, &source_height, error)) {
-    return false;
-  }
-
-  const bool is_pal = standard == Standard::kPal;
-  const int expected_height = is_pal ? kPalHeight : kNtscHeight;
-  if (source_height != expected_height || (source_width != 720 && source_width != 704)) {
-    if (error != nullptr) {
-      *error =
-          "Progressive MP4 raster must be 720x576 or 704x576 for PAL, and 720x480 or 704x480 for NTSC.";
-    }
-    return false;
-  }
-
-  if ((source_width % 2) != 0 || (source_height % 2) != 0) {
-    if (error != nullptr) {
-      *error = "Progressive MP4 raster must be even for yuv420p decoding.";
-    }
-    return false;
-  }
-
-  const std::string escaped_source = EscapeForSingleQuotedShell(source);
-    const std::string frame_limit_arg =
-      max_frames > 0 ? (" -frames:v " + std::to_string(max_frames)) : "";
-  const std::string command =
-      "ffmpeg -v error -i '" + escaped_source +
-      "' -an -sn -dn" + frame_limit_arg +
-      " -pix_fmt yuv420p -vsync 0 -f rawvideo - 2>/dev/null";
-
-  FILE* pipe = popen(command.c_str(), "r");
-  if (pipe == nullptr) {
-    if (error != nullptr) {
-      *error = "Unable to run ffmpeg for progressive MP4 decoding.";
-    }
-    return false;
-  }
-
-  std::vector<std::uint8_t> decoded_bytes;
-  std::array<std::uint8_t, 8192> chunk{};
-  while (true) {
-    const std::size_t read_count = std::fread(chunk.data(), 1, chunk.size(), pipe);
-    if (read_count > 0) {
-      decoded_bytes.insert(decoded_bytes.end(), chunk.data(), chunk.data() + read_count);
-    }
-    if (read_count < chunk.size()) {
-      break;
-    }
-  }
-
-  const int rc = pclose(pipe);
-  if (rc != 0) {
-    if (error != nullptr) {
-      *error = "ffmpeg failed while decoding progressive MP4 source.";
-    }
-    return false;
-  }
-
-  const std::size_t y_plane_size = static_cast<std::size_t>(source_width * source_height);
-  const std::size_t chroma_plane_size = static_cast<std::size_t>((source_width / 2) * (source_height / 2));
-  const std::size_t frame_size = y_plane_size + chroma_plane_size + chroma_plane_size;
-  if (frame_size == 0 || (decoded_bytes.size() % frame_size) != 0) {
-    if (error != nullptr) {
-      *error = "Decoded MP4 frame payload size is not aligned to yuv420p frame boundaries.";
-    }
-    return false;
-  }
-
-  const std::size_t frame_count = decoded_bytes.size() / frame_size;
-  if (frame_count == 0) {
-    if (error != nullptr) {
-      *error = "Progressive MP4 source does not contain decodable video frames.";
-    }
-    return false;
-  }
-
-  out_frames->clear();
-  out_frames->reserve(frame_count);
-
-  const int source_x_offset = source_width == 704 ? 8 : 0;
-  for (std::size_t frame_index = 0; frame_index < frame_count; ++frame_index) {
-    FrameSourceImage frame;
-    SetFrameGeometryForStandard(standard, &frame);
-    frame.pixels.assign(static_cast<std::size_t>(frame.width * frame.height),
-                        MakePixel(64, 512, 512));
-
-    const std::size_t frame_offset = frame_index * frame_size;
-    const std::uint8_t* y_plane = decoded_bytes.data() + frame_offset;
-    const std::uint8_t* cb_plane = y_plane + y_plane_size;
-    const std::uint8_t* cr_plane = cb_plane + chroma_plane_size;
-
-    for (int y = 0; y < source_height; ++y) {
-      for (int x = 0; x < source_width; ++x) {
-        const int dst_x = x + source_x_offset;
-        const int dst_y = y;
-
-        const std::size_t y_index = static_cast<std::size_t>(y * source_width + x);
-        const std::size_t chroma_index =
-            static_cast<std::size_t>((y / 2) * (source_width / 2) + (x / 2));
-        const int y_code = static_cast<int>(y_plane[y_index]) * 4;
-        const int cb_code = static_cast<int>(cb_plane[chroma_index]) * 4;
-        const int cr_code = static_cast<int>(cr_plane[chroma_index]) * 4;
-
-        frame.pixels[static_cast<std::size_t>((dst_y * frame.width) + dst_x)] =
-            MakePixel(y_code, cb_code, cr_code);
-      }
-    }
-
-    out_frames->push_back(std::move(frame));
-  }
-
-  return true;
-}
-
-bool EnsureMp4Cache(const Section& section,
-                    Standard standard,
-                    int min_required_frames,
-                    bool require_complete,
-                    std::vector<FrameSourceImage>* cached_frames,
-                    std::string* cached_source,
-                    Standard* cached_standard,
-                    bool* has_cache,
-                    bool* is_complete,
-                    std::string* error) {
-  if (cached_frames == nullptr || cached_source == nullptr || cached_standard == nullptr ||
-      has_cache == nullptr || is_complete == nullptr) {
-    if (error != nullptr) {
-      *error = "Internal progressive MP4 cache pointers must not be null.";
-    }
-    return false;
-  }
-
-  if (min_required_frames < 0) {
-    min_required_frames = 0;
-  }
-
-  const bool key_matches = *has_cache && *cached_source == section.source && *cached_standard == standard;
-  if (key_matches) {
-    const bool has_required_frames =
-        static_cast<int>(cached_frames->size()) >= min_required_frames;
-    if ((require_complete && *is_complete) || (!require_complete && has_required_frames) ||
-        (*is_complete && !has_required_frames)) {
-      return true;
-    }
-  }
-
-  std::vector<FrameSourceImage> decoded_frames;
-  std::string decode_error;
-  const int decode_limit = require_complete ? 0 : min_required_frames;
-  if (!DecodeMp4Frames(section.source, standard, decode_limit, &decoded_frames, &decode_error)) {
-    if (error != nullptr) {
-      *error = decode_error.empty() ? "Failed to decode progressive MP4 source."
-                                    : decode_error;
-    }
-    return false;
-  }
-
-  *cached_frames = std::move(decoded_frames);
-  *cached_source = section.source;
-  *cached_standard = standard;
-  *has_cache = true;
-  *is_complete = require_complete;
   return true;
 }
 
@@ -648,25 +469,6 @@ void SetFrameGeometryForStandard(Standard standard, FrameSourceImage* image) {
   image->active_y = kNtscActiveY;
   image->active_width = kNtscActiveWidth;
   image->active_height = kNtscActiveHeight;
-}
-
-YCbCr444Pixel ConvertRgbToBt601Studio(std::uint16_t r,
-                                      std::uint16_t g,
-                                      std::uint16_t b,
-                                      std::uint16_t max_value) {
-  const double scale = max_value == 0 ? 1.0 : static_cast<double>(max_value);
-  const double r_norm = static_cast<double>(r) / scale;
-  const double g_norm = static_cast<double>(g) / scale;
-  const double b_norm = static_cast<double>(b) / scale;
-
-  const double y = (0.299 * r_norm) + (0.587 * g_norm) + (0.114 * b_norm);
-  const double cb = (-0.168736 * r_norm) - (0.331264 * g_norm) + (0.5 * b_norm);
-  const double cr = (0.5 * r_norm) - (0.418688 * g_norm) - (0.081312 * b_norm);
-
-  const int y_code = static_cast<int>(std::lround(64.0 + (876.0 * y)));
-  const int cb_code = static_cast<int>(std::lround(512.0 + (896.0 * cb)));
-  const int cr_code = static_cast<int>(std::lround(512.0 + (896.0 * cr)));
-  return MakePixel(y_code, cb_code, cr_code);
 }
 
 YCbCr444Pixel ConvertRgbFloatToBt601(std::float_t r,
@@ -921,139 +723,6 @@ bool LoadExrFrame(const std::string& source,
   }
 }
 
-bool LoadPngFrame(const std::string& source,
-                  Standard standard,
-                  FrameSourceImage* out_image,
-                  std::string* error) {
-  if (out_image == nullptr) {
-    if (error != nullptr) {
-      *error = "Frame source output image pointer must not be null.";
-    }
-    return false;
-  }
-
-  FILE* file = std::fopen(source.c_str(), "rb");
-  if (file == nullptr) {
-    if (error != nullptr) {
-      *error = "Unable to open progressive PNG source for reading.";
-    }
-    return false;
-  }
-
-  png_structp png_ptr = png_create_read_struct(PNG_LIBPNG_VER_STRING, nullptr, nullptr, nullptr);
-  if (png_ptr == nullptr) {
-    std::fclose(file);
-    if (error != nullptr) {
-      *error = "Failed to initialize PNG reader state.";
-    }
-    return false;
-  }
-
-  png_infop info_ptr = png_create_info_struct(png_ptr);
-  if (info_ptr == nullptr) {
-    png_destroy_read_struct(&png_ptr, nullptr, nullptr);
-    std::fclose(file);
-    if (error != nullptr) {
-      *error = "Failed to initialize PNG reader metadata state.";
-    }
-    return false;
-  }
-
-  if (setjmp(png_jmpbuf(png_ptr)) != 0) {
-    png_destroy_read_struct(&png_ptr, &info_ptr, nullptr);
-    std::fclose(file);
-    if (error != nullptr) {
-      *error = "Failed while decoding progressive PNG source.";
-    }
-    return false;
-  }
-
-  png_init_io(png_ptr, file);
-  png_read_info(png_ptr, info_ptr);
-
-  const png_uint_32 width = png_get_image_width(png_ptr, info_ptr);
-  const png_uint_32 height = png_get_image_height(png_ptr, info_ptr);
-  const int bit_depth = png_get_bit_depth(png_ptr, info_ptr);
-  const int color_type = png_get_color_type(png_ptr, info_ptr);
-
-  if (bit_depth != 8 && bit_depth != 16) {
-    if (error != nullptr) {
-      *error = "Progressive PNG must use 8-bit or 16-bit integer channels.";
-    }
-    return false;
-  }
-
-  if (color_type != PNG_COLOR_TYPE_RGB && color_type != PNG_COLOR_TYPE_RGBA) {
-    if (error != nullptr) {
-      *error = "Progressive PNG must be truecolour RGB or RGBA.";
-    }
-    return false;
-  }
-
-  const bool is_pal = standard == Standard::kPal;
-  const int expected_height = is_pal ? kPalHeight : kNtscHeight;
-  if (height != static_cast<png_uint_32>(expected_height) ||
-      (width != 720U && width != 704U)) {
-    if (error != nullptr) {
-      *error =
-          "Progressive PNG raster must be 720x576 or 704x576 for PAL, and 720x480 or 704x480 for NTSC.";
-    }
-    return false;
-  }
-
-  const int channels = png_get_channels(png_ptr, info_ptr);
-  png_read_update_info(png_ptr, info_ptr);
-  const png_size_t row_bytes = png_get_rowbytes(png_ptr, info_ptr);
-
-  std::vector<png_byte> buffer(static_cast<std::size_t>(row_bytes * height));
-  std::vector<png_bytep> rows(static_cast<std::size_t>(height));
-  for (png_uint_32 y = 0; y < height; ++y) {
-    rows[static_cast<std::size_t>(y)] =
-        buffer.data() + static_cast<std::size_t>(y * row_bytes);
-  }
-
-  png_read_image(png_ptr, rows.data());
-  png_read_end(png_ptr, nullptr);
-
-  SetFrameGeometryForStandard(standard, out_image);
-  out_image->pixels.assign(static_cast<std::size_t>(out_image->width * out_image->height),
-                           MakePixel(64, 512, 512));
-
-  const int source_x_offset = width == 704U ? 8 : 0;
-  const std::uint16_t max_value = bit_depth == 16 ? 65535U : 255U;
-
-  for (png_uint_32 y = 0; y < height; ++y) {
-    const png_bytep row = rows[static_cast<std::size_t>(y)];
-    for (png_uint_32 x = 0; x < width; ++x) {
-      std::uint16_t r = 0;
-      std::uint16_t g = 0;
-      std::uint16_t b = 0;
-
-      if (bit_depth == 8) {
-        const std::size_t index = static_cast<std::size_t>(x * channels);
-        r = row[index + 0];
-        g = row[index + 1];
-        b = row[index + 2];
-      } else {
-        const std::size_t index = static_cast<std::size_t>(x * channels * 2);
-        r = static_cast<std::uint16_t>((row[index + 0] << 8) | row[index + 1]);
-        g = static_cast<std::uint16_t>((row[index + 2] << 8) | row[index + 3]);
-        b = static_cast<std::uint16_t>((row[index + 4] << 8) | row[index + 5]);
-      }
-
-      const int dst_x = static_cast<int>(x) + source_x_offset;
-      const int dst_y = static_cast<int>(y);
-      out_image->pixels[static_cast<std::size_t>((dst_y * out_image->width) + dst_x)] =
-          ConvertRgbToBt601Studio(r, g, b, max_value);
-    }
-  }
-
-  png_destroy_read_struct(&png_ptr, &info_ptr, nullptr);
-  std::fclose(file);
-
-  return true;
-}
-
 }  // namespace
 
 const YCbCr444Pixel& FrameSourceImage::PixelAt(int x, int y) const {
@@ -1070,28 +739,15 @@ bool ProgressiveFrameSource::SupportsSection(const Section& section) const {
     return static_cast<char>(std::tolower(c));
   });
   return source.size() >= 4 &&
-      (EndsWithLowercase(source, ".png") ||
-       EndsWithLowercase(source, ".exr") ||
-       EndsWithLowercase(source, ".mp4") ||
+      (EndsWithLowercase(source, ".exr") ||
        EndsWithLowercase(source, ".mov"));
 }
 
 void ProgressiveFrameSource::ClearCache() const {
-  has_cached_png_frame_ = false;
-  cached_png_source_.clear();
-  cached_png_standard_ = Standard::kUnknown;
-  cached_png_frame_ = FrameSourceImage{};
-
   has_cached_exr_frame_ = false;
   cached_exr_source_.clear();
   cached_exr_standard_ = Standard::kUnknown;
   cached_exr_frame_ = FrameSourceImage{};
-
-  has_cached_mp4_frames_ = false;
-  cached_mp4_source_.clear();
-  cached_mp4_standard_ = Standard::kUnknown;
-  cached_mp4_is_complete_ = false;
-  cached_mp4_frames_.clear();
 
   has_cached_mov_frames_ = false;
   cached_mov_source_.clear();
@@ -1123,26 +779,8 @@ bool ProgressiveFrameSource::ResolveFrameCount(const Section& section,
     return static_cast<char>(std::tolower(c));
   });
 
-  if (EndsWithLowercase(source, ".png") || EndsWithLowercase(source, ".exr")) {
+  if (EndsWithLowercase(source, ".exr")) {
     *out_frame_count = 1;
-    return true;
-  }
-
-  if (EndsWithLowercase(source, ".mp4")) {
-    if (!EnsureMp4Cache(section,
-                        standard,
-                        0,
-                        true,
-                        &cached_mp4_frames_,
-                        &cached_mp4_source_,
-                        &cached_mp4_standard_,
-                        &has_cached_mp4_frames_,
-                        &cached_mp4_is_complete_,
-                        error)) {
-      return false;
-    }
-
-    *out_frame_count = static_cast<int>(cached_mp4_frames_.size());
     return true;
   }
 
@@ -1189,36 +827,6 @@ bool ProgressiveFrameSource::GenerateFrame(const Section& section,
     return static_cast<char>(std::tolower(c));
   });
 
-  if (EndsWithLowercase(source, ".png")) {
-    const bool cache_hit = has_cached_png_frame_ &&
-                           cached_png_source_ == section.source &&
-                           cached_png_standard_ == standard;
-    if (!cache_hit) {
-      FrameSourceImage decoded;
-      std::string decode_error;
-      if (!LoadPngFrame(section.source, standard, &decoded, &decode_error)) {
-        if (error != nullptr) {
-          *error = decode_error.empty() ? "Failed to decode progressive PNG source."
-                                        : decode_error;
-        }
-        return false;
-      }
-      cached_png_frame_ = decoded;
-      cached_png_source_ = section.source;
-      cached_png_standard_ = standard;
-      has_cached_png_frame_ = true;
-    }
-
-    if (out_image == nullptr) {
-      if (error != nullptr) {
-        *error = "Frame source output image pointer must not be null.";
-      }
-      return false;
-    }
-    *out_image = cached_png_frame_;
-    return true;
-  }
-
   if (EndsWithLowercase(source, ".exr")) {
     const bool cache_hit = has_cached_exr_frame_ &&
                            cached_exr_source_ == section.source &&
@@ -1246,50 +854,6 @@ bool ProgressiveFrameSource::GenerateFrame(const Section& section,
       return false;
     }
     *out_image = cached_exr_frame_;
-    return true;
-  }
-
-  if (EndsWithLowercase(source, ".mp4")) {
-    if (frame_index < 0) {
-      if (error != nullptr) {
-        *error = "Progressive frame index must be non-negative.";
-      }
-      return false;
-    }
-
-    int required_frames = frame_index + 1;
-    if (!section.duration_frames_all && section.duration_frames > 0) {
-      required_frames = section.start_frame + section.duration_frames;
-    }
-
-    if (!EnsureMp4Cache(section,
-                        standard,
-                        required_frames,
-                        section.duration_frames_all,
-                        &cached_mp4_frames_,
-                        &cached_mp4_source_,
-                        &cached_mp4_standard_,
-                        &has_cached_mp4_frames_,
-                        &cached_mp4_is_complete_,
-                        error)) {
-      return false;
-    }
-
-    if (frame_index >= static_cast<int>(cached_mp4_frames_.size())) {
-      if (error != nullptr) {
-        *error = "Requested frame index exceeds decoded progressive MP4 source length.";
-      }
-      return false;
-    }
-
-    if (out_image == nullptr) {
-      if (error != nullptr) {
-        *error = "Frame source output image pointer must not be null.";
-      }
-      return false;
-    }
-
-    *out_image = cached_mp4_frames_[static_cast<std::size_t>(frame_index)];
     return true;
   }
 

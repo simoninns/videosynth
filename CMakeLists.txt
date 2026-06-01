@@ -10,7 +10,6 @@ find_package(yaml-cpp REQUIRED)
 find_package(spdlog REQUIRED)
 find_package(GTest REQUIRED)
 find_package(SQLite3 REQUIRED)
-find_package(PNG REQUIRED)
 find_package(OpenEXR REQUIRED)
 
 add_library(videosynth_core
@@ -36,7 +35,6 @@ target_link_libraries(videosynth_core
         yaml-cpp
         spdlog::spdlog
         SQLite::SQLite3
-        PNG::PNG
         OpenEXR::OpenEXR
 )
 
