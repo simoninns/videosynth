@@ -5,7 +5,7 @@ project:
 
 cvbs_presets:
   video_standard_preset: PAL
-  sample_encoding_preset: CVBS_U10_4FSC
+  sample_encoding_preset: CVBS_TPG21_4FSC
   signal_state_preset: STANDARD_TBC_LOCKED
 
 output:

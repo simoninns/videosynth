@@ -17,3 +17,7 @@ sections:
     type: progressive
     source: videosynth-assets/assets/mkv/720x486/MOVING_ZONE_2H.mkv
     duration_frames: all
+  - name: NtscMkvSmpteBars
+    type: progressive
+    source: videosynth-assets/assets/mkv/720x486/SMPTE_BARS_001.mkv
+    duration_frames: all

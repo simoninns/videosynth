@@ -17,3 +17,7 @@ sections:
     type: progressive
     source: videosynth-assets/assets/mkv/720x576/MOVING_ZONE_2H.mkv
     duration_frames: all
+  - name: PalMkvSmpteBars
+    type: progressive
+    source: videosynth-assets/assets/mkv/720x576/SMPTE_BARS.mkv
+    duration_frames: all
