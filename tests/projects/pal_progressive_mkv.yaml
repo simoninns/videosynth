@@ -1,0 +1,19 @@
+project:
+  name: PALProgressiveMkvFixture
+  version: "1.0"
+  description: PAL progressive MKV fixture
+
+cvbs_presets:
+  video_standard_preset: PAL
+  sample_encoding_preset: CVBS_TPG21_4FSC
+  signal_state_preset: STANDARD_TBC_LOCKED
+
+output:
+  video_path: tests/projects/output/videosynth_pal_progressive_mkv.composite
+  metadata_path: tests/projects/output/videosynth_pal_progressive_mkv.meta
+
+sections:
+  - name: PalMkvMovingZone
+    type: progressive
+    source: videosynth-assets/assets/mkv/720x576/MOVING_ZONE_2H.mkv
+    duration_frames: all

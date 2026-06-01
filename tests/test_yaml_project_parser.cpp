@@ -41,7 +41,7 @@ TEST(YamlProjectParserTest, ParsesProgressiveSectionWithAllDuration) {
       "sections:\n"
       "  - name: ProgressiveVideo\n"
       "    type: progressive\n"
-      "    source: fixture.mov\n"
+      "    source: fixture.mkv\n"
       "    duration_frames: all\n");
 
   YamlProjectParser parser;
@@ -131,7 +131,7 @@ TEST(YamlProjectParserTest, RejectsInvalidDurationFramesScalar) {
       "sections:\n"
       "  - name: ProgressiveBad\n"
       "    type: progressive\n"
-      "    source: fixture.mov\n"
+      "    source: fixture.mkv\n"
       "    duration_frames: forever\n");
 
   YamlProjectParser parser;

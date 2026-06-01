@@ -32,8 +32,8 @@ Project MakeProject(Standard standard,
   const std::string selected_source = source.empty()
       ? ((std::filesystem::path(VIDEOSYNTH_SOURCE_DIR) /
           (standard == Standard::kPal
-               ? "resources/assets/720x576/stills/exr/100_BARS.exr"
-               : "resources/assets/720x480/stills/exr/100_BARS.exr"))
+               ? "videosynth-assets/assets/exr/720x576/100_BARS.exr"
+               : "videosynth-assets/assets/exr/720x486/100_BARS.exr"))
              .string())
       : source;
 

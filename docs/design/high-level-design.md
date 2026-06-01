@@ -53,7 +53,7 @@
 - **Time-based signal generation** for PAL and NTSC, closely following analogue standards.
 - Support for multiple sample rates: **4fsc**, **20MSPS**, **40MSPS**, or custom.
 - **Frame-based content** from:
-  - Progressive sources from constrained, validated file profiles (MOV/EXR).
+  - Progressive sources from constrained, validated file profiles (MKV/EXR).
 - **Line-based injections** for VBI content:
   - **VITS** (Vertical Interval Test Signals).
   - **Laserdisc biphase encoding** (IEC 60856/60857).
@@ -114,10 +114,10 @@ Practical interpretation:
 
 | **Standard** | **Accepted Frame-Based Source Dimensions** | **Frame Rate** | **Field Rate** | **Colour Subcarrier** | **Lines/Frame** | **Reference**   |
 | ------------ | ------------------------------------------- | -------------- | -------------- | --------------------- | --------------- | --------------- |
-| PAL (625/50 family) | 720x576 or 704x576 | 25 fps         | 50 Hz          | 4.43361875 MHz        | 625             | ITU-R BT.470-6  |
-| NTSC-M (525/59.94)  | 720x480 or 704x480 | ~29.97 fps     | ~59.94 Hz      | 3.579545 MHz          | 525             | SMPTE 170M-2004 |
+| PAL (625/50 family) | 720x576 | 25 fps         | 50 Hz          | 4.43361875 MHz        | 625             | ITU-R BT.470-6  |
+| NTSC-M (525/59.94)  | 720x486 | ~29.97 fps     | ~59.94 Hz      | 3.579545 MHz          | 525             | SMPTE 170M-2004 |
 
-For file-based frame sources, both 720-wide and 704-wide rasters are valid for each standard. 720-wide rasters are common in modern file formats and often include side samples that fall outside the intended visible picture. 704-wide rasters are treated as active-picture-aligned inputs and are normalized to the internal 720-wide working raster during ingestion.
+For file-based frame sources, ingestion is strict and fail-closed: only the exact supported raster for the selected standard is accepted.
 
 
 ### **Output Modes**
@@ -198,10 +198,9 @@ For avoidance of doubt, the generator shall apply the following rules:
 
 Frame-source visible aperture contract:
 
-- Progressive file sources accept either `720x576` or `704x576` for PAL, and either `720x480` or `704x480` for NTSC.
-- The internal frame-source working raster remains fixed at `720x576` for PAL and `720x480` for NTSC.
-- When a progressive source is `704` pixels wide, ingestion must center it in the `720`-sample raster and add `8` nominal-black pixels on the left and `8` nominal-black pixels on the right before field mapping.
-- If a decoded source reports coded-frame padding (for example, codec-mandated macroblock or even-pixel constraints), ingestion must apply container/codec crop metadata first, then enforce the 704/720 normalization rules above.
+- Progressive file sources must be `720x576` for PAL or `720x486` for NTSC.
+- The internal frame-source working raster remains fixed at `720x576` for PAL and `720x486` for NTSC.
+- Ingestion must not apply decode-time scale filters, ad-hoc crop filters, or implicit aspect-ratio remapping.
 - Only the visible active aperture may carry picture content. Pixels outside that aperture must remain nominal black and must not be modified by progressive-source ingestion.
 - PAL aperture derivation:
   - ITU-R BT.1700 Table 1 item `1a`: `576` active lines.
@@ -213,8 +212,8 @@ Frame-source visible aperture contract:
   - SMPTE 170M-2004 analogue timing yields an active picture interval of approximately `52.666 us`.
   - Under the shared ITU-R BT.601 `13.5 MHz` digital sampling model, `52.666 us * 13.5 MHz = 711` visible pixels.
   - The `720`-sample frame-source raster therefore has `9` non-visible horizontal samples. Because that remainder is odd, the nearest centered integer placement is `4` samples of left margin and `5` samples of right margin.
-  - The NTSC frame-source visible aperture is therefore a near-centered `711x480` region at `x=4..714`, `y=0..479`.
-  - The analogue standard defines `483` active lines, but VideoSynth frame-based sources expose the `480` full active lines used by the timing model; the three partly active transition lines are not addressable through the frame-source raster.
+  - The NTSC frame-source visible aperture is therefore a near-centered `711x480` region at `x=4..714`, `y=3..482` within the `720x486` source raster.
+  - The analogue standard defines `483` active lines; VideoSynth frame-based sources expose the central `480` fully active lines and preserve the three transition lines as non-addressable for progressive content.
 
 ### **Progressive Horizontal Mapping to 4fsc Active Samples (Normative)**
 
@@ -223,15 +222,14 @@ To preserve deterministic `4fsc` behavior from progressive inputs, horizontal ma
 Definitions:
 
 - Let $N_a$ be the number of active-line samples in the selected standard's `4fsc` active window.
-- Let $W$ be the active source width used for mapping (`720` for full-width progressive sources, `704` for active-picture-aligned progressive sources after normalization context is applied).
-- Let $x_0$ be the source active window left offset (`0` for `720`, `8` for `704` normalized into the `720` working raster).
+- Let $W$ be the active source width used for mapping (`720` in the current runtime).
 - Let $s \in [0, N_a-1]$ be the active-line sample index.
 - Let $p(s)$ be the mapped source pixel index.
 
 Normative mapping equation:
 
 $$
-p(s) = x_0 + \left\lfloor \frac{s \cdot W}{N_a} \right\rfloor
+p(s) = \left\lfloor \frac{s \cdot W}{N_a} \right\rfloor
 $$
 
 This mapping is mandatory for progressive-source ingestion in the generation stage.
@@ -259,8 +257,7 @@ for $i \in [0, W-1]$.
 
 Practical width handling:
 
-- `720`-wide progressive sources: use $x_0=0$, $W=720$.
-- `704`-wide progressive sources: preserve active-picture alignment by centering into the internal `720` raster with `8` nominal-black samples on each side, then map using $x_0=8$, $W=704$.
+- Progressive sources use fixed-width mapping with $W=720$.
 
 This rule applies identically to PAL and NTSC; only $N_a$ differs by standard.
 
@@ -319,7 +316,7 @@ All accepted progressive inputs are normalized to **10-bit 4:4:4 YCbCr BT.601 st
 
 Source-range capability note:
 
-- **MOV and EXR supported profiles** are required to preserve 10-bit studio-domain detail, including below-black and above-white code excursions when present in the source.
+- **MKV and EXR supported profiles** are required to preserve 10-bit studio-domain detail, including below-black and above-white code excursions when present in the source.
 
 ---
 
@@ -687,7 +684,7 @@ output:
 sections:
   - name: "Progressive Source with VITS and Laserdisc"
     type: progressive
-    source: "assets/test.mov"
+    source: "assets/test.mkv"
     duration_frames: 10
     line_injections:           # Line-based injections for this section
       - type: vits
@@ -722,9 +719,9 @@ The application must report a clear validation error if a referenced file cannot
 
 ```yaml
 source: "builtin:smpte_leader"        # built-in asset bundled with the application
-source: "/media/archive/clip.mov"     # absolute path
-source: "assets/clip.mov"             # relative to the project YAML directory
-source: "../shared/clip.mov"          # relative path traversal is permitted
+source: "/media/archive/clip.mkv"     # absolute path
+source: "assets/clip.mkv"             # relative to the project YAML directory
+source: "../shared/clip.mkv"          # relative path traversal is permitted
 video_path: "out/pal_test_video.composite" # project-relative output file path
 ```
 
@@ -738,7 +735,7 @@ video_path: "out/pal_test_video.composite" # project-relative output file path
   - Only one `signal_state_preset` per project.
   - `output.video_path` and `output.metadata_path` are required in the project YAML.
   - `output.video_path` and `output.metadata_path` must resolve to different paths.
-  - Output resolution is fixed by the standard (720x576 for PAL, 720x480 for NTSC) and must not be specified in the project file.
+  - Output resolution is fixed by the standard (720x576 for PAL, 720x486 for NTSC) and must not be specified in the project file.
   - 4fsc generation requires a 4fsc `sample_encoding_preset` and a locked `signal_state_preset`.
   - `pal_laserdisc_pilot_burst` can **only be enabled for PAL projects**. If enabled for NTSC, the YAML is considered **invalid**.
   - `ntsc_laserdisc_vbi_burst` can **only be enabled for NTSC projects**. If enabled for PAL, the YAML is considered **invalid**.
@@ -760,12 +757,11 @@ video_path: "out/pal_test_video.composite" # project-relative output file path
   - `source` must resolve to an accessible file after applying [File Path Resolution](#file-path-resolution) rules. If the resolved path does not exist, the YAML is considered **invalid**.
   - `source` must match one of the supported progressive source profiles defined in [Section 8.1](#81-frame-based-sections); container extension alone is not sufficient.
   - For EXR sources, metadata attributes listed in [Progressive Sources](#progressive-sources) are required and validated.
-  - Progressive source dimensions must be standard-consistent and one of:
-    - PAL: `720x576` or `704x576`
-    - NTSC: `720x480` or `704x480`
+  - Progressive source dimensions must be standard-consistent and exactly:
+    - PAL: `720x576`
+    - NTSC: `720x486`
   - Scaling/resizing is not supported. Any source outside the accepted dimensions is invalid.
-  - `704`-wide progressive sources are normalized to the internal `720`-wide raster with `8` pixels of nominal-black side padding on each side.
-  - Decoder/container padding must be cropped to the declared display aperture before applying 704/720 normalization.
+  - Ingestion must not apply scaling, implicit aspect-ratio remap, or ad-hoc crop normalization.
   - `duration_frames` must be either:
     - A positive integer (fixed number of frames).
     - `"all"` (use all available frames from the source).
@@ -807,8 +803,8 @@ Ingests progressive sources and converts them to interlaced signals, subject to 
 
 Container names alone are not sufficient for validation; source files must match one of the following profiles:
 
-- **MOV video**: `v210` in MOV (`yuv422p10le`) at dimensions valid for the selected output standard, and at a frame rate that matches the selected output standard (`25 fps` PAL, `30000/1001 fps` NTSC).
-- **EXR still image**: Single-frame OpenEXR scanline input with `R/G/B` channels in `HALF` or `FLOAT`, validated `videosynth.*` metadata, and target dimensions.
+- **MKV video**: Matroska container with `ffv1` video, `yuv422p10le`, standard-matching raster and frame rate (`720x576@25` PAL or `720x486@30000/1001` NTSC), and standard-matching SD field-order/color metadata.
+- **EXR still image**: Single-frame OpenEXR scanline input with `R/G/B` channels in `FLOAT` (32-bit), no compression, full-raster data/display windows, standard-matching frame-rate metadata (`25/1` PAL or `30000/1001` NTSC), and matching pixel-aspect metadata.
 
 Any other codec, chroma format, bit depth, or packing is outside scope and must fail validation.
 
@@ -817,9 +813,9 @@ Any other codec, chroma format, bit depth, or packing is outside scope and must 
 
 | **Field**         | **Type**       | **Required** | **Description**                                                                | **Example**          |
 | ----------------- | -------------- | ------------ | ------------------------------------------------------------------------------ | -------------------- |
-| `name`            | string         | Yes          | User-friendly name.                                                            | `"MOV Source"`       |
+| `name`            | string         | Yes          | User-friendly name.                                                            | `"MKV Source"`       |
 | `type`            | string         | Yes          | Must be `"progressive"`.                                                       | `"progressive"`      |
-| `source`          | string         | Yes          | Path to the source file. May be a `builtin:` prefixed name, an absolute path, or a path relative to the project YAML. See [File Path Resolution](#file-path-resolution). | `"assets/test.mov"` |
+| `source`          | string         | Yes          | Path to the source file. May be a `builtin:` prefixed name, an absolute path, or a path relative to the project YAML. See [File Path Resolution](#file-path-resolution). | `"assets/test.mkv"` |
 | `start_frame`     | integer        | No           | First frame to use (default: `0`).                                             | `0`                  |
 | `duration_frames` | integer/string | No           | Number of frames to extract. Use `"all"` for all frames or a positive integer. | `100` or `"all"`     |
 
@@ -829,23 +825,22 @@ Any other codec, chroma format, bit depth, or packing is outside scope and must 
 - **Colour Space**: Source data is converted into 10-bit 4:4:4 YCbCr BT.601 studio swing at ingestion.
 - **Frame Rate**: **Fixed by the output standard** (25 fps for PAL, ~29.97 fps for NTSC). Input sources **must match** this frame rate.
 - **10-bit studio-range preservation**:
-  - MOV and EXR supported profiles must preserve studio-domain sub-black and over-white excursions when present.
+  - MKV and EXR supported profiles must preserve studio-domain sub-black and over-white excursions when present.
 
-##### **Accepted Dimensions and Padding Behavior**
+##### **Accepted Dimensions and Ingestion Behavior**
 
-- PAL progressive sources: `720x576` or `704x576`.
-- NTSC progressive sources: `720x480` or `704x480`.
+- PAL progressive sources: `720x576`.
+- NTSC progressive sources: `720x486`.
 - Scaling or resampling is **not supported** for progressive-source ingestion. Sources must already be in one of the accepted dimensions.
-- `704`-wide sources are mapped to the internal `720`-wide raster by adding `8` nominal-black pixels on both left and right sides.
-- For codecs/containers that store padded coded dimensions, the decoder must apply crop/display-aperture metadata first. Validation and normalization then operate on the cropped display frame.
+- Ingestion is fail-closed on unsupported or ambiguous rasters; there is no 704-width normalization path.
 
 ##### **Example**
 
 ```yaml
 sections:
-  - name: "MOV with VITC"
+  - name: "MKV with VITC"
     type: progressive
-    source: "/assets/test.mov"
+    source: "/assets/test.mkv"
     duration_frames: "all"  # Use all frames from the source
     line_injections:
       - type: vitc
@@ -1485,7 +1480,7 @@ The full rule set below therefore remains the intended validation contract for l
   - Only one `video_standard_preset` (PAL or NTSC) per project.
   - Only one `sample_encoding_preset` per project.
   - Only one `signal_state_preset` per project.
-  - Output resolution is fixed by the standard (720x576 for PAL, 720x480 for NTSC) and must not be specified in the project file.
+  - Output resolution is fixed by the standard (720x576 for PAL, 720x486 for NTSC) and must not be specified in the project file.
   - 4fsc generation requires a 4fsc `sample_encoding_preset` and a locked `signal_state_preset`.
   - `pal_laserdisc_pilot_burst` can **only be enabled for PAL projects**. If enabled for NTSC, the YAML is considered **invalid**.
   - `ntsc_laserdisc_vbi_burst` can **only be enabled for NTSC projects**. If enabled for PAL, the YAML is considered **invalid**.
@@ -1497,11 +1492,11 @@ The full rule set below therefore remains the intended validation contract for l
     - Frame-based content (`progressive`).
     - Line injections (`line_injections`).
   - For `progressive` sections, `source` must point to a valid file.
-  - **Input source frame rate must match the required output format (including MOV sources)**.
+  - **Input source frame rate must match the required output format (including MKV sources)**.
   - **Progressive source must match a supported source profile (container + codec + pixel format/bit depth as applicable)**.
-  - **Progressive source dimensions must be PAL: `720x576` or `704x576`; NTSC: `720x480` or `704x480`**.
+  - **Progressive source dimensions must be PAL: `720x576`; NTSC: `720x486`**.
   - **Scaling/resizing of progressive sources is not supported**.
-  - **When source width is `704`, ingestion must normalize to the internal `720`-wide raster using `8` pixels of nominal-black side padding on each side**.
+  - **Ingestion must not apply implicit width normalization or ad-hoc crop/remap operations**.
 3. **Line Injection Constraints**:
   - `target_lines` must be within the valid range for the standard (1-625 for PAL, 1-525 for NTSC).
   - `target_lines` must **not** be specified for `laserdisc` injection types; specifying it is a validation error.
@@ -1519,7 +1514,7 @@ The full rule set below therefore remains the intended validation contract for l
 | Invalid standard                           | "video_standard_preset must be 'PAL' or 'NTSC'."                                                                                         |
 | `resolution` field present                 | "`resolution` must not be specified; it is fixed by the standard."                                                                       |
 | Invalid sample rate                        | "Sample rate 10MSPS may not capture the full CVBS bandwidth (5.5 MHz for PAL)."                                                          |
-| Missing source file                        | "File '/nonexistent.mov' not found."                                                                                                     |
+| Missing source file                        | "File '/nonexistent.mkv' not found."                                                                                                     |
 | Invalid line injection target lines        | "Line 700 is out of range for PAL (max 625)."                                                                                            |
 | Laserdisc `target_lines` specified         | "`target_lines` must not be specified for laserdisc injections; line placement is fixed by the standard."                                |
 | Laserdisc reserved range conflict          | "Injection type [type] targets line [n] which is within the laserdisc reserved range for [standard]; cannot coexist with laserdisc injection." |
@@ -1532,8 +1527,8 @@ The full rule set below therefore remains the intended validation contract for l
 | Invalid NTSC black setup value             | "ntsc_black_setup_ire must be 7.5 or 0.0."                                                                                               |
 | Invalid frame rate                         | "Input frame rate must match the output standard's frame rate (25 fps for PAL, ~29.97 fps for NTSC)."                                    |
 | Unsupported progressive source profile     | "Progressive source is not in a supported profile. Validate container, codec, chroma format, and bit depth against the supported profile list." |
-| Invalid progressive source dimensions      | "Progressive source dimensions are invalid for the selected standard. PAL requires 720x576 or 704x576; NTSC requires 720x480 or 704x480." |
-| Scaling requested or implied               | "Progressive source scaling is not supported. Source dimensions must already match PAL 720x576/704x576 or NTSC 720x480/704x480." |
+| Invalid progressive source dimensions      | "Progressive source dimensions are invalid for the selected standard. PAL requires 720x576; NTSC requires 720x486." |
+| Scaling requested or implied               | "Progressive source scaling is not supported. Source dimensions must already match PAL 720x576 or NTSC 720x486." |
 
 
 ---
@@ -1794,19 +1789,15 @@ videosynth/
 │       ├── yaml_reference.md
 │       └── ...
 ├── resources/
-│   └── assets/                          # Built-in source assets installed with the application
-│       ├── 720x480/                     # NTSC-dimensioned assets
-│       │   ├── stills/
-│       │   └── video/
-│       ├── 704x480/                     # Optional NTSC active-picture-aligned assets (normalized to internal 720x480 raster)
-│       │   ├── stills/
-│       │   └── video/
-│       ├── 720x576/                     # PAL-dimensioned assets
-│       │   ├── stills/
-│       │   └── video/
-│       └── 704x576/                     # Optional PAL active-picture-aligned assets (normalized to internal 720x576 raster)
-│           ├── stills/
-│           └── video/
+│   └── doc-diagrams/
+├── videosynth-assets/
+│   └── assets/                          # Authoritative progressive source corpus (submodule)
+│       ├── exr/
+│       │   ├── 720x576/
+│       │   └── 720x486/
+│       └── mkv/
+│           ├── 720x576/
+│           └── 720x486/
 ├── tests/
 │   ├── test_yaml_parser.cpp
 │   ├── test_generation_stage.cpp

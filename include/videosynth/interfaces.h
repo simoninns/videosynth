@@ -51,6 +51,11 @@ struct ProgressiveFrameSourceProfile {
   std::string container;
   std::string codec;
   std::string pixel_format;
+  std::string field_order;
+  std::string color_space;
+  std::string color_primaries;
+  std::string color_transfer;
+  std::string color_range;
   int bit_depth = 0;
   int width = 0;
   int height = 0;

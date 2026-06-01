@@ -241,13 +241,11 @@ int ActiveFrameLineIndex(const ActiveRasterGeometry& geometry,
 }
 
 int InvertCenteredChromaCode(int code) {
-  const int clamped = ClampCode(code, 64, 960);
-  return 1024 - clamped;
+  return 1024 - code;
 }
 
 double LumaMillivoltsFromCode(int y_code, const SignalLevels& levels) {
-  const int clamped = ClampCode(y_code, 48, 940);
-  const double y_norm = static_cast<double>(clamped - 64) / 876.0;
+  const double y_norm = static_cast<double>(y_code - 64) / 876.0;
   return levels.black_mv + (y_norm * (levels.white_mv - levels.black_mv));
 }
 

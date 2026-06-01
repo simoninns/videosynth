@@ -15,77 +15,77 @@ output:
 sections:
   - name: NtscExr100Bars
     type: progressive
-    source: resources/assets/720x480/stills/exr/100_BARS.exr
+    source: videosynth-assets/assets/exr/720x486/100_BARS.exr
     duration_frames: 8
   - name: NtscExr75Bars
     type: progressive
-    source: resources/assets/720x480/stills/exr/75_BARS.exr
+    source: videosynth-assets/assets/exr/720x486/75_BARS.exr
     duration_frames: 8
   - name: NtscExr75BarsRed
     type: progressive
-    source: resources/assets/720x480/stills/exr/75_BARS_RED.exr
+    source: videosynth-assets/assets/exr/720x486/75_BARS_RED.exr
     duration_frames: 8
   - name: NtscExrChromaRamp
     type: progressive
-    source: resources/assets/720x480/stills/exr/CHROMA_RAMP.exr
+    source: videosynth-assets/assets/exr/720x486/CHROMA_RAMP.exr
     duration_frames: 8
   - name: NtscExrFullRamp
     type: progressive
-    source: resources/assets/720x480/stills/exr/FULL_RAMP.exr
+    source: videosynth-assets/assets/exr/720x486/FULL_RAMP.exr
     duration_frames: 8
   - name: NtscExrGrey10HStep
     type: progressive
-    source: resources/assets/720x480/stills/exr/GREY_10H_STEP.exr
+    source: videosynth-assets/assets/exr/720x486/GREY_10H_STEP.exr
     duration_frames: 8
   - name: NtscExrLumaRamp
     type: progressive
-    source: resources/assets/720x480/stills/exr/LUMA_RAMP.exr
+    source: videosynth-assets/assets/exr/720x486/LUMA_RAMP.exr
     duration_frames: 8
   - name: NtscExrGrey10V
     type: progressive
-    source: resources/assets/720x480/stills/exr/GREY_10V_STEP.exr
+    source: videosynth-assets/assets/exr/720x486/GREY_10V_STEP.exr
     duration_frames: 8
   - name: NtscExrGrey5HStep
     type: progressive
-    source: resources/assets/720x480/stills/exr/GREY_5H_STEP.exr
+    source: videosynth-assets/assets/exr/720x486/GREY_5H_STEP.exr
     duration_frames: 8
   - name: NtscExrGrey5VStep
     type: progressive
-    source: resources/assets/720x480/stills/exr/GREY_5V_STEP.exr
+    source: videosynth-assets/assets/exr/720x486/GREY_5V_STEP.exr
     duration_frames: 8
   - name: NtscExrLegalRamp
     type: progressive
-    source: resources/assets/720x480/stills/exr/LEGAL_RAMP.exr
+    source: videosynth-assets/assets/exr/720x486/LEGAL_RAMP.exr
     duration_frames: 8
   - name: NtscExrLumaRampDown
     type: progressive
-    source: resources/assets/720x480/stills/exr/LUMA_RAMP_DOWN.exr
+    source: videosynth-assets/assets/exr/720x486/LUMA_RAMP_DOWN.exr
     duration_frames: 8
   - name: NtscExrMultiburst
     type: progressive
-    source: resources/assets/720x480/stills/exr/MULTIBURST.exr
+    source: videosynth-assets/assets/exr/720x486/MULTIBURST.exr
     duration_frames: 8
   - name: NtscExrPluge
     type: progressive
-    source: resources/assets/720x480/stills/exr/PLUGE.exr
+    source: videosynth-assets/assets/exr/720x486/PLUGE.exr
     duration_frames: 8
   - name: NtscExrSmpteBars
     type: progressive
-    source: resources/assets/720x480/stills/exr/SMPTE_BARS_001.exr
+    source: videosynth-assets/assets/exr/720x486/SMPTE_BARS_001.exr
     duration_frames: 8
   - name: NtscExrTartan
     type: progressive
-    source: resources/assets/720x480/stills/exr/TARTAN.exr
+    source: videosynth-assets/assets/exr/720x486/TARTAN.exr
     duration_frames: 8
   - name: NtscExrValidRamps
     type: progressive
-    source: resources/assets/720x480/stills/exr/VALID_RAMPS.exr
+    source: videosynth-assets/assets/exr/720x486/VALID_RAMPS.exr
     duration_frames: 8
   - name: NtscExrVertLumaRamp
     type: progressive
-    source: resources/assets/720x480/stills/exr/VERT_LUMA_RAMP.exr
+    source: videosynth-assets/assets/exr/720x486/VERT_LUMA_RAMP.exr
     duration_frames: 8
   - name: NtscExrYCbCrRamps
     type: progressive
-    source: resources/assets/720x480/stills/exr/Y_CB_CR_RAMPS.exr
+    source: videosynth-assets/assets/exr/720x486/Y_CB_CR_RAMPS.exr
     duration_frames: 8

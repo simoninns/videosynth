@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -23,9 +24,11 @@
 #include <string>
 
 #include <OpenEXR/ImfChannelList.h>
+#include <OpenEXR/ImfFloatAttribute.h>
 #include <OpenEXR/ImfHeader.h>
 #include <OpenEXR/ImfInputFile.h>
 #include <OpenEXR/ImfIntAttribute.h>
+#include <OpenEXR/ImfRationalAttribute.h>
 #include <OpenEXR/ImfStringAttribute.h>
 
 namespace videosynth {
@@ -112,56 +115,6 @@ int ParseIntegerOrZero(const std::string& value) {
   return std::atoi(value.c_str());
 }
 
-bool ReadRequiredExrStringAttribute(const Imf::Header& header,
-                                    const char* attribute_name,
-                                    const std::string& expected_value,
-                                    std::string* error) {
-  const Imf::StringAttribute* attribute =
-      header.findTypedAttribute<Imf::StringAttribute>(attribute_name);
-  if (attribute == nullptr) {
-    if (error != nullptr) {
-      *error = std::string("Progressive EXR is missing required metadata attribute: ") +
-               attribute_name + ".";
-    }
-    return false;
-  }
-
-  if (attribute->value() != expected_value) {
-    if (error != nullptr) {
-      *error = std::string("Progressive EXR metadata attribute '") + attribute_name +
-               "' must be '" + expected_value + "'.";
-    }
-    return false;
-  }
-
-  return true;
-}
-
-bool ReadRequiredExrIntAttribute(const Imf::Header& header,
-                                 const char* attribute_name,
-                                 int expected_value,
-                                 std::string* error) {
-  const Imf::IntAttribute* attribute =
-      header.findTypedAttribute<Imf::IntAttribute>(attribute_name);
-  if (attribute == nullptr) {
-    if (error != nullptr) {
-      *error = std::string("Progressive EXR is missing required metadata attribute: ") +
-               attribute_name + ".";
-    }
-    return false;
-  }
-
-  if (attribute->value() != expected_value) {
-    if (error != nullptr) {
-      *error = std::string("Progressive EXR metadata attribute '") + attribute_name +
-               "' must be " + std::to_string(expected_value) + ".";
-    }
-    return false;
-  }
-
-  return true;
-}
-
 bool ProbeExr(const Section& section,
               ProgressiveFrameSourceProfile* out_profile,
               std::string* error) {
@@ -186,9 +139,9 @@ bool ProbeExr(const Section& section,
       return false;
     }
 
-    if (r_channel->type != Imf::HALF && r_channel->type != Imf::FLOAT) {
+    if (r_channel->type != Imf::FLOAT) {
       if (error != nullptr) {
-        *error = "Progressive EXR channels R/G/B must use HALF or FLOAT type.";
+        *error = "Progressive EXR channels R/G/B must use 32-bit FLOAT type.";
       }
       return false;
     }
@@ -197,29 +150,87 @@ bool ProbeExr(const Section& section,
     const int width = (data_window.max.x - data_window.min.x) + 1;
     const int height = (data_window.max.y - data_window.min.y) + 1;
 
-    if (!ReadRequiredExrStringAttribute(
-            header, "videosynth.source_pixel_format", "yuv422p10le", error) ||
-        !ReadRequiredExrStringAttribute(
-            header, "videosynth.source_sampling", "422_to_444_expanded", error) ||
-        !ReadRequiredExrStringAttribute(header, "videosynth.color_model", "rgb", error) ||
-        !ReadRequiredExrStringAttribute(
-            header, "videosynth.color_primaries", "bt601", error) ||
-        !ReadRequiredExrStringAttribute(header, "videosynth.transfer", "bt601", error) ||
-        !ReadRequiredExrStringAttribute(
-            header, "videosynth.matrix", "bt601_ycbcr_to_rgb", error) ||
-        !ReadRequiredExrStringAttribute(header, "videosynth.code_range", "studio", error) ||
-        !ReadRequiredExrIntAttribute(header, "videosynth.source_width", width, error) ||
-        !ReadRequiredExrIntAttribute(header, "videosynth.source_height", height, error)) {
+    const IMATH_NAMESPACE::Box2i display_window = header.displayWindow();
+    if (data_window.min.x != 0 || data_window.min.y != 0 ||
+        data_window.max.x != width - 1 || data_window.max.y != height - 1 ||
+        display_window.min.x != data_window.min.x ||
+        display_window.min.y != data_window.min.y ||
+        display_window.max.x != data_window.max.x ||
+        display_window.max.y != data_window.max.y) {
+      if (error != nullptr) {
+        *error = "Progressive EXR dataWindow/displayWindow must match full raster bounds.";
+      }
       return false;
+    }
+
+    if (header.compression() != Imf::NO_COMPRESSION) {
+      if (error != nullptr) {
+        *error = "Progressive EXR must use no compression.";
+      }
+      return false;
+    }
+
+    if (header.lineOrder() != Imf::INCREASING_Y) {
+      if (error != nullptr) {
+        *error = "Progressive EXR must use increasing-y line order.";
+      }
+      return false;
+    }
+
+    const Imf::FloatAttribute* gamma =
+        header.findTypedAttribute<Imf::FloatAttribute>("gamma");
+    if (gamma == nullptr || std::abs(gamma->value() - 1.0F) > 1.0e-6F) {
+      if (error != nullptr) {
+        *error = "Progressive EXR must define gamma metadata equal to 1.";
+      }
+      return false;
+    }
+
+    const Imf::RationalAttribute* fps =
+        header.findTypedAttribute<Imf::RationalAttribute>("framesPerSecond");
+    if (fps == nullptr) {
+      if (error != nullptr) {
+        *error = "Progressive EXR is missing framesPerSecond metadata.";
+      }
+      return false;
+    }
+
+    const auto fps_value = fps->value();
+    const bool is_pal_fps = fps_value.n == 25 && fps_value.d == 1;
+    const bool is_ntsc_fps = fps_value.n == 30000 && fps_value.d == 1001;
+    if (!is_pal_fps && !is_ntsc_fps) {
+      if (error != nullptr) {
+        *error = "Progressive EXR framesPerSecond metadata must be 25/1 or 30000/1001.";
+      }
+      return false;
+    }
+
+    const float pal_pixel_aspect = 128.0F / 117.0F;
+    const float ntsc_pixel_aspect = 108.0F / 119.0F;
+    const float pixel_aspect = header.pixelAspectRatio();
+    if (is_pal_fps) {
+      if (width != 720 || height != 576 || std::abs(pixel_aspect - pal_pixel_aspect) > 2.0e-3F) {
+        if (error != nullptr) {
+          *error = "Progressive PAL EXR profile must be 720x576 with supported PAL pixel aspect metadata.";
+        }
+        return false;
+      }
+    } else {
+      if (width != 720 || height != 486 || std::abs(pixel_aspect - ntsc_pixel_aspect) > 2.0e-3F) {
+        if (error != nullptr) {
+          *error = "Progressive NTSC EXR profile must be 720x486 with supported NTSC pixel aspect metadata.";
+        }
+        return false;
+      }
     }
 
     out_profile->container = "exr";
     out_profile->codec = "openexr";
-    out_profile->pixel_format = r_channel->type == Imf::HALF ? "rgbh" : "rgbf";
-    out_profile->bit_depth = r_channel->type == Imf::HALF ? 16 : 32;
+    out_profile->pixel_format = "rgbf";
+    out_profile->bit_depth = 32;
     out_profile->width = width;
     out_profile->height = height;
-    out_profile->frame_rate_hz = 0.0;
+    out_profile->frame_rate_hz = is_pal_fps ? 25.0 : (30000.0 / 1001.0);
     out_profile->frame_count = 1;
     return true;
   } catch (const std::exception& ex) {
@@ -237,7 +248,7 @@ bool ProbeWithFfprobe(const std::string& source,
   const std::string command =
       "ffprobe -v error -select_streams v:0 -count_frames "
       "-show_entries format=format_name "
-      "-show_entries stream=codec_name,pix_fmt,width,height,r_frame_rate,nb_read_frames,bits_per_raw_sample "
+  "-show_entries stream=codec_name,pix_fmt,width,height,r_frame_rate,nb_read_frames,bits_per_raw_sample,field_order,color_space,color_primaries,color_transfer,color_range "
       "-of default=noprint_wrappers=1:nokey=0 '" +
       escaped_source + "' 2>/dev/null";
 
@@ -269,6 +280,11 @@ bool ProbeWithFfprobe(const std::string& source,
   const std::string format_name = Lowercase(values["format_name"]);
   const std::string codec_name = Lowercase(values["codec_name"]);
   const std::string pix_fmt = Lowercase(values["pix_fmt"]);
+  const std::string field_order = Lowercase(values["field_order"]);
+  const std::string color_space = Lowercase(values["color_space"]);
+  const std::string color_primaries = Lowercase(values["color_primaries"]);
+  const std::string color_transfer = Lowercase(values["color_transfer"]);
+  const std::string color_range = Lowercase(values["color_range"]);
   const int width = ParseIntegerOrZero(values["width"]);
   const int height = ParseIntegerOrZero(values["height"]);
   const double frame_rate = ParseFrameRate(values["r_frame_rate"]);
@@ -282,6 +298,11 @@ bool ProbeWithFfprobe(const std::string& source,
   out_profile->container = format_name;
   out_profile->codec = codec_name;
   out_profile->pixel_format = pix_fmt;
+  out_profile->field_order = field_order;
+  out_profile->color_space = color_space;
+  out_profile->color_primaries = color_primaries;
+  out_profile->color_transfer = color_transfer;
+  out_profile->color_range = color_range;
   out_profile->bit_depth = bit_depth;
   out_profile->width = width;
   out_profile->height = height;
@@ -306,7 +327,7 @@ bool ProgressiveFrameSourceProbe::Probe(const Section& section,
   if (EndsWithLowercase(source, ".exr")) {
     return ProbeExr(section, out_profile, error);
   }
-  if (EndsWithLowercase(source, ".mov")) {
+  if (EndsWithLowercase(source, ".mkv")) {
     return ProbeWithFfprobe(section.source, out_profile, error);
   }
 

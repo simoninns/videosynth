@@ -34,13 +34,13 @@ bool EndsWith(const std::string& value, const std::string& suffix) {
 bool ValidateProgressiveSourceFamily(const videosynth::Section& section, std::string* error) {
   const std::string source = Lowercase(section.source);
 
-  if (EndsWith(source, ".exr") || EndsWith(source, ".mov")) {
+  if (EndsWith(source, ".exr") || EndsWith(source, ".mkv")) {
     return true;
   }
 
   if (error != nullptr) {
     *error =
-        "Unsupported progressive source family. Supported source families are EXR and MOV.";
+        "Unsupported progressive source family. Supported source families are EXR and MKV.";
   }
   return false;
 }
@@ -66,10 +66,10 @@ bool RasterMatchesStandard(int width, int height, videosynth::Standard standard)
   }
 
   if (standard == videosynth::Standard::kPal) {
-    return (width == 720 || width == 704) && height == 576;
+    return width == 720 && height == 576;
   }
   if (standard == videosynth::Standard::kNtsc) {
-    return (width == 720 || width == 704) && height == 480;
+    return width == 720 && height == 486;
   }
   return false;
 }
@@ -96,6 +96,7 @@ bool ContainsCsvToken(const std::string& csv, const std::string& token) {
 }
 
 bool ValidateProfileBySourceFamily(const videosynth::Section& section,
+                                   videosynth::Standard standard,
                                    const videosynth::ProgressiveFrameSourceProfile& profile,
                                    std::string* error) {
   const std::string source = Lowercase(section.source);
@@ -116,46 +117,101 @@ bool ValidateProfileBySourceFamily(const videosynth::Section& section,
       }
       return false;
     }
-    if (pixel_format != "rgbh" && pixel_format != "rgbf") {
+    if (pixel_format != "rgbf") {
       if (error != nullptr) {
-        *error = "Progressive EXR sections require RGB HALF or FLOAT channel profile.";
+        *error = "Progressive EXR sections require RGB FLOAT channel profile.";
       }
       return false;
     }
-    if (profile.bit_depth != 16 && profile.bit_depth != 32) {
+    if (profile.bit_depth != 32) {
       if (error != nullptr) {
-        *error = "Progressive EXR sections only support 16-bit HALF or 32-bit FLOAT channels.";
+        *error = "Progressive EXR sections only support 32-bit FLOAT channels.";
       }
       return false;
     }
     return true;
   }
 
-  if (EndsWith(source, ".mov")) {
-    if (!ContainsCsvToken(container, "mov")) {
+  if (EndsWith(source, ".mkv")) {
+    if (!ContainsCsvToken(container, "matroska")) {
       if (error != nullptr) {
-        *error = "Progressive MOV sections require a MOV container profile.";
+        *error = "Progressive MKV sections require a Matroska container profile.";
       }
       return false;
     }
-    if (codec != "v210") {
+    if (codec != "ffv1") {
       if (error != nullptr) {
-        *error = "Progressive MOV sections only support v210 video codec.";
+        *error = "Progressive MKV sections only support FFV1 video codec.";
       }
       return false;
     }
     if (pixel_format != "yuv422p10le") {
       if (error != nullptr) {
-        *error = "Progressive MOV sections only support yuv422p10le pixel format.";
+        *error = "Progressive MKV sections only support yuv422p10le pixel format.";
       }
       return false;
     }
     if (profile.bit_depth > 0 && profile.bit_depth != 10) {
       if (error != nullptr) {
-        *error = "Progressive MOV sections only support 10-bit sample depth.";
+        *error = "Progressive MKV sections only support 10-bit sample depth.";
       }
       return false;
     }
+
+    if (profile.color_space != "smpte170m") {
+      if (error != nullptr) {
+        *error = "Progressive MKV sections require smpte170m color matrix metadata.";
+      }
+      return false;
+    }
+
+    if (standard == videosynth::Standard::kPal) {
+      if (profile.field_order != "tb") {
+        if (error != nullptr) {
+          *error = "Progressive PAL MKV sections require top-field-first field order metadata (tb).";
+        }
+        return false;
+      }
+      if (profile.color_primaries != "bt470bg") {
+        if (error != nullptr) {
+          *error = "Progressive PAL MKV sections require bt470bg color primaries metadata.";
+        }
+        return false;
+      }
+      if (!(profile.color_transfer == "bt709" || profile.color_transfer == "bt470bg")) {
+        if (error != nullptr) {
+          *error = "Progressive PAL MKV sections require bt709 or bt470bg transfer metadata.";
+        }
+        return false;
+      }
+    } else if (standard == videosynth::Standard::kNtsc) {
+      if (profile.field_order != "bt") {
+        if (error != nullptr) {
+          *error = "Progressive NTSC MKV sections require bottom-field-first field order metadata (bt).";
+        }
+        return false;
+      }
+      if (profile.color_primaries != "smpte170m") {
+        if (error != nullptr) {
+          *error = "Progressive NTSC MKV sections require smpte170m color primaries metadata.";
+        }
+        return false;
+      }
+      if (!(profile.color_transfer == "bt709" || profile.color_transfer == "smpte170m")) {
+        if (error != nullptr) {
+          *error = "Progressive NTSC MKV sections require bt709 or smpte170m transfer metadata.";
+        }
+        return false;
+      }
+    }
+
+    if (!profile.color_range.empty() && profile.color_range != "tv") {
+      if (error != nullptr) {
+        *error = "Progressive MKV sections require tv color range when color_range metadata is present.";
+      }
+      return false;
+    }
+
     return true;
   }
 
@@ -345,7 +401,7 @@ ValidationResult ProjectValidator::Validate(const Project& project) {
                                    project.cvbs_presets.video_standard_preset)) {
           result.is_valid = false;
           result.errors.push_back(
-              "Progressive section validation error: source raster must be 720x576 or 704x576 for PAL, and 720x480 or 704x480 for NTSC.");
+              "Progressive section validation error: source raster must be 720x576 for PAL and 720x486 for NTSC.");
           break;
         }
 
@@ -358,7 +414,10 @@ ValidationResult ProjectValidator::Validate(const Project& project) {
         }
 
         std::string profile_error;
-        if (!ValidateProfileBySourceFamily(section, profile, &profile_error)) {
+        if (!ValidateProfileBySourceFamily(section,
+                   project.cvbs_presets.video_standard_preset,
+                   profile,
+                   &profile_error)) {
           result.is_valid = false;
           result.errors.push_back(profile_error.empty()
                                       ? "Progressive section validation error: unsupported source profile."

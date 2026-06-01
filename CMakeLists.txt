@@ -81,7 +81,7 @@ include(GoogleTest)
 gtest_discover_tests(videosynth_tests TEST_LIST videosynth_discovered_tests)
 
 set(videosynth_functional_test_patterns
-    "^FrameSourceTest\\.(DecodesProgressive|RejectsProgressive)"
+    "^FrameSourceTest\\."
     "^ProjectFixturesTest\\."
     "^GenerationStageTimingTest\\.ReportsProgressiveSourceReadError$"
     "^GenerationStageProgressiveTest\\."

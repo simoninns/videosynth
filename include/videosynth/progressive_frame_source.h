@@ -59,11 +59,11 @@ class ProgressiveFrameSource final : public IProgressiveFrameProvider {
   mutable Standard cached_exr_standard_ = Standard::kUnknown;
   mutable FrameSourceImage cached_exr_frame_;
 
-  mutable bool has_cached_mov_frames_ = false;
-  mutable std::string cached_mov_source_;
-  mutable Standard cached_mov_standard_ = Standard::kUnknown;
-  mutable bool cached_mov_is_complete_ = false;
-  mutable std::vector<FrameSourceImage> cached_mov_frames_;
+  mutable bool has_cached_mkv_frames_ = false;
+  mutable std::string cached_mkv_source_;
+  mutable Standard cached_mkv_standard_ = Standard::kUnknown;
+  mutable bool cached_mkv_is_complete_ = false;
+  mutable std::vector<FrameSourceImage> cached_mkv_frames_;
 };
 
 }  // namespace videosynth

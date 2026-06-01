@@ -94,11 +94,17 @@ int MapCompositeFixedToCode(SampleFixed composite_mv_fixed, const QuantizationPr
 }
 
 int ClampToLegalCodeRange(int mapped_code, const QuantizationProfile& profile) {
-  if (mapped_code < profile.minimum_legal_code) {
-    return profile.minimum_legal_code;
+  // Preserve sub-black (4-15) and over-white-adjacent (1020-1023 are reserved).
+  // Only clamp reserved/protected values: 0-3 (reserved low) and 1020-1023 (reserved high).
+  // Allow excursions in ranges 4-1019 to pass through (legal + sub-black).
+  constexpr int kReservedLow = 4;
+  constexpr int kReservedHigh = 1020;
+  
+  if (mapped_code < kReservedLow) {
+    return kReservedLow;  // Clamp reserved low values (0-3) to first non-reserved sub-black (4)
   }
-  if (mapped_code > profile.maximum_legal_code) {
-    return profile.maximum_legal_code;
+  if (mapped_code > kReservedHigh - 1) {
+    return kReservedHigh - 1;  // Clamp reserved high values (1020-1023) to maximum non-reserved (1019)
   }
   return mapped_code;
 }

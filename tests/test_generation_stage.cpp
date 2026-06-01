@@ -40,8 +40,8 @@ int BurstEndSamples(double sample_rate_hz) {
 std::string DefaultBarsExrPath(Standard standard) {
   return (std::filesystem::path(VIDEOSYNTH_SOURCE_DIR) /
           (standard == Standard::kPal
-               ? "resources/assets/720x576/stills/exr/100_BARS.exr"
-               : "resources/assets/720x480/stills/exr/100_BARS.exr"))
+               ? "videosynth-assets/assets/exr/720x576/100_BARS.exr"
+               : "videosynth-assets/assets/exr/720x486/100_BARS.exr"))
       .string();
 }
 
@@ -771,10 +771,10 @@ TEST(GenerationStageChromaTest, PalBurstLockedDecodeRecoversStableHueAcrossLines
   EXPECT_NEAR(WrappedPhaseDeltaAbs(decoded_hues[2], decoded_hues[3]), 0.0, 0.15);
 }
 
-TEST(GenerationStageProgressiveTest, NtscMovUsesField2DominantRowPairing) {
+TEST(GenerationStageProgressiveTest, NtscMkvUsesField2DominantRowPairing) {
   const std::string source_path =
       (std::filesystem::path(VIDEOSYNTH_SOURCE_DIR) /
-  "resources/assets/704x480/video/mov_29_97/MOVING_ZONE_2H.mov")
+  "videosynth-assets/assets/mkv/720x486/MOVING_ZONE_2H.mkv")
           .string();
 
   ProgressiveFrameSource progressive_source;

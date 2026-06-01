@@ -20,7 +20,7 @@ namespace {
 
 std::string DefaultProgressiveSourcePath() {
   return (std::filesystem::path(VIDEOSYNTH_SOURCE_DIR) /
-          "resources/assets/720x576/stills/exr/100_BARS.exr")
+          "videosynth-assets/assets/exr/720x576/100_BARS.exr")
       .string();
 }
 
@@ -302,17 +302,22 @@ TEST(ProjectValidatorTest, RejectsMissingDurationFrames) {
   EXPECT_FALSE(result.is_valid);
 }
 
-TEST(ProjectValidatorTest, AcceptsProgressiveMovWithSupportedV210Profile) {
+TEST(ProjectValidatorTest, AcceptsProgressiveMkvWithSupportedFfv1Profile) {
   Project project = MakeValidProject();
   project.cvbs_presets.video_standard_preset = Standard::kPal;
-  project.sections[0].source = CreateTemporarySourceFile("videosynth_progressive_ok.mov");
+  project.sections[0].source = CreateTemporarySourceFile("videosynth_progressive_ok.mkv");
   project.sections[0].duration_frames_all = true;
   project.sections[0].duration_frames = 0;
 
   MockProgressiveFrameSourceProbe probe;
-  probe.profile.container = "mov";
-  probe.profile.codec = "v210";
+  probe.profile.container = "matroska,webm";
+  probe.profile.codec = "ffv1";
   probe.profile.pixel_format = "yuv422p10le";
+  probe.profile.field_order = "tb";
+  probe.profile.color_space = "smpte170m";
+  probe.profile.color_primaries = "bt470bg";
+  probe.profile.color_transfer = "bt709";
+  probe.profile.color_range = "tv";
   probe.profile.bit_depth = 10;
   probe.profile.width = 720;
   probe.profile.height = 576;
@@ -328,20 +333,25 @@ TEST(ProjectValidatorTest, AcceptsProgressiveMovWithSupportedV210Profile) {
   std::filesystem::remove(project.sections[0].source);
 }
 
-TEST(ProjectValidatorTest, RejectsProgressiveMovWithUnsupportedCodecProfile) {
+TEST(ProjectValidatorTest, RejectsProgressiveMkvWithUnsupportedCodecProfile) {
   Project project = MakeValidProject();
   project.cvbs_presets.video_standard_preset = Standard::kNtsc;
-  project.sections[0].source = CreateTemporarySourceFile("videosynth_progressive_bad.mov");
+  project.sections[0].source = CreateTemporarySourceFile("videosynth_progressive_bad.mkv");
   project.sections[0].duration_frames_all = true;
   project.sections[0].duration_frames = 0;
 
   MockProgressiveFrameSourceProbe probe;
-  probe.profile.container = "mov";
+  probe.profile.container = "matroska,webm";
   probe.profile.codec = "h264";
   probe.profile.pixel_format = "yuv420p";
+  probe.profile.field_order = "bt";
+  probe.profile.color_space = "smpte170m";
+  probe.profile.color_primaries = "smpte170m";
+  probe.profile.color_transfer = "bt709";
+  probe.profile.color_range = "tv";
   probe.profile.bit_depth = 8;
-  probe.profile.width = 704;
-  probe.profile.height = 480;
+  probe.profile.width = 720;
+  probe.profile.height = 486;
   probe.profile.frame_rate_hz = 30000.0 / 1001.0;
   probe.profile.frame_count = 90;
 
@@ -391,7 +401,7 @@ TEST(ProjectValidatorTest, RejectsProgressiveExrWithUnsupportedPixelProfile) {
   probe.profile.pixel_format = "rgb24";
   probe.profile.bit_depth = 24;
   probe.profile.width = 720;
-  probe.profile.height = 480;
+  probe.profile.height = 486;
   probe.profile.frame_rate_hz = 0.0;
   probe.profile.frame_count = 1;
 
@@ -400,6 +410,93 @@ TEST(ProjectValidatorTest, RejectsProgressiveExrWithUnsupportedPixelProfile) {
 
   EXPECT_FALSE(result.is_valid);
   ASSERT_FALSE(result.errors.empty());
+
+  std::filesystem::remove(project.sections[0].source);
+}
+
+TEST(ProjectValidatorTest, RejectsUnsupportedSourceFamilyWithExpectedErrorMessage) {
+  Project project = MakeValidProject();
+  project.sections[0].source = CreateTemporarySourceFile("videosynth_progressive_bad.avi");
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_FALSE(result.is_valid);
+  ASSERT_FALSE(result.errors.empty());
+  EXPECT_EQ(result.errors[0],
+            "Unsupported progressive source family. Supported source families are EXR and MKV.");
+
+  std::filesystem::remove(project.sections[0].source);
+}
+
+TEST(ProjectValidatorTest, RejectsPalProjectWhenProgressiveRasterDoesNotMatchStandard) {
+  Project project = MakeValidProject();
+  project.cvbs_presets.video_standard_preset = Standard::kPal;
+  project.sections[0].source = CreateTemporarySourceFile("videosynth_progressive_bad_raster.exr");
+  project.sections[0].duration_frames = 1;
+
+  MockProgressiveFrameSourceProbe probe;
+  probe.profile.container = "exr";
+  probe.profile.codec = "openexr";
+  probe.profile.pixel_format = "rgbf";
+  probe.profile.bit_depth = 32;
+  probe.profile.width = 720;
+  probe.profile.height = 486;
+  probe.profile.frame_rate_hz = 0.0;
+  probe.profile.frame_count = 1;
+
+  ProjectValidator validator(&probe);
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_FALSE(result.is_valid);
+  ASSERT_FALSE(result.errors.empty());
+  EXPECT_EQ(result.errors[0],
+            "Progressive section validation error: source raster must be 720x576 for PAL and 720x486 for NTSC.");
+
+  std::filesystem::remove(project.sections[0].source);
+}
+
+TEST(ProjectValidatorTest, RejectsPalProjectWhenProgressiveFrameRateDoesNotMatchStandard) {
+  Project project = MakeValidProject();
+  project.cvbs_presets.video_standard_preset = Standard::kPal;
+  project.sections[0].source = CreateTemporarySourceFile("videosynth_progressive_bad_rate.exr");
+  project.sections[0].duration_frames = 1;
+
+  MockProgressiveFrameSourceProbe probe;
+  probe.profile.container = "exr";
+  probe.profile.codec = "openexr";
+  probe.profile.pixel_format = "rgbf";
+  probe.profile.bit_depth = 32;
+  probe.profile.width = 720;
+  probe.profile.height = 576;
+  probe.profile.frame_rate_hz = 24.0;
+  probe.profile.frame_count = 1;
+
+  ProjectValidator validator(&probe);
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_FALSE(result.is_valid);
+  ASSERT_FALSE(result.errors.empty());
+  EXPECT_EQ(result.errors[0],
+            "Progressive section validation error: source frame rate must match selected video standard.");
+
+  std::filesystem::remove(project.sections[0].source);
+}
+
+TEST(ProjectValidatorTest, PropagatesProgressiveProbeErrorMessage) {
+  Project project = MakeValidProject();
+  project.sections[0].source = CreateTemporarySourceFile("videosynth_progressive_probe_error.mkv");
+
+  MockProgressiveFrameSourceProbe probe;
+  probe.should_succeed = false;
+  probe.error_message = "Phase1 probe failure test message.";
+
+  ProjectValidator validator(&probe);
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_FALSE(result.is_valid);
+  ASSERT_FALSE(result.errors.empty());
+  EXPECT_EQ(result.errors[0], "Phase1 probe failure test message.");
 
   std::filesystem::remove(project.sections[0].source);
 }
