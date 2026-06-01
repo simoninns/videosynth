@@ -4,3 +4,6 @@
 [submodule "docs/analogue-video-specifications"]
 	path = docs/analogue-video-specifications
 	url = https://github.com/simoninns/analogue-video-specifications
+[submodule "videosynth-assets"]
+	path = videosynth-assets
+	url = https://github.com/simoninns/videosynth-assets
