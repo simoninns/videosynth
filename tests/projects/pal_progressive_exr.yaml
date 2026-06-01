@@ -73,6 +73,10 @@ sections:
     type: progressive
     source: videosynth-assets/assets/exr/720x576/SMPTE_BARS.exr
     duration_frames: 8
+  - name: PalExrTestcardF
+    type: progressive
+    source: videosynth-assets/assets/exr/720x576/TESTCARD-F.exr
+    duration_frames: 8
   - name: PalExrTartan
     type: progressive
     source: videosynth-assets/assets/exr/720x576/TARTAN.exr
