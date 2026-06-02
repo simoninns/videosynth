@@ -65,6 +65,9 @@ add_executable(videosynth_tests
     tests/test_project_validator.cpp
     tests/test_vits_generator_primitives.cpp
     tests/test_vits_definition_provider.cpp
+    tests/test_vits_generator_pal.cpp
+    tests/test_vits_generator_ntsc.cpp
+    tests/test_line_injection_vits_integration.cpp
     tests/test_yaml_project_parser.cpp
     tests/test_timing_constants.cpp
 )
@@ -107,6 +110,9 @@ set(videosynth_unit_test_patterns
     "^SignalLevelsTest\\."
     "^VitsDefinitionProviderTest\\."
     "^VitsGeneratorTest\\."
+    "^VitsGeneratorPalTest\\."
+    "^VitsGeneratorNtscTest\\."
+    "^LineInjectionVitsIntegrationTest\\."
 )
 
 set(videosynth_test_label_script "set(videosynth_functional_test_patterns\n")
