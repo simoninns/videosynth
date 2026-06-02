@@ -43,17 +43,17 @@ namespace ImathNs = IMATH_NAMESPACE;
 
 constexpr int kPalWidth = 720;
 constexpr int kPalHeight = 576;
-constexpr int kPalActiveX = 9;
+constexpr int kPalActiveX = 0;
 constexpr int kPalActiveY = 0;
-constexpr int kPalActiveWidth = 702;
+constexpr int kPalActiveWidth = 720;
 constexpr int kPalActiveHeight = 576;
 
 constexpr int kNtscWidth = 720;
 constexpr int kNtscHeight = 486;
-constexpr int kNtscActiveX = 4;
-constexpr int kNtscActiveY = 3;
-constexpr int kNtscActiveWidth = 711;
-constexpr int kNtscActiveHeight = 480;
+constexpr int kNtscActiveX = 0;
+constexpr int kNtscActiveY = 0;
+constexpr int kNtscActiveWidth = 720;
+constexpr int kNtscActiveHeight = 486;
 
 int ClampCode(int code, int lo, int hi) {
   return std::max(lo, std::min(code, hi));
@@ -206,6 +206,7 @@ bool ValidateMkvProfileWithFfprobe(const std::string& source,
       "ffprobe -v error -select_streams v:0 "
       "-show_entries format=format_name "
       "-show_entries stream=codec_name,pix_fmt,width,height,r_frame_rate,bits_per_raw_sample,field_order,color_space,color_primaries,color_transfer,color_range,sample_aspect_ratio "
+      "-show_entries stream_side_data=crop_left,crop_right,crop_top,crop_bottom "
       "-of default=noprint_wrappers=1:nokey=0 '" +
       escaped_source + "' 2>/dev/null";
 
@@ -246,6 +247,10 @@ bool ValidateMkvProfileWithFfprobe(const std::string& source,
   const std::string color_transfer = values["color_transfer"];
   const std::string color_range = values["color_range"];
   const double sample_aspect_ratio = ParseRatio(values["sample_aspect_ratio"]);
+  const int crop_left = ParseIntegerOrZero(values["crop_left"]);
+  const int crop_right = ParseIntegerOrZero(values["crop_right"]);
+  const int crop_top = ParseIntegerOrZero(values["crop_top"]);
+  const int crop_bottom = ParseIntegerOrZero(values["crop_bottom"]);
 
   if (!ContainsCsvToken(format_name, "matroska")) {
     if (error != nullptr) {
@@ -286,6 +291,13 @@ bool ValidateMkvProfileWithFfprobe(const std::string& source,
   if (!color_range.empty() && color_range != "unknown" && color_range != "tv") {
     if (error != nullptr) {
       *error = "Progressive MKV sections require tv or unknown color range metadata.";
+    }
+    return false;
+  }
+
+  if (crop_left != 0 || crop_right != 0 || crop_top != 0 || crop_bottom != 0) {
+    if (error != nullptr) {
+      *error = "Progressive MKV sections must not include stream crop metadata.";
     }
     return false;
   }

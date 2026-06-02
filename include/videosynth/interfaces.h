@@ -59,6 +59,11 @@ struct ProgressiveFrameSourceProfile {
   int bit_depth = 0;
   int width = 0;
   int height = 0;
+  double sample_aspect_ratio = 0.0;
+  int crop_left = 0;
+  int crop_right = 0;
+  int crop_top = 0;
+  int crop_bottom = 0;
   double frame_rate_hz = 0.0;
   int frame_count = 0;
 };

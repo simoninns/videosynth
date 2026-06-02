@@ -108,6 +108,26 @@ double ParseFrameRate(const std::string& rate_text) {
   return numerator / denominator;
 }
 
+double ParseRatio(const std::string& ratio_text) {
+  if (ratio_text.empty() || ratio_text == "N/A" || ratio_text == "0:1") {
+    return 0.0;
+  }
+
+  const std::size_t colon_pos = ratio_text.find(':');
+  if (colon_pos == std::string::npos) {
+    return std::atof(ratio_text.c_str());
+  }
+
+  const std::string numerator_text = ratio_text.substr(0, colon_pos);
+  const std::string denominator_text = ratio_text.substr(colon_pos + 1);
+  const double numerator = std::atof(numerator_text.c_str());
+  const double denominator = std::atof(denominator_text.c_str());
+  if (denominator == 0.0) {
+    return 0.0;
+  }
+  return numerator / denominator;
+}
+
 int ParseIntegerOrZero(const std::string& value) {
   if (value.empty() || value == "N/A") {
     return 0;
@@ -248,7 +268,8 @@ bool ProbeWithFfprobe(const std::string& source,
   const std::string command =
       "ffprobe -v error -select_streams v:0 -count_frames "
       "-show_entries format=format_name "
-  "-show_entries stream=codec_name,pix_fmt,width,height,r_frame_rate,nb_read_frames,bits_per_raw_sample,field_order,color_space,color_primaries,color_transfer,color_range "
+      "-show_entries stream=codec_name,pix_fmt,width,height,r_frame_rate,nb_read_frames,bits_per_raw_sample,field_order,color_space,color_primaries,color_transfer,color_range,sample_aspect_ratio "
+      "-show_entries stream_side_data=crop_left,crop_right,crop_top,crop_bottom "
       "-of default=noprint_wrappers=1:nokey=0 '" +
       escaped_source + "' 2>/dev/null";
 
@@ -285,10 +306,15 @@ bool ProbeWithFfprobe(const std::string& source,
   const std::string color_primaries = Lowercase(values["color_primaries"]);
   const std::string color_transfer = Lowercase(values["color_transfer"]);
   const std::string color_range = Lowercase(values["color_range"]);
+  const double sample_aspect_ratio = ParseRatio(values["sample_aspect_ratio"]);
   const int width = ParseIntegerOrZero(values["width"]);
   const int height = ParseIntegerOrZero(values["height"]);
   const double frame_rate = ParseFrameRate(values["r_frame_rate"]);
   const int frame_count = ParseIntegerOrZero(values["nb_read_frames"]);
+  const int crop_left = ParseIntegerOrZero(values["crop_left"]);
+  const int crop_right = ParseIntegerOrZero(values["crop_right"]);
+  const int crop_top = ParseIntegerOrZero(values["crop_top"]);
+  const int crop_bottom = ParseIntegerOrZero(values["crop_bottom"]);
 
   int bit_depth = ParseIntegerOrZero(values["bits_per_raw_sample"]);
   if (bit_depth == 0 && pix_fmt == "yuv420p") {
@@ -306,6 +332,11 @@ bool ProbeWithFfprobe(const std::string& source,
   out_profile->bit_depth = bit_depth;
   out_profile->width = width;
   out_profile->height = height;
+  out_profile->sample_aspect_ratio = sample_aspect_ratio;
+  out_profile->crop_left = crop_left;
+  out_profile->crop_right = crop_right;
+  out_profile->crop_top = crop_top;
+  out_profile->crop_bottom = crop_bottom;
   out_profile->frame_rate_hz = frame_rate;
   out_profile->frame_count = frame_count;
   return true;

@@ -49,9 +49,13 @@ TEST(FrameSourceTest, DecodesProgressivePalExrSource) {
   EXPECT_TRUE(error.empty());
   EXPECT_EQ(image.width, 720);
   EXPECT_EQ(image.height, 576);
-  EXPECT_EQ(image.active_x, 9);
-  EXPECT_EQ(image.active_width, 702);
-  EXPECT_NE(image.PixelAt(image.active_x, image.active_y).y, 64);
+  EXPECT_EQ(image.active_x, 0);
+  EXPECT_EQ(image.active_y, 0);
+  EXPECT_EQ(image.active_width, 720);
+  EXPECT_EQ(image.active_height, 576);
+  const std::size_t center_x = image.active_x + (image.active_width / 2);
+  const std::size_t center_y = image.active_y + (image.active_height / 2);
+  EXPECT_NE(image.PixelAt(center_x, center_y).y, 64);
 }
 
 TEST(FrameSourceTest, DecodesProgressiveNtscExrSource) {
@@ -70,9 +74,10 @@ TEST(FrameSourceTest, DecodesProgressiveNtscExrSource) {
   EXPECT_TRUE(error.empty());
   EXPECT_EQ(image.width, 720);
   EXPECT_EQ(image.height, 486);
-  EXPECT_EQ(image.active_x, 4);
-  EXPECT_EQ(image.active_y, 3);
-  EXPECT_EQ(image.active_width, 711);
+  EXPECT_EQ(image.active_x, 0);
+  EXPECT_EQ(image.active_y, 0);
+  EXPECT_EQ(image.active_width, 720);
+  EXPECT_EQ(image.active_height, 486);
   const std::size_t center_x = image.active_x + (image.active_width / 2);
   const std::size_t center_y = image.active_y + (image.active_height / 2);
   EXPECT_NE(image.PixelAt(center_x, center_y).y, 64);
@@ -114,8 +119,10 @@ TEST(FrameSourceTest, DecodesProgressivePalMkvSourceFrames) {
   ASSERT_TRUE(frame_source.GenerateFrame(section, 0, Standard::kPal, &first_frame, &error));
   EXPECT_EQ(first_frame.width, 720);
   EXPECT_EQ(first_frame.height, 576);
-  EXPECT_EQ(first_frame.active_x, 9);
-  EXPECT_EQ(first_frame.active_width, 702);
+  EXPECT_EQ(first_frame.active_x, 0);
+  EXPECT_EQ(first_frame.active_y, 0);
+  EXPECT_EQ(first_frame.active_width, 720);
+  EXPECT_EQ(first_frame.active_height, 576);
 }
 
 TEST(FrameSourceTest, DecodesProgressiveNtscMkvSourceFrames) {
@@ -137,13 +144,14 @@ TEST(FrameSourceTest, DecodesProgressiveNtscMkvSourceFrames) {
   ASSERT_TRUE(frame_source.GenerateFrame(section, 0, Standard::kNtsc, &first_frame, &error));
   EXPECT_EQ(first_frame.width, 720);
   EXPECT_EQ(first_frame.height, 486);
-  EXPECT_EQ(first_frame.active_x, 4);
-  EXPECT_EQ(first_frame.active_y, 3);
-  EXPECT_EQ(first_frame.active_width, 711);
-  EXPECT_NE(first_frame.PixelAt(0, 3).y, first_frame.PixelAt(8, 3).y);
+  EXPECT_EQ(first_frame.active_x, 0);
+  EXPECT_EQ(first_frame.active_y, 0);
+  EXPECT_EQ(first_frame.active_width, 720);
+  EXPECT_EQ(first_frame.active_height, 486);
+  EXPECT_NE(first_frame.PixelAt(0, 0).y, first_frame.PixelAt(8, 0).y);
 }
 
-TEST(FrameSourceTest, NtscMkvUsesExpectedActiveWindowPlacement) {
+TEST(FrameSourceTest, NtscMkvPreservesFullRasterActiveGeometry) {
   ProgressiveFrameSource frame_source;
   std::string error;
 
@@ -160,11 +168,10 @@ TEST(FrameSourceTest, NtscMkvUsesExpectedActiveWindowPlacement) {
 
   EXPECT_EQ(frame.width, 720);
   EXPECT_EQ(frame.height, 486);
-  EXPECT_EQ(frame.active_x, 4);
-  EXPECT_EQ(frame.active_width, 711);
-  EXPECT_EQ(frame.active_y, 3);
-  EXPECT_EQ(frame.active_height, 480);
-  EXPECT_EQ(frame.active_y, (frame.height - frame.active_height) / 2);
+  EXPECT_EQ(frame.active_x, 0);
+  EXPECT_EQ(frame.active_width, 720);
+  EXPECT_EQ(frame.active_y, 0);
+  EXPECT_EQ(frame.active_height, 486);
 }
 
 TEST(FrameSourceTest, PalAndNtscMkvDecodedPixelsStayWithinStudioCodeRange) {

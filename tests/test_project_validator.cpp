@@ -333,6 +333,73 @@ TEST(ProjectValidatorTest, AcceptsProgressiveMkvWithSupportedFfv1Profile) {
   std::filesystem::remove(project.sections[0].source);
 }
 
+TEST(ProjectValidatorTest, RejectsProgressiveMkvWithMismatchedSampleAspectMetadata) {
+  Project project = MakeValidProject();
+  project.cvbs_presets.video_standard_preset = Standard::kNtsc;
+  project.sections[0].source = CreateTemporarySourceFile("videosynth_progressive_bad_sar.mkv");
+  project.sections[0].duration_frames_all = true;
+  project.sections[0].duration_frames = 0;
+
+  MockProgressiveFrameSourceProbe probe;
+  probe.profile.container = "matroska,webm";
+  probe.profile.codec = "ffv1";
+  probe.profile.pixel_format = "yuv422p10le";
+  probe.profile.field_order = "bt";
+  probe.profile.color_space = "smpte170m";
+  probe.profile.color_primaries = "smpte170m";
+  probe.profile.color_transfer = "bt709";
+  probe.profile.color_range = "tv";
+  probe.profile.bit_depth = 10;
+  probe.profile.width = 720;
+  probe.profile.height = 486;
+  probe.profile.sample_aspect_ratio = 1.0;
+  probe.profile.frame_rate_hz = 30000.0 / 1001.0;
+  probe.profile.frame_count = 90;
+
+  ProjectValidator validator(&probe);
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_FALSE(result.is_valid);
+  ASSERT_FALSE(result.errors.empty());
+  EXPECT_NE(result.errors[0].find("sample-aspect"), std::string::npos);
+
+  std::filesystem::remove(project.sections[0].source);
+}
+
+TEST(ProjectValidatorTest, RejectsProgressiveMkvWithStreamCropMetadata) {
+  Project project = MakeValidProject();
+  project.cvbs_presets.video_standard_preset = Standard::kPal;
+  project.sections[0].source = CreateTemporarySourceFile("videosynth_progressive_bad_crop.mkv");
+  project.sections[0].duration_frames_all = true;
+  project.sections[0].duration_frames = 0;
+
+  MockProgressiveFrameSourceProbe probe;
+  probe.profile.container = "matroska,webm";
+  probe.profile.codec = "ffv1";
+  probe.profile.pixel_format = "yuv422p10le";
+  probe.profile.field_order = "tb";
+  probe.profile.color_space = "smpte170m";
+  probe.profile.color_primaries = "bt470bg";
+  probe.profile.color_transfer = "bt709";
+  probe.profile.color_range = "tv";
+  probe.profile.bit_depth = 10;
+  probe.profile.width = 720;
+  probe.profile.height = 576;
+  probe.profile.sample_aspect_ratio = 128.0 / 117.0;
+  probe.profile.crop_left = 1;
+  probe.profile.frame_rate_hz = 25.0;
+  probe.profile.frame_count = 120;
+
+  ProjectValidator validator(&probe);
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_FALSE(result.is_valid);
+  ASSERT_FALSE(result.errors.empty());
+  EXPECT_NE(result.errors[0].find("crop metadata"), std::string::npos);
+
+  std::filesystem::remove(project.sections[0].source);
+}
+
 TEST(ProjectValidatorTest, RejectsProgressiveMkvWithUnsupportedCodecProfile) {
   Project project = MakeValidProject();
   project.cvbs_presets.video_standard_preset = Standard::kNtsc;

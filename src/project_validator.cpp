@@ -95,6 +95,21 @@ bool ContainsCsvToken(const std::string& csv, const std::string& token) {
   return false;
 }
 
+bool SampleAspectMatchesStandard(double sample_aspect_ratio,
+                                 videosynth::Standard standard) {
+  if (sample_aspect_ratio <= 0.0) {
+    return true;
+  }
+
+  if (standard == videosynth::Standard::kPal) {
+    return std::abs(sample_aspect_ratio - (128.0 / 117.0)) <= 2.0e-3;
+  }
+  if (standard == videosynth::Standard::kNtsc) {
+    return std::abs(sample_aspect_ratio - (108.0 / 119.0)) <= 2.0e-3;
+  }
+  return false;
+}
+
 bool ValidateProfileBySourceFamily(const videosynth::Section& section,
                                    videosynth::Standard standard,
                                    const videosynth::ProgressiveFrameSourceProfile& profile,
@@ -208,6 +223,21 @@ bool ValidateProfileBySourceFamily(const videosynth::Section& section,
     if (!profile.color_range.empty() && profile.color_range != "tv") {
       if (error != nullptr) {
         *error = "Progressive MKV sections require tv color range when color_range metadata is present.";
+      }
+      return false;
+    }
+
+    if (!SampleAspectMatchesStandard(profile.sample_aspect_ratio, standard)) {
+      if (error != nullptr) {
+        *error = "Progressive MKV sections require BT.601 sample-aspect metadata for the selected standard.";
+      }
+      return false;
+    }
+
+    if (profile.crop_left != 0 || profile.crop_right != 0 ||
+        profile.crop_top != 0 || profile.crop_bottom != 0) {
+      if (error != nullptr) {
+        *error = "Progressive MKV sections must not include stream crop metadata.";
       }
       return false;
     }

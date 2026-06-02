@@ -196,24 +196,30 @@ For avoidance of doubt, the generator shall apply the following rules:
 - **PAL active-picture line starts (1-indexed frame lines):** field 1 starts at line **23**; field 2 starts at line **335**.
 - **Progressive-to-interlaced row mapping:** for a field-local active line index $n$ (starting at 0), field 1 samples source row $2n+1$ and field 2 samples source row $2n$.
 
-Frame-source visible aperture contract:
+Frame-source raster preservation contract (normative):
 
 - Progressive file sources must be `720x576` for PAL or `720x486` for NTSC.
 - The internal frame-source working raster remains fixed at `720x576` for PAL and `720x486` for NTSC.
-- Ingestion must not apply decode-time scale filters, ad-hoc crop filters, or implicit aspect-ratio remapping.
-- Only the visible active aperture may carry picture content. Pixels outside that aperture must remain nominal black and must not be modified by progressive-source ingestion.
-- PAL aperture derivation:
+- Asset compliance for progressive sources is defined by [EXR BT.601 Compliance Requirements](../../videosynth-assets/docs/exr-bt601-compliance-requirements.md) and [MKV BT.601 Compliance Requirements](../../videosynth-assets/docs/mkv-bt601-compliance-requirements.md). Section 8.1 is required to stay aligned with those documents.
+- Progressive ingestion is strict passthrough in raster geometry: no decode-time scaling, no resampling, no implicit aspect-ratio remapping, no horizontal crop, no vertical crop, and no implicit active-window extraction.
+- The full source raster is preserved sample-for-sample at ingestion, including BT.601-related horizontal placement and padding semantics.
+- For avoidance of doubt, this includes preserving all progressive source lines (`576` for PAL, `486` for NTSC) and preserving line width at `720` samples.
+- Normative progressive-source profile expectations for the preserved `720`-sample line are:
+  - **PAL (`720x576`)**: expected sample-aspect ratio is **`128:117`**; expected horizontal digital padding model is **`8-704-8`**.
+  - **NTSC (`720x486`)**: expected sample-aspect ratio is **`108:119`**; expected horizontal digital padding model is **`8-704-8`**.
+  - These are source-profile expectations, not runtime crop/remap instructions. Runtime ingestion preserves the input raster and padding layout exactly as delivered when the source passes profile validation.
+- PAL analogue reference derivation (timing interpretation only; not an ingestion crop rule):
   - ITU-R BT.1700 Table 1 item `1a`: `576` active lines.
   - ITU-R BT.1700 Table 2: `64.0 us` line period and `12.0 us` line blanking, giving `52.0 us` analogue active line duration.
   - Under the shared ITU-R BT.601 `13.5 MHz` digital sampling model, `52.0 us * 13.5 MHz = 702` visible pixels.
   - The `720`-sample frame-source raster therefore has `18` non-visible horizontal samples, which split evenly into `9` samples of left margin and `9` samples of right margin.
   - The PAL frame-source visible aperture is therefore a centered `702x576` region at `x=9..710`, `y=0..575`.
-- NTSC aperture derivation:
+- NTSC analogue reference derivation (timing interpretation only; not an ingestion crop rule):
   - SMPTE 170M-2004 analogue timing yields an active picture interval of approximately `52.666 us`.
   - Under the shared ITU-R BT.601 `13.5 MHz` digital sampling model, `52.666 us * 13.5 MHz = 711` visible pixels.
   - The `720`-sample frame-source raster therefore has `9` non-visible horizontal samples. Because that remainder is odd, the nearest centered integer placement is `4` samples of left margin and `5` samples of right margin.
-  - The NTSC frame-source visible aperture is therefore a near-centered `711x480` region at `x=4..714`, `y=3..482` within the `720x486` source raster.
-  - The analogue standard defines `483` active lines; VideoSynth frame-based sources expose the central `480` fully active lines and preserve the three transition lines as non-addressable for progressive content.
+  - The NTSC frame-source timing model yields a near-centered `711`-sample horizontal active interpretation at `x=4..714` within the `720`-sample source raster.
+  - Progressive ingestion still preserves the full `720x486` source raster and does not crop any source lines.
 
 ### **Progressive Horizontal Mapping to 4fsc Active Samples (Normative)**
 
@@ -805,6 +811,7 @@ Container names alone are not sufficient for validation; source files must match
 
 - **MKV video**: Matroska container with `ffv1` video, `yuv422p10le`, standard-matching raster and frame rate (`720x576@25` PAL or `720x486@30000/1001` NTSC), and standard-matching SD field-order/color metadata.
 - **EXR still image**: Single-frame OpenEXR scanline input with `R/G/B` channels in `FLOAT` (32-bit), no compression, full-raster data/display windows, standard-matching frame-rate metadata (`25/1` PAL or `30000/1001` NTSC), and matching pixel-aspect metadata.
+- **BT.601 source-content compliance (required)**: accepted MKV and EXR assets must satisfy the source-content constraints documented in [MKV BT.601 Compliance Requirements](../../videosynth-assets/docs/mkv-bt601-compliance-requirements.md) and [EXR BT.601 Compliance Requirements](../../videosynth-assets/docs/exr-bt601-compliance-requirements.md), including sampling model interpretation, active-window placement, and padding expectations for the applicable profile.
 
 Any other codec, chroma format, bit depth, or packing is outside scope and must fail validation.
 
@@ -824,6 +831,7 @@ Any other codec, chroma format, bit depth, or packing is outside scope and must 
 
 - **Colour Space**: Source data is converted into 10-bit 4:4:4 YCbCr BT.601 studio swing at ingestion.
 - **Frame Rate**: **Fixed by the output standard** (25 fps for PAL, ~29.97 fps for NTSC). Input sources **must match** this frame rate.
+- **BT.601 content requirement**: BT.601 compliance is a source-content requirement, not only a container/metadata requirement. Source picture data must already be BT.601-consistent for its profile before ingestion.
 - **10-bit studio-range preservation**:
   - MKV and EXR supported profiles must preserve studio-domain sub-black and over-white excursions when present.
 
@@ -833,6 +841,10 @@ Any other codec, chroma format, bit depth, or packing is outside scope and must 
 - NTSC progressive sources: `720x486`.
 - Scaling or resampling is **not supported** for progressive-source ingestion. Sources must already be in one of the accepted dimensions.
 - Ingestion is fail-closed on unsupported or ambiguous rasters; there is no 704-width normalization path.
+- Ingestion must not crop active-picture samples, must not crop source lines, and must not rewrite horizontal padding layout. The full source raster (`720x576` or `720x486`) is preserved through ingestion.
+- Expected source-profile SAR and horizontal padding semantics for accepted progressive rasters are:
+  - PAL `720x576`: SAR `128:117`, padding `8-704-8`.
+  - NTSC `720x486`: SAR `108:119`, padding `8-704-8`.
 
 ##### **Example**
 
@@ -1189,9 +1201,9 @@ When ingesting a progressive source, the generator splits each progressive frame
   - **PAL Example (720×576 progressive source)**:
     - Field 1: source lines 1, 3, 5, ..., 575 → 288 lines.
     - Field 2: source lines 2, 4, 6, ..., 576 → 288 lines.
-  - **NTSC Example (720×480 progressive source)**:
-    - Field 1: source lines 1, 3, 5, ..., 479 → 240 lines.
-    - Field 2: source lines 2, 4, 6, ..., 480 → 240 lines.
+  - **NTSC Example (720×486 progressive source)**:
+    - Field 1: source lines 1, 3, 5, ..., 485 → 243 lines.
+    - Field 2: source lines 2, 4, 6, ..., 486 → 243 lines.
 2. **Field Order**:
   - **PAL**: Field 1 is always written first, then Field 2.
   - **NTSC**: Field 1 is written first, then Field 2 (native 29.97 fps sources).
@@ -1396,6 +1408,7 @@ The runtime uses a **central pipeline module** to process sections and combine t
 - Parse the YAML file and validate all fields.
 - In the current runtime, validate the implemented subset of fields and constraints only.
 - Ensure the selected `signal_state_preset` denotes locked operation when using a 4fsc `sample_encoding_preset`.
+- For progressive assets, enforce source-profile and BT.601 source-content compliance requirements defined in [Section 8.1](#81-frame-based-sections) and the referenced asset-spec documents.
 - **Fail validation if any errors are found.**
 
 #### **2. Generation Stage**
@@ -1404,7 +1417,8 @@ The runtime uses a **central pipeline module** to process sections and combine t
 - **Output**: `4fsc`-discrete fixed-point representations of **luma (Y)** and **chroma (C)** signals.
 - **Steps**:
   1. For each section:
-    - Generate the **frame-based content** (`progressive`).
+    - Generate the **frame-based content** (`progressive`) from source data that already satisfies BT.601 source-content constraints.
+    - Preserve source raster geometry during ingestion (no scaling, no resampling, and no crop of samples or lines).
     - For each frame in the section:
       - Insert **sync pulses** and **colour burst** (see [ITU-R BT.470-6](../analogue-video-specifications/docs/video_formats/BT-470-6-1998/BT-470-6-1998.md), [ITU-R BT.1700](../analogue-video-specifications/docs/video_formats/BT-1700-E/BT-1700-E.md)).
       - Apply **ramping and transition smoothing** to simulate analogue behavior (see [ITU-R BT.470-6](../analogue-video-specifications/docs/video_formats/BT-470-6-1998/BT-470-6-1998.md) for ramping requirements).
@@ -1494,8 +1508,10 @@ The full rule set below therefore remains the intended validation contract for l
   - For `progressive` sections, `source` must point to a valid file.
   - **Input source frame rate must match the required output format (including MKV sources)**.
   - **Progressive source must match a supported source profile (container + codec + pixel format/bit depth as applicable)**.
+  - **Progressive source content must satisfy the BT.601 source-content requirements defined by the referenced asset specifications in Section 8.1 (including active-window placement/padding semantics for the applicable profile).**
   - **Progressive source dimensions must be PAL: `720x576`; NTSC: `720x486`**.
   - **Scaling/resizing of progressive sources is not supported**.
+  - **Ingestion must preserve the full source raster geometry (`720x576` or `720x486`) with no horizontal crop, no vertical crop, and no sample-rate conversion.**
   - **Ingestion must not apply implicit width normalization or ad-hoc crop/remap operations**.
 3. **Line Injection Constraints**:
   - `target_lines` must be within the valid range for the standard (1-625 for PAL, 1-525 for NTSC).
