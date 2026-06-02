@@ -217,11 +217,25 @@ TEST(ProjectValidatorTest, RejectsNtscLaserdiscVbiBurstAsDeferredFeature) {
             "MVP constraint violation: ntsc_laserdisc_vbi_burst is parsed but not implemented in the current runtime.");
 }
 
-TEST(ProjectValidatorTest, RejectsLineInjectionsAsDeferredFeature) {
+TEST(ProjectValidatorTest, AcceptsVitsLineInjectionsForImplementedRuntimePath) {
   Project project = MakeValidProject();
   Section::LineInjection injection;
   injection.type = "vits";
-  injection.target_lines = {19};
+  injection.target_lines = {17};
+  injection.vits_type = "vits17";
+  project.sections[0].line_injections.push_back(injection);
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_TRUE(result.is_valid);
+  EXPECT_TRUE(result.errors.empty());
+}
+
+TEST(ProjectValidatorTest, RejectsUnimplementedLaserdiscLineInjectionType) {
+  Project project = MakeValidProject();
+  Section::LineInjection injection;
+  injection.type = "laserdisc";
   project.sections[0].line_injections.push_back(injection);
 
   ProjectValidator validator;
@@ -230,7 +244,157 @@ TEST(ProjectValidatorTest, RejectsLineInjectionsAsDeferredFeature) {
   EXPECT_FALSE(result.is_valid);
   ASSERT_EQ(result.errors.size(), 1U);
   EXPECT_EQ(result.errors[0],
-            "MVP constraint violation: line_injections are parsed but not implemented in the current runtime.");
+            "MVP constraint violation: line injection type 'laserdisc' is not implemented in the current runtime.");
+}
+
+TEST(ProjectValidatorTest, RejectsVitsInjectionWithoutTargetLines) {
+  Project project = MakeValidProject();
+  Section::LineInjection injection;
+  injection.type = "vits";
+  injection.vits_type = "vits17";
+  project.sections[0].line_injections.push_back(injection);
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_FALSE(result.is_valid);
+  ASSERT_FALSE(result.errors.empty());
+  EXPECT_EQ(result.errors[0],
+            "Line injection validation error: target_lines must be provided and non-empty for injection type 'vits'.");
+}
+
+TEST(ProjectValidatorTest, RejectsVitsTypeThatDoesNotMatchProjectStandard) {
+  Project project = MakeValidProject();
+  Section::LineInjection injection;
+  injection.type = "vits";
+  injection.target_lines = {17};
+  injection.vits_type = "ntc7-composite";
+  project.sections[0].line_injections.push_back(injection);
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_FALSE(result.is_valid);
+  ASSERT_FALSE(result.errors.empty());
+  EXPECT_EQ(result.errors[0],
+            "Line injection validation error: Unsupported vits_type 'ntc7-composite' for standard 'PAL'.");
+}
+
+TEST(ProjectValidatorTest, RejectsVitsTargetLineOutsideStandardRange) {
+  Project project = MakeValidProject();
+  Section::LineInjection injection;
+  injection.type = "vits";
+  injection.target_lines = {626};
+  injection.vits_type = "vits17";
+  project.sections[0].line_injections.push_back(injection);
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_FALSE(result.is_valid);
+  ASSERT_FALSE(result.errors.empty());
+  EXPECT_EQ(result.errors[0],
+            "Line injection validation error: target line 626 is outside the valid frame-line range for PAL.");
+}
+
+TEST(ProjectValidatorTest, RejectsVitsTypeOnNonRecommendedLine) {
+  Project project = MakeValidProject();
+  Section::LineInjection injection;
+  injection.type = "vits";
+  injection.target_lines = {19};
+  injection.vits_type = "vits17";
+  project.sections[0].line_injections.push_back(injection);
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_FALSE(result.is_valid);
+  ASSERT_FALSE(result.errors.empty());
+  EXPECT_EQ(result.errors[0],
+            "Line injection validation error: vits_type 'vits17' must target frame line 17 for PAL.");
+}
+
+TEST(ProjectValidatorTest, RejectsOverlappingTargetLinesAcrossInjections) {
+  Project project = MakeValidProject();
+
+  Section::LineInjection first;
+  first.type = "vits";
+  first.target_lines = {17};
+  first.vits_type = "vits17";
+  project.sections[0].line_injections.push_back(first);
+
+  Section::LineInjection second;
+  second.type = "vitc";
+  second.target_lines = {17};
+  project.sections[0].line_injections.push_back(second);
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_FALSE(result.is_valid);
+  ASSERT_FALSE(result.errors.empty());
+  EXPECT_EQ(result.errors[0],
+            "Line injection validation error: overlapping target line 17 within the same section.");
+}
+
+TEST(ProjectValidatorTest, RejectsLaserdiscInjectionWithExplicitTargetLines) {
+  Project project = MakeValidProject();
+
+  Section::LineInjection injection;
+  injection.type = "laserdisc";
+  injection.target_lines = {16};
+  project.sections[0].line_injections.push_back(injection);
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_FALSE(result.is_valid);
+  ASSERT_FALSE(result.errors.empty());
+  EXPECT_EQ(result.errors[0],
+            "Line injection validation error: target_lines must not be specified for laserdisc injections.");
+}
+
+TEST(ProjectValidatorTest, RejectsLaserdiscAndVitcInSameSection) {
+  Project project = MakeValidProject();
+
+  Section::LineInjection laserdisc;
+  laserdisc.type = "laserdisc";
+  project.sections[0].line_injections.push_back(laserdisc);
+
+  Section::LineInjection vitc;
+  vitc.type = "vitc";
+  vitc.target_lines = {21};
+  project.sections[0].line_injections.push_back(vitc);
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_FALSE(result.is_valid);
+  ASSERT_FALSE(result.errors.empty());
+  EXPECT_EQ(result.errors[0],
+            "Line injection validation error: vitc and laserdisc injections cannot appear in the same section.");
+}
+
+TEST(ProjectValidatorTest, RejectsLinesInLaserdiscReservedRangesWhenLaserdiscIsActive) {
+  Project project = MakeValidProject();
+
+  Section::LineInjection laserdisc;
+  laserdisc.type = "laserdisc";
+  project.sections[0].line_injections.push_back(laserdisc);
+
+  Section::LineInjection vits;
+  vits.type = "vits";
+  vits.target_lines = {17};
+  vits.vits_type = "vits17";
+  project.sections[0].line_injections.push_back(vits);
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_FALSE(result.is_valid);
+  ASSERT_FALSE(result.errors.empty());
+  EXPECT_EQ(result.errors[0],
+            "Line injection validation error: target line 17 conflicts with laserdisc reserved VBI ranges for PAL.");
 }
 
 TEST(ProjectValidatorTest, RejectsUnsupportedSectionType) {

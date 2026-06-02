@@ -25,6 +25,8 @@
 #include "videosynth/generation_stage.h"
 #include "videosynth/signal_timing_model.h"
 #include "videosynth/timing_constants.h"
+#include "videosynth/vits_definition_provider.h"
+#include "videosynth/vits_generator.h"
 
 namespace videosynth {
 namespace {
@@ -69,6 +71,109 @@ Project MakeProgressiveSourceProject(Standard standard, const std::string& sourc
               .source = source_path,
               .duration_frames = 1});
   return project;
+}
+
+Project MakeProjectWithSectionSpans(Standard standard) {
+  Project project;
+  project.cvbs_presets.video_standard_preset = standard;
+  project.cvbs_presets.sample_encoding_preset = "CVBS_U10_4FSC";
+  project.cvbs_presets.signal_state_preset = "STANDARD_TBC_LOCKED";
+  project.sections.push_back(
+      Section{.name = "InjectedSection",
+              .type = "progressive",
+              .source = DefaultBarsExrPath(standard),
+              .duration_frames = 1});
+  project.sections.push_back(
+      Section{.name = "PlainSection",
+              .type = "progressive",
+              .source = DefaultBarsExrPath(standard),
+              .duration_frames = 1});
+  return project;
+}
+
+class FakeVitsDefinitionProvider final : public IVitsDefinitionProvider {
+ public:
+  bool TryGetDefinition(Standard standard,
+                        const std::string& vits_type,
+                        VitsDefinition* out_definition,
+                        std::string* error) const override {
+    if (out_definition != nullptr) {
+      out_definition->standard = standard;
+      out_definition->vits_type = vits_type;
+      out_definition->primitives.push_back(VitsPrimitiveDefinition{.id = "placeholder"});
+      out_definition->render_order = {"placeholder"};
+    }
+    if (error != nullptr) {
+      error->clear();
+    }
+    return true;
+  }
+};
+
+class FakeVitsGenerator final : public IVitsGenerator {
+ public:
+  bool BuildSynthesisPlan(const VitsDefinition& definition,
+                          VitsSynthesisPlan* out_plan,
+                          std::string* error) const override {
+    if (out_plan == nullptr) {
+      if (error != nullptr) {
+        *error = "Missing VITS synthesis plan output.";
+      }
+      return false;
+    }
+
+    out_plan->standard = definition.standard;
+    out_plan->vits_type = definition.vits_type;
+    out_plan->primitives.clear();
+    out_plan->render_order = {"fake-render"};
+    if (error != nullptr) {
+      error->clear();
+    }
+    return true;
+  }
+
+  bool RenderLine(const VitsSynthesisPlan& plan,
+                  double sample_rate_hz,
+                  int sample_count,
+                  VitsRenderedLine* out_line,
+                  std::string* error) const override {
+    if (out_line == nullptr) {
+      if (error != nullptr) {
+        *error = "Missing rendered line output.";
+      }
+      return false;
+    }
+
+    out_line->standard = plan.standard;
+    out_line->vits_type = plan.vits_type;
+    out_line->sample_rate_hz = sample_rate_hz;
+    out_line->y_samples_mv.assign(static_cast<std::size_t>(sample_count), MillivoltsToSampleFixed(0.0));
+    out_line->c_samples_mv.assign(static_cast<std::size_t>(sample_count), MillivoltsToSampleFixed(0.0));
+
+    const int start = static_cast<int>(std::lround(sample_rate_hz * 12.0e-6));
+    const int end = std::min(sample_count, static_cast<int>(std::lround(sample_rate_hz * 20.0e-6)));
+    for (int i = start; i < end; ++i) {
+      out_line->y_samples_mv[static_cast<std::size_t>(i)] = MillivoltsToSampleFixed(123.0);
+      out_line->c_samples_mv[static_cast<std::size_t>(i)] = MillivoltsToSampleFixed(45.0);
+    }
+
+    if (error != nullptr) {
+      error->clear();
+    }
+    return true;
+  }
+};
+
+double WindowMeanMillivolts(const std::vector<SampleFixed>& samples,
+                            int start,
+                            int end) {
+  double sum = 0.0;
+  int count = 0;
+  for (int i = start; i < end; ++i) {
+    sum += SampleFixedToMillivolts(samples[static_cast<std::size_t>(i)]);
+    ++count;
+  }
+  return count > 0 ? (sum / static_cast<double>(count)) : 0.0;
 }
 
 double LumaMillivoltsFromCodeForTest(int y_code, const SignalLevels& levels) {
@@ -331,6 +436,93 @@ TEST(GenerationStageTimingTest, ReportsProgressiveSourceReadError) {
 
   EXPECT_FALSE(generation.Generate(project, &y, &c, &errors));
   ASSERT_FALSE(errors.empty());
+}
+
+TEST(GenerationStageTimingTest, AppliesVitsInjectionOnlyToRequestedLines) {
+  Project project = MakeProject(Standard::kPal, 1);
+  Section::LineInjection injection;
+  injection.type = "vits";
+  injection.target_lines = {17, 18};
+  injection.vits_type = "fake-vits";
+  project.sections[0].line_injections.push_back(injection);
+
+  FakeVitsDefinitionProvider provider;
+  FakeVitsGenerator fake_generator;
+  GenerationStage generation(nullptr, &provider, &fake_generator);
+  std::vector<std::string> errors;
+  std::vector<SampleFixed> y;
+  std::vector<SampleFixed> c;
+
+  ASSERT_TRUE(generation.Generate(project, &y, &c, &errors));
+  ASSERT_TRUE(errors.empty());
+
+  const TimingConstants pal = GetTimingConstants(Standard::kPal);
+  const int line17 = (17 - 1) * pal.samples_per_line_4fsc;
+  const int line18 = (18 - 1) * pal.samples_per_line_4fsc;
+  const int line19 = (19 - 1) * pal.samples_per_line_4fsc;
+  const int start = static_cast<int>(std::lround(pal.sample_rate_4fsc_hz * 12.0e-6));
+  const int end = static_cast<int>(std::lround(pal.sample_rate_4fsc_hz * 20.0e-6));
+
+  EXPECT_GT(WindowMeanMillivolts(y, line17 + start, line17 + end), 100.0);
+  EXPECT_GT(WindowMeanMillivolts(y, line18 + start, line18 + end), 100.0);
+  EXPECT_LT(WindowMeanMillivolts(y, line19 + start, line19 + end), 10.0);
+}
+
+TEST(GenerationStageTimingTest, AppliesVitsInjectionOnlyWithinSectionSpan) {
+  Project project = MakeProjectWithSectionSpans(Standard::kPal);
+  Section::LineInjection injection;
+  injection.type = "vits";
+  injection.target_lines = {17};
+  injection.vits_type = "fake-vits";
+  project.sections[0].line_injections.push_back(injection);
+
+  FakeVitsDefinitionProvider provider;
+  FakeVitsGenerator fake_generator;
+  GenerationStage generation(nullptr, &provider, &fake_generator);
+  std::vector<std::string> errors;
+  std::vector<SampleFixed> y;
+  std::vector<SampleFixed> c;
+
+  ASSERT_TRUE(generation.Generate(project, &y, &c, &errors));
+  ASSERT_TRUE(errors.empty());
+
+  const int frame_samples = SamplesPerFrame4fsc(Standard::kPal);
+  const TimingConstants pal = GetTimingConstants(Standard::kPal);
+  const int line17 = (17 - 1) * pal.samples_per_line_4fsc;
+  const int start = static_cast<int>(std::lround(pal.sample_rate_4fsc_hz * 12.0e-6));
+  const int end = static_cast<int>(std::lround(pal.sample_rate_4fsc_hz * 20.0e-6));
+
+  EXPECT_GT(WindowMeanMillivolts(y, line17 + start, line17 + end), 100.0);
+  EXPECT_LT(WindowMeanMillivolts(y,
+                                 frame_samples + line17 + start,
+                                 frame_samples + line17 + end),
+            10.0);
+}
+
+TEST(GenerationStageTimingTest, AppliesBuiltInVitsDefinitionThroughDefaultRuntimePath) {
+  Project project = MakeProject(Standard::kPal, 1);
+  Section::LineInjection injection;
+  injection.type = "vits";
+  injection.target_lines = {17};
+  injection.vits_type = "vits17";
+  project.sections[0].line_injections.push_back(injection);
+
+  GenerationStage generation;
+  std::vector<std::string> errors;
+  std::vector<SampleFixed> y;
+  std::vector<SampleFixed> c;
+
+  ASSERT_TRUE(generation.Generate(project, &y, &c, &errors));
+  ASSERT_TRUE(errors.empty());
+
+  const TimingConstants pal = GetTimingConstants(Standard::kPal);
+  const int line17 = (17 - 1) * pal.samples_per_line_4fsc;
+  const int line19 = (19 - 1) * pal.samples_per_line_4fsc;
+  const int start = static_cast<int>(std::lround(pal.sample_rate_4fsc_hz * 12.0e-6));
+  const int end = static_cast<int>(std::lround(pal.sample_rate_4fsc_hz * 20.0e-6));
+
+  EXPECT_GT(WindowMeanMillivolts(y, line17 + start, line17 + end), 150.0);
+  EXPECT_LT(WindowMeanMillivolts(y, line19 + start, line19 + end), 10.0);
 }
 
 TEST(GenerationStageTimingTest, BuildsDifferentPulseWidthsForEqualizingAndBroadPulses) {

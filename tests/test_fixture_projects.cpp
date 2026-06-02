@@ -78,6 +78,74 @@ std::uint64_t Fnv1a64(const std::vector<std::uint8_t>& bytes) {
   return hash;
 }
 
+std::size_t ExpectedProgressiveExrSectionCount(Standard standard) {
+  switch (standard) {
+    case Standard::kPal:
+      return 20U;
+    case Standard::kNtsc:
+      return 19U;
+    default:
+      return 0U;
+  }
+}
+
+std::size_t ExpectedProgressiveExrFrameCount(Standard standard) {
+  return ExpectedProgressiveExrSectionCount(standard) * 8U;
+}
+
+struct ExpectedVitsInjection {
+  int target_line;
+  std::string vits_type;
+};
+
+struct ExpectedVitsFixture {
+  std::string fixture_name;
+  Standard standard;
+  std::vector<ExpectedVitsInjection> injections;
+};
+
+void ExpectVitsFixtureProject(const ExpectedVitsFixture& expected) {
+  YamlProjectParser parser;
+  ProjectValidator validator;
+  GenerationStage generation;
+
+  const ParseResult parsed = parser.ParseFile(FixturePath(expected.fixture_name));
+  ASSERT_TRUE(parsed.ok) << expected.fixture_name;
+
+  Project project = parsed.project;
+  ResolveProgressiveSourcePaths(&project);
+  ASSERT_TRUE(validator.Validate(project).is_valid) << expected.fixture_name;
+
+  ASSERT_EQ(project.cvbs_presets.video_standard_preset, expected.standard);
+  ASSERT_EQ(project.sections.size(), 1U) << expected.fixture_name;
+
+  const Section& section = project.sections[0];
+  ASSERT_EQ(section.type, "progressive");
+  ASSERT_EQ(section.duration_frames, 1);
+  ASSERT_FALSE(section.duration_frames_all);
+  ASSERT_EQ(section.line_injections.size(), expected.injections.size()) << expected.fixture_name;
+
+  for (std::size_t index = 0; index < expected.injections.size(); ++index) {
+    const Section::LineInjection& injection = section.line_injections[index];
+    const ExpectedVitsInjection& expected_injection = expected.injections[index];
+    EXPECT_EQ(injection.type, "vits") << expected.fixture_name;
+    ASSERT_EQ(injection.target_lines.size(), 1U) << expected.fixture_name;
+    EXPECT_EQ(injection.target_lines[0], expected_injection.target_line) << expected.fixture_name;
+    EXPECT_EQ(injection.vits_type, expected_injection.vits_type) << expected.fixture_name;
+  }
+
+  std::vector<SampleFixed> y_mv;
+  std::vector<SampleFixed> c_mv;
+  std::vector<std::string> generation_errors;
+  ASSERT_TRUE(generation.Generate(project, &y_mv, &c_mv, &generation_errors))
+      << expected.fixture_name;
+
+  const std::size_t frame_span = static_cast<std::size_t>(
+      SamplesPerFrame4fsc(project.cvbs_presets.video_standard_preset));
+  EXPECT_EQ(y_mv.size(), frame_span) << expected.fixture_name;
+  EXPECT_EQ(c_mv.size(), y_mv.size()) << expected.fixture_name;
+}
+
 bool QueryCvbsMetadataFrameCount(const std::filesystem::path& path, int64_t* frame_count) {
   if (frame_count == nullptr) {
     return false;
@@ -164,7 +232,9 @@ TEST(ProjectFixturesTest, ProgressiveExrFixturesParseAndValidate) {
     const ValidationResult validation = validator.Validate(project);
     ASSERT_TRUE(validation.is_valid) << fixture;
 
-    ASSERT_EQ(project.sections.size(), 19U);
+    const std::size_t expected_section_count = ExpectedProgressiveExrSectionCount(
+        project.cvbs_presets.video_standard_preset);
+    ASSERT_EQ(project.sections.size(), expected_section_count);
     for (const Section& section : project.sections) {
       EXPECT_EQ(section.type, "progressive");
       EXPECT_EQ(section.duration_frames, 8);
@@ -226,7 +296,8 @@ TEST(ProjectFixturesTest, ProgressiveExrFixturesGenerateCompositeOutputWithExpec
 
     const std::size_t frame_span = static_cast<std::size_t>(
         SamplesPerFrame4fsc(project.cvbs_presets.video_standard_preset));
-    const std::size_t expected_frame_count = 152U;
+    const std::size_t expected_frame_count =
+      ExpectedProgressiveExrFrameCount(project.cvbs_presets.video_standard_preset);
     ASSERT_EQ(y_mv.size(), frame_span * expected_frame_count) << fixture;
     ASSERT_EQ(c_mv.size(), y_mv.size()) << fixture;
 
@@ -311,6 +382,33 @@ TEST(ProjectFixturesTest, ProgressiveMkvFixturesGenerateCompositeOutputForFullSo
   }
 }
 
+TEST(ProjectFixturesTest, VitsFixtureProjectsParseValidateAndGenerate) {
+  ExpectVitsFixtureProject(ExpectedVitsFixture{
+      .fixture_name = "pal_vits.yaml",
+      .standard = Standard::kPal,
+      .injections = {
+          {17, "vits17"},
+          {18, "itu-multiburst"},
+          {19, "uk-national"},
+          {20, "vits20"},
+          {330, "itu-composite"},
+          {331, "itu-combination"},
+      },
+  });
+
+  ExpectVitsFixtureProject(ExpectedVitsFixture{
+      .fixture_name = "ntsc_vits.yaml",
+      .standard = Standard::kNtsc,
+      .injections = {
+          {17, "ntc7-composite"},
+          {18, "fcc-multiburst"},
+          {21, "virs"},
+          {280, "ntc7-combination"},
+          {281, "fcc-composite"},
+      },
+  });
+}
+
 TEST(ProjectFixturesTest, FixtureProjectsCoverSupportedOutputEncodingFamilies) {
   YamlProjectParser parser;
   ProjectValidator validator;
@@ -337,7 +435,8 @@ TEST(ProjectFixturesTest, FixtureProjectsCoverSupportedOutputEncodingFamilies) {
   for (const std::string& output_preset : output_presets) {
     Project project = base_project;
     project.cvbs_presets.sample_encoding_preset = output_preset;
-    const int64_t expected_frame_count = 152;
+    const int64_t expected_frame_count = static_cast<int64_t>(
+        ExpectedProgressiveExrFrameCount(project.cvbs_presets.video_standard_preset));
 
     const std::filesystem::path output_path =
       std::filesystem::temp_directory_path() /

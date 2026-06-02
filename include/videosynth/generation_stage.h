@@ -11,12 +11,17 @@
 
 #include "videosynth/interfaces.h"
 #include "videosynth/progressive_frame_source.h"
+#include "videosynth/vits_definition_provider.h"
+#include "videosynth/vits_generator.h"
 
 namespace videosynth {
 
 class GenerationStage final : public IGenerationStage {
  public:
-  explicit GenerationStage(ILogger* logger = nullptr);
+  explicit GenerationStage(
+      ILogger* logger = nullptr,
+      const IVitsDefinitionProvider* vits_definition_provider = nullptr,
+      const IVitsGenerator* vits_generator = nullptr);
 
   bool BuildFrameSchedule(const Project& project,
                           std::vector<FrameScheduleItem>* out_schedule,
@@ -38,6 +43,10 @@ class GenerationStage final : public IGenerationStage {
  private:
   ILogger* logger_;
   ProgressiveFrameSource progressive_source_;
+  VitsDefinitionProvider default_vits_definition_provider_;
+  VitsGenerator default_vits_generator_;
+  const IVitsDefinitionProvider* vits_definition_provider_;
+  const IVitsGenerator* vits_generator_;
 };
 
 }  // namespace videosynth

@@ -126,6 +126,7 @@ Required composition semantics:
 - composites mode: serial or parallel
 - continuity_group and transition_out crossfade/join behavior
 - baseline_anchor behavior for staircase/burst groups
+- Construction joins for staircase and VIRS-style sequences are synthesized automatically in the planner so adjacent elements share a continuous handoff region without baking extra gap or overlap time into the catalog timing windows.
 
 ### 4.7 Signal Legality, Bandwidth, and Ramping
 
@@ -484,9 +485,16 @@ Exit criteria:
 Goals:
 - Keep HLD and implementation references aligned.
 
+Implementation status:
+- Completed on 2026-06-02.
+
 Deliverables:
 - Update docs/design/high-level-design.md implementation status notes once VITS is implemented.
 - Keep this plan and section 8.2 in sync if VITS definitions change.
+
+Completed alignment updates:
+- HLD Section 8 current-status text now explicitly scopes "not yet implemented" to non-VITS line-injection runtime paths.
+- HLD Section 12 generation-stage implementation note now states that VITS line injections are applied at runtime and that only non-VITS line-injection paths remain deferred.
 
 Exit criteria:
 - No known mismatch between behavior and design docs.

@@ -1,0 +1,38 @@
+project:
+  name: PALVitsFixture
+  version: "1.0"
+  description: PAL VITS fixture
+
+cvbs_presets:
+  video_standard_preset: PAL
+  sample_encoding_preset: CVBS_TPG21_4FSC
+  signal_state_preset: STANDARD_TBC_LOCKED
+
+output:
+  video_path: tests/projects/output/videosynth_pal_vits.composite
+  metadata_path: tests/projects/output/videosynth_pal_vits.meta
+
+sections:
+  - name: PalVits
+    type: progressive
+    source: videosynth-assets/assets/exr/720x576/100_BARS.exr
+    duration_frames: 1
+    line_injections:
+      - type: vits
+        target_lines: [17]
+        vits_type: vits17
+      - type: vits
+        target_lines: [18]
+        vits_type: itu-multiburst
+      - type: vits
+        target_lines: [19]
+        vits_type: uk-national
+      - type: vits
+        target_lines: [20]
+        vits_type: vits20
+      - type: vits
+        target_lines: [330]
+        vits_type: itu-composite
+      - type: vits
+        target_lines: [331]
+        vits_type: itu-combination

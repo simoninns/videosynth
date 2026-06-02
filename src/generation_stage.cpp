@@ -10,8 +10,11 @@
 #include "videosynth/generation_stage.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <memory>
+#include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -63,6 +66,13 @@ int BurstStartSamples(double sample_rate_hz);
 int BurstEndSamples(double sample_rate_hz);
 double SyncEdgeRiseTimeSeconds(Standard standard);
 double BurstEnvelopeRiseTimeSeconds(Standard standard);
+
+std::string Lowercase(std::string value) {
+  std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
+    return static_cast<char>(std::tolower(c));
+  });
+  return value;
+}
 
 std::vector<int> BuildLineSampleCounts(Standard standard, int lines_per_frame, int nominal_samples) {
   std::vector<int> counts(static_cast<std::size_t>(lines_per_frame), nominal_samples);
@@ -425,9 +435,86 @@ bool PalInvertVAxisForLine(std::size_t frame_index, const LineTimingPrimitive& l
   return PalBurstPhaseRadForLine(frame_index, line) < 0.0;
 }
 
+using SectionVitsPlanMap = std::unordered_map<std::string, VitsSynthesisPlan>;
+using SectionVitsLineMap = std::unordered_map<int, const Section::LineInjection*>;
+
+bool BuildSectionVitsState(const Section& section,
+                           Standard standard,
+                           const IVitsDefinitionProvider& vits_definition_provider,
+                           const IVitsGenerator& vits_generator,
+                           SectionVitsLineMap* out_line_map,
+                           SectionVitsPlanMap* out_plan_map,
+                           std::string* error) {
+  if (out_line_map == nullptr || out_plan_map == nullptr) {
+    if (error != nullptr) {
+      *error = "Internal generation error: null VITS state output.";
+    }
+    return false;
+  }
+
+  out_line_map->clear();
+  out_plan_map->clear();
+
+  for (const Section::LineInjection& injection : section.line_injections) {
+    if (Lowercase(injection.type) != "vits") {
+      continue;
+    }
+
+    VitsSynthesisPlan* cached_plan = nullptr;
+    const auto existing_plan = out_plan_map->find(injection.vits_type);
+    if (existing_plan == out_plan_map->end()) {
+      VitsDefinition definition;
+      std::string definition_error;
+      if (!vits_definition_provider.TryGetDefinition(
+              standard, injection.vits_type, &definition, &definition_error)) {
+        if (error != nullptr) {
+          *error = definition_error.empty()
+                       ? "Failed to resolve VITS definition for line injection."
+                       : definition_error;
+        }
+        return false;
+      }
+
+      VitsSynthesisPlan plan;
+      std::string plan_error;
+      if (!vits_generator.BuildSynthesisPlan(definition, &plan, &plan_error)) {
+        if (error != nullptr) {
+          *error = plan_error.empty() ? "Failed to build VITS synthesis plan." : plan_error;
+        }
+        return false;
+      }
+
+      if (plan.primitives.empty() && plan.render_order.empty()) {
+        if (error != nullptr) {
+          *error = "VITS type '" + injection.vits_type +
+                   "' has no renderable primitives in the current runtime.";
+        }
+        return false;
+      }
+
+      cached_plan = &out_plan_map->emplace(injection.vits_type, std::move(plan)).first->second;
+    } else {
+      cached_plan = &existing_plan->second;
+    }
+
+    (void)cached_plan;
+    for (int target_line : injection.target_lines) {
+      (*out_line_map)[target_line] = &injection;
+    }
+  }
+
+  return true;
+}
+
 }  // namespace
 
-GenerationStage::GenerationStage(ILogger* logger) : logger_(logger) {}
+GenerationStage::GenerationStage(ILogger* logger,
+                                 const IVitsDefinitionProvider* vits_definition_provider,
+                                 const IVitsGenerator* vits_generator)
+    : logger_(logger),
+      vits_definition_provider_(vits_definition_provider != nullptr ? vits_definition_provider
+                                                                   : &default_vits_definition_provider_),
+      vits_generator_(vits_generator != nullptr ? vits_generator : &default_vits_generator_) {}
 
 bool GenerationStage::BuildFrameSchedule(const Project& project,
                                          std::vector<FrameScheduleItem>* out_schedule,
@@ -568,6 +655,20 @@ bool GenerationStage::GenerateFrameBatch(const Project& project,
 
     const int local_frame_base = static_cast<int>(local_frame_index * static_cast<std::size_t>(frame_samples));
     const int absolute_frame_base = static_cast<int>(global_frame_index * static_cast<std::size_t>(frame_samples));
+    SectionVitsLineMap section_vits_lines;
+    SectionVitsPlanMap section_vits_plans;
+    std::string vits_state_error;
+    if (!BuildSectionVitsState(*section,
+                               project.cvbs_presets.video_standard_preset,
+                               *vits_definition_provider_,
+                               *vits_generator_,
+                               &section_vits_lines,
+                               &section_vits_plans,
+                               &vits_state_error)) {
+      errors->push_back(vits_state_error.empty() ? "Unable to prepare section VITS state."
+                                                 : vits_state_error);
+      return false;
+    }
 
     for (const LineTimingPrimitive& line : synth.frame_lines) {
       const int line_index = line.line_number_1based - 1;
@@ -637,78 +738,107 @@ bool GenerationStage::GenerateFrameBatch(const Project& project,
         }
       }
 
-      if (line.sync_pulse_kind != SyncPulseKind::kHorizontal ||
-          line.content_kind != LineContentKind::kActivePicture) {
-        continue;
+      if (line.sync_pulse_kind == SyncPulseKind::kHorizontal &&
+          line.content_kind == LineContentKind::kActivePicture) {
+        const int active_y = ActiveFrameLineIndex(
+            synth.active, project.cvbs_presets.video_standard_preset, line.line_number_1based);
+        if (active_y >= 0) {
+          std::fill(line_source_samples.begin(), line_source_samples.end(), YCbCr444Pixel{});
+          std::fill(active_sample_indices.begin(), active_sample_indices.end(), local_line_base);
+
+          const bool invert_pal_v_axis = is_pal && PalInvertVAxisForLine(global_frame_index, line);
+          const int active_window_line_start_absolute = absolute_line_base + active_window_start;
+          // SMPTE 170M-2004 Section 10 defines active chroma with burst+180 deg
+          // reference for NTSC.
+          const double phase_offset =
+              (project.cvbs_presets.video_standard_preset == Standard::kNtsc)
+                  ? (line.burst_phase_rad + kPi)
+                  : 0.0;
+          const double phase_start =
+              (kQuarterWaveRad * static_cast<double>(active_window_line_start_absolute)) +
+              phase_offset;
+
+          for (int x_sample = 0; x_sample < active_window_samples; ++x_sample) {
+            const int sample_index = local_line_base + active_window_start + x_sample;
+            if (sample_index < local_line_base || sample_index >= local_line_end) {
+              continue;
+            }
+
+            const int pixel_x = MapActiveSampleToSourcePixel(
+                x_sample, active_window_samples, source_frame.active_width, source_frame.active_x);
+
+            // Map field lines onto progressive source rows by interleaving fields.
+            // Progressive imports use field-2-dominant row pairing, so field 1
+            // consumes odd rows and field 2 consumes even rows.
+            const int field_line = active_y % synth.active.active_lines_per_field;
+            const bool progressive_section = section->type == "progressive";
+            const int source_row = source_frame.active_y +
+                                   ((line.field_index_1based == 1)
+                                        ? (2 * field_line + (progressive_section ? 1 : 0))
+                                        : (2 * field_line + (progressive_section ? 0 : 1)));
+
+            if (pixel_x >= source_frame.width || source_row >= source_frame.height) {
+              continue;
+            }
+
+            const YCbCr444Pixel& pixel = source_frame.PixelAt(pixel_x, source_row);
+            const std::size_t sample_slot = static_cast<std::size_t>(x_sample);
+            active_sample_indices[sample_slot] = sample_index;
+            line_source_samples[sample_slot] = pixel;
+
+            if (invert_pal_v_axis) {
+              // ITU-R BT.1700 Table 1 item 10f: PAL V-axis switching follows the
+              // burst-sequence-dependent odd/even polarity map.
+              line_source_samples[sample_slot].cr =
+                  static_cast<std::int16_t>(InvertCenteredChromaCode(pixel.cr));
+            }
+
+            // Preserve any sync-domain sample already placed for this line; only
+            // paint active luma where the waveform is at/above blanking level.
+            if (IsYAtOrAboveBlanking(static_cast<std::size_t>(sample_index))) {
+              SetYMillivolts(static_cast<std::size_t>(sample_index),
+                             LumaMillivoltsFromCode(pixel.y, levels));
+            }
+          }
+
+          chroma_encoder->EncodeLineFromPhaseStart(
+              line_source_samples, phase_start, &encoded_line_chroma);
+          for (int x_sample = 0; x_sample < active_window_samples; ++x_sample) {
+            AddCFixed(static_cast<std::size_t>(
+                          active_sample_indices[static_cast<std::size_t>(x_sample)]),
+                      encoded_line_chroma[static_cast<std::size_t>(x_sample)]);
+          }
+        }
       }
 
-      const int active_y = ActiveFrameLineIndex(
-          synth.active, project.cvbs_presets.video_standard_preset, line.line_number_1based);
-      if (active_y < 0) {
-        continue;
-      }
-
-      std::fill(line_source_samples.begin(), line_source_samples.end(), YCbCr444Pixel{});
-      std::fill(active_sample_indices.begin(), active_sample_indices.end(), local_line_base);
-
-      const bool invert_pal_v_axis = is_pal && PalInvertVAxisForLine(global_frame_index, line);
-      const int active_window_line_start_absolute = absolute_line_base + active_window_start;
-      // SMPTE 170M-2004 Section 10 defines active chroma with burst+180 deg
-      // reference for NTSC.
-      const double phase_offset =
-          (project.cvbs_presets.video_standard_preset == Standard::kNtsc) ? (line.burst_phase_rad + kPi) : 0.0;
-        const double phase_start =
-          (kQuarterWaveRad * static_cast<double>(active_window_line_start_absolute)) + phase_offset;
-
-      for (int x_sample = 0; x_sample < active_window_samples; ++x_sample) {
-        const int sample_index = local_line_base + active_window_start + x_sample;
-        if (sample_index < local_line_base || sample_index >= local_line_end) {
-          continue;
+      const auto vits_line = section_vits_lines.find(line.line_number_1based);
+      if (vits_line != section_vits_lines.end()) {
+        const auto vits_plan = section_vits_plans.find(vits_line->second->vits_type);
+        if (vits_plan == section_vits_plans.end()) {
+          errors->push_back("Internal generation error: missing VITS plan for targeted line injection.");
+          return false;
         }
 
-        const int pixel_x = MapActiveSampleToSourcePixel(
-          x_sample, active_window_samples, source_frame.active_width, source_frame.active_x);
-
-        // Map field lines onto progressive source rows by interleaving fields.
-        // Progressive imports use field-2-dominant row pairing, so field 1
-        // consumes odd rows and field 2 consumes even rows.
-        const int field_line = active_y % synth.active.active_lines_per_field;
-        const bool progressive_section = section->type == "progressive";
-        const int source_row = source_frame.active_y +
-                               ((line.field_index_1based == 1)
-                                    ? (2 * field_line + (progressive_section ? 1 : 0))
-                                    : (2 * field_line + (progressive_section ? 0 : 1)));
-
-        if (pixel_x >= source_frame.width || source_row >= source_frame.height) {
-          continue;
+        VitsRenderedLine rendered_line;
+        std::string render_error;
+        if (!vits_generator_->RenderLine(vits_plan->second,
+                                         timing.sample_rate_4fsc_hz,
+                                         line_samples,
+                                         &rendered_line,
+                                         &render_error)) {
+          errors->push_back(render_error.empty() ? "Failed to render VITS line injection."
+                                                 : render_error);
+          return false;
         }
 
-        const YCbCr444Pixel& pixel = source_frame.PixelAt(pixel_x, source_row);
-        const std::size_t sample_slot = static_cast<std::size_t>(x_sample);
-        active_sample_indices[sample_slot] = sample_index;
-        line_source_samples[sample_slot] = pixel;
-
-        if (invert_pal_v_axis) {
-          // ITU-R BT.1700 Table 1 item 10f: PAL V-axis switching follows the
-          // burst-sequence-dependent odd/even polarity map.
-          line_source_samples[sample_slot].cr =
-              static_cast<std::int16_t>(InvertCenteredChromaCode(pixel.cr));
+        for (int sample_offset = 0; sample_offset < line_samples; ++sample_offset) {
+          const std::size_t frame_sample_index =
+              static_cast<std::size_t>(local_line_base + sample_offset);
+          (*out_y_mv)[frame_sample_index] +=
+              rendered_line.y_samples_mv[static_cast<std::size_t>(sample_offset)];
+          (*out_c_mv)[frame_sample_index] +=
+              rendered_line.c_samples_mv[static_cast<std::size_t>(sample_offset)];
         }
-
-        // Preserve any sync-domain sample already placed for this line; only
-        // paint active luma where the waveform is at/above blanking level.
-        if (IsYAtOrAboveBlanking(static_cast<std::size_t>(sample_index))) {
-          SetYMillivolts(static_cast<std::size_t>(sample_index),
-                         LumaMillivoltsFromCode(pixel.y, levels));
-        }
-      }
-
-      chroma_encoder->EncodeLineFromPhaseStart(
-          line_source_samples, phase_start, &encoded_line_chroma);
-      for (int x_sample = 0; x_sample < active_window_samples; ++x_sample) {
-        AddCFixed(static_cast<std::size_t>(
-                      active_sample_indices[static_cast<std::size_t>(x_sample)]),
-                  encoded_line_chroma[static_cast<std::size_t>(x_sample)]);
       }
     }
   }

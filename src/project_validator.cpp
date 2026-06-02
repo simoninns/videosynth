@@ -13,7 +13,10 @@
 #include <cctype>
 #include <cmath>
 #include <filesystem>
+#include <set>
 #include <string>
+
+#include "videosynth/vits_definition_provider.h"
 
 namespace {
 
@@ -290,11 +293,174 @@ void ValidateDeferredLineInjectionSupport(const videosynth::Section& section,
     return;
   }
 
-  if (!section.line_injections.empty()) {
+  for (const videosynth::Section::LineInjection& injection : section.line_injections) {
+    if (Lowercase(injection.type) == "vits") {
+      continue;
+    }
+
     result->is_valid = false;
     result->errors.push_back(
-        "MVP constraint violation: line_injections are parsed but not implemented in the current runtime.");
+        "MVP constraint violation: line injection type '" + injection.type +
+        "' is not implemented in the current runtime.");
+    return;
   }
+}
+
+bool IsKnownLineInjectionType(const std::string& type) {
+  return type == "vits" || type == "laserdisc" || type == "vitc" ||
+         type == "line_content";
+}
+
+bool IsValidFrameLineForStandard(int line_1based, videosynth::Standard standard) {
+  if (standard == videosynth::Standard::kPal) {
+    return line_1based >= 1 && line_1based <= 625;
+  }
+  if (standard == videosynth::Standard::kNtsc) {
+    return line_1based >= 1 && line_1based <= 525;
+  }
+  return false;
+}
+
+bool IsLaserdiscReservedLine(int line_1based, videosynth::Standard standard) {
+  if (standard == videosynth::Standard::kPal) {
+    return (line_1based >= 6 && line_1based <= 18) ||
+           (line_1based >= 319 && line_1based <= 331);
+  }
+  if (standard == videosynth::Standard::kNtsc) {
+    return (line_1based >= 10 && line_1based <= 18) ||
+           (line_1based >= 273 && line_1based <= 281);
+  }
+  return false;
+}
+
+bool ValidateLineInjectionsForSection(const videosynth::Section& section,
+                                      videosynth::Standard standard,
+                                      videosynth::ValidationResult* result) {
+  if (result == nullptr) {
+    return false;
+  }
+
+  videosynth::VitsDefinitionProvider vits_definition_provider;
+  std::set<int> claimed_target_lines;
+  bool has_laserdisc_injection = false;
+  bool has_vitc_injection = false;
+
+  for (const videosynth::Section::LineInjection& injection : section.line_injections) {
+    const std::string injection_type = Lowercase(injection.type);
+
+    if (!IsKnownLineInjectionType(injection_type)) {
+      result->is_valid = false;
+      result->errors.push_back(
+          "Line injection validation error: unsupported injection type '" +
+          injection.type + "'.");
+      return false;
+    }
+
+    if (injection_type == "laserdisc") {
+      has_laserdisc_injection = true;
+      if (!injection.target_lines.empty()) {
+        result->is_valid = false;
+        result->errors.push_back(
+            "Line injection validation error: target_lines must not be specified for laserdisc injections.");
+        return false;
+      }
+    } else {
+      if (injection.target_lines.empty()) {
+        result->is_valid = false;
+        result->errors.push_back(
+            "Line injection validation error: target_lines must be provided and non-empty for injection type '" +
+            injection.type + "'.");
+        return false;
+      }
+
+      for (int line_1based : injection.target_lines) {
+        if (!IsValidFrameLineForStandard(line_1based, standard)) {
+          result->is_valid = false;
+          result->errors.push_back(
+              "Line injection validation error: target line " +
+              std::to_string(line_1based) + " is outside the valid frame-line range for " +
+              videosynth::StandardToString(standard) + ".");
+          return false;
+        }
+
+        if (!claimed_target_lines.insert(line_1based).second) {
+          result->is_valid = false;
+          result->errors.push_back(
+              "Line injection validation error: overlapping target line " +
+              std::to_string(line_1based) + " within the same section.");
+          return false;
+        }
+      }
+    }
+
+    if (injection_type == "vitc") {
+      has_vitc_injection = true;
+    }
+
+    if (injection_type == "vits") {
+      if (injection.vits_type.empty()) {
+        result->is_valid = false;
+        result->errors.push_back(
+            "Line injection validation error: vits injections require a non-empty vits_type.");
+        return false;
+      }
+
+      videosynth::VitsDefinition vits_definition;
+      std::string vits_error;
+      if (!vits_definition_provider.TryGetDefinition(standard,
+                                                     injection.vits_type,
+                                                     &vits_definition,
+                                                     &vits_error)) {
+        result->is_valid = false;
+        result->errors.push_back("Line injection validation error: " + vits_error);
+        return false;
+      }
+
+      // Strict policy: vits types with a defined placement line must target only that line.
+      if (vits_definition.recommended_frame_line > 0) {
+        for (int line_1based : injection.target_lines) {
+          if (line_1based != vits_definition.recommended_frame_line) {
+            result->is_valid = false;
+            result->errors.push_back(
+                "Line injection validation error: vits_type '" + injection.vits_type +
+                "' must target frame line " +
+                std::to_string(vits_definition.recommended_frame_line) +
+                " for " + videosynth::StandardToString(standard) + ".");
+            return false;
+          }
+        }
+      }
+    }
+  }
+
+  if (has_laserdisc_injection && has_vitc_injection) {
+    result->is_valid = false;
+    result->errors.push_back(
+        "Line injection validation error: vitc and laserdisc injections cannot appear in the same section.");
+    return false;
+  }
+
+  if (has_laserdisc_injection) {
+    for (const videosynth::Section::LineInjection& injection : section.line_injections) {
+      if (Lowercase(injection.type) == "laserdisc") {
+        continue;
+      }
+
+      for (int line_1based : injection.target_lines) {
+        if (IsLaserdiscReservedLine(line_1based, standard)) {
+          result->is_valid = false;
+          result->errors.push_back(
+              "Line injection validation error: target line " +
+              std::to_string(line_1based) +
+              " conflicts with laserdisc reserved VBI ranges for " +
+              videosynth::StandardToString(standard) + ".");
+          return false;
+        }
+      }
+    }
+  }
+
+  return true;
 }
 
 }  // namespace
@@ -380,6 +546,12 @@ ValidationResult ProjectValidator::Validate(const Project& project) {
     }
 
     if (section.type == "progressive") {
+      if (!ValidateLineInjectionsForSection(section,
+                                            project.cvbs_presets.video_standard_preset,
+                                            &result)) {
+        break;
+      }
+
       ValidateDeferredLineInjectionSupport(section, &result);
       if (!result.is_valid) {
         break;

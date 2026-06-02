@@ -657,7 +657,10 @@ The current parser, validator, and runtime implement only a subset of the YAML s
 
 - Implemented top-level presets: `video_standard_preset`, `sample_encoding_preset`, `signal_state_preset`, `ntsc_black_setup_ire`, `output.video_path`, and `output.metadata_path`.
 - Implemented section fields: `name`, `type`, `source`, `start_frame`, and `duration_frames`.
-- The `line_injections` schema and the laserdisc-specific CVBS preset flags described below remain target design and are not yet represented in the current runtime data model.
+- The `line_injections` schema is represented in the current parser data model and receives validator-level schema/compatibility checks for injection type, `target_lines`, and standard-dependent VITS constraints.
+- VITS line injections have a generation-stage orchestration path and are applied only on their targeted frame lines within the owning section span.
+- Built-in VITS catalog entries now carry full waveform-definition primitive/composite trees for every supported `vits_type`, so the default runtime path can render all supported PAL and NTSC VITS patterns.
+- Laserdisc-specific CVBS preset flags are parsed and validated for standard compatibility, but their runtime signal behavior remains deferred.
 
 The remainder of Section 7 should therefore be read as the intended project-file design rather than the currently implemented parser surface.
 
@@ -789,9 +792,10 @@ video_path: "out/pal_test_video.composite" # project-relative output file path
 ### **Current Implementation Status**
 
 - **Implemented**: `progressive` frame-based sections in Section 8.1.
-- **Not yet implemented**: line-injection handling from Section 8.2, including VITS, laserdisc, VITC, and custom per-line content.
+- **Implemented**: Section 8.2 parser/validator constraints for VITS line-injection schema, VITS/line-allocation compatibility checks, and generation-stage VITS line application for all supported built-in PAL and NTSC VITS patterns.
+- **Not yet implemented**: runtime synthesis/application for laserdisc, VITC, and custom per-line content.
 
-Section 8.2 remains the intended design contract for later implementation work.
+For laserdisc, VITC, and custom per-line content paths, Section 8.2 remains the intended design contract for later implementation work.
 
 ---
 
@@ -1426,7 +1430,8 @@ The runtime uses a **central pipeline module** to process sections and combine t
 
 Current implementation note:
 
-- Line injections, laserdisc overlays, and VITC/VITS generation are not yet applied in the runtime path.
+- VITS line injections are applied in the generation-stage runtime path on validated target lines.
+- Runtime synthesis/application for laserdisc, VITC, and custom per-line content remains deferred.
 
 #### **3. Output Stage**
 
@@ -1481,8 +1486,8 @@ To simulate **analogue output**, the generator must:
 
 The current validator enforces a narrower subset than the full design intent in this section:
 
-- Implemented today: standard selection, locked `4fsc` preset constraints, output-path requirements, progressive source profile checks, accepted raster checks, and NTSC black-setup constraints.
-- Not yet implemented in the validator/runtime pair: line-injection conflict validation, laserdisc-specific line reservations, VITC/laserdisc incompatibility checks, and other constraints that depend on parsed `line_injections` data.
+- Implemented today: standard selection, locked `4fsc` preset constraints, output-path requirements, progressive source profile checks, accepted raster checks, NTSC black-setup constraints, and validator-side VITS/line-injection compatibility checks including overlap detection, laserdisc reserved-range conflicts, and VITC/laserdisc incompatibility.
+- Not yet implemented in the validator/runtime pair: the remaining non-VITS line-injection runtime paths.
 
 The full rule set below therefore remains the intended validation contract for later implementation work.
 
