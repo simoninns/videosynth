@@ -90,17 +90,17 @@ gtest_discover_tests(videosynth_tests TEST_LIST videosynth_discovered_tests)
 set(videosynth_functional_test_patterns
     "^FrameSourceTest\\."
     "^ProjectFixturesTest\\."
-    "^GenerationStageTimingTest\\.ReportsProgressiveSourceReadError$"
+    "^ComplianceHarnessTest\\."
+    "^GenerationStageTimingTest\\."
+    "^GenerationStageChromaTest\\."
     "^GenerationStageProgressiveTest\\."
+    "^LineInjectionVitsIntegrationTest\\."
     "^OutputStageTest\\."
 )
 
 set(videosynth_unit_test_patterns
     "^ActiveSampleMappingTest\\."
     "^ChromaEncoderTest\\."
-    "^ComplianceHarnessTest\\."
-    "^GenerationStageTimingTest\\."
-    "^GenerationStageChromaTest\\."
     "^PipelineTest\\."
     "^ProjectValidatorTest\\."
     "^SignalShapingTest\\."
@@ -111,7 +111,6 @@ set(videosynth_unit_test_patterns
     "^VitsGeneratorTest\\."
     "^VitsGeneratorPalTest\\."
     "^VitsGeneratorNtscTest\\."
-    "^LineInjectionVitsIntegrationTest\\."
     "^YamlProjectParserTest\\."
 )
 
