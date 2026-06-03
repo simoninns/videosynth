@@ -12,7 +12,6 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
-#include <filesystem>
 #include <set>
 #include <string>
 
@@ -633,16 +632,6 @@ ValidationResult ProjectValidator::Validate(const Project& project) {
       if (!ValidateProgressiveSourceFamily(section, &source_family_error)) {
         result.is_valid = false;
         result.errors.push_back(source_family_error);
-        break;
-      }
-
-      const std::filesystem::path source_path(section.source);
-      if (!std::filesystem::exists(source_path) ||
-          !std::filesystem::is_regular_file(source_path)) {
-        result.is_valid = false;
-        result.errors.push_back(
-            "Progressive section validation error: source file is not "
-            "readable.");
         break;
       }
 

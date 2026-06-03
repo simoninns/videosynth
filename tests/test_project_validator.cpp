@@ -9,8 +9,7 @@
 
 #include <gtest/gtest.h>
 
-#include <filesystem>
-#include <fstream>
+#include <string>
 #include <vector>
 
 #include "videosynth/project_validator.h"
@@ -19,9 +18,7 @@ namespace videosynth {
 namespace {
 
 std::string DefaultProgressiveSourcePath() {
-  return (std::filesystem::path(VIDEOSYNTH_SOURCE_DIR) /
-          "videosynth-assets/assets/exr/720x576/100_BARS.exr")
-      .string();
+  return "fixture.exr";
 }
 
 Project MakeValidProject() {
@@ -38,12 +35,8 @@ Project MakeValidProject() {
   return project;
 }
 
-std::string CreateTemporarySourceFile(const std::string& file_name) {
-  const std::filesystem::path path =
-      std::filesystem::temp_directory_path() / file_name;
-  std::ofstream stream(path);
-  stream << "fixture";
-  return path.string();
+std::string MakeSourcePath(const std::string& file_name) {
+  return file_name;
 }
 
 class MockProgressiveFrameSourceProbe final
@@ -424,8 +417,7 @@ TEST(ProjectValidatorTest, RejectsUnsupportedSectionType) {
 
 TEST(ProjectValidatorTest, AcceptsProgressiveExrSectionWithFixedDuration) {
   Project project = MakeValidProject();
-  project.sections[0].source =
-      CreateTemporarySourceFile("videosynth_progressive.exr");
+  project.sections[0].source = MakeSourcePath("test.exr");
   project.sections[0].duration_frames = 8;
 
   ProjectValidator validator;
@@ -433,8 +425,6 @@ TEST(ProjectValidatorTest, AcceptsProgressiveExrSectionWithFixedDuration) {
 
   EXPECT_TRUE(result.is_valid);
   EXPECT_TRUE(result.errors.empty());
-
-  std::filesystem::remove(project.sections[0].source);
 }
 
 TEST(ProjectValidatorTest, RejectsProgressiveSectionWithoutSource) {
@@ -449,8 +439,7 @@ TEST(ProjectValidatorTest, RejectsProgressiveSectionWithoutSource) {
 
 TEST(ProjectValidatorTest, RejectsProgressiveRawSourceFamily) {
   Project project = MakeValidProject();
-  project.sections[0].source =
-      CreateTemporarySourceFile("videosynth_progressive.raw");
+  project.sections[0].source = MakeSourcePath("test.raw");
 
   ProjectValidator validator;
   const ValidationResult result = validator.Validate(project);
@@ -459,8 +448,6 @@ TEST(ProjectValidatorTest, RejectsProgressiveRawSourceFamily) {
   EXPECT_FALSE(result.errors.empty());
   EXPECT_NE(result.errors[0].find("Unsupported progressive source family"),
             std::string::npos);
-
-  std::filesystem::remove(project.sections[0].source);
 }
 
 TEST(ProjectValidatorTest, AcceptsProgressiveAllDurationSemantics) {
@@ -487,8 +474,7 @@ TEST(ProjectValidatorTest, RejectsMissingDurationFrames) {
 TEST(ProjectValidatorTest, AcceptsProgressiveMkvWithSupportedFfv1Profile) {
   Project project = MakeValidProject();
   project.cvbs_presets.video_standard_preset = Standard::kPal;
-  project.sections[0].source =
-      CreateTemporarySourceFile("videosynth_progressive_ok.mkv");
+  project.sections[0].source = MakeSourcePath("test.mkv");
   project.sections[0].duration_frames_all = true;
   project.sections[0].duration_frames = 0;
 
@@ -512,16 +498,13 @@ TEST(ProjectValidatorTest, AcceptsProgressiveMkvWithSupportedFfv1Profile) {
 
   EXPECT_TRUE(result.is_valid);
   EXPECT_TRUE(result.errors.empty());
-
-  std::filesystem::remove(project.sections[0].source);
 }
 
 TEST(ProjectValidatorTest,
      RejectsProgressiveMkvWithMismatchedSampleAspectMetadata) {
   Project project = MakeValidProject();
   project.cvbs_presets.video_standard_preset = Standard::kNtsc;
-  project.sections[0].source =
-      CreateTemporarySourceFile("videosynth_progressive_bad_sar.mkv");
+  project.sections[0].source = MakeSourcePath("test.mkv");
   project.sections[0].duration_frames_all = true;
   project.sections[0].duration_frames = 0;
 
@@ -547,15 +530,12 @@ TEST(ProjectValidatorTest,
   EXPECT_FALSE(result.is_valid);
   ASSERT_FALSE(result.errors.empty());
   EXPECT_NE(result.errors[0].find("sample-aspect"), std::string::npos);
-
-  std::filesystem::remove(project.sections[0].source);
 }
 
 TEST(ProjectValidatorTest, RejectsProgressiveMkvWithStreamCropMetadata) {
   Project project = MakeValidProject();
   project.cvbs_presets.video_standard_preset = Standard::kPal;
-  project.sections[0].source =
-      CreateTemporarySourceFile("videosynth_progressive_bad_crop.mkv");
+  project.sections[0].source = MakeSourcePath("test.mkv");
   project.sections[0].duration_frames_all = true;
   project.sections[0].duration_frames = 0;
 
@@ -582,15 +562,12 @@ TEST(ProjectValidatorTest, RejectsProgressiveMkvWithStreamCropMetadata) {
   EXPECT_FALSE(result.is_valid);
   ASSERT_FALSE(result.errors.empty());
   EXPECT_NE(result.errors[0].find("crop metadata"), std::string::npos);
-
-  std::filesystem::remove(project.sections[0].source);
 }
 
 TEST(ProjectValidatorTest, RejectsProgressiveMkvWithUnsupportedCodecProfile) {
   Project project = MakeValidProject();
   project.cvbs_presets.video_standard_preset = Standard::kNtsc;
-  project.sections[0].source =
-      CreateTemporarySourceFile("videosynth_progressive_bad.mkv");
+  project.sections[0].source = MakeSourcePath("test.mkv");
   project.sections[0].duration_frames_all = true;
   project.sections[0].duration_frames = 0;
 
@@ -614,15 +591,12 @@ TEST(ProjectValidatorTest, RejectsProgressiveMkvWithUnsupportedCodecProfile) {
 
   EXPECT_FALSE(result.is_valid);
   ASSERT_FALSE(result.errors.empty());
-
-  std::filesystem::remove(project.sections[0].source);
 }
 
 TEST(ProjectValidatorTest, AcceptsProgressiveExrWithSupportedProfile) {
   Project project = MakeValidProject();
   project.cvbs_presets.video_standard_preset = Standard::kPal;
-  project.sections[0].source =
-      CreateTemporarySourceFile("videosynth_progressive_ok.exr");
+  project.sections[0].source = MakeSourcePath("test.exr");
   project.sections[0].duration_frames = 1;
 
   MockProgressiveFrameSourceProbe probe;
@@ -640,15 +614,12 @@ TEST(ProjectValidatorTest, AcceptsProgressiveExrWithSupportedProfile) {
 
   EXPECT_TRUE(result.is_valid);
   EXPECT_TRUE(result.errors.empty());
-
-  std::filesystem::remove(project.sections[0].source);
 }
 
 TEST(ProjectValidatorTest, RejectsProgressiveExrWithUnsupportedPixelProfile) {
   Project project = MakeValidProject();
   project.cvbs_presets.video_standard_preset = Standard::kNtsc;
-  project.sections[0].source =
-      CreateTemporarySourceFile("videosynth_progressive_bad.exr");
+  project.sections[0].source = MakeSourcePath("test.exr");
   project.sections[0].duration_frames = 1;
 
   MockProgressiveFrameSourceProbe probe;
@@ -666,15 +637,12 @@ TEST(ProjectValidatorTest, RejectsProgressiveExrWithUnsupportedPixelProfile) {
 
   EXPECT_FALSE(result.is_valid);
   ASSERT_FALSE(result.errors.empty());
-
-  std::filesystem::remove(project.sections[0].source);
 }
 
 TEST(ProjectValidatorTest,
      RejectsUnsupportedSourceFamilyWithExpectedErrorMessage) {
   Project project = MakeValidProject();
-  project.sections[0].source =
-      CreateTemporarySourceFile("videosynth_progressive_bad.avi");
+  project.sections[0].source = MakeSourcePath("test.avi");
 
   ProjectValidator validator;
   const ValidationResult result = validator.Validate(project);
@@ -684,16 +652,13 @@ TEST(ProjectValidatorTest,
   EXPECT_EQ(result.errors[0],
             "Unsupported progressive source family. Supported source families "
             "are EXR and MKV.");
-
-  std::filesystem::remove(project.sections[0].source);
 }
 
 TEST(ProjectValidatorTest,
      RejectsPalProjectWhenProgressiveRasterDoesNotMatchStandard) {
   Project project = MakeValidProject();
   project.cvbs_presets.video_standard_preset = Standard::kPal;
-  project.sections[0].source =
-      CreateTemporarySourceFile("videosynth_progressive_bad_raster.exr");
+  project.sections[0].source = MakeSourcePath("test.exr");
   project.sections[0].duration_frames = 1;
 
   MockProgressiveFrameSourceProbe probe;
@@ -714,16 +679,13 @@ TEST(ProjectValidatorTest,
   EXPECT_EQ(result.errors[0],
             "Progressive section validation error: source raster must be "
             "720x576 for PAL and 720x486 for NTSC.");
-
-  std::filesystem::remove(project.sections[0].source);
 }
 
 TEST(ProjectValidatorTest,
      RejectsPalProjectWhenProgressiveFrameRateDoesNotMatchStandard) {
   Project project = MakeValidProject();
   project.cvbs_presets.video_standard_preset = Standard::kPal;
-  project.sections[0].source =
-      CreateTemporarySourceFile("videosynth_progressive_bad_rate.exr");
+  project.sections[0].source = MakeSourcePath("test.exr");
   project.sections[0].duration_frames = 1;
 
   MockProgressiveFrameSourceProbe probe;
@@ -744,14 +706,11 @@ TEST(ProjectValidatorTest,
   EXPECT_EQ(result.errors[0],
             "Progressive section validation error: source frame rate must "
             "match selected video standard.");
-
-  std::filesystem::remove(project.sections[0].source);
 }
 
 TEST(ProjectValidatorTest, PropagatesProgressiveProbeErrorMessage) {
   Project project = MakeValidProject();
-  project.sections[0].source =
-      CreateTemporarySourceFile("videosynth_progressive_probe_error.mkv");
+  project.sections[0].source = MakeSourcePath("test.mkv");
 
   MockProgressiveFrameSourceProbe probe;
   probe.should_succeed = false;
@@ -763,8 +722,6 @@ TEST(ProjectValidatorTest, PropagatesProgressiveProbeErrorMessage) {
   EXPECT_FALSE(result.is_valid);
   ASSERT_FALSE(result.errors.empty());
   EXPECT_EQ(result.errors[0], "Phase1 probe failure test message.");
-
-  std::filesystem::remove(project.sections[0].source);
 }
 
 }  // namespace

@@ -193,18 +193,12 @@ bool ParseLineInjections(const YAML::Node& section_node, Section* section,
   return true;
 }
 
-}  // namespace
-
-ParseResult YamlProjectParser::ParseFile(const std::string& path) {
+// Helper function to parse a YAML node into a Project structure.
+// This is shared between ParseFile and ParseString.
+ParseResult ParseYamlNode(const YAML::Node& root, ILogger* logger) {
   ParseResult result;
 
-  if (logger_ != nullptr) {
-    logger_->Info("Parsing project file: " + path);
-  }
-
   try {
-    const YAML::Node root = YAML::LoadFile(path);
-
     if (!root["cvbs_presets"]) {
       result.errors.push_back(
           "Missing required top-level field: cvbs_presets.");
@@ -318,8 +312,8 @@ ParseResult YamlProjectParser::ParseFile(const std::string& path) {
     }
 
     result.ok = true;
-    if (logger_ != nullptr) {
-      logger_->Debug("Parsed project file with " +
+    if (logger != nullptr) {
+      logger->Debug("Parsed project with " +
                      std::to_string(result.project.sections.size()) +
                      " section(s).");
     }
@@ -330,6 +324,38 @@ ParseResult YamlProjectParser::ParseFile(const std::string& path) {
   } catch (const std::exception& ex) {
     result.errors.push_back(std::string("Unexpected parse error: ") +
                             ex.what());
+    return result;
+  }
+}
+
+}  // namespace
+
+ParseResult YamlProjectParser::ParseFile(const std::string& path) {
+  if (logger_ != nullptr) {
+    logger_->Info("Parsing project file: " + path);
+  }
+
+  try {
+    const YAML::Node root = YAML::LoadFile(path);
+    return ParseYamlNode(root, logger_);
+  } catch (const YAML::Exception& ex) {
+    ParseResult result;
+    result.errors.push_back(std::string("YAML file loading failed: ") + ex.what());
+    return result;
+  }
+}
+
+ParseResult YamlProjectParser::ParseString(const std::string& yaml) {
+  if (logger_ != nullptr) {
+    logger_->Info("Parsing project string");
+  }
+
+  try {
+    const YAML::Node root = YAML::Load(yaml);
+    return ParseYamlNode(root, logger_);
+  } catch (const YAML::Exception& ex) {
+    ParseResult result;
+    result.errors.push_back(std::string("YAML string parsing failed: ") + ex.what());
     return result;
   }
 }

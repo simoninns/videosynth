@@ -36,6 +36,15 @@ class YamlProjectParser final : public IProjectParser {
   //   ParseResult containing the parsed project and any errors.
   ParseResult ParseFile(const std::string& path) override;
 
+  // Parses a YAML project string into a Project structure.
+  //
+  // Args:
+  //   yaml: String containing the YAML project content.
+  //
+  // Returns:
+  //   ParseResult containing the parsed project and any errors.
+  ParseResult ParseString(const std::string& yaml);
+
  private:
   ILogger* logger_;
 };

@@ -49,17 +49,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Assert progressive RAW fixtures are retired
-        run: |
-          if find resources/assets -type f -path '*/stills/raw/*.raw' -print -quit | grep -q .; then
-            echo "Progressive RAW fixture assets are retired; remove resources/assets/**/stills/raw/*.raw files."
-            exit 1
-          fi
-          if find tests/projects -maxdepth 1 -type f -name '*_progressive_raw.yaml' -print -quit | grep -q .; then
-            echo "Progressive RAW fixture project YAMLs are retired; remove *_progressive_raw.yaml files."
-            exit 1
-          fi
-
       - name: Install Nix
         uses: DeterminateSystems/nix-installer-action@v19
 

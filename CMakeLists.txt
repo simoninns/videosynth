@@ -93,8 +93,6 @@ set(videosynth_functional_test_patterns
     "^GenerationStageTimingTest\\.ReportsProgressiveSourceReadError$"
     "^GenerationStageProgressiveTest\\."
     "^OutputStageTest\\."
-    "^ProjectValidatorTest\\."
-    "^YamlProjectParserTest\\."
 )
 
 set(videosynth_unit_test_patterns
@@ -104,6 +102,7 @@ set(videosynth_unit_test_patterns
     "^GenerationStageTimingTest\\."
     "^GenerationStageChromaTest\\."
     "^PipelineTest\\."
+    "^ProjectValidatorTest\\."
     "^SignalShapingTest\\."
     "^SignalTimingModelTest\\."
     "^TimingConstantsTest\\."
@@ -113,6 +112,7 @@ set(videosynth_unit_test_patterns
     "^VitsGeneratorPalTest\\."
     "^VitsGeneratorNtscTest\\."
     "^LineInjectionVitsIntegrationTest\\."
+    "^YamlProjectParserTest\\."
 )
 
 set(videosynth_test_label_script "set(videosynth_functional_test_patterns\n")
