@@ -16,6 +16,9 @@
 
 namespace videosynth {
 
+// Thread-safety: All structs in this module are thread-safe (plain data
+// containers). They may be copied and accessed concurrently from multiple
+// threads.
 struct ParseResult {
   bool ok = false;
   Project project;

@@ -15,6 +15,18 @@
 namespace videosynth {
 namespace {
 
+// Binary search iteration count for InverseSCurve01. 48 iterations provides
+// sufficient precision for double-precision inverse of the S-curve.
+constexpr int kInverseSCurveIterations = 48;
+
+// Minimum number of samples for a non-degenerate S-curve transition.
+// Fewer than 4 samples would produce a degenerate (flat or single-step) curve.
+constexpr int kMinRampSamples = 4;
+
+// Factor for converting half-amplitude time to full transition time.
+// Half-amplitude spans start->50%, so full transition is 2x the half-amplitude span.
+constexpr double kHalfToFullTransitionFactor = 2.0;
+
 double ClampUnitInterval(double value) {
   return std::max(0.0, std::min(1.0, value));
 }
@@ -39,7 +51,7 @@ double InverseSCurve01(double y) {
   double lo = 0.0;
   double hi = 1.0;
 
-  for (int i = 0; i < 48; ++i) {
+  for (int i = 0; i < kInverseSCurveIterations; ++i) {
     const double mid = 0.5 * (lo + hi);
     if (SCurve01(mid) < target) {
       lo = mid;
@@ -53,10 +65,16 @@ double InverseSCurve01(double y) {
 
 }  // namespace
 
+// Standard rise/fall time measurement fractions: 10% to 90% amplitude.
+// ITU-R BT.1700 and SMPTE 170M specify sync edge timing at these levels.
+constexpr double kStandardRiseLowFraction = 0.1;
+constexpr double kStandardRiseHighFraction = 0.9;
+
 int RiseTimeToRampSamples(double rise_time_seconds, double sample_rate_hz) {
   // Most sync-edge specs quote rise/fall times between 10%-90% amplitude.
-  return TransitionTimeToRampSamples(rise_time_seconds, sample_rate_hz, 0.1,
-                                     0.9);
+  return TransitionTimeToRampSamples(rise_time_seconds, sample_rate_hz,
+                                     kStandardRiseLowFraction,
+                                     kStandardRiseHighFraction);
 }
 
 int TransitionTimeToRampSamples(double transition_time_seconds,
@@ -64,13 +82,13 @@ int TransitionTimeToRampSamples(double transition_time_seconds,
                                 double low_amplitude_fraction,
                                 double high_amplitude_fraction) {
   if (transition_time_seconds <= 0.0 || sample_rate_hz <= 0.0) {
-    return 4;
+    return kMinRampSamples;
   }
 
   const double low = ClampUnitInterval(low_amplitude_fraction);
   const double high = ClampUnitInterval(high_amplitude_fraction);
   if (high <= low) {
-    return 4;
+    return kMinRampSamples;
   }
 
   // Convert a measured interval (for example 10%-90% or 50%-50%) into the
@@ -82,19 +100,21 @@ int TransitionTimeToRampSamples(double transition_time_seconds,
   const double measured_samples = transition_time_seconds * sample_rate_hz;
   const double full_transition_samples = measured_samples / measured_fraction;
 
-  // Keep at least four samples so discrete S-curves are not degenerate.
-  return std::max(4, static_cast<int>(std::ceil(full_transition_samples)));
+  // Keep at least kMinRampSamples samples so discrete S-curves are not degenerate.
+  return std::max(kMinRampSamples,
+                  static_cast<int>(std::ceil(full_transition_samples)));
 }
 
 int HalfAmplitudeTimeToRampSamples(double half_amplitude_time_seconds,
                                    double sample_rate_hz) {
   if (half_amplitude_time_seconds <= 0.0 || sample_rate_hz <= 0.0) {
-    return 4;
+    return kMinRampSamples;
   }
 
   // Half-amplitude timing spans start->50%; the complete edge is twice this.
-  return TransitionTimeToRampSamples(2.0 * half_amplitude_time_seconds,
-                                     sample_rate_hz, 0.0, 1.0);
+  return TransitionTimeToRampSamples(
+      kHalfToFullTransitionFactor * half_amplitude_time_seconds,
+      sample_rate_hz, 0.0, 1.0);
 }
 
 double ShapedPulseLevel(int relative_index, int pulse_width_samples,

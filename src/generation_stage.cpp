@@ -81,7 +81,7 @@ std::vector<int> BuildLineSampleCounts(Standard standard, int lines_per_frame,
                           nominal_samples);
   if (standard == Standard::kPal) {
     // EBU Tech. 3280-E Section 1.2: 625-line PAL at 4fsc has 1135.0064
-    // samples/line average, i.e. 709,379 samples/frame. The normative placement
+    // samples/line average, i.e., 709,379 samples/frame. The normative placement
     // of the four extra samples per frame is two on line 313 and two on line
     // 625.
     constexpr int kLongLines[] = {313, 625};
@@ -117,10 +117,10 @@ int ClampCode(int code, int lo, int hi) {
 ActiveRasterGeometry GetActiveRasterGeometry(Standard standard,
                                              double sample_rate_hz) {
   if (standard == Standard::kPal) {
-    // PAL frame sources expose only the 52.0 us visible aperture derived from
-    // ITU-R BT.1700 line timing and mapped through BT.601's 13.5 MHz sampling
-    // model. Keep the established PAL line start anchor at +177 4fsc samples,
-    // but limit active-picture synthesis to the visible-aperture duration.
+    // ITU-R BT.1700 Annex 1 Part B Table 3: PAL line timing, mapped through
+    // BT.601's 13.5 MHz sampling model. Keep the established PAL line start anchor
+    // at +177 4fsc samples, but limit active-picture synthesis to the 52.0 us
+    // visible-aperture duration.
     const int active_window_start = 177;
     const int active_window_end =
         active_window_start +
@@ -278,7 +278,7 @@ double PulseWidthSeconds(SyncPulseKind kind, Standard standard) {
     return 2.3e-6;
   }
   if (standard == Standard::kNtsc) {
-    // SMPTE 170M broad pulses are shorter than a half-line, leaving the
+    // SMPTE 170M-2004: broad pulses are shorter than a half-line, leaving the
     // equalizing interval inside each half-line during the 3H sync block.
     return 27.1e-6;
   }
@@ -404,8 +404,8 @@ double SyncEdgeRiseTimeSeconds(Standard standard) {
     // measured 10%-90%.
     return 140.0e-9;
   }
-  // ITU-R BT.1700 Table 2 item f and Table 3 item s: 625 PAL sync/equalizing
-  // edge rise/fall 200 ns ± 100 ns measured 10%-90%.
+  // ITU-R BT.1700 Annex 1 Part B Table 2 item f and Table 3 item s: 625 PAL
+    // sync/equalizing edge rise/fall 200 ns ± 100 ns measured 10%-90%.
   return 200.0e-9;
 }
 
@@ -414,15 +414,16 @@ double BurstEnvelopeRiseTimeSeconds(Standard standard) {
     // SMPTE 170M-2004 Table 2: burst envelope rise 300 ns (+200/-100) 10%-90%.
     return 300.0e-9;
   }
-  // ITU-R BT.1700 Table 2 items g/h define PAL burst placement and duration,
-  // and item e defines line-blanking edge rise of 300 ns ± 100 ns. This model
-  // uses the same time constant to apply a finite PAL burst gate envelope.
+  // ITU-R BT.1700 Annex 1 Part B Table 2 items g/h: define PAL burst placement
+    // and duration, and item e defines line-blanking edge rise of 300 ns ±
+    // 100 ns. This model uses the same time constant to apply a finite PAL burst
+    // gate envelope.
   return 300.0e-9;
 }
 
 int PalBurstSequenceIndex(std::size_t frame_index, int field_index_1based) {
-  // ITU-R BT.1700 Table 1 item 10f defines sequence I/II/III/IV repeating
-  // over colour fields. A frame contains two consecutive fields.
+  // ITU-R BT.1700 Annex 1 Part B Table 1 item 10f: defines sequence I/II/III/IV
+    // repeating over colour fields. A frame contains two consecutive fields.
   return static_cast<int>(
       ((2U * frame_index) + static_cast<std::size_t>(field_index_1based - 1)) %
       4U);
@@ -435,7 +436,7 @@ bool PalBurstPositiveOnOddLine(int burst_sequence_index) {
 }
 
 bool IsPalBurstBlankedLine(int line_1based, int burst_sequence_index) {
-  // ITU-R BT.1700 Figure 8 burst blanking windows for 625 PAL.
+  // ITU-R BT.1700 Annex 1 Part B Figure 8: burst blanking windows for 625 PAL.
   if (burst_sequence_index == 0) {
     return line_1based >= 623 || line_1based <= 6;
   }
@@ -816,7 +817,7 @@ bool GenerationStage::GenerateFrameBatch(
               is_pal && PalInvertVAxisForLine(global_frame_index, line);
           const int active_window_line_start_absolute =
               absolute_line_base + active_window_start;
-          // SMPTE 170M-2004 Section 10 defines active chroma with burst+180 deg
+          // SMPTE 170M-2004 Section 10: defines active chroma with burst+180 deg
           // reference for NTSC.
           const double phase_offset =
               (project.cvbs_presets.video_standard_preset == Standard::kNtsc)
@@ -863,8 +864,8 @@ bool GenerationStage::GenerateFrameBatch(
             line_source_samples[sample_slot] = pixel;
 
             if (invert_pal_v_axis) {
-              // ITU-R BT.1700 Table 1 item 10f: PAL V-axis switching follows
-              // the burst-sequence-dependent odd/even polarity map.
+              // ITU-R BT.1700 Annex 1 Part B Table 1 item 10f: PAL V-axis switching
+              // follows the burst-sequence-dependent odd/even polarity map.
               line_source_samples[sample_slot].cr =
                   static_cast<std::int16_t>(InvertCenteredChromaCode(pixel.cr));
             }

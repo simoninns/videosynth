@@ -24,13 +24,40 @@ enum class LogLevel {
   kTrace,
 };
 
+// Thread-safety: SpdlogLogger IS thread-safe. The underlying spdlog::logger
+// is designed for concurrent use from multiple threads. All logging methods
+// (Info, Error, Debug, Trace) may be called concurrently.
 class SpdlogLogger final : public ILogger {
  public:
+  // Constructs a logger with the specified level and optional log file.
+  //
+  // Args:
+  //   level: Minimum log level to output.
+  //   log_file: Path to log file. If empty, logs to stdout.
   SpdlogLogger(LogLevel level, const std::string& log_file);
 
+  // Logs an info-level message.
+  //
+  // Args:
+  //   message: The message to log.
   void Info(const std::string& message) override;
+
+  // Logs an error-level message.
+  //
+  // Args:
+  //   message: The message to log.
   void Error(const std::string& message) override;
+
+  // Logs a debug-level message.
+  //
+  // Args:
+  //   message: The message to log.
   void Debug(const std::string& message) override;
+
+  // Logs a trace-level message.
+  //
+  // Args:
+  //   message: The message to log.
   void Trace(const std::string& message) override;
 
  private:

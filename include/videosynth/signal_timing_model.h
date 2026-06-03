@@ -17,6 +17,9 @@
 
 namespace videosynth {
 
+// Thread-safety: All functions and types in this module are thread-safe.
+// They are stateless and only operate on their parameters or return new
+// values. May be called concurrently from multiple threads.
 enum class SyncPulseKind {
   kHorizontal,
   kEqualizing,
@@ -44,12 +47,12 @@ inline bool IsLineInRange(int line, int start, int end) {
 
 inline int Field1LineCount(Standard standard) {
   if (standard == Standard::kPal) {
-    // ITU-R BT.1700 Annex 1 Part B Table 1 item 1 defines 625 lines/frame.
+    // ITU-R BT.1700 Annex 1 Part B Table 1 item 1: defines 625 lines/frame.
     // With 2:1 interlace this model treats lines 1-312 as field 1.
     return 312;
   }
   if (standard == Standard::kNtsc) {
-    // SMPTE 170M-2004 Section 11.3 defines 525 lines/frame.
+    // SMPTE 170M-2004 Section 11.3: defines 525 lines/frame.
     // With 2:1 interlace this model treats lines 1-262 as field 1.
     return 262;
   }
@@ -63,7 +66,7 @@ inline int GetFieldIndex(Standard standard, int line_1based) {
 
 inline SyncPulseKind GetSyncPulseKind(Standard standard, int line_1based) {
   if (standard == Standard::kPal) {
-    // ITU-R BT.1700 Annex 1 Part B (Figures 3-5 and Table 3 l/m/n) with
+    // ITU-R BT.1700 Annex 1 Part B Figures 3-5 and Table 3 l/m/n: with
     // line-granular framing yields the PAL equalizing/sync regions below; mixed
     // half-line combinations are applied by the generation pulse schedule.
     if (IsLineInRange(line_1based, 4, 6) ||
@@ -80,7 +83,7 @@ inline SyncPulseKind GetSyncPulseKind(Standard standard, int line_1based) {
   }
 
   if (standard == Standard::kNtsc) {
-    // SMPTE 170M-2004 Section 13.3/Table 3 defines a 9-line vertical sync block
+    // SMPTE 170M-2004 Section 13.3/Table 3: defines a 9-line vertical sync block
     // per field. With 1-indexed, line-granular framing, the field-1 block is at
     // lines 1-9, and the field-2 block aligns to lines 264-272.
     if (IsLineInRange(line_1based, 1, 3) || IsLineInRange(line_1based, 7, 9) ||
@@ -100,7 +103,7 @@ inline SyncPulseKind GetSyncPulseKind(Standard standard, int line_1based) {
 
 inline LineContentKind GetLineContentKind(Standard standard, int line_1based) {
   if (standard == Standard::kPal) {
-    // ITU-R BT.1700 Annex 1 Part B Table 1 item 1a (576 active lines) implies
+    // ITU-R BT.1700 Annex 1 Part B Table 1 item 1a: 576 active lines implies
     // active picture starts at lines 23 and 335 in this line-granular 625-line
     // PAL model so all 576 source rows land on full active-picture lines.
     if (IsLineInRange(line_1based, 16, 22) ||
@@ -111,7 +114,7 @@ inline LineContentKind GetLineContentKind(Standard standard, int line_1based) {
   }
 
   if (standard == Standard::kNtsc) {
-    // SMPTE 170M-2004 Section 13.3/Table 3 defines a 20-line + 1.5 us vertical
+    // SMPTE 170M-2004 Section 13.3/Table 3: defines a 20-line + 1.5 us vertical
     // blanking interval and notes line-20/282 behavior. In this line-granular
     // model, field-1 active starts at 22 and field-2 active starts at 284,
     // leaving line 283 as the field-2 transition line.
@@ -144,8 +147,8 @@ inline double BurstPhaseRad(Standard standard, int line_1based) {
     return kNtscReferencePhase;
   }
 
-  // ITU-R BT.1700 Annex 1 Part B Table 1 item 10f and Figure 8:
-  // PAL burst phase alternates +135/-135 degrees line-to-line.
+  // ITU-R BT.1700 Annex 1 Part B Table 1 item 10f and Figure 8: PAL burst phase
+  // alternates +135/-135 degrees line-to-line.
   return ((line_1based % 2) == 1) ? (3.0 * kPi / 4.0) : (-3.0 * kPi / 4.0);
 }
 

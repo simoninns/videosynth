@@ -17,6 +17,9 @@
 
 namespace videosynth {
 
+// Thread-safety: All types and structs in this module are thread-safe (plain
+// data containers). They may be copied and accessed concurrently from
+// multiple threads.
 enum class VitsLevelsUnit {
   kMillivolts,
   kIre,

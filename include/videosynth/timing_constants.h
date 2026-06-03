@@ -17,6 +17,9 @@
 
 namespace videosynth {
 
+// Thread-safety: All functions and structs in this module are thread-safe.
+// They are stateless and only operate on their parameters or return new
+// values. May be called concurrently from multiple threads.
 struct TimingConstants {
   int lines_per_frame = 0;
   int samples_per_line_4fsc = 0;
@@ -34,11 +37,10 @@ struct SignalLevels {
 inline TimingConstants GetTimingConstants(Standard standard) {
   if (standard == Standard::kPal) {
     return TimingConstants{
-        // ITU-R BT.1700 Annex 1 Part B Table 1 item 1 (625-line PAL).
+        // ITU-R BT.1700 Annex 1 Part B Table 1 item 1: 625-line PAL.
         .lines_per_frame = 625,
         // EBU Tech. 3280-E Section 1.2: 1135.0064 samples/line nominal,
-        // modelled
-        // here as 1135 integer samples plus phase-slip handling elsewhere.
+        // modelled here as 1135 integer samples plus phase-slip handling elsewhere.
         .samples_per_line_4fsc = 1135,
         // ITU-R BT.1700 Annex 1 Part B Table 1 item 3: 2fH/625 = 25 frames/s.
         .frame_rate_hz = 25.0,
@@ -67,13 +69,13 @@ inline TimingConstants GetTimingConstants(Standard standard) {
 inline SignalLevels GetSignalLevels(Standard standard) {
   if (standard == Standard::kPal) {
     return SignalLevels{
-        // ITU-R BT.1700 Annex 1 Part B Table 2 item 3 (625 PAL sync level).
+        // ITU-R BT.1700 Annex 1 Part B Table 2 item 3: 625 PAL sync level.
         .sync_tip_mv = -300.0,
-        // ITU-R BT.1700 Annex 1 Part B Table 2 item 1 (blanking reference).
+        // ITU-R BT.1700 Annex 1 Part B Table 2 item 1: blanking reference.
         .blanking_mv = 0.0,
-        // ITU-R BT.1700 Annex 1 Part B Table 2 item 4 (625 PAL setup = 0 mV).
+        // ITU-R BT.1700 Annex 1 Part B Table 2 item 4: 625 PAL setup = 0 mV.
         .black_mv = 0.0,
-        // ITU-R BT.1700 Annex 1 Part B Table 2 item 2 (white level).
+        // ITU-R BT.1700 Annex 1 Part B Table 2 item 2: white level.
         .white_mv = 700.0,
     };
   }

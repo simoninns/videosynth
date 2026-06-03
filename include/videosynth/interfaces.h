@@ -26,6 +26,8 @@ struct RunOptions {
   std::string log_file;
 };
 
+// Thread-safety: Implementations of ILogger must be thread-safe.
+// Multiple threads may call logging methods concurrently.
 class ILogger {
  public:
   virtual ~ILogger() = default;
@@ -35,12 +37,16 @@ class ILogger {
   virtual void Trace(const std::string& message) = 0;
 };
 
+// Thread-safety: Implementations of IProjectParser must be thread-safe.
+// ParseFile may be called concurrently from multiple threads.
 class IProjectParser {
  public:
   virtual ~IProjectParser() = default;
   virtual ParseResult ParseFile(const std::string& path) = 0;
 };
 
+// Thread-safety: Implementations of IProjectValidator must be thread-safe.
+// Validate may be called concurrently from multiple threads.
 class IProjectValidator {
  public:
   virtual ~IProjectValidator() = default;
@@ -68,9 +74,14 @@ struct ProgressiveFrameSourceProfile {
   int frame_count = 0;
 };
 
+// Thread-safety: Implementations of IProgressiveFrameSourceProbe must be
+// thread-safe. Probe may be called concurrently from multiple threads.
 class IProgressiveFrameSourceProbe {
  public:
   virtual ~IProgressiveFrameSourceProbe() = default;
+  // Ownership: out_profile and error are output parameters. The caller owns
+  // the pointed-to memory and must ensure the pointers are valid (non-null).
+  // The implementation writes to these locations but does not take ownership.
   virtual bool Probe(const Section& section,
                      ProgressiveFrameSourceProfile* out_profile,
                      std::string* error) = 0;
@@ -78,14 +89,23 @@ class IProgressiveFrameSourceProbe {
 
 struct FrameSourceImage;
 
+// Thread-safety: Implementations of IProgressiveFrameProvider must be
+// thread-safe. GenerateFrame may be called concurrently from multiple threads.
 class IProgressiveFrameProvider {
  public:
   virtual ~IProgressiveFrameProvider() = default;
+  // Ownership: out_image and error are output parameters. The caller owns
+  // the pointed-to memory and must ensure the pointers are valid (non-null).
+  // The implementation writes to these locations but does not take ownership.
   virtual bool GenerateFrame(const Section& section, int frame_index,
                              Standard standard, FrameSourceImage* out_image,
                              std::string* error) const = 0;
 };
 
+// Thread-safety: Implementations of IGenerationStage are NOT thread-safe.
+// Callers must ensure sequential access. Concurrent calls to Generate,
+// GenerateFrameBatch, or BuildFrameSchedule from multiple threads will result
+// in undefined behavior.
 class IGenerationStage {
  public:
   virtual ~IGenerationStage() = default;
@@ -94,36 +114,64 @@ class IGenerationStage {
     int source_frame_index = 0;
   };
 
+  // Ownership: out_schedule and errors are output parameters. The caller owns
+  // the pointed-to vectors and must ensure the pointers are valid (non-null).
+  // The implementation clears and populates these vectors but does not take
+  // ownership.
   virtual bool BuildFrameSchedule(const Project& project,
                                   std::vector<FrameScheduleItem>* out_schedule,
                                   std::vector<std::string>* errors) = 0;
 
+  // Ownership: out_y_mv, out_c_mv, and errors are output parameters. The caller
+  // owns the pointed-to vectors and must ensure the pointers are valid (non-null).
+  // The implementation clears and populates these vectors but does not take
+  // ownership.
   virtual bool GenerateFrameBatch(
       const Project& project, const std::vector<FrameScheduleItem>& schedule,
       std::size_t start_frame, std::size_t frame_count,
       std::vector<SampleFixed>* out_y_mv, std::vector<SampleFixed>* out_c_mv,
       std::vector<std::string>* errors) = 0;
 
+  // Ownership: out_y_mv, out_c_mv, and errors are output parameters. The caller
+  // owns the pointed-to vectors and must ensure the pointers are valid (non-null).
+  // The implementation clears and populates these vectors but does not take
+  // ownership.
   virtual bool Generate(const Project& project,
                         std::vector<SampleFixed>* out_y_mv,
                         std::vector<SampleFixed>* out_c_mv,
                         std::vector<std::string>* errors) = 0;
 };
 
+// Thread-safety: Implementations of IOutputStage are NOT thread-safe.
+// Callers must ensure sequential access. Concurrent calls to BeginWrite,
+// AppendSamples, FinalizeWrite, or Write from multiple threads will result in
+// undefined behavior.
 class IOutputStage {
  public:
   virtual ~IOutputStage() = default;
 
+  // Ownership: errors is an output parameter. The caller owns the pointed-to
+  // vector and must ensure the pointer is valid (non-null). The implementation
+  // clears and populates this vector but does not take ownership.
   virtual bool BeginWrite(const Project& project,
                           std::size_t expected_frame_count,
                           std::vector<std::string>* errors) = 0;
 
+  // Ownership: errors is an output parameter. The caller owns the pointed-to
+  // vector and must ensure the pointer is valid (non-null). The implementation
+  // clears and populates this vector but does not take ownership.
   virtual bool AppendSamples(const std::vector<SampleFixed>& y_mv,
                              const std::vector<SampleFixed>& c_mv,
                              std::vector<std::string>* errors) = 0;
 
+  // Ownership: errors is an output parameter. The caller owns the pointed-to
+  // vector and must ensure the pointer is valid (non-null). The implementation
+  // clears and populates this vector but does not take ownership.
   virtual bool FinalizeWrite(std::vector<std::string>* errors) = 0;
 
+  // Ownership: errors is an output parameter. The caller owns the pointed-to
+  // vector and must ensure the pointer is valid (non-null). The implementation
+  // clears and populates this vector but does not take ownership.
   virtual bool Write(const Project& project,
                      const std::vector<SampleFixed>& y_mv,
                      const std::vector<SampleFixed>& c_mv,

@@ -37,15 +37,57 @@ struct FrameSourceImage {
   const YCbCr444Pixel& PixelAt(int x, int y) const;
 };
 
+// Thread-safety: ProgressiveFrameSource is NOT thread-safe due to mutable
+// cache state (has_cached_exr_frame_, cached_exr_source_, etc.). Inherits the
+// thread-safe requirement from IProgressiveFrameProvider but implementations
+// must handle their own synchronization. Concurrent calls will result in race
+// conditions on the cache.
 class ProgressiveFrameSource final : public IProgressiveFrameProvider {
  public:
+  // Checks if this source supports the given section.
+  //
+  // Args:
+  //   section: The project section to check.
+  //
+  // Returns:
+  //   true if the section is supported, false otherwise.
   bool SupportsSection(const Section& section) const;
 
+  // Clears any cached frame data.
   void ClearCache() const;
 
+  // Determines the frame count for a section.
+  //
+  // Ownership: out_frame_count and error are output parameters. The caller owns
+  // the pointed-to memory and must ensure the pointers are valid (non-null).
+  // The implementation writes to these locations but does not take ownership.
+  //
+  // Args:
+  //   section: The project section.
+  //   standard: The video standard.
+  //   out_frame_count: Output pointer for the resolved frame count.
+  //   error: Output pointer for any error message.
+  //
+  // Returns:
+  //   true on success, false on any error.
   bool ResolveFrameCount(const Section& section, Standard standard,
                          int* out_frame_count, std::string* error) const;
 
+  // Generates a frame of image data for the given section and frame index.
+  //
+  // Ownership: out_image and error are output parameters. The caller owns
+  // the pointed-to memory and must ensure the pointers are valid (non-null).
+  // The implementation writes to these locations but does not take ownership.
+  //
+  // Args:
+  //   section: The project section.
+  //   frame_index: Index of the frame to generate.
+  //   standard: The video standard.
+  //   out_image: Output pointer for the generated frame image.
+  //   error: Output pointer for any error message.
+  //
+  // Returns:
+  //   true on success, false on any error.
   bool GenerateFrame(const Section& section, int frame_index, Standard standard,
                      FrameSourceImage* out_image,
                      std::string* error) const override;

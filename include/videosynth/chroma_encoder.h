@@ -19,19 +19,41 @@
 
 namespace videosynth {
 
+// Thread-safety: Implementations of IChromaEncoder are NOT thread-safe.
+// Callers must ensure sequential access. Concurrent calls to
+// EncodeLineFromPhaseStart from multiple threads will result in undefined
+// behavior due to mutable workspace state.
 class IChromaEncoder {
  public:
   virtual ~IChromaEncoder() = default;
+  // Ownership: out_chroma_mv is an output parameter. The caller owns the
+  // pointed-to vector and must ensure the pointer is valid (non-null).
+  // The implementation clears and populates this vector but does not take
+  // ownership.
   virtual void EncodeLineFromPhaseStart(
       const std::vector<YCbCr444Pixel>& source_samples,
       double carrier_phase_start_rad,
       std::vector<SampleFixed>* out_chroma_mv) const = 0;
 };
 
+// Thread-safety: PalChromaEncoder is NOT thread-safe due to mutable
+// workspace buffers (filtered_u_workspace_, filtered_v_workspace_).
+// Callers must serialize access or create one encoder per thread.
 class PalChromaEncoder final : public IChromaEncoder {
  public:
+  // Constructs a PAL chroma encoder with the given sample rate.
+  //
+  // Args:
+  //   sample_rate_hz: The output sample rate, used to compute filter tap counts.
   explicit PalChromaEncoder(double sample_rate_hz);
 
+  // Encodes a line of source pixels into chroma samples with color subcarrier.
+  //
+  // Args:
+  //   source_samples: Input pixels in YCbCr 4:4:4 format.
+  //   carrier_phase_start_rad: Phase of the color subcarrier at the start
+  //     of the line in radians.
+  //   out_chroma_mv: Output vector for chroma samples (C channel).
   void EncodeLineFromPhaseStart(
       const std::vector<YCbCr444Pixel>& source_samples,
       double carrier_phase_start_rad,
@@ -44,10 +66,24 @@ class PalChromaEncoder final : public IChromaEncoder {
   mutable std::vector<double> filtered_v_workspace_;
 };
 
+// Thread-safety: NtscChromaEncoder is NOT thread-safe due to mutable
+// workspace buffers (filtered_cb_workspace_, filtered_cr_workspace_).
+// Callers must serialize access or create one encoder per thread.
 class NtscChromaEncoder final : public IChromaEncoder {
  public:
+  // Constructs an NTSC chroma encoder with the given sample rate.
+  //
+  // Args:
+  //   sample_rate_hz: The output sample rate, used to compute filter tap counts.
   explicit NtscChromaEncoder(double sample_rate_hz);
 
+  // Encodes a line of source pixels into chroma samples with color subcarrier.
+  //
+  // Args:
+  //   source_samples: Input pixels in YCbCr 4:4:4 format.
+  //   carrier_phase_start_rad: Phase of the color subcarrier at the start
+  //     of the line in radians.
+  //   out_chroma_mv: Output vector for chroma samples (C channel).
   void EncodeLineFromPhaseStart(
       const std::vector<YCbCr444Pixel>& source_samples,
       double carrier_phase_start_rad,
@@ -60,6 +96,8 @@ class NtscChromaEncoder final : public IChromaEncoder {
   mutable std::vector<double> filtered_cr_workspace_;
 };
 
+// Thread-safety: CreateChromaEncoder returns a new encoder instance. The
+// caller owns the returned unique_ptr and is responsible for thread-safety.
 std::unique_ptr<IChromaEncoder> CreateChromaEncoder(Standard standard,
                                                     double sample_rate_hz);
 

@@ -15,6 +15,9 @@
 
 namespace videosynth {
 
+// Thread-safety: All functions and types in this module are thread-safe.
+// They are stateless and only operate on their parameters or constants.
+// May be called concurrently from multiple threads.
 using SampleFixed = std::int64_t;
 
 constexpr int kSampleFractionBits = 20;

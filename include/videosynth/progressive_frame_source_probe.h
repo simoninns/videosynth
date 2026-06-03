@@ -14,8 +14,14 @@
 
 namespace videosynth {
 
+// Thread-safety: ProgressiveFrameSourceProbe IS thread-safe. The Probe method
+// has no internal state and only reads from its parameters. It may be called
+// concurrently from multiple threads.
 class ProgressiveFrameSourceProbe final : public IProgressiveFrameSourceProbe {
  public:
+  // Ownership: out_profile and error are output parameters. The caller owns
+  // the pointed-to memory and must ensure the pointers are valid (non-null).
+  // The implementation writes to these locations but does not take ownership.
   bool Probe(const Section& section, ProgressiveFrameSourceProfile* out_profile,
              std::string* error) override;
 };

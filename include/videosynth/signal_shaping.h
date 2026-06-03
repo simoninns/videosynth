@@ -11,6 +11,9 @@
 
 namespace videosynth {
 
+// Thread-safety: All functions in this module are thread-safe (stateless pure
+// functions that only operate on their parameters). They may be called
+// concurrently from multiple threads.
 int RiseTimeToRampSamples(double rise_time_seconds, double sample_rate_hz);
 
 int TransitionTimeToRampSamples(double transition_time_seconds,

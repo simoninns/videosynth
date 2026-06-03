@@ -14,6 +14,8 @@
 
 namespace videosynth {
 
+// Thread-safety: All functions in this module are thread-safe (stateless pure
+// functions). They may be called concurrently from multiple threads.
 inline int MapActiveSampleToSourcePixel(int sample_index,
                                         int active_sample_count,
                                         int source_active_width,

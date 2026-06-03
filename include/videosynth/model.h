@@ -15,6 +15,9 @@
 
 namespace videosynth {
 
+// Thread-safety: All types, enums, and functions in this module are thread-safe.
+// They are plain data containers or stateless functions. May be accessed
+// concurrently from multiple threads.
 enum class Standard {
   kPal,
   kNtsc,
