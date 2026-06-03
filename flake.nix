@@ -60,6 +60,7 @@
             openexr
             zlib
             ffmpeg
+            llvmPackages_18.clang-tools
           ];
         };
       });
