@@ -9,11 +9,10 @@
 
 #pragma once
 
-#include <string>
+#include <spdlog/logger.h>
 
 #include <memory>
-
-#include <spdlog/logger.h>
+#include <string>
 
 #include "videosynth/interfaces.h"
 

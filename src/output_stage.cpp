@@ -9,6 +9,8 @@
 
 #include "videosynth/output_stage.h"
 
+#include <sqlite3.h>
+
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -17,8 +19,6 @@
 #include <limits>
 #include <string>
 #include <vector>
-
-#include <sqlite3.h>
 
 #include "videosynth/fixed_point.h"
 #include "videosynth/model.h"
@@ -79,37 +79,43 @@ bool BuildQuantizationProfile(Standard standard, QuantizationProfile* profile) {
   return true;
 }
 
-int MapCompositeMillivoltsToCode(double composite_mv, const QuantizationProfile& profile) {
-  return static_cast<int>(std::lround(composite_mv / profile.millivolts_per_code)) +
+int MapCompositeMillivoltsToCode(double composite_mv,
+                                 const QuantizationProfile& profile) {
+  return static_cast<int>(
+             std::lround(composite_mv / profile.millivolts_per_code)) +
          profile.blanking_code;
 }
 
-int MapCompositeFixedToCode(SampleFixed composite_mv_fixed, const QuantizationProfile& profile) {
+int MapCompositeFixedToCode(SampleFixed composite_mv_fixed,
+                            const QuantizationProfile& profile) {
   constexpr int kReciprocalFractionBits = 30;
-  const std::int64_t product =
-      composite_mv_fixed * profile.reciprocal_q30;
-  const std::int64_t mapped_delta =
-      RoundShiftRightSigned(product, kReciprocalFractionBits + kSampleFractionBits);
+  const std::int64_t product = composite_mv_fixed * profile.reciprocal_q30;
+  const std::int64_t mapped_delta = RoundShiftRightSigned(
+      product, kReciprocalFractionBits + kSampleFractionBits);
   return static_cast<int>(mapped_delta) + profile.blanking_code;
 }
 
 int ClampToLegalCodeRange(int mapped_code, const QuantizationProfile& profile) {
   // Preserve sub-black (4-15) and over-white-adjacent (1020-1023 are reserved).
-  // Only clamp reserved/protected values: 0-3 (reserved low) and 1020-1023 (reserved high).
-  // Allow excursions in ranges 4-1019 to pass through (legal + sub-black).
+  // Only clamp reserved/protected values: 0-3 (reserved low) and 1020-1023
+  // (reserved high). Allow excursions in ranges 4-1019 to pass through (legal +
+  // sub-black).
   constexpr int kReservedLow = 4;
   constexpr int kReservedHigh = 1020;
-  
+
   if (mapped_code < kReservedLow) {
-    return kReservedLow;  // Clamp reserved low values (0-3) to first non-reserved sub-black (4)
+    return kReservedLow;  // Clamp reserved low values (0-3) to first
+                          // non-reserved sub-black (4)
   }
   if (mapped_code > kReservedHigh - 1) {
-    return kReservedHigh - 1;  // Clamp reserved high values (1020-1023) to maximum non-reserved (1019)
+    return kReservedHigh - 1;  // Clamp reserved high values (1020-1023) to
+                               // maximum non-reserved (1019)
   }
   return mapped_code;
 }
 
-bool ResolveOutputEncoding(const std::string& preset, OutputEncoding* output_encoding) {
+bool ResolveOutputEncoding(const std::string& preset,
+                           OutputEncoding* output_encoding) {
   if (output_encoding == nullptr) {
     return false;
   }
@@ -163,7 +169,8 @@ std::vector<SampleFixed> ResampleFrame(const std::vector<SampleFixed>& input,
     const double source_position =
         source_last_index * (static_cast<double>(i) / target_last_index);
     const std::size_t left_index = static_cast<std::size_t>(source_position);
-    const std::size_t right_index = std::min(left_index + 1U, input.size() - 1U);
+    const std::size_t right_index =
+        std::min(left_index + 1U, input.size() - 1U);
     const double fraction = source_position - static_cast<double>(left_index);
     const double interpolated =
         (1.0 - fraction) * static_cast<double>(input[left_index]) +
@@ -175,13 +182,15 @@ std::vector<SampleFixed> ResampleFrame(const std::vector<SampleFixed>& input,
 }
 
 std::int16_t EncodeCompositeSample(OutputEncoding encoding,
-                                  SampleFixed composite_mv_fixed,
-                                  const QuantizationProfile& profile) {
+                                   SampleFixed composite_mv_fixed,
+                                   const QuantizationProfile& profile) {
   if (encoding == OutputEncoding::kRawS16) {
-    const int raw_mv = static_cast<int>(std::lround(SampleFixedToMillivolts(composite_mv_fixed)));
-    const int clamped_raw_mv =
-        std::max(static_cast<int>(std::numeric_limits<std::int16_t>::min()),
-                 std::min(static_cast<int>(std::numeric_limits<std::int16_t>::max()), raw_mv));
+    const int raw_mv = static_cast<int>(
+        std::lround(SampleFixedToMillivolts(composite_mv_fixed)));
+    const int clamped_raw_mv = std::max(
+        static_cast<int>(std::numeric_limits<std::int16_t>::min()),
+        std::min(static_cast<int>(std::numeric_limits<std::int16_t>::max()),
+                 raw_mv));
     return static_cast<std::int16_t>(clamped_raw_mv);
   }
 
@@ -195,17 +204,16 @@ std::int16_t EncodeCompositeSample(OutputEncoding encoding,
   return static_cast<std::int16_t>(quantized_code);
 }
 
-bool IsNonstandardMappedCode(int mapped_code, const QuantizationProfile& profile) {
+bool IsNonstandardMappedCode(int mapped_code,
+                             const QuantizationProfile& profile) {
   return mapped_code < (profile.minimum_legal_code - 1) ||
          mapped_code > (profile.maximum_legal_code + 1);
 }
 
-bool WriteMetadataDatabase(const Project& project,
-                           std::size_t frame_count,
+bool WriteMetadataDatabase(const Project& project, std::size_t frame_count,
                            const QuantizationProfile& quantization,
                            bool has_nonstandard,
-                           std::vector<std::string>* errors,
-                           ILogger* logger) {
+                           std::vector<std::string>* errors, ILogger* logger) {
   const std::string& metadata_path = project.output.metadata_path;
 
   // Write metadata as SQLite database per CVBS specification.
@@ -214,7 +222,8 @@ bool WriteMetadataDatabase(const Project& project,
   sqlite3* db = nullptr;
   const int open_result = sqlite3_open(metadata_path.c_str(), &db);
   if (open_result != SQLITE_OK) {
-    errors->push_back("Failed to create metadata SQLite database: " + metadata_path);
+    errors->push_back("Failed to create metadata SQLite database: " +
+                      metadata_path);
     if (db != nullptr) {
       sqlite3_close(db);
     }
@@ -226,8 +235,10 @@ bool WriteMetadataDatabase(const Project& project,
   }
 
   char* error_msg = nullptr;
-  if (sqlite3_exec(db, "PRAGMA user_version = 7;", nullptr, nullptr, &error_msg) != SQLITE_OK) {
-    errors->push_back(std::string("Failed to set PRAGMA user_version: ") + error_msg);
+  if (sqlite3_exec(db, "PRAGMA user_version = 7;", nullptr, nullptr,
+                   &error_msg) != SQLITE_OK) {
+    errors->push_back(std::string("Failed to set PRAGMA user_version: ") +
+                      error_msg);
     sqlite3_free(error_msg);
     sqlite3_close(db);
     return false;
@@ -239,7 +250,8 @@ bool WriteMetadataDatabase(const Project& project,
       "    preset                      TEXT    NOT NULL"
       "        CHECK (preset IN ('NTSC', 'PAL', 'PAL_M')),"
       "    sample_encoding_preset      TEXT    NOT NULL"
-      "        CHECK (sample_encoding_preset IN ('CVBS_U10_4FSC', 'CVBS_U16_4FSC', 'RAW_S16_28M', 'RAW_S16_40M', 'CVBS_TPG21_4FSC')),"
+      "        CHECK (sample_encoding_preset IN ('CVBS_U10_4FSC', "
+      "'CVBS_U16_4FSC', 'RAW_S16_28M', 'RAW_S16_40M', 'CVBS_TPG21_4FSC')),"
       "    signal_state_preset         TEXT    NOT NULL"
       "        CHECK (signal_state_preset IN ("
       "            'STANDARD_TBC_LOCKED',"
@@ -255,14 +267,17 @@ bool WriteMetadataDatabase(const Project& project,
       "    git_branch                  TEXT,"
       "    git_commit                  TEXT,"
       "    number_of_sequential_frames INTEGER"
-      "        CHECK (number_of_sequential_frames IS NULL OR number_of_sequential_frames >= 1),"
+      "        CHECK (number_of_sequential_frames IS NULL OR "
+      "number_of_sequential_frames >= 1),"
       "    black_level                 INTEGER,"
       "    has_nonstandard_values      BOOLEAN,"
       "    capture_notes               TEXT"
       ");";
 
-  if (sqlite3_exec(db, create_table_sql, nullptr, nullptr, &error_msg) != SQLITE_OK) {
-    errors->push_back(std::string("Failed to create cvbs_file table: ") + error_msg);
+  if (sqlite3_exec(db, create_table_sql, nullptr, nullptr, &error_msg) !=
+      SQLITE_OK) {
+    errors->push_back(std::string("Failed to create cvbs_file table: ") +
+                      error_msg);
     sqlite3_free(error_msg);
     sqlite3_close(db);
     return false;
@@ -295,17 +310,20 @@ bool WriteMetadataDatabase(const Project& project,
       "    capture_notes"
       ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
 
-  if (sqlite3_prepare_v2(db, insert_sql, -1, &insert_stmt, nullptr) != SQLITE_OK) {
+  if (sqlite3_prepare_v2(db, insert_sql, -1, &insert_stmt, nullptr) !=
+      SQLITE_OK) {
     errors->push_back("Failed to prepare insert statement");
     sqlite3_close(db);
     return false;
   }
 
   sqlite3_bind_text(insert_stmt, 1, preset_str.c_str(), -1, SQLITE_STATIC);
-  sqlite3_bind_text(
-      insert_stmt, 2, project.cvbs_presets.sample_encoding_preset.c_str(), -1, SQLITE_STATIC);
-  sqlite3_bind_text(
-      insert_stmt, 3, project.cvbs_presets.signal_state_preset.c_str(), -1, SQLITE_STATIC);
+  sqlite3_bind_text(insert_stmt, 2,
+                    project.cvbs_presets.sample_encoding_preset.c_str(), -1,
+                    SQLITE_STATIC);
+  sqlite3_bind_text(insert_stmt, 3,
+                    project.cvbs_presets.signal_state_preset.c_str(), -1,
+                    SQLITE_STATIC);
   sqlite3_bind_text(insert_stmt, 4, "composite", -1, SQLITE_STATIC);
   sqlite3_bind_text(insert_stmt, 5, "videosynth", -1, SQLITE_STATIC);
   sqlite3_bind_null(insert_stmt, 6);
@@ -318,7 +336,8 @@ bool WriteMetadataDatabase(const Project& project,
       std::abs(project.cvbs_presets.ntsc_black_setup_ire) < 1e-9;
   if (has_explicit_black_level_override) {
     const SignalLevels levels = GetSignalLevels(project.cvbs_presets);
-    const int black_level_code = MapCompositeMillivoltsToCode(levels.black_mv, quantization);
+    const int black_level_code =
+        MapCompositeMillivoltsToCode(levels.black_mv, quantization);
     sqlite3_bind_int(insert_stmt, 9, black_level_code);
   } else {
     sqlite3_bind_null(insert_stmt, 9);
@@ -356,8 +375,9 @@ bool OutputStage::BeginWrite(const Project& project,
   }
 
   if (logger_ != nullptr) {
-    logger_->Debug("Preparing to write output files: video='" + project.output.video_path +
-                   "', metadata='" + project.output.metadata_path + "'.");
+    logger_->Debug("Preparing to write output files: video='" +
+                   project.output.video_path + "', metadata='" +
+                   project.output.metadata_path + "'.");
   }
 
   const std::string& output_path = project.output.video_path;
@@ -374,8 +394,10 @@ bool OutputStage::BeginWrite(const Project& project,
     errors->push_back("Output and metadata paths must be different files.");
     return false;
   }
-  if (!IsSupportedSampleEncodingPreset(project.cvbs_presets.sample_encoding_preset)) {
-    errors->push_back("Output stage requires a supported sample_encoding_preset.");
+  if (!IsSupportedSampleEncodingPreset(
+          project.cvbs_presets.sample_encoding_preset)) {
+    errors->push_back(
+        "Output stage requires a supported sample_encoding_preset.");
     return false;
   }
   if (!IsLockedSignalStatePreset(project.cvbs_presets.signal_state_preset)) {
@@ -383,12 +405,14 @@ bool OutputStage::BeginWrite(const Project& project,
     return false;
   }
 
-  const std::size_t input_frame_span =
-      static_cast<std::size_t>(SamplesPerFrame4fsc(project.cvbs_presets.video_standard_preset));
+  const std::size_t input_frame_span = static_cast<std::size_t>(
+      SamplesPerFrame4fsc(project.cvbs_presets.video_standard_preset));
   const std::size_t output_frame_span = SamplesPerFrameForEncodingPreset(
-      project.cvbs_presets.video_standard_preset, project.cvbs_presets.sample_encoding_preset);
+      project.cvbs_presets.video_standard_preset,
+      project.cvbs_presets.sample_encoding_preset);
   if (input_frame_span == 0U || output_frame_span == 0U) {
-    errors->push_back("Generated sample count does not align to supported output timing.");
+    errors->push_back(
+        "Generated sample count does not align to supported output timing.");
     return false;
   }
 
@@ -427,28 +451,35 @@ bool OutputStage::AppendSamples(const std::vector<SampleFixed>& y_mv,
   }
 
   if (y_mv.size() != c_mv.size()) {
-    errors->push_back("Internal error: Y and C sample vectors must be same size.");
+    errors->push_back(
+        "Internal error: Y and C sample vectors must be same size.");
     return false;
   }
   if (input_frame_span_ == 0U || (y_mv.size() % input_frame_span_) != 0U) {
-    errors->push_back("Generated sample count does not align to supported input timing.");
+    errors->push_back(
+        "Generated sample count does not align to supported input timing.");
     return false;
   }
 
   QuantizationProfile quantization;
-  if (!BuildQuantizationProfile(current_project_.cvbs_presets.video_standard_preset, &quantization)) {
-    errors->push_back("Output stage received unsupported or unknown video standard.");
+  if (!BuildQuantizationProfile(
+          current_project_.cvbs_presets.video_standard_preset, &quantization)) {
+    errors->push_back(
+        "Output stage received unsupported or unknown video standard.");
     return false;
   }
 
   OutputEncoding output_encoding = OutputEncoding::kCvbsU10;
-  if (!ResolveOutputEncoding(current_project_.cvbs_presets.sample_encoding_preset, &output_encoding)) {
+  if (!ResolveOutputEncoding(
+          current_project_.cvbs_presets.sample_encoding_preset,
+          &output_encoding)) {
     errors->push_back("Output stage does not support sample_encoding_preset: " +
                       current_project_.cvbs_presets.sample_encoding_preset);
     return false;
   }
 
-  for (std::size_t frame_start = 0U; frame_start < y_mv.size(); frame_start += input_frame_span_) {
+  for (std::size_t frame_start = 0U; frame_start < y_mv.size();
+       frame_start += input_frame_span_) {
     std::vector<SampleFixed> composite_frame;
     composite_frame.reserve(input_frame_span_);
     for (std::size_t i = 0; i < input_frame_span_; ++i) {
@@ -461,15 +492,17 @@ bool OutputStage::AppendSamples(const std::vector<SampleFixed>& y_mv,
 
     for (const SampleFixed composite_mv_fixed : composite_frame) {
       if (output_encoding != OutputEncoding::kRawS16) {
-        const int mapped = MapCompositeFixedToCode(composite_mv_fixed, quantization);
+        const int mapped =
+            MapCompositeFixedToCode(composite_mv_fixed, quantization);
         if (IsNonstandardMappedCode(mapped, quantization)) {
           has_nonstandard_ = true;
         }
       }
 
-      const std::int16_t encoded_sample =
-          EncodeCompositeSample(output_encoding, composite_mv_fixed, quantization);
-      video_stream_.write(reinterpret_cast<const char*>(&encoded_sample), sizeof(encoded_sample));
+      const std::int16_t encoded_sample = EncodeCompositeSample(
+          output_encoding, composite_mv_fixed, quantization);
+      video_stream_.write(reinterpret_cast<const char*>(&encoded_sample),
+                          sizeof(encoded_sample));
     }
   }
 
@@ -492,9 +525,11 @@ bool OutputStage::FinalizeWrite(std::vector<std::string>* errors) {
     return false;
   }
 
-  const std::size_t expected_samples = expected_frame_count_ * output_frame_span_;
+  const std::size_t expected_samples =
+      expected_frame_count_ * output_frame_span_;
   if (written_samples_ != expected_samples) {
-    errors->push_back("Output session sample count mismatch before finalization.");
+    errors->push_back(
+        "Output session sample count mismatch before finalization.");
     video_stream_.close();
     write_session_open_ = false;
     return false;
@@ -503,24 +538,23 @@ bool OutputStage::FinalizeWrite(std::vector<std::string>* errors) {
   video_stream_.close();
 
   QuantizationProfile quantization;
-  if (!BuildQuantizationProfile(current_project_.cvbs_presets.video_standard_preset, &quantization)) {
-    errors->push_back("Output stage received unsupported or unknown video standard.");
+  if (!BuildQuantizationProfile(
+          current_project_.cvbs_presets.video_standard_preset, &quantization)) {
+    errors->push_back(
+        "Output stage received unsupported or unknown video standard.");
     write_session_open_ = false;
     return false;
   }
 
-  if (!WriteMetadataDatabase(current_project_,
-                             expected_frame_count_,
-                             quantization,
-                             has_nonstandard_,
-                             errors,
-                             logger_)) {
+  if (!WriteMetadataDatabase(current_project_, expected_frame_count_,
+                             quantization, has_nonstandard_, errors, logger_)) {
     write_session_open_ = false;
     return false;
   }
 
   if (logger_ != nullptr) {
-    logger_->Info("Wrote " + std::to_string(expected_frame_count_) + " frame(s) to output files.");
+    logger_->Info("Wrote " + std::to_string(expected_frame_count_) +
+                  " frame(s) to output files.");
   }
 
   write_session_open_ = false;
@@ -536,14 +570,16 @@ bool OutputStage::Write(const Project& project,
   }
 
   if (y_mv.size() != c_mv.size()) {
-    errors->push_back("Internal error: Y and C sample vectors must be same size.");
+    errors->push_back(
+        "Internal error: Y and C sample vectors must be same size.");
     return false;
   }
 
-  const std::size_t frame_span =
-      static_cast<std::size_t>(SamplesPerFrame4fsc(project.cvbs_presets.video_standard_preset));
+  const std::size_t frame_span = static_cast<std::size_t>(
+      SamplesPerFrame4fsc(project.cvbs_presets.video_standard_preset));
   if (frame_span == 0U || (y_mv.size() % frame_span) != 0U) {
-    errors->push_back("Generated sample count does not align to whole-frame 4fsc timing.");
+    errors->push_back(
+        "Generated sample count does not align to whole-frame 4fsc timing.");
     return false;
   }
 

@@ -15,8 +15,9 @@ namespace videosynth {
 
 class ProjectValidator final : public IProjectValidator {
  public:
-  explicit ProjectValidator(IProgressiveFrameSourceProbe* progressive_frame_source_probe = nullptr,
-                            ILogger* logger = nullptr);
+  explicit ProjectValidator(
+      IProgressiveFrameSourceProbe* progressive_frame_source_probe = nullptr,
+      ILogger* logger = nullptr);
 
   ValidationResult Validate(const Project& project) override;
 

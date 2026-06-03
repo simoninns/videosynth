@@ -1,18 +1,19 @@
 /*
  * File:        test_chroma_encoder.cpp
  * Module:      chroma_encoder_tests
- * Purpose:     Validates standard-specific chroma encoder dispatch and neutral behavior.
+ * Purpose:     Validates standard-specific chroma encoder dispatch and neutral
+ * behavior.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Simon Inns
  */
 
+#include <gtest/gtest.h>
+
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <vector>
-
-#include <gtest/gtest.h>
 
 #include "videosynth/chroma_encoder.h"
 #include "videosynth/fixed_point.h"
@@ -27,17 +28,22 @@ double RootMeanSquare(const std::vector<SampleFixed>& values) {
     const double value_mv = SampleFixedToMillivolts(value);
     square_sum += value_mv * value_mv;
   }
-  return values.empty() ? 0.0 : std::sqrt(square_sum / static_cast<double>(values.size()));
+  return values.empty()
+             ? 0.0
+             : std::sqrt(square_sum / static_cast<double>(values.size()));
 }
 
 std::vector<YCbCr444Pixel> MakeCbSinusoidLine(std::size_t sample_count,
                                               double amplitude_norm,
                                               double cycles_per_sample) {
-  std::vector<YCbCr444Pixel> line(sample_count, YCbCr444Pixel{.y = 512, .cb = 512, .cr = 512});
+  std::vector<YCbCr444Pixel> line(
+      sample_count, YCbCr444Pixel{.y = 512, .cb = 512, .cr = 512});
   for (std::size_t index = 0; index < sample_count; ++index) {
-    const double angle = 2.0 * M_PI * cycles_per_sample * static_cast<double>(index);
+    const double angle =
+        2.0 * M_PI * cycles_per_sample * static_cast<double>(index);
     const double cb_norm = amplitude_norm * std::sin(angle);
-    line[index].cb = static_cast<std::int16_t>(std::lround(512.0 + (448.0 * cb_norm)));
+    line[index].cb =
+        static_cast<std::int16_t>(std::lround(512.0 + (448.0 * cb_norm)));
   }
   return line;
 }
@@ -45,19 +51,25 @@ std::vector<YCbCr444Pixel> MakeCbSinusoidLine(std::size_t sample_count,
 std::vector<YCbCr444Pixel> MakeCrSinusoidLine(std::size_t sample_count,
                                               double amplitude_norm,
                                               double cycles_per_sample) {
-  std::vector<YCbCr444Pixel> line(sample_count, YCbCr444Pixel{.y = 512, .cb = 512, .cr = 512});
+  std::vector<YCbCr444Pixel> line(
+      sample_count, YCbCr444Pixel{.y = 512, .cb = 512, .cr = 512});
   for (std::size_t index = 0; index < sample_count; ++index) {
-    const double angle = 2.0 * M_PI * cycles_per_sample * static_cast<double>(index);
+    const double angle =
+        2.0 * M_PI * cycles_per_sample * static_cast<double>(index);
     const double cr_norm = amplitude_norm * std::sin(angle);
-    line[index].cr = static_cast<std::int16_t>(std::lround(512.0 + (448.0 * cr_norm)));
+    line[index].cr =
+        static_cast<std::int16_t>(std::lround(512.0 + (448.0 * cr_norm)));
   }
   return line;
 }
 
 TEST(ChromaEncoderTest, NeutralChromaProducesNoSubcarrierEnergy) {
-  const std::vector<YCbCr444Pixel> neutral_line(64, YCbCr444Pixel{.y = 512, .cb = 512, .cr = 512});
-  const auto pal = CreateChromaEncoder(Standard::kPal, GetTimingConstants(Standard::kPal).sample_rate_4fsc_hz);
-  const auto ntsc = CreateChromaEncoder(Standard::kNtsc, GetTimingConstants(Standard::kNtsc).sample_rate_4fsc_hz);
+  const std::vector<YCbCr444Pixel> neutral_line(
+      64, YCbCr444Pixel{.y = 512, .cb = 512, .cr = 512});
+  const auto pal = CreateChromaEncoder(
+      Standard::kPal, GetTimingConstants(Standard::kPal).sample_rate_4fsc_hz);
+  const auto ntsc = CreateChromaEncoder(
+      Standard::kNtsc, GetTimingConstants(Standard::kNtsc).sample_rate_4fsc_hz);
   std::vector<SampleFixed> pal_output;
   std::vector<SampleFixed> ntsc_output;
 
@@ -75,10 +87,14 @@ TEST(ChromaEncoderTest, NeutralChromaProducesNoSubcarrierEnergy) {
   }
 }
 
-TEST(ChromaEncoderTest, PalAndNtscUseConsistentQuadratureMappingForStaticCbCrInputs) {
-  const std::vector<YCbCr444Pixel> saturated_line(64, YCbCr444Pixel{.y = 512, .cb = 800, .cr = 300});
-  const auto pal = CreateChromaEncoder(Standard::kPal, GetTimingConstants(Standard::kPal).sample_rate_4fsc_hz);
-  const auto ntsc = CreateChromaEncoder(Standard::kNtsc, GetTimingConstants(Standard::kNtsc).sample_rate_4fsc_hz);
+TEST(ChromaEncoderTest,
+     PalAndNtscUseConsistentQuadratureMappingForStaticCbCrInputs) {
+  const std::vector<YCbCr444Pixel> saturated_line(
+      64, YCbCr444Pixel{.y = 512, .cb = 800, .cr = 300});
+  const auto pal = CreateChromaEncoder(
+      Standard::kPal, GetTimingConstants(Standard::kPal).sample_rate_4fsc_hz);
+  const auto ntsc = CreateChromaEncoder(
+      Standard::kNtsc, GetTimingConstants(Standard::kNtsc).sample_rate_4fsc_hz);
   std::vector<SampleFixed> pal_output;
   std::vector<SampleFixed> ntsc_output;
 
@@ -88,12 +104,15 @@ TEST(ChromaEncoderTest, PalAndNtscUseConsistentQuadratureMappingForStaticCbCrInp
   pal->EncodeLineFromPhaseStart(saturated_line, 0.75, &pal_output);
   ntsc->EncodeLineFromPhaseStart(saturated_line, 0.75, &ntsc_output);
 
-  EXPECT_NEAR(SampleFixedToMillivolts(pal_output[32]), SampleFixedToMillivolts(ntsc_output[32]), 1e-9);
+  EXPECT_NEAR(SampleFixedToMillivolts(pal_output[32]),
+              SampleFixedToMillivolts(ntsc_output[32]), 1e-9);
 }
 
-TEST(ChromaEncoderTest, PalLowPassAttenuatesHighFrequencyChromaMoreThanLowFrequency) {
+TEST(ChromaEncoderTest,
+     PalLowPassAttenuatesHighFrequencyChromaMoreThanLowFrequency) {
   const TimingConstants pal_timing = GetTimingConstants(Standard::kPal);
-  const auto pal = CreateChromaEncoder(Standard::kPal, pal_timing.sample_rate_4fsc_hz);
+  const auto pal =
+      CreateChromaEncoder(Standard::kPal, pal_timing.sample_rate_4fsc_hz);
   std::vector<SampleFixed> low_output;
   std::vector<SampleFixed> high_output;
 
@@ -111,7 +130,8 @@ TEST(ChromaEncoderTest, PalLowPassAttenuatesHighFrequencyChromaMoreThanLowFreque
 
 TEST(ChromaEncoderTest, NtscCbAndCrAxesUseSymmetricBandwidth) {
   const TimingConstants ntsc_timing = GetTimingConstants(Standard::kNtsc);
-  const auto ntsc = CreateChromaEncoder(Standard::kNtsc, ntsc_timing.sample_rate_4fsc_hz);
+  const auto ntsc =
+      CreateChromaEncoder(Standard::kNtsc, ntsc_timing.sample_rate_4fsc_hz);
   std::vector<SampleFixed> cb_output;
   std::vector<SampleFixed> cr_output;
 
@@ -132,10 +152,12 @@ TEST(ChromaEncoderTest, NtscCbAndCrAxesUseSymmetricBandwidth) {
 
 TEST(ChromaEncoderTest, PhaseStartEncodingIsDeterministic) {
   const TimingConstants ntsc_timing = GetTimingConstants(Standard::kNtsc);
-  const auto ntsc = CreateChromaEncoder(Standard::kNtsc, ntsc_timing.sample_rate_4fsc_hz);
+  const auto ntsc =
+      CreateChromaEncoder(Standard::kNtsc, ntsc_timing.sample_rate_4fsc_hz);
   ASSERT_NE(ntsc, nullptr);
 
-  std::vector<YCbCr444Pixel> line(128, YCbCr444Pixel{.y = 512, .cb = 760, .cr = 300});
+  std::vector<YCbCr444Pixel> line(
+      128, YCbCr444Pixel{.y = 512, .cb = 760, .cr = 300});
   const double phase_start = M_PI / 6.0;
 
   std::vector<SampleFixed> first_run;

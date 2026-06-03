@@ -15,10 +15,8 @@ namespace videosynth {
 
 class VideoSynthPipeline {
  public:
-  VideoSynthPipeline(IProjectParser* parser,
-                     IProjectValidator* validator,
-                     IGenerationStage* generation,
-                     IOutputStage* output,
+  VideoSynthPipeline(IProjectParser* parser, IProjectValidator* validator,
+                     IGenerationStage* generation, IOutputStage* output,
                      ILogger* logger);
 
   bool Run(const RunOptions& options);

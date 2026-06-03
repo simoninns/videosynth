@@ -21,14 +21,11 @@ int TransitionTimeToRampSamples(double transition_time_seconds,
 int HalfAmplitudeTimeToRampSamples(double half_amplitude_time_seconds,
                                    double sample_rate_hz);
 
-double ShapedPulseLevel(int relative_index,
-                        int pulse_width_samples,
-                        int ramp_samples,
-                        double baseline_level,
+double ShapedPulseLevel(int relative_index, int pulse_width_samples,
+                        int ramp_samples, double baseline_level,
                         double pulse_level);
 
-double ShapedGateEnvelope(int relative_index,
-                          int gate_width_samples,
+double ShapedGateEnvelope(int relative_index, int gate_width_samples,
                           int ramp_samples);
 
 }  // namespace videosynth

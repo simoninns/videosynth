@@ -35,15 +35,17 @@ videosynth::LogLevel ParseLogLevel(const std::string& log_level) {
 }
 
 void PrintUsage() {
-  std::cout << "Usage:\n"
-            << "  videosynth --project <path> [options]\n"
-            << "  videosynth --project <path> --validate [options]\n\n"
-            << "Options:\n"
-            << "  --project   Path to YAML project file (required).\n"
-            << "  Output paths are read from project YAML under output.video_path and output.metadata_path.\n"
-            << "  --validate  Validate only; do not generate output.\n"
-            << "  --log-level <level>  Set log level: info, debug, or trace.\n"
-            << "  --log-file <filename>  Write logs to a file as well as stderr.\n";
+  std::cout
+      << "Usage:\n"
+      << "  videosynth --project <path> [options]\n"
+      << "  videosynth --project <path> --validate [options]\n\n"
+      << "Options:\n"
+      << "  --project   Path to YAML project file (required).\n"
+      << "  Output paths are read from project YAML under output.video_path "
+         "and output.metadata_path.\n"
+      << "  --validate  Validate only; do not generate output.\n"
+      << "  --log-level <level>  Set log level: info, debug, or trace.\n"
+      << "  --log-file <filename>  Write logs to a file as well as stderr.\n";
 }
 
 }  // namespace
@@ -78,7 +80,8 @@ int main(int argc, char** argv) {
     return 2;
   }
 
-  videosynth::SpdlogLogger logger(ParseLogLevel(options.log_level), options.log_file);
+  videosynth::SpdlogLogger logger(ParseLogLevel(options.log_level),
+                                  options.log_file);
   logger.Debug("Logging configured at level '" + options.log_level + "'.");
   if (!options.log_file.empty()) {
     logger.Debug("Log file enabled: " + options.log_file);
@@ -86,10 +89,12 @@ int main(int argc, char** argv) {
 
   videosynth::YamlProjectParser parser(&logger);
   videosynth::ProgressiveFrameSourceProbe progressive_frame_source_probe;
-  videosynth::ProjectValidator validator(&progressive_frame_source_probe, &logger);
+  videosynth::ProjectValidator validator(&progressive_frame_source_probe,
+                                         &logger);
   videosynth::GenerationStage generation(&logger);
   videosynth::OutputStage output(&logger);
 
-  videosynth::VideoSynthPipeline pipeline(&parser, &validator, &generation, &output, &logger);
+  videosynth::VideoSynthPipeline pipeline(&parser, &validator, &generation,
+                                          &output, &logger);
   return pipeline.Run(options) ? 0 : 1;
 }

@@ -1,7 +1,8 @@
 /*
  * File:        test_vits_definition_provider.cpp
  * Module:      vits_definition_provider_tests
- * Purpose:     Verifies VITS definition lookup catalog coverage and deterministic errors.
+ * Purpose:     Verifies VITS definition lookup catalog coverage and
+ * deterministic errors.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Simon Inns
@@ -13,8 +14,8 @@
 #include <vector>
 
 #include "videosynth/timing_constants.h"
-#include "videosynth/vits_generator.h"
 #include "videosynth/vits_definition_provider.h"
+#include "videosynth/vits_generator.h"
 
 namespace videosynth {
 namespace {
@@ -24,7 +25,8 @@ TEST(VitsDefinitionProviderTest, ReturnsPalDefinitionByType) {
   VitsDefinition definition;
   std::string error;
 
-  EXPECT_TRUE(provider.TryGetDefinition(Standard::kPal, "vits17", &definition, &error));
+  EXPECT_TRUE(
+      provider.TryGetDefinition(Standard::kPal, "vits17", &definition, &error));
   EXPECT_TRUE(error.empty());
   EXPECT_EQ(definition.standard, Standard::kPal);
   EXPECT_EQ(definition.vits_type, "vits17");
@@ -37,7 +39,8 @@ TEST(VitsDefinitionProviderTest, ReturnsNtscDefinitionByType) {
   VitsDefinition definition;
   std::string error;
 
-  EXPECT_TRUE(provider.TryGetDefinition(Standard::kNtsc, "virs", &definition, &error));
+  EXPECT_TRUE(
+      provider.TryGetDefinition(Standard::kNtsc, "virs", &definition, &error));
   EXPECT_TRUE(error.empty());
   EXPECT_EQ(definition.standard, Standard::kNtsc);
   EXPECT_EQ(definition.vits_type, "virs");
@@ -49,12 +52,11 @@ TEST(VitsDefinitionProviderTest, ReturnsDeterministicErrorForUnknownType) {
   VitsDefinition definition;
   std::string error;
 
-  EXPECT_FALSE(provider.TryGetDefinition(Standard::kPal,
-                                         "not-a-valid-vits-type",
-                                         &definition,
-                                         &error));
-  EXPECT_EQ(error,
-            "Unsupported vits_type 'not-a-valid-vits-type' for standard 'PAL'.");
+  EXPECT_FALSE(provider.TryGetDefinition(
+      Standard::kPal, "not-a-valid-vits-type", &definition, &error));
+  EXPECT_EQ(
+      error,
+      "Unsupported vits_type 'not-a-valid-vits-type' for standard 'PAL'.");
 }
 
 TEST(VitsDefinitionProviderTest, ExposesAllSupportedVitsTypes) {
@@ -63,36 +65,32 @@ TEST(VitsDefinitionProviderTest, ExposesAllSupportedVitsTypes) {
   VitsDefinition definition;
 
   const std::vector<std::string> pal_types = {
-      "vits17",
-      "itu-multiburst",
-      "uk-national",
-      "vits20",
-      "itu-composite",
-      "itu-combination",
+      "vits17", "itu-multiburst", "uk-national",
+      "vits20", "itu-composite",  "itu-combination",
   };
   for (const std::string& vits_type : pal_types) {
-    EXPECT_TRUE(provider.TryGetDefinition(Standard::kPal, vits_type, &definition, &error));
+    EXPECT_TRUE(provider.TryGetDefinition(Standard::kPal, vits_type,
+                                          &definition, &error));
     EXPECT_TRUE(error.empty());
     EXPECT_EQ(definition.standard, Standard::kPal);
     EXPECT_EQ(definition.vits_type, vits_type);
   }
 
   const std::vector<std::string> ntsc_types = {
-      "ntc7-composite",
-      "ntc7-combination",
-      "fcc-multiburst",
-      "fcc-composite",
+      "ntc7-composite", "ntc7-combination", "fcc-multiburst", "fcc-composite",
       "virs",
   };
   for (const std::string& vits_type : ntsc_types) {
-    EXPECT_TRUE(provider.TryGetDefinition(Standard::kNtsc, vits_type, &definition, &error));
+    EXPECT_TRUE(provider.TryGetDefinition(Standard::kNtsc, vits_type,
+                                          &definition, &error));
     EXPECT_TRUE(error.empty());
     EXPECT_EQ(definition.standard, Standard::kNtsc);
     EXPECT_EQ(definition.vits_type, vits_type);
   }
 }
 
-TEST(VitsDefinitionProviderTest, ExposesRenderableDefinitionsForAllSupportedVitsTypes) {
+TEST(VitsDefinitionProviderTest,
+     ExposesRenderableDefinitionsForAllSupportedVitsTypes) {
   VitsDefinitionProvider provider;
   VitsGenerator generator;
   std::string error;
@@ -113,21 +111,24 @@ TEST(VitsDefinitionProviderTest, ExposesRenderableDefinitionsForAllSupportedVits
 
   for (const auto& entry : supported_types) {
     VitsDefinition definition;
-    ASSERT_TRUE(provider.TryGetDefinition(entry.first, entry.second, &definition, &error));
+    ASSERT_TRUE(provider.TryGetDefinition(entry.first, entry.second,
+                                          &definition, &error));
     ASSERT_TRUE(error.empty());
     EXPECT_FALSE(definition.primitives.empty()) << entry.second;
     EXPECT_FALSE(definition.render_order.empty()) << entry.second;
 
     VitsSynthesisPlan plan;
-    ASSERT_TRUE(generator.BuildSynthesisPlan(definition, &plan, &error)) << entry.second;
+    ASSERT_TRUE(generator.BuildSynthesisPlan(definition, &plan, &error))
+        << entry.second;
     ASSERT_TRUE(error.empty()) << entry.second;
     EXPECT_FALSE(plan.primitives.empty()) << entry.second;
     EXPECT_FALSE(plan.render_order.empty()) << entry.second;
 
     const TimingConstants timing = GetTimingConstants(entry.first);
     VitsRenderedLine rendered;
-    ASSERT_TRUE(generator.RenderLine(
-        plan, timing.sample_rate_4fsc_hz, timing.samples_per_line_4fsc, &rendered, &error))
+    ASSERT_TRUE(generator.RenderLine(plan, timing.sample_rate_4fsc_hz,
+                                     timing.samples_per_line_4fsc, &rendered,
+                                     &error))
         << entry.second;
     ASSERT_TRUE(error.empty()) << entry.second;
     EXPECT_EQ(rendered.y_samples_mv.size(),

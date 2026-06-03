@@ -81,10 +81,8 @@ struct FrameSourceImage;
 class IProgressiveFrameProvider {
  public:
   virtual ~IProgressiveFrameProvider() = default;
-  virtual bool GenerateFrame(const Section& section,
-                             int frame_index,
-                             Standard standard,
-                             FrameSourceImage* out_image,
+  virtual bool GenerateFrame(const Section& section, int frame_index,
+                             Standard standard, FrameSourceImage* out_image,
                              std::string* error) const = 0;
 };
 
@@ -100,17 +98,15 @@ class IGenerationStage {
                                   std::vector<FrameScheduleItem>* out_schedule,
                                   std::vector<std::string>* errors) = 0;
 
-  virtual bool GenerateFrameBatch(const Project& project,
-                                  const std::vector<FrameScheduleItem>& schedule,
-                                  std::size_t start_frame,
-                                  std::size_t frame_count,
-                                  std::vector<SampleFixed>* out_y_mv,
-                                  std::vector<SampleFixed>* out_c_mv,
-                                  std::vector<std::string>* errors) = 0;
+  virtual bool GenerateFrameBatch(
+      const Project& project, const std::vector<FrameScheduleItem>& schedule,
+      std::size_t start_frame, std::size_t frame_count,
+      std::vector<SampleFixed>* out_y_mv, std::vector<SampleFixed>* out_c_mv,
+      std::vector<std::string>* errors) = 0;
 
   virtual bool Generate(const Project& project,
-                std::vector<SampleFixed>* out_y_mv,
-                std::vector<SampleFixed>* out_c_mv,
+                        std::vector<SampleFixed>* out_y_mv,
+                        std::vector<SampleFixed>* out_c_mv,
                         std::vector<std::string>* errors) = 0;
 };
 
@@ -129,8 +125,8 @@ class IOutputStage {
   virtual bool FinalizeWrite(std::vector<std::string>* errors) = 0;
 
   virtual bool Write(const Project& project,
-              const std::vector<SampleFixed>& y_mv,
-              const std::vector<SampleFixed>& c_mv,
+                     const std::vector<SampleFixed>& y_mv,
+                     const std::vector<SampleFixed>& c_mv,
                      std::vector<std::string>* errors) = 0;
 };
 

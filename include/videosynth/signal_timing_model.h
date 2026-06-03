@@ -53,7 +53,8 @@ inline int Field1LineCount(Standard standard) {
     // With 2:1 interlace this model treats lines 1-262 as field 1.
     return 262;
   }
-  throw std::invalid_argument("Field line count requested for unknown standard");
+  throw std::invalid_argument(
+      "Field line count requested for unknown standard");
 }
 
 inline int GetFieldIndex(Standard standard, int line_1based) {
@@ -65,11 +66,14 @@ inline SyncPulseKind GetSyncPulseKind(Standard standard, int line_1based) {
     // ITU-R BT.1700 Annex 1 Part B (Figures 3-5 and Table 3 l/m/n) with
     // line-granular framing yields the PAL equalizing/sync regions below; mixed
     // half-line combinations are applied by the generation pulse schedule.
-    if (IsLineInRange(line_1based, 4, 6) || IsLineInRange(line_1based, 311, 313) ||
-        IsLineInRange(line_1based, 316, 318) || IsLineInRange(line_1based, 623, 625)) {
+    if (IsLineInRange(line_1based, 4, 6) ||
+        IsLineInRange(line_1based, 311, 313) ||
+        IsLineInRange(line_1based, 316, 318) ||
+        IsLineInRange(line_1based, 623, 625)) {
       return SyncPulseKind::kEqualizing;
     }
-    if (IsLineInRange(line_1based, 1, 3) || IsLineInRange(line_1based, 314, 315)) {
+    if (IsLineInRange(line_1based, 1, 3) ||
+        IsLineInRange(line_1based, 314, 315)) {
       return SyncPulseKind::kVerticalSync;
     }
     return SyncPulseKind::kHorizontal;
@@ -80,10 +84,12 @@ inline SyncPulseKind GetSyncPulseKind(Standard standard, int line_1based) {
     // per field. With 1-indexed, line-granular framing, the field-1 block is at
     // lines 1-9, and the field-2 block aligns to lines 264-272.
     if (IsLineInRange(line_1based, 1, 3) || IsLineInRange(line_1based, 7, 9) ||
-        IsLineInRange(line_1based, 264, 266) || IsLineInRange(line_1based, 270, 272)) {
+        IsLineInRange(line_1based, 264, 266) ||
+        IsLineInRange(line_1based, 270, 272)) {
       return SyncPulseKind::kEqualizing;
     }
-    if (IsLineInRange(line_1based, 4, 6) || IsLineInRange(line_1based, 267, 269)) {
+    if (IsLineInRange(line_1based, 4, 6) ||
+        IsLineInRange(line_1based, 267, 269)) {
       return SyncPulseKind::kVerticalSync;
     }
     return SyncPulseKind::kHorizontal;
@@ -97,7 +103,8 @@ inline LineContentKind GetLineContentKind(Standard standard, int line_1based) {
     // ITU-R BT.1700 Annex 1 Part B Table 1 item 1a (576 active lines) implies
     // active picture starts at lines 23 and 335 in this line-granular 625-line
     // PAL model so all 576 source rows land on full active-picture lines.
-    if (IsLineInRange(line_1based, 16, 22) || IsLineInRange(line_1based, 319, 334)) {
+    if (IsLineInRange(line_1based, 16, 22) ||
+        IsLineInRange(line_1based, 319, 334)) {
       return LineContentKind::kVbiBlanking;
     }
     return LineContentKind::kActivePicture;
@@ -108,27 +115,30 @@ inline LineContentKind GetLineContentKind(Standard standard, int line_1based) {
     // blanking interval and notes line-20/282 behavior. In this line-granular
     // model, field-1 active starts at 22 and field-2 active starts at 284,
     // leaving line 283 as the field-2 transition line.
-    if (IsLineInRange(line_1based, 10, 21) || IsLineInRange(line_1based, 263, 283)) {
+    if (IsLineInRange(line_1based, 10, 21) ||
+        IsLineInRange(line_1based, 263, 283)) {
       return LineContentKind::kVbiBlanking;
     }
     return LineContentKind::kActivePicture;
   }
 
-  throw std::invalid_argument("Line content kind requested for unknown standard");
+  throw std::invalid_argument(
+      "Line content kind requested for unknown standard");
 }
 
 inline bool HasTwoHalfLinePulses(SyncPulseKind kind) {
-  return kind == SyncPulseKind::kEqualizing || kind == SyncPulseKind::kVerticalSync;
+  return kind == SyncPulseKind::kEqualizing ||
+         kind == SyncPulseKind::kVerticalSync;
 }
 
 inline double BurstPhaseRad(Standard standard, int line_1based) {
   constexpr double kPi = 3.14159265358979323846;
 
   if (standard == Standard::kNtsc) {
-    // With absolute-time subcarrier synthesis in generation_stage, the line-to-line
-    // π-radian progression arises naturally from 910 samples/line at 4fsc.
-    // Keep a constant burst reference phase here so no artificial per-line phase
-    // discontinuity is injected at line boundaries.
+    // With absolute-time subcarrier synthesis in generation_stage, the
+    // line-to-line π-radian progression arises naturally from 910 samples/line
+    // at 4fsc. Keep a constant burst reference phase here so no artificial
+    // per-line phase discontinuity is injected at line boundaries.
     constexpr double kNtscReferencePhase = kPi / 4.0;
     (void)line_1based;
     return kNtscReferencePhase;
@@ -144,7 +154,8 @@ inline bool BurstEnabledForLine(SyncPulseKind kind) {
   return kind == SyncPulseKind::kHorizontal;
 }
 
-inline LineTimingPrimitive BuildLineTimingPrimitive(Standard standard, int line_1based) {
+inline LineTimingPrimitive BuildLineTimingPrimitive(Standard standard,
+                                                    int line_1based) {
   const SyncPulseKind sync_kind = GetSyncPulseKind(standard, line_1based);
   return LineTimingPrimitive{
       .line_number_1based = line_1based,
@@ -157,7 +168,8 @@ inline LineTimingPrimitive BuildLineTimingPrimitive(Standard standard, int line_
   };
 }
 
-inline std::vector<LineTimingPrimitive> BuildFrameTimingPrimitives(Standard standard) {
+inline std::vector<LineTimingPrimitive> BuildFrameTimingPrimitives(
+    Standard standard) {
   const TimingConstants timing = GetTimingConstants(standard);
 
   std::vector<LineTimingPrimitive> lines;

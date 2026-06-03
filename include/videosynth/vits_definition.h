@@ -1,7 +1,8 @@
 /*
  * File:        vits_definition.h
  * Module:      vits
- * Purpose:     Declares VITS catalog data structures shared by provider and generator.
+ * Purpose:     Declares VITS catalog data structures shared by provider and
+ * generator.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Simon Inns
@@ -59,7 +60,8 @@ struct VitsPrimitiveDefinition {
   VitsSignalComponent signal_component = VitsSignalComponent::kY;
   VitsCombineMode combine_mode = VitsCombineMode::kReplace;
   std::string continuity_group;
-  VitsTransitionOutPolicy transition_out_policy = VitsTransitionOutPolicy::kNone;
+  VitsTransitionOutPolicy transition_out_policy =
+      VitsTransitionOutPolicy::kNone;
   double transition_out_duration_us = 0.0;
   double start_us = 0.0;
   double end_us = 0.0;

@@ -1,7 +1,8 @@
 /*
  * File:        progressive_frame_source.h
  * Module:      progressive_frame_source
- * Purpose:     Defines fixed-format frame-source buffers for frame-based content.
+ * Purpose:     Defines fixed-format frame-source buffers for frame-based
+ * content.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Simon Inns
@@ -42,14 +43,10 @@ class ProgressiveFrameSource final : public IProgressiveFrameProvider {
 
   void ClearCache() const;
 
-  bool ResolveFrameCount(const Section& section,
-                         Standard standard,
-                         int* out_frame_count,
-                         std::string* error) const;
+  bool ResolveFrameCount(const Section& section, Standard standard,
+                         int* out_frame_count, std::string* error) const;
 
-  bool GenerateFrame(const Section& section,
-                     int frame_index,
-                     Standard standard,
+  bool GenerateFrame(const Section& section, int frame_index, Standard standard,
                      FrameSourceImage* out_image,
                      std::string* error) const override;
 

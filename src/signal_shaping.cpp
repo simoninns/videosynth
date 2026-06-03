@@ -55,11 +55,8 @@ double InverseSCurve01(double y) {
 
 int RiseTimeToRampSamples(double rise_time_seconds, double sample_rate_hz) {
   // Most sync-edge specs quote rise/fall times between 10%-90% amplitude.
-  return TransitionTimeToRampSamples(
-      rise_time_seconds,
-      sample_rate_hz,
-      0.1,
-      0.9);
+  return TransitionTimeToRampSamples(rise_time_seconds, sample_rate_hz, 0.1,
+                                     0.9);
 }
 
 int TransitionTimeToRampSamples(double transition_time_seconds,
@@ -80,7 +77,8 @@ int TransitionTimeToRampSamples(double transition_time_seconds,
   // full 0%-100% S-curve duration used by sample-domain synthesis.
   const double low_progress = InverseSCurve01(low);
   const double high_progress = InverseSCurve01(high);
-  const double measured_fraction = std::max(1e-12, high_progress - low_progress);
+  const double measured_fraction =
+      std::max(1e-12, high_progress - low_progress);
   const double measured_samples = transition_time_seconds * sample_rate_hz;
   const double full_transition_samples = measured_samples / measured_fraction;
 
@@ -95,23 +93,20 @@ int HalfAmplitudeTimeToRampSamples(double half_amplitude_time_seconds,
   }
 
   // Half-amplitude timing spans start->50%; the complete edge is twice this.
-  return TransitionTimeToRampSamples(
-      2.0 * half_amplitude_time_seconds,
-      sample_rate_hz,
-      0.0,
-      1.0);
+  return TransitionTimeToRampSamples(2.0 * half_amplitude_time_seconds,
+                                     sample_rate_hz, 0.0, 1.0);
 }
 
-double ShapedPulseLevel(int relative_index,
-                        int pulse_width_samples,
-                        int ramp_samples,
-                        double baseline_level,
+double ShapedPulseLevel(int relative_index, int pulse_width_samples,
+                        int ramp_samples, double baseline_level,
                         double pulse_level) {
-  if (relative_index < 0 || relative_index >= pulse_width_samples || pulse_width_samples <= 0) {
+  if (relative_index < 0 || relative_index >= pulse_width_samples ||
+      pulse_width_samples <= 0) {
     return baseline_level;
   }
 
-  const int ramp = std::max(1, std::min(ramp_samples, std::max(1, pulse_width_samples / 2)));
+  const int ramp =
+      std::max(1, std::min(ramp_samples, std::max(1, pulse_width_samples / 2)));
   const int trailing_start = pulse_width_samples - ramp;
   double depth = 1.0;
 
@@ -129,12 +124,15 @@ double ShapedPulseLevel(int relative_index,
   return baseline_level + ((pulse_level - baseline_level) * depth);
 }
 
-double ShapedGateEnvelope(int relative_index, int gate_width_samples, int ramp_samples) {
-  if (relative_index < 0 || relative_index >= gate_width_samples || gate_width_samples <= 0) {
+double ShapedGateEnvelope(int relative_index, int gate_width_samples,
+                          int ramp_samples) {
+  if (relative_index < 0 || relative_index >= gate_width_samples ||
+      gate_width_samples <= 0) {
     return 0.0;
   }
 
-  const int ramp = std::max(1, std::min(ramp_samples, std::max(1, gate_width_samples / 2)));
+  const int ramp =
+      std::max(1, std::min(ramp_samples, std::max(1, gate_width_samples / 2)));
   const int trailing_start = gate_width_samples - ramp;
 
   if (relative_index < ramp) {

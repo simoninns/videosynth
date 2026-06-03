@@ -9,10 +9,10 @@
 
 #include "videosynth/yaml_project_parser.h"
 
+#include <yaml-cpp/yaml.h>
+
 #include <exception>
 #include <set>
-
-#include <yaml-cpp/yaml.h>
 
 namespace videosynth {
 
@@ -21,9 +21,9 @@ YamlProjectParser::YamlProjectParser(ILogger* logger) : logger_(logger) {}
 namespace {
 
 bool ValidateAllowedKeys(const YAML::Node& node,
-                        const std::set<std::string>& allowed_keys,
-                        const std::string& context,
-                        std::vector<std::string>* errors) {
+                         const std::set<std::string>& allowed_keys,
+                         const std::string& context,
+                         std::vector<std::string>* errors) {
   if (!node || !node.IsMap() || errors == nullptr) {
     return true;
   }
@@ -34,15 +34,15 @@ bool ValidateAllowedKeys(const YAML::Node& node,
       continue;
     }
     if (allowed_keys.find(key) == allowed_keys.end()) {
-      errors->push_back(context + " contains unsupported field: '" + key + "'.");
+      errors->push_back(context + " contains unsupported field: '" + key +
+                        "'.");
     }
   }
 
   return errors->empty();
 }
 
-bool ParseDurationFrames(const YAML::Node& section_node,
-                         Section* section,
+bool ParseDurationFrames(const YAML::Node& section_node, Section* section,
                          std::vector<std::string>* errors) {
   if (section == nullptr || errors == nullptr) {
     return false;
@@ -55,7 +55,8 @@ bool ParseDurationFrames(const YAML::Node& section_node,
 
   const YAML::Node duration_node = section_node["duration_frames"];
   if (!duration_node.IsScalar()) {
-    errors->push_back("section field 'duration_frames' must be a scalar integer or 'all'.");
+    errors->push_back(
+        "section field 'duration_frames' must be a scalar integer or 'all'.");
     return false;
   }
 
@@ -72,7 +73,9 @@ bool ParseDurationFrames(const YAML::Node& section_node,
     section->duration_frames = duration_frames;
     return true;
   } catch (const YAML::Exception&) {
-    errors->push_back("section field 'duration_frames' must be an integer or the string 'all'.");
+    errors->push_back(
+        "section field 'duration_frames' must be an integer or the string "
+        "'all'.");
     return false;
   }
 }
@@ -80,7 +83,8 @@ bool ParseDurationFrames(const YAML::Node& section_node,
 bool ParseLineInjectionCodes(const YAML::Node& codes_node,
                              Section::LineInjection* injection,
                              std::vector<std::string>* errors) {
-  if (!codes_node || !codes_node.IsSequence() || injection == nullptr || errors == nullptr) {
+  if (!codes_node || !codes_node.IsSequence() || injection == nullptr ||
+      errors == nullptr) {
     return false;
   }
 
@@ -90,9 +94,10 @@ bool ParseLineInjectionCodes(const YAML::Node& codes_node,
       return false;
     }
 
-    const std::set<std::string> code_keys = {
-        "code_type", "start_value", "chapter", "programme_status"};
-    ValidateAllowedKeys(code_node, code_keys, "line_injections[].codes[]", errors);
+    const std::set<std::string> code_keys = {"code_type", "start_value",
+                                             "chapter", "programme_status"};
+    ValidateAllowedKeys(code_node, code_keys, "line_injections[].codes[]",
+                        errors);
     if (!errors->empty()) {
       return false;
     }
@@ -100,7 +105,8 @@ bool ParseLineInjectionCodes(const YAML::Node& codes_node,
     Section::LineInjectionCode code;
     code.code_type = code_node["code_type"].as<std::string>("");
     if (code.code_type.empty()) {
-      errors->push_back("line_injections[].codes[] is missing required field: 'code_type'.");
+      errors->push_back(
+          "line_injections[].codes[] is missing required field: 'code_type'.");
       return false;
     }
 
@@ -123,8 +129,7 @@ bool ParseLineInjectionCodes(const YAML::Node& codes_node,
   return true;
 }
 
-bool ParseLineInjections(const YAML::Node& section_node,
-                         Section* section,
+bool ParseLineInjections(const YAML::Node& section_node, Section* section,
                          std::vector<std::string>* errors) {
   if (section == nullptr || errors == nullptr) {
     return false;
@@ -136,7 +141,8 @@ bool ParseLineInjections(const YAML::Node& section_node,
 
   const YAML::Node line_injections_node = section_node["line_injections"];
   if (!line_injections_node.IsSequence()) {
-    errors->push_back("section field 'line_injections' must be a list/sequence.");
+    errors->push_back(
+        "section field 'line_injections' must be a list/sequence.");
     return false;
   }
 
@@ -147,8 +153,9 @@ bool ParseLineInjections(const YAML::Node& section_node,
     }
 
     const std::set<std::string> injection_keys = {
-      "type", "target_lines", "vits_type", "disc_type", "codes"};
-    ValidateAllowedKeys(injection_node, injection_keys, "line_injections[]", errors);
+        "type", "target_lines", "vits_type", "disc_type", "codes"};
+    ValidateAllowedKeys(injection_node, injection_keys, "line_injections[]",
+                        errors);
     if (!errors->empty()) {
       return false;
     }
@@ -163,7 +170,8 @@ bool ParseLineInjections(const YAML::Node& section_node,
     if (injection_node["target_lines"]) {
       const YAML::Node target_lines_node = injection_node["target_lines"];
       if (!target_lines_node.IsSequence()) {
-        errors->push_back("line_injections[].target_lines must be a list/sequence.");
+        errors->push_back(
+            "line_injections[].target_lines must be a list/sequence.");
         return false;
       }
       for (const YAML::Node& target_line : target_lines_node) {
@@ -198,7 +206,8 @@ ParseResult YamlProjectParser::ParseFile(const std::string& path) {
     const YAML::Node root = YAML::LoadFile(path);
 
     if (!root["cvbs_presets"]) {
-      result.errors.push_back("Missing required top-level field: cvbs_presets.");
+      result.errors.push_back(
+          "Missing required top-level field: cvbs_presets.");
       return result;
     }
 
@@ -212,7 +221,8 @@ ParseResult YamlProjectParser::ParseFile(const std::string& path) {
       return result;
     }
 
-    const std::set<std::string> root_keys = {"project", "cvbs_presets", "output", "sections"};
+    const std::set<std::string> root_keys = {"project", "cvbs_presets",
+                                             "output", "sections"};
     ValidateAllowedKeys(root, root_keys, "Top-level YAML", &result.errors);
     if (!result.errors.empty()) {
       return result;
@@ -227,8 +237,10 @@ ParseResult YamlProjectParser::ParseFile(const std::string& path) {
     }
 
     if (root["project"]) {
-      const std::set<std::string> project_keys = {"name", "version", "description"};
-      ValidateAllowedKeys(root["project"], project_keys, "project", &result.errors);
+      const std::set<std::string> project_keys = {"name", "version",
+                                                  "description"};
+      ValidateAllowedKeys(root["project"], project_keys, "project",
+                          &result.errors);
       if (!result.errors.empty()) {
         return result;
       }
@@ -236,32 +248,29 @@ ParseResult YamlProjectParser::ParseFile(const std::string& path) {
 
     const YAML::Node presets = root["cvbs_presets"];
     const std::set<std::string> preset_keys = {
-      "video_standard_preset",
-      "sample_encoding_preset",
-      "signal_state_preset",
-      "pal_laserdisc_pilot_burst",
-      "ntsc_laserdisc_vbi_burst",
-      "ntsc_black_setup_ire"};
+        "video_standard_preset",    "sample_encoding_preset",
+        "signal_state_preset",      "pal_laserdisc_pilot_burst",
+        "ntsc_laserdisc_vbi_burst", "ntsc_black_setup_ire"};
     ValidateAllowedKeys(presets, preset_keys, "cvbs_presets", &result.errors);
     if (!result.errors.empty()) {
       return result;
     }
 
-    result.project.cvbs_presets.video_standard_preset =
-      StandardFromString(presets["video_standard_preset"].as<std::string>(""));
+    result.project.cvbs_presets.video_standard_preset = StandardFromString(
+        presets["video_standard_preset"].as<std::string>(""));
 
     result.project.cvbs_presets.sample_encoding_preset =
-      presets["sample_encoding_preset"].as<std::string>(
-        result.project.cvbs_presets.sample_encoding_preset);
+        presets["sample_encoding_preset"].as<std::string>(
+            result.project.cvbs_presets.sample_encoding_preset);
     result.project.cvbs_presets.signal_state_preset =
-      presets["signal_state_preset"].as<std::string>(
-        result.project.cvbs_presets.signal_state_preset);
+        presets["signal_state_preset"].as<std::string>(
+            result.project.cvbs_presets.signal_state_preset);
     result.project.cvbs_presets.pal_laserdisc_pilot_burst =
-      presets["pal_laserdisc_pilot_burst"].as<bool>(
-        result.project.cvbs_presets.pal_laserdisc_pilot_burst);
+        presets["pal_laserdisc_pilot_burst"].as<bool>(
+            result.project.cvbs_presets.pal_laserdisc_pilot_burst);
     result.project.cvbs_presets.ntsc_laserdisc_vbi_burst =
-      presets["ntsc_laserdisc_vbi_burst"].as<bool>(
-        result.project.cvbs_presets.ntsc_laserdisc_vbi_burst);
+        presets["ntsc_laserdisc_vbi_burst"].as<bool>(
+            result.project.cvbs_presets.ntsc_laserdisc_vbi_burst);
     if (presets["ntsc_black_setup_ire"]) {
       result.project.cvbs_presets.ntsc_black_setup_ire =
           presets["ntsc_black_setup_ire"].as<double>();
@@ -276,7 +285,8 @@ ParseResult YamlProjectParser::ParseFile(const std::string& path) {
     }
 
     result.project.output.video_path = output["video_path"].as<std::string>("");
-    result.project.output.metadata_path = output["metadata_path"].as<std::string>("");
+    result.project.output.metadata_path =
+        output["metadata_path"].as<std::string>("");
 
     for (const YAML::Node& section_node : root["sections"]) {
       if (!section_node.IsMap()) {
@@ -284,10 +294,11 @@ ParseResult YamlProjectParser::ParseFile(const std::string& path) {
         return result;
       }
 
-        const std::set<std::string> section_keys = {
-          "name", "type", "duration_frames", "line_injections", "source",
-          "start_frame"};
-      ValidateAllowedKeys(section_node, section_keys, "section", &result.errors);
+      const std::set<std::string> section_keys = {
+          "name",   "type",       "duration_frames", "line_injections",
+          "source", "start_frame"};
+      ValidateAllowedKeys(section_node, section_keys, "section",
+                          &result.errors);
       if (!result.errors.empty()) {
         return result;
       }
@@ -308,7 +319,8 @@ ParseResult YamlProjectParser::ParseFile(const std::string& path) {
 
     result.ok = true;
     if (logger_ != nullptr) {
-      logger_->Debug("Parsed project file with " + std::to_string(result.project.sections.size()) +
+      logger_->Debug("Parsed project file with " +
+                     std::to_string(result.project.sections.size()) +
                      " section(s).");
     }
     return result;
@@ -316,7 +328,8 @@ ParseResult YamlProjectParser::ParseFile(const std::string& path) {
     result.errors.push_back(std::string("YAML parsing failed: ") + ex.what());
     return result;
   } catch (const std::exception& ex) {
-    result.errors.push_back(std::string("Unexpected parse error: ") + ex.what());
+    result.errors.push_back(std::string("Unexpected parse error: ") +
+                            ex.what());
     return result;
   }
 }

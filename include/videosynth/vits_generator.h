@@ -1,7 +1,8 @@
 /*
  * File:        vits_generator.h
  * Module:      vits
- * Purpose:     Declares VITS synthesis-planning interface and default implementation.
+ * Purpose:     Declares VITS synthesis-planning interface and default
+ * implementation.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Simon Inns
@@ -49,10 +50,8 @@ class IVitsGenerator {
                                   VitsSynthesisPlan* out_plan,
                                   std::string* error) const = 0;
 
-  virtual bool RenderLine(const VitsSynthesisPlan& plan,
-                          double sample_rate_hz,
-                          int sample_count,
-                          VitsRenderedLine* out_line,
+  virtual bool RenderLine(const VitsSynthesisPlan& plan, double sample_rate_hz,
+                          int sample_count, VitsRenderedLine* out_line,
                           std::string* error) const = 0;
 };
 
@@ -62,10 +61,8 @@ class VitsGenerator final : public IVitsGenerator {
                           VitsSynthesisPlan* out_plan,
                           std::string* error) const override;
 
-  bool RenderLine(const VitsSynthesisPlan& plan,
-                  double sample_rate_hz,
-                  int sample_count,
-                  VitsRenderedLine* out_line,
+  bool RenderLine(const VitsSynthesisPlan& plan, double sample_rate_hz,
+                  int sample_count, VitsRenderedLine* out_line,
                   std::string* error) const override;
 };
 

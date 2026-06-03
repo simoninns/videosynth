@@ -44,15 +44,14 @@ class MockGeneration final : public IGenerationStage {
                           std::vector<FrameScheduleItem>* out_schedule,
                           std::vector<std::string>* errors) override {
     out_schedule->clear();
-    out_schedule->push_back(FrameScheduleItem{.section = &project.sections[0], .source_frame_index = 0});
+    out_schedule->push_back(FrameScheduleItem{.section = &project.sections[0],
+                                              .source_frame_index = 0});
     errors->clear();
     return true;
   }
 
-  bool GenerateFrameBatch(const Project&,
-                          const std::vector<FrameScheduleItem>&,
-                          std::size_t,
-                          std::size_t,
+  bool GenerateFrameBatch(const Project&, const std::vector<FrameScheduleItem>&,
+                          std::size_t, std::size_t,
                           std::vector<SampleFixed>* out_y_mv,
                           std::vector<SampleFixed>* out_c_mv,
                           std::vector<std::string>* errors) override {
@@ -63,8 +62,7 @@ class MockGeneration final : public IGenerationStage {
     return true;
   }
 
-  bool Generate(const Project&,
-                std::vector<SampleFixed>* out_y_mv,
+  bool Generate(const Project&, std::vector<SampleFixed>* out_y_mv,
                 std::vector<SampleFixed>* out_c_mv,
                 std::vector<std::string>* errors) override {
     called = true;
@@ -79,7 +77,8 @@ class MockOutput final : public IOutputStage {
  public:
   bool called = false;
 
-  bool BeginWrite(const Project&, std::size_t, std::vector<std::string>* errors) override {
+  bool BeginWrite(const Project&, std::size_t,
+                  std::vector<std::string>* errors) override {
     errors->clear();
     return true;
   }
@@ -97,8 +96,7 @@ class MockOutput final : public IOutputStage {
     return true;
   }
 
-  bool Write(const Project&,
-             const std::vector<SampleFixed>&,
+  bool Write(const Project&, const std::vector<SampleFixed>&,
              const std::vector<SampleFixed>&,
              std::vector<std::string>* errors) override {
     called = true;
@@ -127,11 +125,10 @@ Project MakeProject() {
   p.cvbs_presets.signal_state_preset = "STANDARD_TBC_LOCKED";
   p.output.video_path = "/tmp/videosynth_pipeline_test.composite";
   p.output.metadata_path = "/tmp/videosynth_pipeline_test.meta";
-  p.sections.push_back(
-      Section{.name = "Valid",
-          .type = "progressive",
-        .source = "/tmp/videosynth_pipeline_test.exr",
-              .duration_frames = 1});
+  p.sections.push_back(Section{.name = "Valid",
+                               .type = "progressive",
+                               .source = "/tmp/videosynth_pipeline_test.exr",
+                               .duration_frames = 1});
   return p;
 }
 
@@ -147,7 +144,8 @@ TEST(PipelineTest, ValidateOnlyStopsBeforeGeneration) {
   MockOutput output;
   MockLogger logger;
 
-  VideoSynthPipeline pipeline(&parser, &validator, &generation, &output, &logger);
+  VideoSynthPipeline pipeline(&parser, &validator, &generation, &output,
+                              &logger);
 
   RunOptions options;
   options.project_path = "project.yaml";
@@ -171,7 +169,8 @@ TEST(PipelineTest, FullRunCallsGenerationAndOutput) {
   MockOutput output;
   MockLogger logger;
 
-  VideoSynthPipeline pipeline(&parser, &validator, &generation, &output, &logger);
+  VideoSynthPipeline pipeline(&parser, &validator, &generation, &output,
+                              &logger);
 
   RunOptions options;
   options.project_path = "project.yaml";
@@ -194,7 +193,8 @@ TEST(PipelineTest, ValidationFailureStopsPipeline) {
   MockOutput output;
   MockLogger logger;
 
-  VideoSynthPipeline pipeline(&parser, &validator, &generation, &output, &logger);
+  VideoSynthPipeline pipeline(&parser, &validator, &generation, &output,
+                              &logger);
 
   RunOptions options;
   options.project_path = "project.yaml";

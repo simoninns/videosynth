@@ -7,6 +7,8 @@
  * SPDX-FileCopyrightText: 2026 Simon Inns
  */
 
+#include <gtest/gtest.h>
+
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
@@ -16,13 +18,11 @@
 #include <utility>
 #include <vector>
 
-#include <gtest/gtest.h>
-
 #include "videosynth/active_sample_mapping.h"
 #include "videosynth/chroma_encoder.h"
 #include "videosynth/fixed_point.h"
-#include "videosynth/progressive_frame_source.h"
 #include "videosynth/generation_stage.h"
+#include "videosynth/progressive_frame_source.h"
 #include "videosynth/signal_timing_model.h"
 #include "videosynth/timing_constants.h"
 #include "videosynth/vits_definition_provider.h"
@@ -52,24 +52,23 @@ Project MakeProject(Standard standard, int duration_frames = 1) {
   project.cvbs_presets.video_standard_preset = standard;
   project.cvbs_presets.sample_encoding_preset = "CVBS_U10_4FSC";
   project.cvbs_presets.signal_state_preset = "STANDARD_TBC_LOCKED";
-  project.sections.push_back(
-      Section{.name = "SignalTiming",
-              .type = "progressive",
-              .source = DefaultBarsExrPath(standard),
-              .duration_frames = duration_frames});
+  project.sections.push_back(Section{.name = "SignalTiming",
+                                     .type = "progressive",
+                                     .source = DefaultBarsExrPath(standard),
+                                     .duration_frames = duration_frames});
   return project;
 }
 
-Project MakeProgressiveSourceProject(Standard standard, const std::string& source_path) {
+Project MakeProgressiveSourceProject(Standard standard,
+                                     const std::string& source_path) {
   Project project;
   project.cvbs_presets.video_standard_preset = standard;
   project.cvbs_presets.sample_encoding_preset = "CVBS_U10_4FSC";
   project.cvbs_presets.signal_state_preset = "STANDARD_TBC_LOCKED";
-  project.sections.push_back(
-      Section{.name = "ProgressiveImport",
-              .type = "progressive",
-              .source = source_path,
-              .duration_frames = 1});
+  project.sections.push_back(Section{.name = "ProgressiveImport",
+                                     .type = "progressive",
+                                     .source = source_path,
+                                     .duration_frames = 1});
   return project;
 }
 
@@ -78,29 +77,27 @@ Project MakeProjectWithSectionSpans(Standard standard) {
   project.cvbs_presets.video_standard_preset = standard;
   project.cvbs_presets.sample_encoding_preset = "CVBS_U10_4FSC";
   project.cvbs_presets.signal_state_preset = "STANDARD_TBC_LOCKED";
-  project.sections.push_back(
-      Section{.name = "InjectedSection",
-              .type = "progressive",
-              .source = DefaultBarsExrPath(standard),
-              .duration_frames = 1});
-  project.sections.push_back(
-      Section{.name = "PlainSection",
-              .type = "progressive",
-              .source = DefaultBarsExrPath(standard),
-              .duration_frames = 1});
+  project.sections.push_back(Section{.name = "InjectedSection",
+                                     .type = "progressive",
+                                     .source = DefaultBarsExrPath(standard),
+                                     .duration_frames = 1});
+  project.sections.push_back(Section{.name = "PlainSection",
+                                     .type = "progressive",
+                                     .source = DefaultBarsExrPath(standard),
+                                     .duration_frames = 1});
   return project;
 }
 
 class FakeVitsDefinitionProvider final : public IVitsDefinitionProvider {
  public:
-  bool TryGetDefinition(Standard standard,
-                        const std::string& vits_type,
+  bool TryGetDefinition(Standard standard, const std::string& vits_type,
                         VitsDefinition* out_definition,
                         std::string* error) const override {
     if (out_definition != nullptr) {
       out_definition->standard = standard;
       out_definition->vits_type = vits_type;
-      out_definition->primitives.push_back(VitsPrimitiveDefinition{.id = "placeholder"});
+      out_definition->primitives.push_back(
+          VitsPrimitiveDefinition{.id = "placeholder"});
       out_definition->render_order = {"placeholder"};
     }
     if (error != nullptr) {
@@ -132,10 +129,8 @@ class FakeVitsGenerator final : public IVitsGenerator {
     return true;
   }
 
-  bool RenderLine(const VitsSynthesisPlan& plan,
-                  double sample_rate_hz,
-                  int sample_count,
-                  VitsRenderedLine* out_line,
+  bool RenderLine(const VitsSynthesisPlan& plan, double sample_rate_hz,
+                  int sample_count, VitsRenderedLine* out_line,
                   std::string* error) const override {
     if (out_line == nullptr) {
       if (error != nullptr) {
@@ -147,14 +142,19 @@ class FakeVitsGenerator final : public IVitsGenerator {
     out_line->standard = plan.standard;
     out_line->vits_type = plan.vits_type;
     out_line->sample_rate_hz = sample_rate_hz;
-    out_line->y_samples_mv.assign(static_cast<std::size_t>(sample_count), MillivoltsToSampleFixed(0.0));
-    out_line->c_samples_mv.assign(static_cast<std::size_t>(sample_count), MillivoltsToSampleFixed(0.0));
+    out_line->y_samples_mv.assign(static_cast<std::size_t>(sample_count),
+                                  MillivoltsToSampleFixed(0.0));
+    out_line->c_samples_mv.assign(static_cast<std::size_t>(sample_count),
+                                  MillivoltsToSampleFixed(0.0));
 
     const int start = static_cast<int>(std::lround(sample_rate_hz * 12.0e-6));
-    const int end = std::min(sample_count, static_cast<int>(std::lround(sample_rate_hz * 20.0e-6)));
+    const int end = std::min(
+        sample_count, static_cast<int>(std::lround(sample_rate_hz * 20.0e-6)));
     for (int i = start; i < end; ++i) {
-      out_line->y_samples_mv[static_cast<std::size_t>(i)] = MillivoltsToSampleFixed(123.0);
-      out_line->c_samples_mv[static_cast<std::size_t>(i)] = MillivoltsToSampleFixed(45.0);
+      out_line->y_samples_mv[static_cast<std::size_t>(i)] =
+          MillivoltsToSampleFixed(123.0);
+      out_line->c_samples_mv[static_cast<std::size_t>(i)] =
+          MillivoltsToSampleFixed(45.0);
     }
 
     if (error != nullptr) {
@@ -164,8 +164,7 @@ class FakeVitsGenerator final : public IVitsGenerator {
   }
 };
 
-double WindowMeanMillivolts(const std::vector<SampleFixed>& samples,
-                            int start,
+double WindowMeanMillivolts(const std::vector<SampleFixed>& samples, int start,
                             int end) {
   double sum = 0.0;
   int count = 0;
@@ -197,25 +196,26 @@ int ActiveWindowEndSamples(Standard standard, double sample_rate_hz) {
   return static_cast<int>(std::lround(sample_rate_hz * 62.5e-6));
 }
 
-std::set<int> UniqueRoundedLumaLevelsInActiveWindow(const std::vector<SampleFixed>& y_mv,
-                                                    int line_1based,
-                                                    Standard standard,
-                                                    const TimingConstants& timing) {
+std::set<int> UniqueRoundedLumaLevelsInActiveWindow(
+    const std::vector<SampleFixed>& y_mv, int line_1based, Standard standard,
+    const TimingConstants& timing) {
   const int line_start = (line_1based - 1) * timing.samples_per_line_4fsc;
-  const int start = line_start + ActiveWindowStartSamples(standard, timing.sample_rate_4fsc_hz);
-  const int end = std::min(line_start + ActiveWindowEndSamples(standard, timing.sample_rate_4fsc_hz),
-                           line_start + timing.samples_per_line_4fsc);
+  const int start = line_start + ActiveWindowStartSamples(
+                                     standard, timing.sample_rate_4fsc_hz);
+  const int end = std::min(
+      line_start + ActiveWindowEndSamples(standard, timing.sample_rate_4fsc_hz),
+      line_start + timing.samples_per_line_4fsc);
 
   std::set<int> levels;
   for (int i = start; i < end; ++i) {
-    levels.insert(static_cast<int>(std::lround(SampleFixedToMillivolts(y_mv[i]))));
+    levels.insert(
+        static_cast<int>(std::lround(SampleFixedToMillivolts(y_mv[i]))));
   }
   return levels;
 }
 
 int CountSyncSamplesOnLine(const std::vector<SampleFixed>& y_mv,
-                           int line_1based,
-                           const TimingConstants& timing,
+                           int line_1based, const TimingConstants& timing,
                            double sync_tip_mv) {
   const int line_start = (line_1based - 1) * timing.samples_per_line_4fsc;
   const int line_end = line_start + timing.samples_per_line_4fsc;
@@ -231,14 +231,14 @@ int CountSyncSamplesOnLine(const std::vector<SampleFixed>& y_mv,
 }
 
 int CountSyncSamplesInHalfLine(const std::vector<SampleFixed>& y_mv,
-                               int line_1based,
-                               int half_index,
+                               int line_1based, int half_index,
                                const TimingConstants& timing,
                                double sync_tip_mv) {
   const int half_size = timing.samples_per_line_4fsc / 2;
   const int line_start = (line_1based - 1) * timing.samples_per_line_4fsc;
   const int start = line_start + (half_index * half_size);
-  const int end = std::min(start + half_size, line_start + timing.samples_per_line_4fsc);
+  const int end =
+      std::min(start + half_size, line_start + timing.samples_per_line_4fsc);
 
   int count = 0;
   const SampleFixed sync_tip_fixed = MillivoltsToSampleFixed(sync_tip_mv);
@@ -256,8 +256,9 @@ int QuantizeCompositeCodeForStandard(double composite_mv, Standard standard) {
     constexpr int kBlankingCode = 256;
     constexpr int kMinCode = 4;
     constexpr int kMaxCode = 1019;
-    const int mapped = static_cast<int>(std::lround(composite_mv / kMillivoltsPerCode)) +
-                       kBlankingCode;
+    const int mapped =
+        static_cast<int>(std::lround(composite_mv / kMillivoltsPerCode)) +
+        kBlankingCode;
     return std::max(kMinCode, std::min(kMaxCode, mapped));
   }
 
@@ -265,13 +266,13 @@ int QuantizeCompositeCodeForStandard(double composite_mv, Standard standard) {
   constexpr int kBlankingCode = 240;
   constexpr int kMinCode = 16;
   constexpr int kMaxCode = 1019;
-  const int mapped = static_cast<int>(std::lround(composite_mv / kMillivoltsPerCode)) +
-                     kBlankingCode;
+  const int mapped =
+      static_cast<int>(std::lround(composite_mv / kMillivoltsPerCode)) +
+      kBlankingCode;
   return std::max(kMinCode, std::min(kMaxCode, mapped));
 }
 
-double BurstWindowMean(const std::vector<SampleFixed>& c_mv,
-                       int line_1based,
+double BurstWindowMean(const std::vector<SampleFixed>& c_mv, int line_1based,
                        const TimingConstants& timing) {
   const int line_start = (line_1based - 1) * timing.samples_per_line_4fsc;
   const int start = line_start + BurstStartSamples(timing.sample_rate_4fsc_hz);
@@ -287,8 +288,7 @@ double BurstWindowMean(const std::vector<SampleFixed>& c_mv,
 }
 
 double EstimateBurstPhaseRad(const std::vector<SampleFixed>& c_mv,
-                             int line_1based,
-                             const TimingConstants& timing) {
+                             int line_1based, const TimingConstants& timing) {
   constexpr double kPi = 3.14159265358979323846;
   const int line_start = (line_1based - 1) * timing.samples_per_line_4fsc;
   const int start = line_start + BurstStartSamples(timing.sample_rate_4fsc_hz);
@@ -300,7 +300,8 @@ double EstimateBurstPhaseRad(const std::vector<SampleFixed>& c_mv,
   for (int i = start; i < end; ++i) {
     const double wt = 2.0 * kPi * subcarrier_hz *
                       (static_cast<double>(i) / timing.sample_rate_4fsc_hz);
-    const double c_mv_double = SampleFixedToMillivolts(c_mv[static_cast<std::size_t>(i)]);
+    const double c_mv_double =
+        SampleFixedToMillivolts(c_mv[static_cast<std::size_t>(i)]);
     sum_sin += c_mv_double * std::sin(wt);
     sum_cos += c_mv_double * std::cos(wt);
   }
@@ -324,27 +325,30 @@ struct DecodedPalChromaSample {
   double burst_phase_rad = 0.0;
 };
 
-DecodedPalChromaSample DecodePalChromaWindowBurstLocked(const std::vector<SampleFixed>& c_mv,
-                                                         int line_1based,
-                                                         int sample_start,
-                                                         int sample_end,
-                                                         const TimingConstants& timing) {
+DecodedPalChromaSample DecodePalChromaWindowBurstLocked(
+    const std::vector<SampleFixed>& c_mv, int line_1based, int sample_start,
+    int sample_end, const TimingConstants& timing) {
   constexpr double kPi = 3.14159265358979323846;
   constexpr double kCompositeChromaScaleMillivolts = 350.0;
 
-  const double burst_phase_rad = EstimateBurstPhaseRad(c_mv, line_1based, timing);
-  const double burst_nominal = burst_phase_rad >= 0.0 ? (3.0 * kPi / 4.0) : (-3.0 * kPi / 4.0);
+  const double burst_phase_rad =
+      EstimateBurstPhaseRad(c_mv, line_1based, timing);
+  const double burst_nominal =
+      burst_phase_rad >= 0.0 ? (3.0 * kPi / 4.0) : (-3.0 * kPi / 4.0);
   const double phase_correction = burst_phase_rad - burst_nominal;
   const double subcarrier_hz = timing.sample_rate_4fsc_hz / 4.0;
 
   double sum_u = 0.0;
   double sum_v = 0.0;
   int count = 0;
-  for (int sample_index = sample_start; sample_index < sample_end; ++sample_index) {
-    const double t = static_cast<double>(sample_index) / timing.sample_rate_4fsc_hz;
+  for (int sample_index = sample_start; sample_index < sample_end;
+       ++sample_index) {
+    const double t =
+        static_cast<double>(sample_index) / timing.sample_rate_4fsc_hz;
     const double wt = (2.0 * kPi * subcarrier_hz * t) + phase_correction;
-    const double chroma_norm = SampleFixedToMillivolts(c_mv[static_cast<std::size_t>(sample_index)]) /
-                               kCompositeChromaScaleMillivolts;
+    const double chroma_norm =
+        SampleFixedToMillivolts(c_mv[static_cast<std::size_t>(sample_index)]) /
+        kCompositeChromaScaleMillivolts;
     sum_u += chroma_norm * std::sin(wt);
     sum_v += chroma_norm * std::cos(wt);
     ++count;
@@ -352,7 +356,8 @@ DecodedPalChromaSample DecodePalChromaWindowBurstLocked(const std::vector<Sample
 
   return DecodedPalChromaSample{
       .u = count > 0 ? (2.0 * sum_u / static_cast<double>(count)) : 0.0,
-      .v_switched = count > 0 ? (2.0 * sum_v / static_cast<double>(count)) : 0.0,
+      .v_switched =
+          count > 0 ? (2.0 * sum_v / static_cast<double>(count)) : 0.0,
       .burst_phase_rad = burst_phase_rad,
   };
 }
@@ -363,20 +368,25 @@ TEST(GenerationStageTimingTest, ProducesDeterministicSampleCounts) {
 
   std::vector<SampleFixed> y_pal;
   std::vector<SampleFixed> c_pal;
-  ASSERT_TRUE(generation.Generate(MakeProject(Standard::kPal), &y_pal, &c_pal, &errors));
-  EXPECT_EQ(y_pal.size(), static_cast<std::size_t>(SamplesPerFrame4fsc(Standard::kPal)));
+  ASSERT_TRUE(generation.Generate(MakeProject(Standard::kPal), &y_pal, &c_pal,
+                                  &errors));
+  EXPECT_EQ(y_pal.size(),
+            static_cast<std::size_t>(SamplesPerFrame4fsc(Standard::kPal)));
   EXPECT_EQ(c_pal.size(), y_pal.size());
 
   std::vector<SampleFixed> y_ntsc;
   std::vector<SampleFixed> c_ntsc;
-  ASSERT_TRUE(generation.Generate(MakeProject(Standard::kNtsc), &y_ntsc, &c_ntsc, &errors));
+  ASSERT_TRUE(generation.Generate(MakeProject(Standard::kNtsc), &y_ntsc,
+                                  &c_ntsc, &errors));
   const TimingConstants ntsc = GetTimingConstants(Standard::kNtsc);
   EXPECT_EQ(ntsc.samples_per_line_4fsc, 910);
-  EXPECT_EQ(y_ntsc.size(), static_cast<std::size_t>(SamplesPerFrame4fsc(Standard::kNtsc)));
+  EXPECT_EQ(y_ntsc.size(),
+            static_cast<std::size_t>(SamplesPerFrame4fsc(Standard::kNtsc)));
   EXPECT_EQ(c_ntsc.size(), y_ntsc.size());
 }
 
-TEST(GenerationStageTimingTest, FixedPointModeMatchesFloatingReferenceAtCodeLevel) {
+TEST(GenerationStageTimingTest,
+     FixedPointModeMatchesFloatingReferenceAtCodeLevel) {
   GenerationStage generation;
   std::vector<std::string> errors;
   const Project project = MakeProject(Standard::kPal, 1);
@@ -401,10 +411,10 @@ TEST(GenerationStageTimingTest, FixedPointModeMatchesFloatingReferenceAtCodeLeve
   int fixed_clipped = 0;
 
   for (std::size_t i = 0; i < y_float.size(); ++i) {
-    const int code_float =
-        QuantizeCompositeCodeForStandard(y_float[i] + c_float[i], Standard::kPal);
-    const int code_fixed =
-        QuantizeCompositeCodeForStandard(y_fixed[i] + c_fixed[i], Standard::kPal);
+    const int code_float = QuantizeCompositeCodeForStandard(
+        y_float[i] + c_float[i], Standard::kPal);
+    const int code_fixed = QuantizeCompositeCodeForStandard(
+        y_fixed[i] + c_fixed[i], Standard::kPal);
     const int delta = code_fixed - code_float;
 
     max_abs_code_delta = std::max(max_abs_code_delta, std::abs(delta));
@@ -418,7 +428,8 @@ TEST(GenerationStageTimingTest, FixedPointModeMatchesFloatingReferenceAtCodeLeve
     }
   }
 
-  const double rms_code_delta = std::sqrt(code_error_power / static_cast<double>(y_float.size()));
+  const double rms_code_delta =
+      std::sqrt(code_error_power / static_cast<double>(y_float.size()));
   EXPECT_LE(max_abs_code_delta, 1);
   EXPECT_LT(rms_code_delta, 0.5);
   EXPECT_EQ(float_clipped, fixed_clipped);
@@ -460,8 +471,10 @@ TEST(GenerationStageTimingTest, AppliesVitsInjectionOnlyToRequestedLines) {
   const int line17 = (17 - 1) * pal.samples_per_line_4fsc;
   const int line18 = (18 - 1) * pal.samples_per_line_4fsc;
   const int line19 = (19 - 1) * pal.samples_per_line_4fsc;
-  const int start = static_cast<int>(std::lround(pal.sample_rate_4fsc_hz * 12.0e-6));
-  const int end = static_cast<int>(std::lround(pal.sample_rate_4fsc_hz * 20.0e-6));
+  const int start =
+      static_cast<int>(std::lround(pal.sample_rate_4fsc_hz * 12.0e-6));
+  const int end =
+      static_cast<int>(std::lround(pal.sample_rate_4fsc_hz * 20.0e-6));
 
   EXPECT_GT(WindowMeanMillivolts(y, line17 + start, line17 + end), 100.0);
   EXPECT_GT(WindowMeanMillivolts(y, line18 + start, line18 + end), 100.0);
@@ -489,17 +502,19 @@ TEST(GenerationStageTimingTest, AppliesVitsInjectionOnlyWithinSectionSpan) {
   const int frame_samples = SamplesPerFrame4fsc(Standard::kPal);
   const TimingConstants pal = GetTimingConstants(Standard::kPal);
   const int line17 = (17 - 1) * pal.samples_per_line_4fsc;
-  const int start = static_cast<int>(std::lround(pal.sample_rate_4fsc_hz * 12.0e-6));
-  const int end = static_cast<int>(std::lround(pal.sample_rate_4fsc_hz * 20.0e-6));
+  const int start =
+      static_cast<int>(std::lround(pal.sample_rate_4fsc_hz * 12.0e-6));
+  const int end =
+      static_cast<int>(std::lround(pal.sample_rate_4fsc_hz * 20.0e-6));
 
   EXPECT_GT(WindowMeanMillivolts(y, line17 + start, line17 + end), 100.0);
-  EXPECT_LT(WindowMeanMillivolts(y,
-                                 frame_samples + line17 + start,
+  EXPECT_LT(WindowMeanMillivolts(y, frame_samples + line17 + start,
                                  frame_samples + line17 + end),
             10.0);
 }
 
-TEST(GenerationStageTimingTest, AppliesBuiltInVitsDefinitionThroughDefaultRuntimePath) {
+TEST(GenerationStageTimingTest,
+     AppliesBuiltInVitsDefinitionThroughDefaultRuntimePath) {
   Project project = MakeProject(Standard::kPal, 1);
   Section::LineInjection injection;
   injection.type = "vits";
@@ -518,52 +533,65 @@ TEST(GenerationStageTimingTest, AppliesBuiltInVitsDefinitionThroughDefaultRuntim
   const TimingConstants pal = GetTimingConstants(Standard::kPal);
   const int line17 = (17 - 1) * pal.samples_per_line_4fsc;
   const int line19 = (19 - 1) * pal.samples_per_line_4fsc;
-  const int start = static_cast<int>(std::lround(pal.sample_rate_4fsc_hz * 12.0e-6));
-  const int end = static_cast<int>(std::lround(pal.sample_rate_4fsc_hz * 20.0e-6));
+  const int start =
+      static_cast<int>(std::lround(pal.sample_rate_4fsc_hz * 12.0e-6));
+  const int end =
+      static_cast<int>(std::lround(pal.sample_rate_4fsc_hz * 20.0e-6));
 
   EXPECT_GT(WindowMeanMillivolts(y, line17 + start, line17 + end), 150.0);
   EXPECT_LT(WindowMeanMillivolts(y, line19 + start, line19 + end), 10.0);
 }
 
-TEST(GenerationStageTimingTest, BuildsDifferentPulseWidthsForEqualizingAndBroadPulses) {
+TEST(GenerationStageTimingTest,
+     BuildsDifferentPulseWidthsForEqualizingAndBroadPulses) {
   GenerationStage generation;
   std::vector<std::string> errors;
   std::vector<SampleFixed> y;
   std::vector<SampleFixed> c;
-  ASSERT_TRUE(generation.Generate(MakeProject(Standard::kNtsc), &y, &c, &errors));
+  ASSERT_TRUE(
+      generation.Generate(MakeProject(Standard::kNtsc), &y, &c, &errors));
 
   const TimingConstants ntsc = GetTimingConstants(Standard::kNtsc);
   const SignalLevels levels = GetSignalLevels(Standard::kNtsc);
 
-  const int horizontal_sync = CountSyncSamplesOnLine(y, 20, ntsc, levels.sync_tip_mv);
-  const int equalizing_sync = CountSyncSamplesOnLine(y, 2, ntsc, levels.sync_tip_mv);
+  const int horizontal_sync =
+      CountSyncSamplesOnLine(y, 20, ntsc, levels.sync_tip_mv);
+  const int equalizing_sync =
+      CountSyncSamplesOnLine(y, 2, ntsc, levels.sync_tip_mv);
   const int broad_sync = CountSyncSamplesOnLine(y, 5, ntsc, levels.sync_tip_mv);
 
   EXPECT_GT(horizontal_sync, equalizing_sync);
   EXPECT_GT(broad_sync, horizontal_sync);
 }
 
-TEST(GenerationStageTimingTest, AppliesTwoHalfLinePulsesToEqualizingAndVerticalSyncLines) {
+TEST(GenerationStageTimingTest,
+     AppliesTwoHalfLinePulsesToEqualizingAndVerticalSyncLines) {
   GenerationStage generation;
   std::vector<std::string> errors;
   std::vector<SampleFixed> y;
   std::vector<SampleFixed> c;
-  ASSERT_TRUE(generation.Generate(MakeProject(Standard::kPal), &y, &c, &errors));
+  ASSERT_TRUE(
+      generation.Generate(MakeProject(Standard::kPal), &y, &c, &errors));
 
   const TimingConstants pal = GetTimingConstants(Standard::kPal);
   const SignalLevels levels = GetSignalLevels(Standard::kPal);
 
-  const int eq_first_half = CountSyncSamplesInHalfLine(y, 4, 0, pal, levels.sync_tip_mv);
-  const int eq_second_half = CountSyncSamplesInHalfLine(y, 4, 1, pal, levels.sync_tip_mv);
+  const int eq_first_half =
+      CountSyncSamplesInHalfLine(y, 4, 0, pal, levels.sync_tip_mv);
+  const int eq_second_half =
+      CountSyncSamplesInHalfLine(y, 4, 1, pal, levels.sync_tip_mv);
   EXPECT_GT(eq_first_half, 0);
   EXPECT_GT(eq_second_half, 0);
 
-  const int vs_first_half = CountSyncSamplesInHalfLine(y, 1, 0, pal, levels.sync_tip_mv);
-  const int vs_second_half = CountSyncSamplesInHalfLine(y, 1, 1, pal, levels.sync_tip_mv);
+  const int vs_first_half =
+      CountSyncSamplesInHalfLine(y, 1, 0, pal, levels.sync_tip_mv);
+  const int vs_second_half =
+      CountSyncSamplesInHalfLine(y, 1, 1, pal, levels.sync_tip_mv);
   EXPECT_GT(vs_first_half, 0);
   EXPECT_GT(vs_second_half, 0);
 
-  const int h_second_half = CountSyncSamplesInHalfLine(y, 23, 1, pal, levels.sync_tip_mv);
+  const int h_second_half =
+      CountSyncSamplesInHalfLine(y, 23, 1, pal, levels.sync_tip_mv);
   EXPECT_EQ(h_second_half, 0);
 }
 
@@ -572,7 +600,8 @@ TEST(GenerationStageTimingTest, KeepsEndOfFrameNtscLinesAsHorizontalSync) {
   std::vector<std::string> errors;
   std::vector<SampleFixed> y;
   std::vector<SampleFixed> c;
-  ASSERT_TRUE(generation.Generate(MakeProject(Standard::kNtsc), &y, &c, &errors));
+  ASSERT_TRUE(
+      generation.Generate(MakeProject(Standard::kNtsc), &y, &c, &errors));
 
   const TimingConstants ntsc = GetTimingConstants(Standard::kNtsc);
   const SignalLevels levels = GetSignalLevels(Standard::kNtsc);
@@ -587,12 +616,14 @@ TEST(GenerationStageTimingTest, KeepsEndOfFrameNtscLinesAsHorizontalSync) {
   EXPECT_NEAR(line525, line520, 2);
 }
 
-TEST(GenerationStageTimingTest, IncludesSecondFieldNtscVerticalTransitionBlock) {
+TEST(GenerationStageTimingTest,
+     IncludesSecondFieldNtscVerticalTransitionBlock) {
   GenerationStage generation;
   std::vector<std::string> errors;
   std::vector<SampleFixed> y;
   std::vector<SampleFixed> c;
-  ASSERT_TRUE(generation.Generate(MakeProject(Standard::kNtsc), &y, &c, &errors));
+  ASSERT_TRUE(
+      generation.Generate(MakeProject(Standard::kNtsc), &y, &c, &errors));
 
   const TimingConstants ntsc = GetTimingConstants(Standard::kNtsc);
   const SignalLevels levels = GetSignalLevels(Standard::kNtsc);
@@ -613,14 +644,17 @@ TEST(GenerationStageTimingTest, NtscBroadSyncKeepsIntervalWithinEachHalfLine) {
   std::vector<std::string> errors;
   std::vector<SampleFixed> y;
   std::vector<SampleFixed> c;
-  ASSERT_TRUE(generation.Generate(MakeProject(Standard::kNtsc), &y, &c, &errors));
+  ASSERT_TRUE(
+      generation.Generate(MakeProject(Standard::kNtsc), &y, &c, &errors));
 
   const TimingConstants ntsc = GetTimingConstants(Standard::kNtsc);
   const SignalLevels levels = GetSignalLevels(Standard::kNtsc);
   const int half_line_samples = ntsc.samples_per_line_4fsc / 2;
 
-  const int vs_first_half = CountSyncSamplesInHalfLine(y, 5, 0, ntsc, levels.sync_tip_mv);
-  const int vs_second_half = CountSyncSamplesInHalfLine(y, 5, 1, ntsc, levels.sync_tip_mv);
+  const int vs_first_half =
+      CountSyncSamplesInHalfLine(y, 5, 0, ntsc, levels.sync_tip_mv);
+  const int vs_second_half =
+      CountSyncSamplesInHalfLine(y, 5, 1, ntsc, levels.sync_tip_mv);
 
   EXPECT_GT(vs_first_half, 0);
   EXPECT_GT(vs_second_half, 0);
@@ -633,14 +667,17 @@ TEST(GenerationStageTimingTest, PalBroadSyncKeepsIntervalWithinEachHalfLine) {
   std::vector<std::string> errors;
   std::vector<SampleFixed> y;
   std::vector<SampleFixed> c;
-  ASSERT_TRUE(generation.Generate(MakeProject(Standard::kPal), &y, &c, &errors));
+  ASSERT_TRUE(
+      generation.Generate(MakeProject(Standard::kPal), &y, &c, &errors));
 
   const TimingConstants pal = GetTimingConstants(Standard::kPal);
   const SignalLevels levels = GetSignalLevels(Standard::kPal);
   const int half_line_samples = pal.samples_per_line_4fsc / 2;
 
-  const int vs_first_half = CountSyncSamplesInHalfLine(y, 1, 0, pal, levels.sync_tip_mv);
-  const int vs_second_half = CountSyncSamplesInHalfLine(y, 1, 1, pal, levels.sync_tip_mv);
+  const int vs_first_half =
+      CountSyncSamplesInHalfLine(y, 1, 0, pal, levels.sync_tip_mv);
+  const int vs_second_half =
+      CountSyncSamplesInHalfLine(y, 1, 1, pal, levels.sync_tip_mv);
 
   EXPECT_GT(vs_first_half, 0);
   EXPECT_GT(vs_second_half, 0);
@@ -653,7 +690,8 @@ TEST(GenerationStageTimingTest, EmitsBurstOnHorizontalButNotBroadSyncLines) {
   std::vector<std::string> errors;
   std::vector<SampleFixed> y;
   std::vector<SampleFixed> c;
-  ASSERT_TRUE(generation.Generate(MakeProject(Standard::kNtsc), &y, &c, &errors));
+  ASSERT_TRUE(
+      generation.Generate(MakeProject(Standard::kNtsc), &y, &c, &errors));
 
   const TimingConstants ntsc = GetTimingConstants(Standard::kNtsc);
 
@@ -664,16 +702,19 @@ TEST(GenerationStageTimingTest, EmitsBurstOnHorizontalButNotBroadSyncLines) {
   EXPECT_LT(broad_line_mean, 1e-9);
 }
 
-TEST(GenerationStageTimingTest, UsesContinuousSubcarrierBurstPhaseProgressionForNtscAndPal) {
+TEST(GenerationStageTimingTest,
+     UsesContinuousSubcarrierBurstPhaseProgressionForNtscAndPal) {
   constexpr double kPi = 3.14159265358979323846;
   GenerationStage generation;
   std::vector<std::string> errors;
 
   // NTSC: 910 samples/line × π/2 rad/sample = π rad/line, so adjacent lines
-  // maintain a strong burst with stable magnitude under continuous subcarrier timing.
+  // maintain a strong burst with stable magnitude under continuous subcarrier
+  // timing.
   std::vector<SampleFixed> y_ntsc;
   std::vector<SampleFixed> c_ntsc;
-  ASSERT_TRUE(generation.Generate(MakeProject(Standard::kNtsc), &y_ntsc, &c_ntsc, &errors));
+  ASSERT_TRUE(generation.Generate(MakeProject(Standard::kNtsc), &y_ntsc,
+                                  &c_ntsc, &errors));
   const TimingConstants ntsc = GetTimingConstants(Standard::kNtsc);
 
   const double ntsc_line20 = BurstWindowMean(c_ntsc, 20, ntsc);
@@ -683,7 +724,8 @@ TEST(GenerationStageTimingTest, UsesContinuousSubcarrierBurstPhaseProgressionFor
 
   std::vector<SampleFixed> y_pal;
   std::vector<SampleFixed> c_pal;
-  ASSERT_TRUE(generation.Generate(MakeProject(Standard::kPal), &y_pal, &c_pal, &errors));
+  ASSERT_TRUE(generation.Generate(MakeProject(Standard::kPal), &y_pal, &c_pal,
+                                  &errors));
   const TimingConstants pal = GetTimingConstants(Standard::kPal);
 
   // PAL 625 has 283.75 subcarrier cycles/line and V-switching, so adjacent
@@ -691,8 +733,10 @@ TEST(GenerationStageTimingTest, UsesContinuousSubcarrierBurstPhaseProgressionFor
   const double pal_line20_phase = EstimateBurstPhaseRad(c_pal, 20, pal);
   const double pal_line21_phase = EstimateBurstPhaseRad(c_pal, 21, pal);
   const double pal_line22_phase = EstimateBurstPhaseRad(c_pal, 22, pal);
-  EXPECT_NEAR(WrappedPhaseDeltaAbs(pal_line20_phase, pal_line21_phase), kPi / 2.0, 0.25);
-  EXPECT_NEAR(WrappedPhaseDeltaAbs(pal_line21_phase, pal_line22_phase), kPi / 2.0, 0.25);
+  EXPECT_NEAR(WrappedPhaseDeltaAbs(pal_line20_phase, pal_line21_phase),
+              kPi / 2.0, 0.25);
+  EXPECT_NEAR(WrappedPhaseDeltaAbs(pal_line21_phase, pal_line22_phase),
+              kPi / 2.0, 0.25);
 }
 
 TEST(GenerationStageTimingTest, PalBurstPhaseFollowsFourFrameSequence) {
@@ -701,10 +745,8 @@ TEST(GenerationStageTimingTest, PalBurstPhaseFollowsFourFrameSequence) {
   std::vector<std::string> errors;
   std::vector<SampleFixed> y_pal;
   std::vector<SampleFixed> c_pal;
-  ASSERT_TRUE(generation.Generate(MakeProject(Standard::kPal, 4),
-                                  &y_pal,
-                                  &c_pal,
-                                  &errors));
+  ASSERT_TRUE(generation.Generate(MakeProject(Standard::kPal, 4), &y_pal,
+                                  &c_pal, &errors));
 
   const TimingConstants pal = GetTimingConstants(Standard::kPal);
   const int frame_samples = SamplesPerFrame4fsc(Standard::kPal);
@@ -715,7 +757,8 @@ TEST(GenerationStageTimingTest, PalBurstPhaseFollowsFourFrameSequence) {
 
   auto phase_for_frame = [&](int frame_index) {
     const int frame_base = frame_index * frame_samples;
-    const int line_start = frame_base + ((line_1based - 1) * pal.samples_per_line_4fsc);
+    const int line_start =
+        frame_base + ((line_1based - 1) * pal.samples_per_line_4fsc);
     const int start = line_start + burst_offset_start;
     const int end = line_start + burst_offset_end;
     double sum_sin = 0.0;
@@ -746,7 +789,8 @@ TEST(GenerationStageTimingTest, ShapesSyncEdgesInsteadOfHardSteps) {
   std::vector<std::string> errors;
   std::vector<SampleFixed> y;
   std::vector<SampleFixed> c;
-  ASSERT_TRUE(generation.Generate(MakeProject(Standard::kNtsc), &y, &c, &errors));
+  ASSERT_TRUE(
+      generation.Generate(MakeProject(Standard::kNtsc), &y, &c, &errors));
 
   const TimingConstants ntsc = GetTimingConstants(Standard::kNtsc);
   const SignalLevels levels = GetSignalLevels(Standard::kNtsc);
@@ -772,12 +816,14 @@ TEST(GenerationStageTimingTest, AppliesBurstEnvelopeRampAtBurstWindowEdges) {
   std::vector<std::string> errors;
   std::vector<SampleFixed> y;
   std::vector<SampleFixed> c;
-  ASSERT_TRUE(generation.Generate(MakeProject(Standard::kNtsc), &y, &c, &errors));
+  ASSERT_TRUE(
+      generation.Generate(MakeProject(Standard::kNtsc), &y, &c, &errors));
 
   const TimingConstants ntsc = GetTimingConstants(Standard::kNtsc);
   const int line_1based = 20;
   const int line_start = (line_1based - 1) * ntsc.samples_per_line_4fsc;
-  const int burst_start = line_start + BurstStartSamples(ntsc.sample_rate_4fsc_hz);
+  const int burst_start =
+      line_start + BurstStartSamples(ntsc.sample_rate_4fsc_hz);
   const int burst_end = line_start + BurstEndSamples(ntsc.sample_rate_4fsc_hz);
   auto MaxAbsInRange = [&](int start_sample, int end_sample) {
     double max_abs = 0.0;
@@ -805,17 +851,20 @@ TEST(GenerationStageTimingTest, AppliesBurstEnvelopeRampAtBurstWindowEdges) {
   EXPECT_GT(center_max, 100.0);
 }
 
-TEST(GenerationStageTimingTest, ShapesBothPositiveAndNegativeBurstLobesAtEdges) {
+TEST(GenerationStageTimingTest,
+     ShapesBothPositiveAndNegativeBurstLobesAtEdges) {
   GenerationStage generation;
   std::vector<std::string> errors;
   std::vector<SampleFixed> y;
   std::vector<SampleFixed> c;
-  ASSERT_TRUE(generation.Generate(MakeProject(Standard::kNtsc), &y, &c, &errors));
+  ASSERT_TRUE(
+      generation.Generate(MakeProject(Standard::kNtsc), &y, &c, &errors));
 
   const TimingConstants ntsc = GetTimingConstants(Standard::kNtsc);
   const int line_1based = 20;
   const int line_start = (line_1based - 1) * ntsc.samples_per_line_4fsc;
-  const int burst_start = line_start + BurstStartSamples(ntsc.sample_rate_4fsc_hz);
+  const int burst_start =
+      line_start + BurstStartSamples(ntsc.sample_rate_4fsc_hz);
   const int burst_end = line_start + BurstEndSamples(ntsc.sample_rate_4fsc_hz);
   const int burst_width = burst_end - burst_start;
   ASSERT_GT(burst_width, 8);
@@ -850,7 +899,8 @@ TEST(GenerationStageTimingTest, ShapesBothPositiveAndNegativeBurstLobesAtEdges) 
   EXPECT_GT(center_neg, 70.0);
 }
 
-TEST(GenerationStageChromaTest, ActiveChromaUsesNtscBurstPlus180ReferenceModel) {
+TEST(GenerationStageChromaTest,
+     ActiveChromaUsesNtscBurstPlus180ReferenceModel) {
   GenerationStage generation;
   std::vector<std::string> errors;
   std::vector<SampleFixed> y;
@@ -862,77 +912,96 @@ TEST(GenerationStageChromaTest, ActiveChromaUsesNtscBurstPlus180ReferenceModel) 
   const TimingConstants ntsc = GetTimingConstants(Standard::kNtsc);
   const int line_1based = 60;
   const int line_start = (line_1based - 1) * ntsc.samples_per_line_4fsc;
-  const int burst_start = line_start + BurstStartSamples(ntsc.sample_rate_4fsc_hz);
+  const int burst_start =
+      line_start + BurstStartSamples(ntsc.sample_rate_4fsc_hz);
   const int burst_mid = burst_start + 8;
   const double subcarrier_hz = ntsc.sample_rate_4fsc_hz / 4.0;
-  const LineTimingPrimitive line = BuildLineTimingPrimitive(Standard::kNtsc, line_1based);
-  const double burst_t = static_cast<double>(burst_mid) / ntsc.sample_rate_4fsc_hz;
-  const double expected_burst = 150.0 *
-                                std::sin((2.0 * M_PI * subcarrier_hz * burst_t) + line.burst_phase_rad);
+  const LineTimingPrimitive line =
+      BuildLineTimingPrimitive(Standard::kNtsc, line_1based);
+  const double burst_t =
+      static_cast<double>(burst_mid) / ntsc.sample_rate_4fsc_hz;
+  const double expected_burst =
+      150.0 *
+      std::sin((2.0 * M_PI * subcarrier_hz * burst_t) + line.burst_phase_rad);
   EXPECT_NEAR(SampleFixedToMillivolts(c[burst_mid]), expected_burst, 1e-6);
 
-  const int active_start = ActiveWindowStartSamples(Standard::kNtsc, ntsc.sample_rate_4fsc_hz);
-  const int active_end = ActiveWindowEndSamples(Standard::kNtsc, ntsc.sample_rate_4fsc_hz);
+  const int active_start =
+      ActiveWindowStartSamples(Standard::kNtsc, ntsc.sample_rate_4fsc_hz);
+  const int active_end =
+      ActiveWindowEndSamples(Standard::kNtsc, ntsc.sample_rate_4fsc_hz);
   const int active_window_samples = active_end - active_start;
-    ProgressiveFrameSource frame_source;
+  ProgressiveFrameSource frame_source;
   FrameSourceImage source_frame;
   std::string frame_error;
-    ASSERT_TRUE(frame_source.GenerateFrame(
+  ASSERT_TRUE(frame_source.GenerateFrame(
       project.sections[0], 0, Standard::kNtsc, &source_frame, &frame_error));
 
-  std::vector<YCbCr444Pixel> source_line(static_cast<std::size_t>(active_window_samples));
-    const int active_line_index = line_1based - 22;
-    const int source_y = source_frame.active_y + ((2 * active_line_index) + 1);
+  std::vector<YCbCr444Pixel> source_line(
+      static_cast<std::size_t>(active_window_samples));
+  const int active_line_index = line_1based - 22;
+  const int source_y = source_frame.active_y + ((2 * active_line_index) + 1);
   for (int x_sample = 0; x_sample < active_window_samples; ++x_sample) {
     const int pixel_x = MapActiveSampleToSourcePixel(
-      x_sample, active_window_samples, source_frame.active_width, source_frame.active_x);
-      source_line[static_cast<std::size_t>(x_sample)] = source_frame.PixelAt(pixel_x, source_y);
+        x_sample, active_window_samples, source_frame.active_width,
+        source_frame.active_x);
+    source_line[static_cast<std::size_t>(x_sample)] =
+        source_frame.PixelAt(pixel_x, source_y);
   }
 
-  const auto chroma_encoder = CreateChromaEncoder(Standard::kNtsc, ntsc.sample_rate_4fsc_hz);
+  const auto chroma_encoder =
+      CreateChromaEncoder(Standard::kNtsc, ntsc.sample_rate_4fsc_hz);
   ASSERT_NE(chroma_encoder, nullptr);
   std::vector<SampleFixed> expected_active_line;
-  const int line_start_absolute = (line_1based - 1) * ntsc.samples_per_line_4fsc;
+  const int line_start_absolute =
+      (line_1based - 1) * ntsc.samples_per_line_4fsc;
   const double phase_start =
       (M_PI / 2.0) * static_cast<double>(line_start_absolute + active_start) +
       line.burst_phase_rad + M_PI;
-  chroma_encoder->EncodeLineFromPhaseStart(source_line, phase_start, &expected_active_line);
+  chroma_encoder->EncodeLineFromPhaseStart(source_line, phase_start,
+                                           &expected_active_line);
 
   const int active_sample = active_window_samples / 3;
   const int generated_sample_index = line_start + active_start + active_sample;
-  EXPECT_NEAR(SampleFixedToMillivolts(c[generated_sample_index]),
-              SampleFixedToMillivolts(expected_active_line[static_cast<std::size_t>(active_sample)]),
-              1e-3);
+  EXPECT_NEAR(
+      SampleFixedToMillivolts(c[generated_sample_index]),
+      SampleFixedToMillivolts(
+          expected_active_line[static_cast<std::size_t>(active_sample)]),
+      1e-3);
 }
 
-TEST(GenerationStageChromaTest, PalBurstLockedDecodeRecoversStableHueAcrossLines) {
+TEST(GenerationStageChromaTest,
+     PalBurstLockedDecodeRecoversStableHueAcrossLines) {
   GenerationStage generation;
   std::vector<std::string> errors;
   std::vector<SampleFixed> y;
   std::vector<SampleFixed> c;
 
-    const Project project = MakeProject(Standard::kPal);
-    ASSERT_TRUE(generation.Generate(project, &y, &c, &errors));
+  const Project project = MakeProject(Standard::kPal);
+  ASSERT_TRUE(generation.Generate(project, &y, &c, &errors));
 
   const TimingConstants pal = GetTimingConstants(Standard::kPal);
-    ProgressiveFrameSource frame_source;
+  ProgressiveFrameSource frame_source;
   FrameSourceImage source_frame;
   std::string frame_error;
-  ASSERT_TRUE(frame_source.GenerateFrame(
-      project.sections[0], 0, Standard::kPal, &source_frame, &frame_error));
+  ASSERT_TRUE(frame_source.GenerateFrame(project.sections[0], 0, Standard::kPal,
+                                         &source_frame, &frame_error));
 
   // Use a window centered in the second EBU colour bar, away from transitions.
-  const int active_start = ActiveWindowStartSamples(Standard::kPal, pal.sample_rate_4fsc_hz);
+  const int active_start =
+      ActiveWindowStartSamples(Standard::kPal, pal.sample_rate_4fsc_hz);
   const int active_window_samples =
-      ActiveWindowEndSamples(Standard::kPal, pal.sample_rate_4fsc_hz) - active_start;
+      ActiveWindowEndSamples(Standard::kPal, pal.sample_rate_4fsc_hz) -
+      active_start;
   const int x_sample = 180;
   const int sample_window = 64;
   const int sample_window_start = x_sample - (sample_window / 2);
   const int sample_window_end = sample_window_start + sample_window;
 
   const int pixel_x = MapActiveSampleToSourcePixel(
-      x_sample, active_window_samples, source_frame.active_width, source_frame.active_x);
-  const YCbCr444Pixel source_pixel = source_frame.PixelAt(pixel_x, source_frame.active_y + 1);
+      x_sample, active_window_samples, source_frame.active_width,
+      source_frame.active_x);
+  const YCbCr444Pixel source_pixel =
+      source_frame.PixelAt(pixel_x, source_frame.active_y + 1);
   const double expected_u = static_cast<double>(source_pixel.cb - 512) / 448.0;
   const double expected_v = static_cast<double>(source_pixel.cr - 512) / 448.0;
   const double expected_hue = std::atan2(expected_v, expected_u);
@@ -943,30 +1012,33 @@ TEST(GenerationStageChromaTest, PalBurstLockedDecodeRecoversStableHueAcrossLines
   for (int line_1based = 23; line_1based <= 26; ++line_1based) {
     const int line_start = (line_1based - 1) * pal.samples_per_line_4fsc;
     const DecodedPalChromaSample decoded = DecodePalChromaWindowBurstLocked(
-        c,
-        line_1based,
-        line_start + active_start + sample_window_start,
-        line_start + active_start + sample_window_end,
-        pal);
+        c, line_1based, line_start + active_start + sample_window_start,
+        line_start + active_start + sample_window_end, pal);
 
-    const double v_unswitched = decoded.burst_phase_rad < 0.0 ? -decoded.v_switched : decoded.v_switched;
+    const double v_unswitched = decoded.burst_phase_rad < 0.0
+                                    ? -decoded.v_switched
+                                    : decoded.v_switched;
     const double decoded_hue = std::atan2(v_unswitched, decoded.u);
-    const double decoded_magnitude = std::sqrt((decoded.u * decoded.u) + (v_unswitched * v_unswitched));
+    const double decoded_magnitude =
+        std::sqrt((decoded.u * decoded.u) + (v_unswitched * v_unswitched));
 
     decoded_hues.push_back(decoded_hue);
     EXPECT_GT(decoded_magnitude, 0.08);
     EXPECT_NEAR(WrappedPhaseDeltaAbs(decoded_hue, expected_hue), 0.0, 0.25);
   }
 
-  EXPECT_NEAR(WrappedPhaseDeltaAbs(decoded_hues[0], decoded_hues[1]), 0.0, 0.15);
-  EXPECT_NEAR(WrappedPhaseDeltaAbs(decoded_hues[1], decoded_hues[2]), 0.0, 0.15);
-  EXPECT_NEAR(WrappedPhaseDeltaAbs(decoded_hues[2], decoded_hues[3]), 0.0, 0.15);
+  EXPECT_NEAR(WrappedPhaseDeltaAbs(decoded_hues[0], decoded_hues[1]), 0.0,
+              0.15);
+  EXPECT_NEAR(WrappedPhaseDeltaAbs(decoded_hues[1], decoded_hues[2]), 0.0,
+              0.15);
+  EXPECT_NEAR(WrappedPhaseDeltaAbs(decoded_hues[2], decoded_hues[3]), 0.0,
+              0.15);
 }
 
 TEST(GenerationStageProgressiveTest, NtscMkvUsesField2DominantRowPairing) {
   const std::string source_path =
       (std::filesystem::path(VIDEOSYNTH_SOURCE_DIR) /
-  "videosynth-assets/assets/mkv/720x486/MOVING_ZONE_2H.mkv")
+       "videosynth-assets/assets/mkv/720x486/MOVING_ZONE_2H.mkv")
           .string();
 
   ProgressiveFrameSource progressive_source;
@@ -975,23 +1047,32 @@ TEST(GenerationStageProgressiveTest, NtscMkvUsesField2DominantRowPairing) {
   Section section;
   section.type = "progressive";
   section.source = source_path;
-  ASSERT_TRUE(
-      progressive_source.GenerateFrame(section, 0, Standard::kNtsc, &source_frame, &source_error));
+  ASSERT_TRUE(progressive_source.GenerateFrame(section, 0, Standard::kNtsc,
+                                               &source_frame, &source_error));
 
   const TimingConstants ntsc = GetTimingConstants(Standard::kNtsc);
-  const int active_start = ActiveWindowStartSamples(Standard::kNtsc, ntsc.sample_rate_4fsc_hz);
+  const int active_start =
+      ActiveWindowStartSamples(Standard::kNtsc, ntsc.sample_rate_4fsc_hz);
   const int active_window_samples =
-      ActiveWindowEndSamples(Standard::kNtsc, ntsc.sample_rate_4fsc_hz) - active_start;
+      ActiveWindowEndSamples(Standard::kNtsc, ntsc.sample_rate_4fsc_hz) -
+      active_start;
 
   const int active_lines_per_field = 240;
   int selected_field_line = -1;
   int selected_x_sample = -1;
-  for (int field_line = 0; field_line < active_lines_per_field && selected_x_sample < 0; ++field_line) {
+  for (int field_line = 0;
+       field_line < active_lines_per_field && selected_x_sample < 0;
+       ++field_line) {
     for (int x_sample = 0; x_sample < active_window_samples; ++x_sample) {
-        const int pixel_x = MapActiveSampleToSourcePixel(
-          x_sample, active_window_samples, source_frame.active_width, source_frame.active_x);
-      if (source_frame.PixelAt(pixel_x, source_frame.active_y + (2 * field_line)).y !=
-          source_frame.PixelAt(pixel_x, source_frame.active_y + (2 * field_line + 1)).y) {
+      const int pixel_x = MapActiveSampleToSourcePixel(
+          x_sample, active_window_samples, source_frame.active_width,
+          source_frame.active_x);
+      if (source_frame
+              .PixelAt(pixel_x, source_frame.active_y + (2 * field_line))
+              .y !=
+          source_frame
+              .PixelAt(pixel_x, source_frame.active_y + (2 * field_line + 1))
+              .y) {
         selected_field_line = field_line;
         selected_x_sample = x_sample;
         break;
@@ -1001,38 +1082,45 @@ TEST(GenerationStageProgressiveTest, NtscMkvUsesField2DominantRowPairing) {
   ASSERT_NE(selected_field_line, -1);
   ASSERT_NE(selected_x_sample, -1);
 
-  const int pixel_x = MapActiveSampleToSourcePixel(selected_x_sample,
-                                                   active_window_samples,
-                                                   source_frame.active_width,
-                                                   source_frame.active_x);
+  const int pixel_x = MapActiveSampleToSourcePixel(
+      selected_x_sample, active_window_samples, source_frame.active_width,
+      source_frame.active_x);
 
   GenerationStage generation;
   std::vector<std::string> errors;
   std::vector<SampleFixed> y;
   std::vector<SampleFixed> c;
-  ASSERT_TRUE(generation.Generate(MakeProgressiveSourceProject(Standard::kNtsc, source_path),
-                                  &y,
-                                  &c,
-                                  &errors));
+  ASSERT_TRUE(generation.Generate(
+      MakeProgressiveSourceProject(Standard::kNtsc, source_path), &y, &c,
+      &errors));
 
   const SignalLevels levels = GetSignalLevels(Standard::kNtsc);
-    const int field1_line_start = ((22 + selected_field_line) - 1) * ntsc.samples_per_line_4fsc;
-    const int field2_line_start = ((284 + selected_field_line) - 1) * ntsc.samples_per_line_4fsc;
+  const int field1_line_start =
+      ((22 + selected_field_line) - 1) * ntsc.samples_per_line_4fsc;
+  const int field2_line_start =
+      ((284 + selected_field_line) - 1) * ntsc.samples_per_line_4fsc;
   const int sample_offset = active_start + selected_x_sample;
 
   const double expected_field1 = LumaMillivoltsFromCodeForTest(
-      source_frame.PixelAt(pixel_x, source_frame.active_y + (2 * selected_field_line + 1)).y,
+      source_frame
+          .PixelAt(pixel_x,
+                   source_frame.active_y + (2 * selected_field_line + 1))
+          .y,
       levels);
   const double expected_field2 = LumaMillivoltsFromCodeForTest(
-      source_frame.PixelAt(pixel_x, source_frame.active_y + (2 * selected_field_line)).y,
+      source_frame
+          .PixelAt(pixel_x, source_frame.active_y + (2 * selected_field_line))
+          .y,
       levels);
 
-  EXPECT_NEAR(SampleFixedToMillivolts(y[static_cast<std::size_t>(field1_line_start + sample_offset)]),
-              expected_field1,
-              1.0);
-  EXPECT_NEAR(SampleFixedToMillivolts(y[static_cast<std::size_t>(field2_line_start + sample_offset)]),
-              expected_field2,
-              1.0);
+  EXPECT_NEAR(
+      SampleFixedToMillivolts(
+          y[static_cast<std::size_t>(field1_line_start + sample_offset)]),
+      expected_field1, 1.0);
+  EXPECT_NEAR(
+      SampleFixedToMillivolts(
+          y[static_cast<std::size_t>(field2_line_start + sample_offset)]),
+      expected_field2, 1.0);
 }
 
 }  // namespace

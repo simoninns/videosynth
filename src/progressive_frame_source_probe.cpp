@@ -1,13 +1,22 @@
 /*
  * File:        progressive_frame_source_probe.cpp
  * Module:      progressive_frame_source_probe
- * Purpose:     Probes progressive source metadata for profile validation and frame-count semantics.
+ * Purpose:     Probes progressive source metadata for profile validation and
+ * frame-count semantics.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Simon Inns
  */
 
 #include "videosynth/progressive_frame_source_probe.h"
+
+#include <OpenEXR/ImfChannelList.h>
+#include <OpenEXR/ImfFloatAttribute.h>
+#include <OpenEXR/ImfHeader.h>
+#include <OpenEXR/ImfInputFile.h>
+#include <OpenEXR/ImfIntAttribute.h>
+#include <OpenEXR/ImfRationalAttribute.h>
+#include <OpenEXR/ImfStringAttribute.h>
 
 #include <algorithm>
 #include <array>
@@ -23,23 +32,15 @@
 #include <sstream>
 #include <string>
 
-#include <OpenEXR/ImfChannelList.h>
-#include <OpenEXR/ImfFloatAttribute.h>
-#include <OpenEXR/ImfHeader.h>
-#include <OpenEXR/ImfInputFile.h>
-#include <OpenEXR/ImfIntAttribute.h>
-#include <OpenEXR/ImfRationalAttribute.h>
-#include <OpenEXR/ImfStringAttribute.h>
-
 namespace videosynth {
 namespace {
 
 namespace Imf = OPENEXR_IMF_NAMESPACE;
 
 std::string Lowercase(std::string value) {
-  std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) {
-    return static_cast<char>(std::tolower(c));
-  });
+  std::transform(
+      value.begin(), value.end(), value.begin(),
+      [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
   return value;
 }
 
@@ -47,7 +48,8 @@ bool EndsWithLowercase(const std::string& value, const std::string& suffix) {
   if (suffix.size() > value.size()) {
     return false;
   }
-  return value.compare(value.size() - suffix.size(), suffix.size(), suffix) == 0;
+  return value.compare(value.size() - suffix.size(), suffix.size(), suffix) ==
+         0;
 }
 
 std::string EscapeForSingleQuotedShell(const std::string& value) {
@@ -63,8 +65,8 @@ std::string EscapeForSingleQuotedShell(const std::string& value) {
   return escaped;
 }
 
-bool ParseFfprobeKeyValueOutput(const std::string& output,
-                                std::map<std::string, std::string>* out_values) {
+bool ParseFfprobeKeyValueOutput(
+    const std::string& output, std::map<std::string, std::string>* out_values) {
   if (out_values == nullptr) {
     return false;
   }
@@ -136,8 +138,7 @@ int ParseIntegerOrZero(const std::string& value) {
 }
 
 bool ProbeExr(const Section& section,
-              ProgressiveFrameSourceProfile* out_profile,
-              std::string* error) {
+              ProgressiveFrameSourceProfile* out_profile, std::string* error) {
   try {
     Imf::InputFile input_file(section.source.c_str());
     const Imf::Header& header = input_file.header();
@@ -152,9 +153,12 @@ bool ProbeExr(const Section& section,
       return false;
     }
 
-    if (r_channel->type != g_channel->type || r_channel->type != b_channel->type) {
+    if (r_channel->type != g_channel->type ||
+        r_channel->type != b_channel->type) {
       if (error != nullptr) {
-        *error = "Progressive EXR channels R/G/B must use a single shared channel type.";
+        *error =
+            "Progressive EXR channels R/G/B must use a single shared channel "
+            "type.";
       }
       return false;
     }
@@ -178,7 +182,9 @@ bool ProbeExr(const Section& section,
         display_window.max.x != data_window.max.x ||
         display_window.max.y != data_window.max.y) {
       if (error != nullptr) {
-        *error = "Progressive EXR dataWindow/displayWindow must match full raster bounds.";
+        *error =
+            "Progressive EXR dataWindow/displayWindow must match full raster "
+            "bounds.";
       }
       return false;
     }
@@ -220,7 +226,9 @@ bool ProbeExr(const Section& section,
     const bool is_ntsc_fps = fps_value.n == 30000 && fps_value.d == 1001;
     if (!is_pal_fps && !is_ntsc_fps) {
       if (error != nullptr) {
-        *error = "Progressive EXR framesPerSecond metadata must be 25/1 or 30000/1001.";
+        *error =
+            "Progressive EXR framesPerSecond metadata must be 25/1 or "
+            "30000/1001.";
       }
       return false;
     }
@@ -229,16 +237,22 @@ bool ProbeExr(const Section& section,
     const float ntsc_pixel_aspect = 108.0F / 119.0F;
     const float pixel_aspect = header.pixelAspectRatio();
     if (is_pal_fps) {
-      if (width != 720 || height != 576 || std::abs(pixel_aspect - pal_pixel_aspect) > 2.0e-3F) {
+      if (width != 720 || height != 576 ||
+          std::abs(pixel_aspect - pal_pixel_aspect) > 2.0e-3F) {
         if (error != nullptr) {
-          *error = "Progressive PAL EXR profile must be 720x576 with supported PAL pixel aspect metadata.";
+          *error =
+              "Progressive PAL EXR profile must be 720x576 with supported PAL "
+              "pixel aspect metadata.";
         }
         return false;
       }
     } else {
-      if (width != 720 || height != 486 || std::abs(pixel_aspect - ntsc_pixel_aspect) > 2.0e-3F) {
+      if (width != 720 || height != 486 ||
+          std::abs(pixel_aspect - ntsc_pixel_aspect) > 2.0e-3F) {
         if (error != nullptr) {
-          *error = "Progressive NTSC EXR profile must be 720x486 with supported NTSC pixel aspect metadata.";
+          *error =
+              "Progressive NTSC EXR profile must be 720x486 with supported "
+              "NTSC pixel aspect metadata.";
         }
         return false;
       }
@@ -255,7 +269,8 @@ bool ProbeExr(const Section& section,
     return true;
   } catch (const std::exception& ex) {
     if (error != nullptr) {
-      *error = std::string("Failed while probing progressive EXR source: ") + ex.what();
+      *error = std::string("Failed while probing progressive EXR source: ") +
+               ex.what();
     }
     return false;
   }
@@ -268,8 +283,12 @@ bool ProbeWithFfprobe(const std::string& source,
   const std::string command =
       "ffprobe -v error -select_streams v:0 -count_frames "
       "-show_entries format=format_name "
-      "-show_entries stream=codec_name,pix_fmt,width,height,r_frame_rate,nb_read_frames,bits_per_raw_sample,field_order,color_space,color_primaries,color_transfer,color_range,sample_aspect_ratio "
-      "-show_entries stream_side_data=crop_left,crop_right,crop_top,crop_bottom "
+      "-show_entries "
+      "stream=codec_name,pix_fmt,width,height,r_frame_rate,nb_read_frames,bits_"
+      "per_raw_sample,field_order,color_space,color_primaries,color_transfer,"
+      "color_range,sample_aspect_ratio "
+      "-show_entries "
+      "stream_side_data=crop_left,crop_right,crop_top,crop_bottom "
       "-of default=noprint_wrappers=1:nokey=0 '" +
       escaped_source + "' 2>/dev/null";
 
@@ -283,7 +302,8 @@ bool ProbeWithFfprobe(const std::string& source,
     return false;
   }
 
-  while (std::fgets(buffer.data(), static_cast<int>(buffer.size()), pipe) != nullptr) {
+  while (std::fgets(buffer.data(), static_cast<int>(buffer.size()), pipe) !=
+         nullptr) {
     output += buffer.data();
   }
 
@@ -344,12 +364,13 @@ bool ProbeWithFfprobe(const std::string& source,
 
 }  // namespace
 
-bool ProgressiveFrameSourceProbe::Probe(const Section& section,
-                                        ProgressiveFrameSourceProfile* out_profile,
-                                        std::string* error) {
+bool ProgressiveFrameSourceProbe::Probe(
+    const Section& section, ProgressiveFrameSourceProfile* out_profile,
+    std::string* error) {
   if (out_profile == nullptr) {
     if (error != nullptr) {
-      *error = "Progressive source probe output profile pointer must not be null.";
+      *error =
+          "Progressive source probe output profile pointer must not be null.";
     }
     return false;
   }

@@ -20,8 +20,8 @@ namespace {
 
 std::size_t ComputeBatchFrameCount(const Project& project) {
   constexpr std::size_t kTargetBatchBytes = 64U * 1024U * 1024U;
-  const std::size_t frame_span =
-      static_cast<std::size_t>(SamplesPerFrame4fsc(project.cvbs_presets.video_standard_preset));
+  const std::size_t frame_span = static_cast<std::size_t>(
+      SamplesPerFrame4fsc(project.cvbs_presets.video_standard_preset));
   if (frame_span == 0U) {
     return 1U;
   }
@@ -31,7 +31,8 @@ std::size_t ComputeBatchFrameCount(const Project& project) {
     return 1U;
   }
 
-  const std::size_t computed = std::max<std::size_t>(1U, kTargetBatchBytes / bytes_per_frame);
+  const std::size_t computed =
+      std::max<std::size_t>(1U, kTargetBatchBytes / bytes_per_frame);
   return std::min<std::size_t>(computed, 64U);
 }
 
@@ -40,9 +41,9 @@ std::size_t ComputeProgressInterval(std::size_t total_frames) {
     return 1U;
   }
   constexpr std::size_t kTargetProgressMessages = 40U;
-  return std::max<std::size_t>(1U,
-                               (total_frames + kTargetProgressMessages - 1U) /
-                                   kTargetProgressMessages);
+  return std::max<std::size_t>(
+      1U,
+      (total_frames + kTargetProgressMessages - 1U) / kTargetProgressMessages);
 }
 
 }  // namespace
@@ -50,8 +51,7 @@ std::size_t ComputeProgressInterval(std::size_t total_frames) {
 VideoSynthPipeline::VideoSynthPipeline(IProjectParser* parser,
                                        IProjectValidator* validator,
                                        IGenerationStage* generation,
-                                       IOutputStage* output,
-                                       ILogger* logger)
+                                       IOutputStage* output, ILogger* logger)
     : parser_(parser),
       validator_(validator),
       generation_(generation),
@@ -69,7 +69,8 @@ bool VideoSynthPipeline::Run(const RunOptions& options) {
     return false;
   }
 
-  const ValidationResult validation_result = validator_->Validate(parse_result.project);
+  const ValidationResult validation_result =
+      validator_->Validate(parse_result.project);
   if (!validation_result.is_valid) {
     for (const std::string& error : validation_result.errors) {
       logger_->Error(error);
@@ -84,7 +85,8 @@ bool VideoSynthPipeline::Run(const RunOptions& options) {
 
   std::vector<IGenerationStage::FrameScheduleItem> schedule;
   std::vector<std::string> generation_errors;
-  if (!generation_->BuildFrameSchedule(parse_result.project, &schedule, &generation_errors)) {
+  if (!generation_->BuildFrameSchedule(parse_result.project, &schedule,
+                                       &generation_errors)) {
     for (const std::string& error : generation_errors) {
       logger_->Error(error);
     }
@@ -92,11 +94,13 @@ bool VideoSynthPipeline::Run(const RunOptions& options) {
   }
 
   const std::size_t total_frames = schedule.size();
-  const std::size_t batch_frame_count = ComputeBatchFrameCount(parse_result.project);
+  const std::size_t batch_frame_count =
+      ComputeBatchFrameCount(parse_result.project);
   const std::size_t progress_interval = ComputeProgressInterval(total_frames);
 
   std::vector<std::string> output_errors;
-  if (!output_->BeginWrite(parse_result.project, total_frames, &output_errors)) {
+  if (!output_->BeginWrite(parse_result.project, total_frames,
+                           &output_errors)) {
     for (const std::string& error : output_errors) {
       logger_->Error(error);
     }
@@ -104,7 +108,8 @@ bool VideoSynthPipeline::Run(const RunOptions& options) {
   }
 
   logger_->Info("Generating and writing " + std::to_string(total_frames) +
-                " frame(s) in batches of " + std::to_string(batch_frame_count) + ".");
+                " frame(s) in batches of " + std::to_string(batch_frame_count) +
+                ".");
 
   auto CloseOutputSessionOnFailure = [&]() {
     std::vector<std::string> cleanup_errors;
@@ -121,13 +126,9 @@ bool VideoSynthPipeline::Run(const RunOptions& options) {
     std::vector<SampleFixed> c_mv;
 
     generation_errors.clear();
-    if (!generation_->GenerateFrameBatch(parse_result.project,
-                                         schedule,
-                                         processed_frames,
-                                         frames_this_batch,
-                                         &y_mv,
-                                         &c_mv,
-                                         &generation_errors)) {
+    if (!generation_->GenerateFrameBatch(parse_result.project, schedule,
+                                         processed_frames, frames_this_batch,
+                                         &y_mv, &c_mv, &generation_errors)) {
       CloseOutputSessionOnFailure();
       for (const std::string& error : generation_errors) {
         logger_->Error(error);
@@ -145,9 +146,10 @@ bool VideoSynthPipeline::Run(const RunOptions& options) {
     }
 
     processed_frames += frames_this_batch;
-    if (processed_frames >= next_progress_mark || processed_frames == total_frames) {
-      logger_->Info("Pipeline progress: " + std::to_string(processed_frames) + "/" +
-                    std::to_string(total_frames) + " frame(s) written.");
+    if (processed_frames >= next_progress_mark ||
+        processed_frames == total_frames) {
+      logger_->Info("Pipeline progress: " + std::to_string(processed_frames) +
+                    "/" + std::to_string(total_frames) + " frame(s) written.");
       next_progress_mark += progress_interval;
     }
   }

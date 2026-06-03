@@ -20,16 +20,14 @@ class IVitsDefinitionProvider {
  public:
   virtual ~IVitsDefinitionProvider() = default;
 
-  virtual bool TryGetDefinition(Standard standard,
-                                const std::string& vits_type,
+  virtual bool TryGetDefinition(Standard standard, const std::string& vits_type,
                                 VitsDefinition* out_definition,
                                 std::string* error) const = 0;
 };
 
 class VitsDefinitionProvider final : public IVitsDefinitionProvider {
  public:
-  bool TryGetDefinition(Standard standard,
-                        const std::string& vits_type,
+  bool TryGetDefinition(Standard standard, const std::string& vits_type,
                         VitsDefinition* out_definition,
                         std::string* error) const override;
 };

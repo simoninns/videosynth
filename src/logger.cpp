@@ -9,11 +9,11 @@
 
 #include "videosynth/logger.h"
 
-#include <vector>
-
 #include <spdlog/sinks/basic_file_sink.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/spdlog.h>
+
+#include <vector>
 
 namespace videosynth {
 
@@ -37,20 +37,28 @@ SpdlogLogger::SpdlogLogger(LogLevel level, const std::string& log_file) {
   std::vector<spdlog::sink_ptr> sinks;
   sinks.push_back(std::make_shared<spdlog::sinks::stderr_color_sink_mt>());
   if (!log_file.empty()) {
-    sinks.push_back(std::make_shared<spdlog::sinks::basic_file_sink_mt>(log_file, true));
+    sinks.push_back(
+        std::make_shared<spdlog::sinks::basic_file_sink_mt>(log_file, true));
   }
 
-  logger_ = std::make_shared<spdlog::logger>("videosynth", sinks.begin(), sinks.end());
+  logger_ = std::make_shared<spdlog::logger>("videosynth", sinks.begin(),
+                                             sinks.end());
   logger_->set_level(ToSpdlogLevel(level));
   logger_->set_pattern("[%Y-%m-%d %H:%M:%S.%e] [%^%l%$] %v");
 }
 
 void SpdlogLogger::Info(const std::string& message) { logger_->info(message); }
 
-void SpdlogLogger::Error(const std::string& message) { logger_->error(message); }
+void SpdlogLogger::Error(const std::string& message) {
+  logger_->error(message);
+}
 
-void SpdlogLogger::Debug(const std::string& message) { logger_->debug(message); }
+void SpdlogLogger::Debug(const std::string& message) {
+  logger_->debug(message);
+}
 
-void SpdlogLogger::Trace(const std::string& message) { logger_->trace(message); }
+void SpdlogLogger::Trace(const std::string& message) {
+  logger_->trace(message);
+}
 
 }  // namespace videosynth

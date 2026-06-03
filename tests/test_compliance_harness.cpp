@@ -1,19 +1,20 @@
 /*
  * File:        test_compliance_harness.cpp
  * Module:      compliance_harness_tests
- * Purpose:     Provides tolerance-driven compliance checks for waveform and code-space behavior.
+ * Purpose:     Provides tolerance-driven compliance checks for waveform and
+ * code-space behavior.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Simon Inns
  */
+
+#include <gtest/gtest.h>
 
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <filesystem>
 #include <vector>
-
-#include <gtest/gtest.h>
 
 #include "videosynth/chroma_encoder.h"
 #include "videosynth/fixed_point.h"
@@ -27,25 +28,24 @@ namespace {
 
 constexpr double kPi = 3.14159265358979323846;
 
-Project MakeProject(Standard standard,
-                    const std::string& source = "") {
-  const std::string selected_source = source.empty()
-      ? ((std::filesystem::path(VIDEOSYNTH_SOURCE_DIR) /
-          (standard == Standard::kPal
-               ? "videosynth-assets/assets/exr/720x576/100_BARS.exr"
-               : "videosynth-assets/assets/exr/720x486/100_BARS.exr"))
-             .string())
-      : source;
+Project MakeProject(Standard standard, const std::string& source = "") {
+  const std::string selected_source =
+      source.empty()
+          ? ((std::filesystem::path(VIDEOSYNTH_SOURCE_DIR) /
+              (standard == Standard::kPal
+                   ? "videosynth-assets/assets/exr/720x576/100_BARS.exr"
+                   : "videosynth-assets/assets/exr/720x486/100_BARS.exr"))
+                 .string())
+          : source;
 
   Project project;
   project.cvbs_presets.video_standard_preset = standard;
   project.cvbs_presets.sample_encoding_preset = "CVBS_U10_4FSC";
   project.cvbs_presets.signal_state_preset = "STANDARD_TBC_LOCKED";
-  project.sections.push_back(
-      Section{.name = "Compliance",
-              .type = "progressive",
-              .source = selected_source,
-              .duration_frames = 1});
+  project.sections.push_back(Section{.name = "Compliance",
+                                     .type = "progressive",
+                                     .source = selected_source,
+                                     .duration_frames = 1});
   return project;
 }
 
@@ -57,26 +57,28 @@ int BurstEndSamples(double sample_rate_hz) {
   return static_cast<int>(std::lround(sample_rate_hz * 8.0e-6));
 }
 
-int PulseWidthSamples(SyncPulseKind kind, Standard standard, double sample_rate_hz) {
+int PulseWidthSamples(SyncPulseKind kind, Standard standard,
+                      double sample_rate_hz) {
   double pulse_width_seconds = 4.7e-6;
   if (kind == SyncPulseKind::kEqualizing) {
     pulse_width_seconds = 2.3e-6;
   } else if (kind == SyncPulseKind::kVerticalSync) {
     pulse_width_seconds = (standard == Standard::kNtsc) ? 27.1e-6 : 27.3e-6;
   }
-  return std::max(1, static_cast<int>(std::lround(sample_rate_hz * pulse_width_seconds)));
+  return std::max(
+      1, static_cast<int>(std::lround(sample_rate_hz * pulse_width_seconds)));
 }
 
 int MeasureLeadingPulseWidth(const std::vector<SampleFixed>& y_mv,
-                             int line_1based,
-                             const TimingConstants& timing,
+                             int line_1based, const TimingConstants& timing,
                              double threshold_mv) {
   const int line_start = (line_1based - 1) * timing.samples_per_line_4fsc;
   const int line_end = line_start + timing.samples_per_line_4fsc;
 
   int first_at_or_below = -1;
   for (int i = line_start; i < line_end; ++i) {
-    if (SampleFixedToMillivolts(y_mv[static_cast<std::size_t>(i)]) <= threshold_mv) {
+    if (SampleFixedToMillivolts(y_mv[static_cast<std::size_t>(i)]) <=
+        threshold_mv) {
       first_at_or_below = i;
       break;
     }
@@ -87,7 +89,8 @@ int MeasureLeadingPulseWidth(const std::vector<SampleFixed>& y_mv,
 
   int width = 0;
   for (int i = first_at_or_below; i < line_end; ++i) {
-    if (SampleFixedToMillivolts(y_mv[static_cast<std::size_t>(i)]) <= threshold_mv) {
+    if (SampleFixedToMillivolts(y_mv[static_cast<std::size_t>(i)]) <=
+        threshold_mv) {
       ++width;
       continue;
     }
@@ -96,20 +99,21 @@ int MeasureLeadingPulseWidth(const std::vector<SampleFixed>& y_mv,
   return width;
 }
 
-int ExpectedThresholdPulseWidth(SyncPulseKind kind,
-                                Standard standard,
+int ExpectedThresholdPulseWidth(SyncPulseKind kind, Standard standard,
                                 const TimingConstants& timing,
                                 double threshold_mv,
                                 const SignalLevels& levels) {
-  const int pulse_width = PulseWidthSamples(kind, standard, timing.sample_rate_4fsc_hz);
-  const double rise_time_seconds = (standard == Standard::kNtsc) ? 140.0e-9 : 200.0e-9;
+  const int pulse_width =
+      PulseWidthSamples(kind, standard, timing.sample_rate_4fsc_hz);
+  const double rise_time_seconds =
+      (standard == Standard::kNtsc) ? 140.0e-9 : 200.0e-9;
   const int ramp_samples =
       RiseTimeToRampSamples(rise_time_seconds, timing.sample_rate_4fsc_hz);
 
   int count = 0;
   for (int i = 0; i < pulse_width; ++i) {
-    const double shaped_level =
-        ShapedPulseLevel(i, pulse_width, ramp_samples, levels.blanking_mv, levels.sync_tip_mv);
+    const double shaped_level = ShapedPulseLevel(
+        i, pulse_width, ramp_samples, levels.blanking_mv, levels.sync_tip_mv);
     if (shaped_level <= threshold_mv) {
       ++count;
     }
@@ -117,12 +121,11 @@ int ExpectedThresholdPulseWidth(SyncPulseKind kind,
   return count;
 }
 
-int FindFirstCrossingIndex(const std::vector<SampleFixed>& y_mv,
-                           int start,
-                           int end,
-                           double threshold_mv) {
+int FindFirstCrossingIndex(const std::vector<SampleFixed>& y_mv, int start,
+                           int end, double threshold_mv) {
   for (int i = start; i < end; ++i) {
-    if (SampleFixedToMillivolts(y_mv[static_cast<std::size_t>(i)]) <= threshold_mv) {
+    if (SampleFixedToMillivolts(y_mv[static_cast<std::size_t>(i)]) <=
+        threshold_mv) {
       return i;
     }
   }
@@ -130,8 +133,7 @@ int FindFirstCrossingIndex(const std::vector<SampleFixed>& y_mv,
 }
 
 double EstimateBurstPhaseRad(const std::vector<SampleFixed>& c_mv,
-                             int line_1based,
-                             const TimingConstants& timing) {
+                             int line_1based, const TimingConstants& timing) {
   const int line_start = (line_1based - 1) * timing.samples_per_line_4fsc;
   const int start = line_start + BurstStartSamples(timing.sample_rate_4fsc_hz);
   const int end = line_start + BurstEndSamples(timing.sample_rate_4fsc_hz);
@@ -142,7 +144,8 @@ double EstimateBurstPhaseRad(const std::vector<SampleFixed>& c_mv,
   for (int i = start; i < end; ++i) {
     const double wt = (2.0 * kPi * subcarrier_hz * static_cast<double>(i)) /
                       timing.sample_rate_4fsc_hz;
-    const double c_mv_double = SampleFixedToMillivolts(c_mv[static_cast<std::size_t>(i)]);
+    const double c_mv_double =
+        SampleFixedToMillivolts(c_mv[static_cast<std::size_t>(i)]);
     sum_sin += c_mv_double * std::sin(wt);
     sum_cos += c_mv_double * std::cos(wt);
   }
@@ -165,8 +168,9 @@ int MapCompositeToCode(Standard standard, double composite_mv) {
     constexpr int kBlankingCode = 256;
     constexpr int kMinCode = 4;
     constexpr int kMaxCode = 1019;
-    const int mapped = static_cast<int>(std::lround(composite_mv / kMillivoltsPerCode)) +
-                       kBlankingCode;
+    const int mapped =
+        static_cast<int>(std::lround(composite_mv / kMillivoltsPerCode)) +
+        kBlankingCode;
     return std::max(kMinCode, std::min(kMaxCode, mapped));
   }
 
@@ -174,8 +178,9 @@ int MapCompositeToCode(Standard standard, double composite_mv) {
   constexpr int kBlankingCode = 240;
   constexpr int kMinCode = 16;
   constexpr int kMaxCode = 1019;
-  const int mapped = static_cast<int>(std::lround(composite_mv / kMillivoltsPerCode)) +
-                     kBlankingCode;
+  const int mapped =
+      static_cast<int>(std::lround(composite_mv / kMillivoltsPerCode)) +
+      kBlankingCode;
   return std::max(kMinCode, std::min(kMaxCode, mapped));
 }
 
@@ -185,17 +190,22 @@ double RootMeanSquare(const std::vector<SampleFixed>& values) {
     const double value_mv = SampleFixedToMillivolts(value);
     square_sum += value_mv * value_mv;
   }
-  return values.empty() ? 0.0 : std::sqrt(square_sum / static_cast<double>(values.size()));
+  return values.empty()
+             ? 0.0
+             : std::sqrt(square_sum / static_cast<double>(values.size()));
 }
 
 std::vector<YCbCr444Pixel> MakeCbSinusoidLine(std::size_t sample_count,
                                               double amplitude_norm,
                                               double cycles_per_sample) {
-  std::vector<YCbCr444Pixel> line(sample_count, YCbCr444Pixel{.y = 512, .cb = 512, .cr = 512});
+  std::vector<YCbCr444Pixel> line(
+      sample_count, YCbCr444Pixel{.y = 512, .cb = 512, .cr = 512});
   for (std::size_t index = 0; index < sample_count; ++index) {
-    const double angle = 2.0 * kPi * cycles_per_sample * static_cast<double>(index);
+    const double angle =
+        2.0 * kPi * cycles_per_sample * static_cast<double>(index);
     const double cb_norm = amplitude_norm * std::sin(angle);
-    line[index].cb = static_cast<std::int16_t>(std::lround(512.0 + (448.0 * cb_norm)));
+    line[index].cb =
+        static_cast<std::int16_t>(std::lround(512.0 + (448.0 * cb_norm)));
   }
   return line;
 }
@@ -223,59 +233,60 @@ TEST(ComplianceHarnessTest, NtscPulseAndEdgeTimingRemainWithinTolerance) {
   std::vector<std::string> errors;
   std::vector<SampleFixed> y_mv;
   std::vector<SampleFixed> c_mv;
-  ASSERT_TRUE(generation.Generate(MakeProject(Standard::kNtsc), &y_mv, &c_mv, &errors));
+  ASSERT_TRUE(
+      generation.Generate(MakeProject(Standard::kNtsc), &y_mv, &c_mv, &errors));
 
   const TimingConstants ntsc = GetTimingConstants(Standard::kNtsc);
   const SignalLevels levels = GetSignalLevels(Standard::kNtsc);
-  const double pulse_threshold = levels.blanking_mv + 0.5 * (levels.sync_tip_mv - levels.blanking_mv);
+  const double pulse_threshold =
+      levels.blanking_mv + 0.5 * (levels.sync_tip_mv - levels.blanking_mv);
 
   const int hsync_width =
       MeasureLeadingPulseWidth(y_mv, 20, ntsc, pulse_threshold);
-  const int eq_width =
-      MeasureLeadingPulseWidth(y_mv, 2, ntsc, pulse_threshold);
+  const int eq_width = MeasureLeadingPulseWidth(y_mv, 2, ntsc, pulse_threshold);
   const int vsync_width =
       MeasureLeadingPulseWidth(y_mv, 5, ntsc, pulse_threshold);
 
-  EXPECT_NEAR(hsync_width,
-              ExpectedThresholdPulseWidth(SyncPulseKind::kHorizontal,
-                                          Standard::kNtsc,
-                                          ntsc,
-                                          pulse_threshold,
-                                          levels),
-              1);
-  EXPECT_NEAR(eq_width,
-              ExpectedThresholdPulseWidth(SyncPulseKind::kEqualizing,
-                                          Standard::kNtsc,
-                                          ntsc,
-                                          pulse_threshold,
-                                          levels),
-              1);
-  EXPECT_NEAR(vsync_width,
-              ExpectedThresholdPulseWidth(SyncPulseKind::kVerticalSync,
-                                          Standard::kNtsc,
-                                          ntsc,
-                                          pulse_threshold,
-                                          levels),
-              1);
+  EXPECT_NEAR(
+      hsync_width,
+      ExpectedThresholdPulseWidth(SyncPulseKind::kHorizontal, Standard::kNtsc,
+                                  ntsc, pulse_threshold, levels),
+      1);
+  EXPECT_NEAR(
+      eq_width,
+      ExpectedThresholdPulseWidth(SyncPulseKind::kEqualizing, Standard::kNtsc,
+                                  ntsc, pulse_threshold, levels),
+      1);
+  EXPECT_NEAR(
+      vsync_width,
+      ExpectedThresholdPulseWidth(SyncPulseKind::kVerticalSync, Standard::kNtsc,
+                                  ntsc, pulse_threshold, levels),
+      1);
 
   const int line_start = (20 - 1) * ntsc.samples_per_line_4fsc;
-  const int burst_start = line_start + BurstStartSamples(ntsc.sample_rate_4fsc_hz);
+  const int burst_start =
+      line_start + BurstStartSamples(ntsc.sample_rate_4fsc_hz);
   const int burst_end = line_start + BurstEndSamples(ntsc.sample_rate_4fsc_hz);
   EXPECT_EQ(c_mv[static_cast<std::size_t>(burst_start)], 0);
   EXPECT_EQ(c_mv[static_cast<std::size_t>(burst_end - 1)], 0);
-  EXPECT_GT(std::abs(SampleFixedToMillivolts(c_mv[static_cast<std::size_t>((burst_start + burst_end) / 2)])),
+  EXPECT_GT(std::abs(SampleFixedToMillivolts(
+                c_mv[static_cast<std::size_t>((burst_start + burst_end) / 2)])),
             100.0);
 
-  const double level_10 = levels.blanking_mv + (levels.sync_tip_mv - levels.blanking_mv) * 0.1;
-  const double level_90 = levels.blanking_mv + (levels.sync_tip_mv - levels.blanking_mv) * 0.9;
-  const int cross_10 = FindFirstCrossingIndex(y_mv, line_start, line_start + 20, level_10);
-  const int cross_90 = FindFirstCrossingIndex(y_mv, line_start, line_start + 20, level_90);
+  const double level_10 =
+      levels.blanking_mv + (levels.sync_tip_mv - levels.blanking_mv) * 0.1;
+  const double level_90 =
+      levels.blanking_mv + (levels.sync_tip_mv - levels.blanking_mv) * 0.9;
+  const int cross_10 =
+      FindFirstCrossingIndex(y_mv, line_start, line_start + 20, level_10);
+  const int cross_90 =
+      FindFirstCrossingIndex(y_mv, line_start, line_start + 20, level_90);
   ASSERT_GE(cross_10, 0);
   ASSERT_GE(cross_90, 0);
 
   const int measured_10_90_samples = cross_90 - cross_10;
-  const int expected_10_90_samples =
-      std::max(1, static_cast<int>(std::lround(140.0e-9 * ntsc.sample_rate_4fsc_hz)));
+  const int expected_10_90_samples = std::max(
+      1, static_cast<int>(std::lround(140.0e-9 * ntsc.sample_rate_4fsc_hz)));
   EXPECT_NEAR(measured_10_90_samples, expected_10_90_samples, 1);
 }
 
@@ -284,68 +295,71 @@ TEST(ComplianceHarnessTest, PalPulseAndEdgeTimingRemainWithinTolerance) {
   std::vector<std::string> errors;
   std::vector<SampleFixed> y_mv;
   std::vector<SampleFixed> c_mv;
-  ASSERT_TRUE(generation.Generate(MakeProject(Standard::kPal), &y_mv, &c_mv, &errors));
+  ASSERT_TRUE(
+      generation.Generate(MakeProject(Standard::kPal), &y_mv, &c_mv, &errors));
 
   const TimingConstants pal = GetTimingConstants(Standard::kPal);
   const SignalLevels levels = GetSignalLevels(Standard::kPal);
-  const double pulse_threshold = levels.blanking_mv + 0.5 * (levels.sync_tip_mv - levels.blanking_mv);
+  const double pulse_threshold =
+      levels.blanking_mv + 0.5 * (levels.sync_tip_mv - levels.blanking_mv);
 
   const int hsync_width =
       MeasureLeadingPulseWidth(y_mv, 23, pal, pulse_threshold);
-  const int eq_width =
-      MeasureLeadingPulseWidth(y_mv, 4, pal, pulse_threshold);
+  const int eq_width = MeasureLeadingPulseWidth(y_mv, 4, pal, pulse_threshold);
   const int vsync_width =
       MeasureLeadingPulseWidth(y_mv, 1, pal, pulse_threshold);
 
-  EXPECT_NEAR(hsync_width,
-              ExpectedThresholdPulseWidth(SyncPulseKind::kHorizontal,
-                                          Standard::kPal,
-                                          pal,
-                                          pulse_threshold,
-                                          levels),
-              1);
-  EXPECT_NEAR(eq_width,
-              ExpectedThresholdPulseWidth(SyncPulseKind::kEqualizing,
-                                          Standard::kPal,
-                                          pal,
-                                          pulse_threshold,
-                                          levels),
-              1);
-  EXPECT_NEAR(vsync_width,
-              ExpectedThresholdPulseWidth(SyncPulseKind::kVerticalSync,
-                                          Standard::kPal,
-                                          pal,
-                                          pulse_threshold,
-                                          levels),
-              1);
+  EXPECT_NEAR(
+      hsync_width,
+      ExpectedThresholdPulseWidth(SyncPulseKind::kHorizontal, Standard::kPal,
+                                  pal, pulse_threshold, levels),
+      1);
+  EXPECT_NEAR(
+      eq_width,
+      ExpectedThresholdPulseWidth(SyncPulseKind::kEqualizing, Standard::kPal,
+                                  pal, pulse_threshold, levels),
+      1);
+  EXPECT_NEAR(
+      vsync_width,
+      ExpectedThresholdPulseWidth(SyncPulseKind::kVerticalSync, Standard::kPal,
+                                  pal, pulse_threshold, levels),
+      1);
 
   const int line_start = (23 - 1) * pal.samples_per_line_4fsc;
-  const int burst_start = line_start + BurstStartSamples(pal.sample_rate_4fsc_hz);
+  const int burst_start =
+      line_start + BurstStartSamples(pal.sample_rate_4fsc_hz);
   const int burst_end = line_start + BurstEndSamples(pal.sample_rate_4fsc_hz);
   EXPECT_EQ(c_mv[static_cast<std::size_t>(burst_start)], 0);
   EXPECT_EQ(c_mv[static_cast<std::size_t>(burst_end - 1)], 0);
-  EXPECT_GT(std::abs(SampleFixedToMillivolts(c_mv[static_cast<std::size_t>((burst_start + burst_end) / 2)])),
+  EXPECT_GT(std::abs(SampleFixedToMillivolts(
+                c_mv[static_cast<std::size_t>((burst_start + burst_end) / 2)])),
             100.0);
 
-  const double level_10 = levels.blanking_mv + (levels.sync_tip_mv - levels.blanking_mv) * 0.1;
-  const double level_90 = levels.blanking_mv + (levels.sync_tip_mv - levels.blanking_mv) * 0.9;
-  const int cross_10 = FindFirstCrossingIndex(y_mv, line_start, line_start + 20, level_10);
-  const int cross_90 = FindFirstCrossingIndex(y_mv, line_start, line_start + 20, level_90);
+  const double level_10 =
+      levels.blanking_mv + (levels.sync_tip_mv - levels.blanking_mv) * 0.1;
+  const double level_90 =
+      levels.blanking_mv + (levels.sync_tip_mv - levels.blanking_mv) * 0.9;
+  const int cross_10 =
+      FindFirstCrossingIndex(y_mv, line_start, line_start + 20, level_10);
+  const int cross_90 =
+      FindFirstCrossingIndex(y_mv, line_start, line_start + 20, level_90);
   ASSERT_GE(cross_10, 0);
   ASSERT_GE(cross_90, 0);
 
   const int measured_10_90_samples = cross_90 - cross_10;
-  const int expected_10_90_samples =
-      std::max(1, static_cast<int>(std::lround(200.0e-9 * pal.sample_rate_4fsc_hz)));
+  const int expected_10_90_samples = std::max(
+      1, static_cast<int>(std::lround(200.0e-9 * pal.sample_rate_4fsc_hz)));
   EXPECT_NEAR(measured_10_90_samples, expected_10_90_samples, 1);
 }
 
-TEST(ComplianceHarnessTest, NtscScHProgressionAssumptionKeepsStableBurstReference) {
+TEST(ComplianceHarnessTest,
+     NtscScHProgressionAssumptionKeepsStableBurstReference) {
   GenerationStage generation;
   std::vector<std::string> errors;
   std::vector<SampleFixed> y_mv;
   std::vector<SampleFixed> c_mv;
-  ASSERT_TRUE(generation.Generate(MakeProject(Standard::kNtsc), &y_mv, &c_mv, &errors));
+  ASSERT_TRUE(
+      generation.Generate(MakeProject(Standard::kNtsc), &y_mv, &c_mv, &errors));
 
   const TimingConstants ntsc = GetTimingConstants(Standard::kNtsc);
   const double phase_20 = EstimateBurstPhaseRad(c_mv, 20, ntsc);
@@ -361,7 +375,8 @@ TEST(ComplianceHarnessTest, PalBurstPolarityAlternatesByLineInFrameSequence) {
   std::vector<std::string> errors;
   std::vector<SampleFixed> y_mv;
   std::vector<SampleFixed> c_mv;
-  ASSERT_TRUE(generation.Generate(MakeProject(Standard::kPal), &y_mv, &c_mv, &errors));
+  ASSERT_TRUE(
+      generation.Generate(MakeProject(Standard::kPal), &y_mv, &c_mv, &errors));
 
   const TimingConstants pal = GetTimingConstants(Standard::kPal);
   const double phase_23 = EstimateBurstPhaseRad(c_mv, 23, pal);
@@ -376,16 +391,20 @@ TEST(ComplianceHarnessTest, PalBurstPolarityAlternatesByLineInFrameSequence) {
   EXPECT_NEAR(std::abs(phase_25), 3.0 * kPi / 4.0, 0.05);
 }
 
-TEST(ComplianceHarnessTest, ChromaFilterAttenuatesHighFrequencyRelativeToLowFrequency) {
+TEST(ComplianceHarnessTest,
+     ChromaFilterAttenuatesHighFrequencyRelativeToLowFrequency) {
   const TimingConstants pal_timing = GetTimingConstants(Standard::kPal);
-  const auto pal_encoder = CreateChromaEncoder(Standard::kPal, pal_timing.sample_rate_4fsc_hz);
+  const auto pal_encoder =
+      CreateChromaEncoder(Standard::kPal, pal_timing.sample_rate_4fsc_hz);
   ASSERT_NE(pal_encoder, nullptr);
 
   std::vector<SampleFixed> low_output;
   std::vector<SampleFixed> high_output;
 
-  const std::vector<YCbCr444Pixel> low_line = MakeCbSinusoidLine(512, 0.35, 0.02);
-  const std::vector<YCbCr444Pixel> high_line = MakeCbSinusoidLine(512, 0.35, 0.20);
+  const std::vector<YCbCr444Pixel> low_line =
+      MakeCbSinusoidLine(512, 0.35, 0.02);
+  const std::vector<YCbCr444Pixel> high_line =
+      MakeCbSinusoidLine(512, 0.35, 0.20);
   pal_encoder->EncodeLineFromPhaseStart(low_line, kPi / 2.0, &low_output);
   pal_encoder->EncodeLineFromPhaseStart(high_line, kPi / 2.0, &high_output);
 

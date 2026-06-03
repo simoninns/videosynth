@@ -36,7 +36,8 @@ inline TimingConstants GetTimingConstants(Standard standard) {
     return TimingConstants{
         // ITU-R BT.1700 Annex 1 Part B Table 1 item 1 (625-line PAL).
         .lines_per_frame = 625,
-        // EBU Tech. 3280-E Section 1.2: 1135.0064 samples/line nominal, modelled
+        // EBU Tech. 3280-E Section 1.2: 1135.0064 samples/line nominal,
+        // modelled
         // here as 1135 integer samples plus phase-slip handling elsewhere.
         .samples_per_line_4fsc = 1135,
         // ITU-R BT.1700 Annex 1 Part B Table 1 item 3: 2fH/625 = 25 frames/s.
@@ -59,7 +60,8 @@ inline TimingConstants GetTimingConstants(Standard standard) {
     };
   }
 
-  throw std::invalid_argument("Timing constants requested for unknown standard");
+  throw std::invalid_argument(
+      "Timing constants requested for unknown standard");
 }
 
 inline SignalLevels GetSignalLevels(Standard standard) {
@@ -101,7 +103,8 @@ inline SignalLevels GetSignalLevels(const CvbsPresets& presets) {
   }
 
   if (!IsSupportedNtscBlackSetupIre(presets.ntsc_black_setup_ire)) {
-    throw std::invalid_argument("Signal levels requested for unsupported NTSC black setup IRE");
+    throw std::invalid_argument(
+        "Signal levels requested for unsupported NTSC black setup IRE");
   }
 
   SignalLevels levels = GetSignalLevels(Standard::kNtsc);
@@ -123,10 +126,12 @@ inline int SamplesPerFrame4fsc(Standard standard) {
     return 910 * 525;
   }
 
-  throw std::invalid_argument("Frame sample count requested for unknown standard");
+  throw std::invalid_argument(
+      "Frame sample count requested for unknown standard");
 }
 
-inline double SampleRateHzForEncodingPreset(Standard standard, const std::string& preset) {
+inline double SampleRateHzForEncodingPreset(Standard standard,
+                                            const std::string& preset) {
   const TimingConstants timing = GetTimingConstants(standard);
   if (Is4fscSampleEncodingPreset(preset)) {
     return timing.sample_rate_4fsc_hz;
@@ -140,7 +145,8 @@ inline double SampleRateHzForEncodingPreset(Standard standard, const std::string
   return 0.0;
 }
 
-inline std::size_t SamplesPerFrameForEncodingPreset(Standard standard, const std::string& preset) {
+inline std::size_t SamplesPerFrameForEncodingPreset(Standard standard,
+                                                    const std::string& preset) {
   const TimingConstants timing = GetTimingConstants(standard);
   const double sample_rate_hz = SampleRateHzForEncodingPreset(standard, preset);
   if (sample_rate_hz <= 0.0) {
@@ -155,7 +161,8 @@ inline std::size_t SamplesPerFrameForEncodingPreset(Standard standard, const std
     return 0U;
   }
 
-  return static_cast<std::size_t>(std::llround(sample_rate_hz / timing.frame_rate_hz));
+  return static_cast<std::size_t>(
+      std::llround(sample_rate_hz / timing.frame_rate_hz));
 }
 
 }  // namespace videosynth

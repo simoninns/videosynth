@@ -30,7 +30,8 @@ TEST(SignalShapingTest, ConvertsHalfAmplitudeTimingToFullRampDuration) {
   constexpr double kSampleRateHz = 10.0e6;
   constexpr double kHalfAmplitudeSeconds = 250.0e-9;
 
-  const int ramp_samples = HalfAmplitudeTimeToRampSamples(kHalfAmplitudeSeconds, kSampleRateHz);
+  const int ramp_samples =
+      HalfAmplitudeTimeToRampSamples(kHalfAmplitudeSeconds, kSampleRateHz);
 
   // Full edge duration is twice the half-amplitude interval.
   EXPECT_EQ(ramp_samples, 5);
@@ -45,8 +46,8 @@ TEST(SignalShapingTest, ProducesCurvedLeadingEdgeWithGentleEndpointSlope) {
   std::vector<double> depths;
   depths.reserve(static_cast<std::size_t>(kRampSamples));
   for (int i = 0; i < kRampSamples; ++i) {
-    const double level =
-        ShapedPulseLevel(i, kPulseWidthSamples, kRampSamples, kBaseline, kSyncTip);
+    const double level = ShapedPulseLevel(i, kPulseWidthSamples, kRampSamples,
+                                          kBaseline, kSyncTip);
     const double depth = (level - kBaseline) / (kSyncTip - kBaseline);
     depths.push_back(depth);
   }

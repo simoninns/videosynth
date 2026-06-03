@@ -1,7 +1,8 @@
 /*
  * File:        progressive_frame_source.cpp
  * Module:      progressive_frame_source
- * Purpose:     Generates fixed-format 10-bit 4:4:4 BT.601 frame data for frame-based sources.
+ * Purpose:     Generates fixed-format 10-bit 4:4:4 BT.601 frame data for
+ * frame-based sources.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Simon Inns
@@ -9,30 +10,30 @@
 
 #include "videosynth/progressive_frame_source.h"
 
+#include <Imath/half.h>
+#include <OpenEXR/ImfChannelList.h>
+#include <OpenEXR/ImfFloatAttribute.h>
+#include <OpenEXR/ImfFrameBuffer.h>
+#include <OpenEXR/ImfHeader.h>
+#include <OpenEXR/ImfInputFile.h>
+#include <OpenEXR/ImfIntAttribute.h>
+#include <OpenEXR/ImfRationalAttribute.h>
+#include <OpenEXR/ImfStringAttribute.h>
+
 #include <algorithm>
 #include <array>
 #include <cctype>
 #include <cmath>
 #include <cstddef>
-#include <cstdlib>
 #include <cstdint>
 #include <cstdio>
+#include <cstdlib>
 #include <exception>
 #include <fstream>
 #include <map>
 #include <sstream>
 #include <utility>
 #include <vector>
-
-#include <Imath/half.h>
-#include <OpenEXR/ImfChannelList.h>
-#include <OpenEXR/ImfFrameBuffer.h>
-#include <OpenEXR/ImfHeader.h>
-#include <OpenEXR/ImfInputFile.h>
-#include <OpenEXR/ImfIntAttribute.h>
-#include <OpenEXR/ImfFloatAttribute.h>
-#include <OpenEXR/ImfRationalAttribute.h>
-#include <OpenEXR/ImfStringAttribute.h>
 
 namespace videosynth {
 
@@ -75,11 +76,15 @@ YCbCr444Pixel MakePixel(int y_code, int cb_code, int cr_code) {
   };
 }
 
-YCbCr444Pixel MakeRawPixel(std::uint16_t y_code, std::uint16_t cb_code, std::uint16_t cr_code) {
+YCbCr444Pixel MakeRawPixel(std::uint16_t y_code, std::uint16_t cb_code,
+                           std::uint16_t cr_code) {
   return YCbCr444Pixel{
-      .y = static_cast<std::int16_t>(ClampCode(static_cast<int>(y_code), 0, 1023)),
-      .cb = static_cast<std::int16_t>(ClampCode(static_cast<int>(cb_code), 0, 1023)),
-      .cr = static_cast<std::int16_t>(ClampCode(static_cast<int>(cr_code), 0, 1023)),
+      .y = static_cast<std::int16_t>(
+          ClampCode(static_cast<int>(y_code), 0, 1023)),
+      .cb = static_cast<std::int16_t>(
+          ClampCode(static_cast<int>(cb_code), 0, 1023)),
+      .cr = static_cast<std::int16_t>(
+          ClampCode(static_cast<int>(cr_code), 0, 1023)),
   };
 }
 
@@ -87,7 +92,8 @@ bool EndsWithLowercase(const std::string& value, const std::string& suffix) {
   if (suffix.size() > value.size()) {
     return false;
   }
-  return value.compare(value.size() - suffix.size(), suffix.size(), suffix) == 0;
+  return value.compare(value.size() - suffix.size(), suffix.size(), suffix) ==
+         0;
 }
 
 void SetFrameGeometryForStandard(Standard standard, FrameSourceImage* image);
@@ -105,8 +111,8 @@ std::string EscapeForSingleQuotedShell(const std::string& value) {
   return escaped;
 }
 
-bool ParseFfprobeKeyValueOutput(const std::string& output,
-                                std::map<std::string, std::string>* out_values) {
+bool ParseFfprobeKeyValueOutput(
+    const std::string& output, std::map<std::string, std::string>* out_values) {
   if (out_values == nullptr) {
     return false;
   }
@@ -198,15 +204,18 @@ bool ContainsCsvToken(const std::string& csv, const std::string& token) {
   return false;
 }
 
-bool ValidateMkvProfileWithFfprobe(const std::string& source,
-                                   Standard standard,
+bool ValidateMkvProfileWithFfprobe(const std::string& source, Standard standard,
                                    std::string* error) {
   const std::string escaped_source = EscapeForSingleQuotedShell(source);
   const std::string command =
       "ffprobe -v error -select_streams v:0 "
       "-show_entries format=format_name "
-      "-show_entries stream=codec_name,pix_fmt,width,height,r_frame_rate,bits_per_raw_sample,field_order,color_space,color_primaries,color_transfer,color_range,sample_aspect_ratio "
-      "-show_entries stream_side_data=crop_left,crop_right,crop_top,crop_bottom "
+      "-show_entries "
+      "stream=codec_name,pix_fmt,width,height,r_frame_rate,bits_per_raw_sample,"
+      "field_order,color_space,color_primaries,color_transfer,color_range,"
+      "sample_aspect_ratio "
+      "-show_entries "
+      "stream_side_data=crop_left,crop_right,crop_top,crop_bottom "
       "-of default=noprint_wrappers=1:nokey=0 '" +
       escaped_source + "' 2>/dev/null";
 
@@ -220,7 +229,8 @@ bool ValidateMkvProfileWithFfprobe(const std::string& source,
     return false;
   }
 
-  while (std::fgets(buffer.data(), static_cast<int>(buffer.size()), pipe) != nullptr) {
+  while (std::fgets(buffer.data(), static_cast<int>(buffer.size()), pipe) !=
+         nullptr) {
     output += buffer.data();
   }
 
@@ -268,7 +278,8 @@ bool ValidateMkvProfileWithFfprobe(const std::string& source,
 
   if (pix_fmt != "yuv422p10le") {
     if (error != nullptr) {
-      *error = "Progressive MKV sections only support yuv422p10le pixel format.";
+      *error =
+          "Progressive MKV sections only support yuv422p10le pixel format.";
     }
     return false;
   }
@@ -283,21 +294,25 @@ bool ValidateMkvProfileWithFfprobe(const std::string& source,
 
   if (color_space != "smpte170m") {
     if (error != nullptr) {
-      *error = "Progressive MKV sections require smpte170m color matrix metadata.";
+      *error =
+          "Progressive MKV sections require smpte170m color matrix metadata.";
     }
     return false;
   }
 
   if (!color_range.empty() && color_range != "unknown" && color_range != "tv") {
     if (error != nullptr) {
-      *error = "Progressive MKV sections require tv or unknown color range metadata.";
+      *error =
+          "Progressive MKV sections require tv or unknown color range "
+          "metadata.";
     }
     return false;
   }
 
   if (crop_left != 0 || crop_right != 0 || crop_top != 0 || crop_bottom != 0) {
     if (error != nullptr) {
-      *error = "Progressive MKV sections must not include stream crop metadata.";
+      *error =
+          "Progressive MKV sections must not include stream crop metadata.";
     }
     return false;
   }
@@ -305,7 +320,9 @@ bool ValidateMkvProfileWithFfprobe(const std::string& source,
   if (standard == Standard::kPal) {
     if (width != 720 || height != 576) {
       if (error != nullptr) {
-        *error = "Progressive MKV raster must be 720x576 for PAL and 720x486 for NTSC.";
+        *error =
+            "Progressive MKV raster must be 720x576 for PAL and 720x486 for "
+            "NTSC.";
       }
       return false;
     }
@@ -317,33 +334,44 @@ bool ValidateMkvProfileWithFfprobe(const std::string& source,
     }
     if (field_order != "tb") {
       if (error != nullptr) {
-        *error = "Progressive PAL MKV sections require top-field-first field order metadata (tb).";
+        *error =
+            "Progressive PAL MKV sections require top-field-first field order "
+            "metadata (tb).";
       }
       return false;
     }
     if (color_primaries != "bt470bg") {
       if (error != nullptr) {
-        *error = "Progressive PAL MKV sections require bt470bg color primaries metadata.";
+        *error =
+            "Progressive PAL MKV sections require bt470bg color primaries "
+            "metadata.";
       }
       return false;
     }
     if (!(color_transfer == "bt709" || color_transfer == "bt470bg")) {
       if (error != nullptr) {
-        *error = "Progressive PAL MKV sections require bt709 or bt470bg transfer metadata.";
+        *error =
+            "Progressive PAL MKV sections require bt709 or bt470bg transfer "
+            "metadata.";
       }
       return false;
     }
     const double expected_sar = 128.0 / 117.0;
-    if (sample_aspect_ratio > 0.0 && std::abs(sample_aspect_ratio - expected_sar) > 2.0e-3) {
+    if (sample_aspect_ratio > 0.0 &&
+        std::abs(sample_aspect_ratio - expected_sar) > 2.0e-3) {
       if (error != nullptr) {
-        *error = "Progressive PAL MKV sample aspect ratio metadata is outside supported tolerance.";
+        *error =
+            "Progressive PAL MKV sample aspect ratio metadata is outside "
+            "supported tolerance.";
       }
       return false;
     }
   } else if (standard == Standard::kNtsc) {
     if (width != 720 || height != 486) {
       if (error != nullptr) {
-        *error = "Progressive MKV raster must be 720x576 for PAL and 720x486 for NTSC.";
+        *error =
+            "Progressive MKV raster must be 720x576 for PAL and 720x486 for "
+            "NTSC.";
       }
       return false;
     }
@@ -356,26 +384,35 @@ bool ValidateMkvProfileWithFfprobe(const std::string& source,
     }
     if (field_order != "bt") {
       if (error != nullptr) {
-        *error = "Progressive NTSC MKV sections require bottom-field-first field order metadata (bt).";
+        *error =
+            "Progressive NTSC MKV sections require bottom-field-first field "
+            "order metadata (bt).";
       }
       return false;
     }
     if (color_primaries != "smpte170m") {
       if (error != nullptr) {
-        *error = "Progressive NTSC MKV sections require smpte170m color primaries metadata.";
+        *error =
+            "Progressive NTSC MKV sections require smpte170m color primaries "
+            "metadata.";
       }
       return false;
     }
     if (!(color_transfer == "bt709" || color_transfer == "smpte170m")) {
       if (error != nullptr) {
-        *error = "Progressive NTSC MKV sections require bt709 or smpte170m transfer metadata.";
+        *error =
+            "Progressive NTSC MKV sections require bt709 or smpte170m transfer "
+            "metadata.";
       }
       return false;
     }
     const double expected_sar = 108.0 / 119.0;
-    if (sample_aspect_ratio > 0.0 && std::abs(sample_aspect_ratio - expected_sar) > 2.0e-3) {
+    if (sample_aspect_ratio > 0.0 &&
+        std::abs(sample_aspect_ratio - expected_sar) > 2.0e-3) {
       if (error != nullptr) {
-        *error = "Progressive NTSC MKV sample aspect ratio metadata is outside supported tolerance.";
+        *error =
+            "Progressive NTSC MKV sample aspect ratio metadata is outside "
+            "supported tolerance.";
       }
       return false;
     }
@@ -384,10 +421,8 @@ bool ValidateMkvProfileWithFfprobe(const std::string& source,
   return true;
 }
 
-bool ProbeVideoRasterWithFfprobe(const std::string& source,
-                                 int* out_width,
-                                 int* out_height,
-                                 std::string* error) {
+bool ProbeVideoRasterWithFfprobe(const std::string& source, int* out_width,
+                                 int* out_height, std::string* error) {
   if (out_width == nullptr || out_height == nullptr) {
     if (error != nullptr) {
       *error = "Progressive probe output pointers must not be null.";
@@ -412,7 +447,8 @@ bool ProbeVideoRasterWithFfprobe(const std::string& source,
     return false;
   }
 
-  while (std::fgets(buffer.data(), static_cast<int>(buffer.size()), pipe) != nullptr) {
+  while (std::fgets(buffer.data(), static_cast<int>(buffer.size()), pipe) !=
+         nullptr) {
     output += buffer.data();
   }
 
@@ -438,8 +474,7 @@ bool ProbeVideoRasterWithFfprobe(const std::string& source,
 }
 
 bool ProbeVideoFrameCountWithFfprobe(const std::string& source,
-                                     int* out_frame_count,
-                                     std::string* error) {
+                                     int* out_frame_count, std::string* error) {
   if (out_frame_count == nullptr) {
     if (error != nullptr) {
       *error = "Progressive probe frame count output pointer must not be null.";
@@ -464,7 +499,8 @@ bool ProbeVideoFrameCountWithFfprobe(const std::string& source,
     return false;
   }
 
-  while (std::fgets(buffer.data(), static_cast<int>(buffer.size()), pipe) != nullptr) {
+  while (std::fgets(buffer.data(), static_cast<int>(buffer.size()), pipe) !=
+         nullptr) {
     output += buffer.data();
   }
 
@@ -489,10 +525,8 @@ bool ProbeVideoFrameCountWithFfprobe(const std::string& source,
   return true;
 }
 
-bool DecodeMkvFrames(const std::string& source,
-                     Standard standard,
-                     int max_frames,
-                     std::vector<FrameSourceImage>* out_frames,
+bool DecodeMkvFrames(const std::string& source, Standard standard,
+                     int max_frames, std::vector<FrameSourceImage>* out_frames,
                      std::string* error) {
   if (out_frames == nullptr) {
     if (error != nullptr) {
@@ -507,7 +541,8 @@ bool DecodeMkvFrames(const std::string& source,
 
   int source_width = 0;
   int source_height = 0;
-  if (!ProbeVideoRasterWithFfprobe(source, &source_width, &source_height, error)) {
+  if (!ProbeVideoRasterWithFfprobe(source, &source_width, &source_height,
+                                   error)) {
     return false;
   }
 
@@ -516,7 +551,8 @@ bool DecodeMkvFrames(const std::string& source,
   if (source_height != expected_height || source_width != 720) {
     if (error != nullptr) {
       *error =
-          "Progressive MKV raster must be 720x576 for PAL and 720x486 for NTSC.";
+          "Progressive MKV raster must be 720x576 for PAL and 720x486 for "
+          "NTSC.";
     }
     return false;
   }
@@ -527,11 +563,11 @@ bool DecodeMkvFrames(const std::string& source,
   }
 
   const std::string escaped_source = EscapeForSingleQuotedShell(source);
-    const std::string frame_limit_arg =
+  const std::string frame_limit_arg =
       max_frames > 0 ? (" -frames:v " + std::to_string(max_frames)) : "";
   const std::string command =
-      "ffmpeg -v error -i '" + escaped_source +
-      "' -an -sn -dn" + frame_limit_arg +
+      "ffmpeg -v error -i '" + escaped_source + "' -an -sn -dn" +
+      frame_limit_arg +
       " -pix_fmt yuv422p10le -vsync 0 -f rawvideo - 2>/dev/null";
 
   FILE* pipe = popen(command.c_str(), "r");
@@ -545,9 +581,11 @@ bool DecodeMkvFrames(const std::string& source,
   std::vector<std::uint8_t> decoded_bytes;
   std::array<std::uint8_t, 8192> chunk{};
   while (true) {
-    const std::size_t read_count = std::fread(chunk.data(), 1, chunk.size(), pipe);
+    const std::size_t read_count =
+        std::fread(chunk.data(), 1, chunk.size(), pipe);
     if (read_count > 0) {
-      decoded_bytes.insert(decoded_bytes.end(), chunk.data(), chunk.data() + read_count);
+      decoded_bytes.insert(decoded_bytes.end(), chunk.data(),
+                           chunk.data() + read_count);
     }
     if (read_count < chunk.size()) {
       break;
@@ -569,27 +607,36 @@ bool DecodeMkvFrames(const std::string& source,
     return false;
   }
 
-  const int expected_frames = max_frames > 0 ? std::min(source_frame_count, max_frames) : source_frame_count;
+  const int expected_frames = max_frames > 0
+                                  ? std::min(source_frame_count, max_frames)
+                                  : source_frame_count;
   if (expected_frames <= 0) {
     if (error != nullptr) {
-      *error = "Progressive MKV source does not contain decodable video frames.";
+      *error =
+          "Progressive MKV source does not contain decodable video frames.";
     }
     return false;
   }
 
-  const std::size_t bytes_per_frame = decoded_bytes.size() / static_cast<std::size_t>(expected_frames);
+  const std::size_t bytes_per_frame =
+      decoded_bytes.size() / static_cast<std::size_t>(expected_frames);
   if (decoded_bytes.empty() ||
-      decoded_bytes.size() != bytes_per_frame * static_cast<std::size_t>(expected_frames)) {
+      decoded_bytes.size() !=
+          bytes_per_frame * static_cast<std::size_t>(expected_frames)) {
     if (error != nullptr) {
-      *error = "Decoded MKV frame payload size is not aligned to frame boundaries.";
+      *error =
+          "Decoded MKV frame payload size is not aligned to frame boundaries.";
     }
     return false;
   }
 
-  const std::size_t bytes_per_line = static_cast<std::size_t>(source_height) * sizeof(std::uint16_t) * 2;
+  const std::size_t bytes_per_line =
+      static_cast<std::size_t>(source_height) * sizeof(std::uint16_t) * 2;
   if (bytes_per_line == 0 || (bytes_per_frame % bytes_per_line) != 0) {
     if (error != nullptr) {
-      *error = "Decoded MKV frame payload size is not aligned to yuv422p10le frame boundaries.";
+      *error =
+          "Decoded MKV frame payload size is not aligned to yuv422p10le frame "
+          "boundaries.";
     }
     return false;
   }
@@ -603,10 +650,13 @@ bool DecodeMkvFrames(const std::string& source,
   }
 
   const std::size_t frame_count = static_cast<std::size_t>(expected_frames);
-  const std::size_t y_plane_size = static_cast<std::size_t>(decoded_width * source_height);
-  const std::size_t chroma_plane_size = static_cast<std::size_t>((decoded_width / 2) * source_height);
-  const std::size_t frame_size = (y_plane_size + chroma_plane_size + chroma_plane_size) *
-                                 sizeof(std::uint16_t);
+  const std::size_t y_plane_size =
+      static_cast<std::size_t>(decoded_width * source_height);
+  const std::size_t chroma_plane_size =
+      static_cast<std::size_t>((decoded_width / 2) * source_height);
+  const std::size_t frame_size =
+      (y_plane_size + chroma_plane_size + chroma_plane_size) *
+      sizeof(std::uint16_t);
 
   out_frames->clear();
   out_frames->reserve(frame_count);
@@ -620,7 +670,8 @@ bool DecodeMkvFrames(const std::string& source,
 
     const std::size_t frame_offset = frame_index * frame_size;
     const std::uint8_t* frame_data = decoded_bytes.data() + frame_offset;
-    const std::uint16_t* y_plane = reinterpret_cast<const std::uint16_t*>(frame_data);
+    const std::uint16_t* y_plane =
+        reinterpret_cast<const std::uint16_t*>(frame_data);
     const std::uint16_t* cb_plane = y_plane + y_plane_size;
     const std::uint16_t* cr_plane = cb_plane + chroma_plane_size;
 
@@ -628,13 +679,17 @@ bool DecodeMkvFrames(const std::string& source,
       for (int x = 0; x < decoded_width; ++x) {
         const int dst_x = x + source_x_offset;
         const int dst_y = y;
-        const std::size_t index = static_cast<std::size_t>(y * decoded_width + x);
+        const std::size_t index =
+            static_cast<std::size_t>(y * decoded_width + x);
         const std::size_t chroma_index =
             static_cast<std::size_t>(y * (decoded_width / 2) + (x / 2));
 
-        const std::uint16_t y_code = static_cast<std::uint16_t>(y_plane[index] & 0x03FFu);
-        const std::uint16_t cb_code = static_cast<std::uint16_t>(cb_plane[chroma_index] & 0x03FFu);
-        const std::uint16_t cr_code = static_cast<std::uint16_t>(cr_plane[chroma_index] & 0x03FFu);
+        const std::uint16_t y_code =
+            static_cast<std::uint16_t>(y_plane[index] & 0x03FFu);
+        const std::uint16_t cb_code =
+            static_cast<std::uint16_t>(cb_plane[chroma_index] & 0x03FFu);
+        const std::uint16_t cr_code =
+            static_cast<std::uint16_t>(cr_plane[chroma_index] & 0x03FFu);
 
         frame.pixels[static_cast<std::size_t>((dst_y * frame.width) + dst_x)] =
             MakeRawPixel(y_code, cb_code, cr_code);
@@ -647,18 +702,14 @@ bool DecodeMkvFrames(const std::string& source,
   return true;
 }
 
-bool EnsureMkvCache(const Section& section,
-                    Standard standard,
-                    int min_required_frames,
-                    bool require_complete,
+bool EnsureMkvCache(const Section& section, Standard standard,
+                    int min_required_frames, bool require_complete,
                     std::vector<FrameSourceImage>* cached_frames,
-                    std::string* cached_source,
-                    Standard* cached_standard,
-                    bool* has_cache,
-                    bool* is_complete,
-                    std::string* error) {
-  if (cached_frames == nullptr || cached_source == nullptr || cached_standard == nullptr ||
-      has_cache == nullptr || is_complete == nullptr) {
+                    std::string* cached_source, Standard* cached_standard,
+                    bool* has_cache, bool* is_complete, std::string* error) {
+  if (cached_frames == nullptr || cached_source == nullptr ||
+      cached_standard == nullptr || has_cache == nullptr ||
+      is_complete == nullptr) {
     if (error != nullptr) {
       *error = "Internal progressive MKV cache pointers must not be null.";
     }
@@ -669,11 +720,13 @@ bool EnsureMkvCache(const Section& section,
     min_required_frames = 0;
   }
 
-  const bool key_matches = *has_cache && *cached_source == section.source && *cached_standard == standard;
+  const bool key_matches = *has_cache && *cached_source == section.source &&
+                           *cached_standard == standard;
   if (key_matches) {
     const bool has_required_frames =
         static_cast<int>(cached_frames->size()) >= min_required_frames;
-    if ((require_complete && *is_complete) || (!require_complete && has_required_frames) ||
+    if ((require_complete && *is_complete) ||
+        (!require_complete && has_required_frames) ||
         (*is_complete && !has_required_frames)) {
       return true;
     }
@@ -682,7 +735,8 @@ bool EnsureMkvCache(const Section& section,
   std::vector<FrameSourceImage> decoded_frames;
   std::string decode_error;
   const int decode_limit = require_complete ? 0 : min_required_frames;
-  if (!DecodeMkvFrames(section.source, standard, decode_limit, &decoded_frames, &decode_error)) {
+  if (!DecodeMkvFrames(section.source, standard, decode_limit, &decoded_frames,
+                       &decode_error)) {
     if (error != nullptr) {
       *error = decode_error.empty() ? "Failed to decode progressive MKV source."
                                     : decode_error;
@@ -717,8 +771,7 @@ void SetFrameGeometryForStandard(Standard standard, FrameSourceImage* image) {
   image->active_height = kNtscActiveHeight;
 }
 
-YCbCr444Pixel ConvertRgbFloatToBt601(std::float_t r,
-                                     std::float_t g,
+YCbCr444Pixel ConvertRgbFloatToBt601(std::float_t r, std::float_t g,
                                      std::float_t b) {
   const double r_norm = static_cast<double>(r);
   const double g_norm = static_cast<double>(g);
@@ -736,11 +789,8 @@ YCbCr444Pixel ConvertRgbFloatToBt601(std::float_t r,
                       static_cast<std::uint16_t>(ClampCode(cr_code, 0, 1023)));
 }
 
-bool ValidateExrMetadata(const Imf::Header& header,
-                         int width,
-                         int height,
-                         Standard standard,
-                         std::string* error) {
+bool ValidateExrMetadata(const Imf::Header& header, int width, int height,
+                         Standard standard, std::string* error) {
   if (standard != Standard::kPal && standard != Standard::kNtsc) {
     if (error != nullptr) {
       *error = "Unsupported video standard for progressive EXR source.";
@@ -794,7 +844,9 @@ bool ValidateExrMetadata(const Imf::Header& header,
       standard == Standard::kPal ? (128.0F / 117.0F) : (108.0F / 119.0F);
   if (std::abs(header.pixelAspectRatio() - expected_pixel_aspect) > 2.0e-3F) {
     if (error != nullptr) {
-      *error = "Progressive EXR pixelAspectRatio metadata is outside supported tolerance.";
+      *error =
+          "Progressive EXR pixelAspectRatio metadata is outside supported "
+          "tolerance.";
     }
     return false;
   }
@@ -809,10 +861,14 @@ bool ValidateExrMetadata(const Imf::Header& header,
   }
 
   const auto fps_value = fps->value();
-  if ((standard == Standard::kPal && !(fps_value.n == 25 && fps_value.d == 1)) ||
-      (standard == Standard::kNtsc && !(fps_value.n == 30000 && fps_value.d == 1001))) {
+  if ((standard == Standard::kPal &&
+       !(fps_value.n == 25 && fps_value.d == 1)) ||
+      (standard == Standard::kNtsc &&
+       !(fps_value.n == 30000 && fps_value.d == 1001))) {
     if (error != nullptr) {
-      *error = "Progressive EXR framesPerSecond metadata does not match selected standard.";
+      *error =
+          "Progressive EXR framesPerSecond metadata does not match selected "
+          "standard.";
     }
     return false;
   }
@@ -820,10 +876,8 @@ bool ValidateExrMetadata(const Imf::Header& header,
   return true;
 }
 
-bool LoadExrFrame(const std::string& source,
-                  Standard standard,
-                  FrameSourceImage* out_image,
-                  std::string* error) {
+bool LoadExrFrame(const std::string& source, Standard standard,
+                  FrameSourceImage* out_image, std::string* error) {
   if (out_image == nullptr) {
     if (error != nullptr) {
       *error = "Frame source output image pointer must not be null.";
@@ -843,7 +897,8 @@ bool LoadExrFrame(const std::string& source,
     if (height != expected_height || width != 720) {
       if (error != nullptr) {
         *error =
-            "Progressive EXR raster must be 720x576 for PAL and 720x486 for NTSC.";
+            "Progressive EXR raster must be 720x576 for PAL and 720x486 for "
+            "NTSC.";
       }
       return false;
     }
@@ -859,9 +914,12 @@ bool LoadExrFrame(const std::string& source,
       return false;
     }
 
-    if (r_channel->type != g_channel->type || r_channel->type != b_channel->type) {
+    if (r_channel->type != g_channel->type ||
+        r_channel->type != b_channel->type) {
       if (error != nullptr) {
-        *error = "Progressive EXR channels R/G/B must use a single shared channel type.";
+        *error =
+            "Progressive EXR channels R/G/B must use a single shared channel "
+            "type.";
       }
       return false;
     }
@@ -879,12 +937,14 @@ bool LoadExrFrame(const std::string& source,
     }
 
     SetFrameGeometryForStandard(standard, out_image);
-    out_image->pixels.assign(static_cast<std::size_t>(out_image->width * out_image->height),
-                             MakePixel(64, 512, 512));
+    out_image->pixels.assign(
+        static_cast<std::size_t>(out_image->width * out_image->height),
+        MakePixel(64, 512, 512));
 
     const int source_x_offset = 0;
-    const std::ptrdiff_t pixel_offset = static_cast<std::ptrdiff_t>(data_window.min.x) +
-                                        (static_cast<std::ptrdiff_t>(data_window.min.y) * width);
+    const std::ptrdiff_t pixel_offset =
+        static_cast<std::ptrdiff_t>(data_window.min.x) +
+        (static_cast<std::ptrdiff_t>(data_window.min.y) * width);
     Imf::FrameBuffer frame_buffer;
 
     if (channel_type == Imf::FLOAT) {
@@ -894,41 +954,46 @@ bool LoadExrFrame(const std::string& source,
 
       frame_buffer.insert(
           "R", Imf::Slice(Imf::FLOAT,
-                           reinterpret_cast<char*>(red.data() - pixel_offset),
-                           sizeof(float),
-                           static_cast<std::size_t>(sizeof(float) * width)));
+                          reinterpret_cast<char*>(red.data() - pixel_offset),
+                          sizeof(float),
+                          static_cast<std::size_t>(sizeof(float) * width)));
       frame_buffer.insert(
           "G", Imf::Slice(Imf::FLOAT,
-                           reinterpret_cast<char*>(green.data() - pixel_offset),
-                           sizeof(float),
-                           static_cast<std::size_t>(sizeof(float) * width)));
+                          reinterpret_cast<char*>(green.data() - pixel_offset),
+                          sizeof(float),
+                          static_cast<std::size_t>(sizeof(float) * width)));
       frame_buffer.insert(
           "B", Imf::Slice(Imf::FLOAT,
-                           reinterpret_cast<char*>(blue.data() - pixel_offset),
-                           sizeof(float),
-                           static_cast<std::size_t>(sizeof(float) * width)));
+                          reinterpret_cast<char*>(blue.data() - pixel_offset),
+                          sizeof(float),
+                          static_cast<std::size_t>(sizeof(float) * width)));
 
       input_file.setFrameBuffer(frame_buffer);
       input_file.readPixels(data_window.min.y, data_window.max.y);
 
       for (int y = 0; y < height; ++y) {
         for (int x = 0; x < width; ++x) {
-          const std::size_t source_index = static_cast<std::size_t>(y * width + x);
+          const std::size_t source_index =
+              static_cast<std::size_t>(y * width + x);
           const int dst_x = x + source_x_offset;
-          out_image->pixels[static_cast<std::size_t>((y * out_image->width) + dst_x)] =
-              ConvertRgbFloatToBt601(red[source_index], green[source_index], blue[source_index]);
+          out_image->pixels[static_cast<std::size_t>((y * out_image->width) +
+                                                     dst_x)] =
+              ConvertRgbFloatToBt601(red[source_index], green[source_index],
+                                     blue[source_index]);
         }
       }
       return true;
     }
 
     if (error != nullptr) {
-      *error = "Progressive EXR decode path currently supports FLOAT channels only.";
+      *error =
+          "Progressive EXR decode path currently supports FLOAT channels only.";
     }
     return false;
   } catch (const std::exception& ex) {
     if (error != nullptr) {
-      *error = std::string("Failed while decoding progressive EXR source: ") + ex.what();
+      *error = std::string("Failed while decoding progressive EXR source: ") +
+               ex.what();
     }
     return false;
   }
@@ -946,12 +1011,11 @@ bool ProgressiveFrameSource::SupportsSection(const Section& section) const {
   }
 
   std::string source = section.source;
-  std::transform(source.begin(), source.end(), source.begin(), [](unsigned char c) {
-    return static_cast<char>(std::tolower(c));
-  });
-  return source.size() >= 4 &&
-      (EndsWithLowercase(source, ".exr") ||
-    EndsWithLowercase(source, ".mkv"));
+  std::transform(
+      source.begin(), source.end(), source.begin(),
+      [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+  return source.size() >= 4 && (EndsWithLowercase(source, ".exr") ||
+                                EndsWithLowercase(source, ".mkv"));
 }
 
 void ProgressiveFrameSource::ClearCache() const {
@@ -986,9 +1050,9 @@ bool ProgressiveFrameSource::ResolveFrameCount(const Section& section,
   }
 
   std::string source = section.source;
-  std::transform(source.begin(), source.end(), source.begin(), [](unsigned char c) {
-    return static_cast<char>(std::tolower(c));
-  });
+  std::transform(
+      source.begin(), source.end(), source.begin(),
+      [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
 
   if (EndsWithLowercase(source, ".exr")) {
     *out_frame_count = 1;
@@ -996,15 +1060,9 @@ bool ProgressiveFrameSource::ResolveFrameCount(const Section& section,
   }
 
   if (EndsWithLowercase(source, ".mkv")) {
-    if (!EnsureMkvCache(section,
-                        standard,
-                        0,
-                        true,
-                        &cached_mkv_frames_,
-                        &cached_mkv_source_,
-                        &cached_mkv_standard_,
-                        &has_cached_mkv_frames_,
-                        &cached_mkv_is_complete_,
+    if (!EnsureMkvCache(section, standard, 0, true, &cached_mkv_frames_,
+                        &cached_mkv_source_, &cached_mkv_standard_,
+                        &has_cached_mkv_frames_, &cached_mkv_is_complete_,
                         error)) {
       return false;
     }
@@ -1014,14 +1072,15 @@ bool ProgressiveFrameSource::ResolveFrameCount(const Section& section,
   }
 
   if (error != nullptr) {
-    *error = "Progressive source frame count probing is not yet implemented for this source family.";
+    *error =
+        "Progressive source frame count probing is not yet implemented for "
+        "this source family.";
   }
   return false;
 }
 
 bool ProgressiveFrameSource::GenerateFrame(const Section& section,
-                                           int frame_index,
-                                           Standard standard,
+                                           int frame_index, Standard standard,
                                            FrameSourceImage* out_image,
                                            std::string* error) const {
   (void)frame_index;
@@ -1034,9 +1093,9 @@ bool ProgressiveFrameSource::GenerateFrame(const Section& section,
   }
 
   std::string source = section.source;
-  std::transform(source.begin(), source.end(), source.begin(), [](unsigned char c) {
-    return static_cast<char>(std::tolower(c));
-  });
+  std::transform(
+      source.begin(), source.end(), source.begin(),
+      [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
 
   if (EndsWithLowercase(source, ".exr")) {
     const bool cache_hit = has_cached_exr_frame_ &&
@@ -1047,8 +1106,9 @@ bool ProgressiveFrameSource::GenerateFrame(const Section& section,
       std::string decode_error;
       if (!LoadExrFrame(section.source, standard, &decoded, &decode_error)) {
         if (error != nullptr) {
-          *error = decode_error.empty() ? "Failed to decode progressive EXR source."
-                                        : decode_error;
+          *error = decode_error.empty()
+                       ? "Failed to decode progressive EXR source."
+                       : decode_error;
         }
         return false;
       }
@@ -1081,22 +1141,18 @@ bool ProgressiveFrameSource::GenerateFrame(const Section& section,
       required_frames = section.start_frame + section.duration_frames;
     }
 
-    if (!EnsureMkvCache(section,
-                        standard,
-                        required_frames,
-                        section.duration_frames_all,
-                        &cached_mkv_frames_,
-                        &cached_mkv_source_,
-                        &cached_mkv_standard_,
-                        &has_cached_mkv_frames_,
-                        &cached_mkv_is_complete_,
-                        error)) {
+    if (!EnsureMkvCache(
+            section, standard, required_frames, section.duration_frames_all,
+            &cached_mkv_frames_, &cached_mkv_source_, &cached_mkv_standard_,
+            &has_cached_mkv_frames_, &cached_mkv_is_complete_, error)) {
       return false;
     }
 
     if (frame_index >= static_cast<int>(cached_mkv_frames_.size())) {
       if (error != nullptr) {
-        *error = "Requested frame index exceeds decoded progressive MKV source length.";
+        *error =
+            "Requested frame index exceeds decoded progressive MKV source "
+            "length.";
       }
       return false;
     }
@@ -1114,7 +1170,8 @@ bool ProgressiveFrameSource::GenerateFrame(const Section& section,
 
   if (error != nullptr) {
     *error =
-        "Progressive source decoding is not yet implemented for this source family.";
+        "Progressive source decoding is not yet implemented for this source "
+        "family.";
   }
   return false;
 }

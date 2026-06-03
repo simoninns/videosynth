@@ -31,29 +31,29 @@ Project MakeValidProject() {
   project.cvbs_presets.signal_state_preset = "STANDARD_TBC_LOCKED";
   project.output.video_path = "/tmp/videosynth_validator_test.composite";
   project.output.metadata_path = "/tmp/videosynth_validator_test.meta";
-  project.sections.push_back(
-      Section{.name = "Progressive",
-          .type = "progressive",
-          .source = DefaultProgressiveSourcePath(),
-              .duration_frames = 1});
+  project.sections.push_back(Section{.name = "Progressive",
+                                     .type = "progressive",
+                                     .source = DefaultProgressiveSourcePath(),
+                                     .duration_frames = 1});
   return project;
 }
 
 std::string CreateTemporarySourceFile(const std::string& file_name) {
-  const std::filesystem::path path = std::filesystem::temp_directory_path() / file_name;
+  const std::filesystem::path path =
+      std::filesystem::temp_directory_path() / file_name;
   std::ofstream stream(path);
   stream << "fixture";
   return path.string();
 }
 
-class MockProgressiveFrameSourceProbe final : public IProgressiveFrameSourceProbe {
+class MockProgressiveFrameSourceProbe final
+    : public IProgressiveFrameSourceProbe {
  public:
   bool should_succeed = true;
   ProgressiveFrameSourceProfile profile;
   std::string error_message;
 
-  bool Probe(const Section&,
-             ProgressiveFrameSourceProfile* out_profile,
+  bool Probe(const Section&, ProgressiveFrameSourceProfile* out_profile,
              std::string* error) override {
     if (!should_succeed) {
       if (error != nullptr) {
@@ -89,8 +89,9 @@ TEST(ProjectValidatorTest, AcceptsTpg21SampleEncodingPreset) {
 }
 
 TEST(ProjectValidatorTest, AcceptsSupportedSampleEncodingPresets) {
-  const std::vector<std::string> presets = {
-      "CVBS_U10_4FSC", "CVBS_U16_4FSC", "RAW_S16_28M", "RAW_S16_40M", "CVBS_TPG21_4FSC"};
+  const std::vector<std::string> presets = {"CVBS_U10_4FSC", "CVBS_U16_4FSC",
+                                            "RAW_S16_28M", "RAW_S16_40M",
+                                            "CVBS_TPG21_4FSC"};
 
   for (const std::string& preset : presets) {
     Project project = MakeValidProject();
@@ -174,7 +175,8 @@ TEST(ProjectValidatorTest, RejectsPalLaserdiscPilotBurstOnNtscProject) {
   EXPECT_FALSE(result.is_valid);
   ASSERT_EQ(result.errors.size(), 1U);
   EXPECT_EQ(result.errors[0],
-            "MVP constraint violation: pal_laserdisc_pilot_burst can only be enabled for PAL projects.");
+            "MVP constraint violation: pal_laserdisc_pilot_burst can only be "
+            "enabled for PAL projects.");
 }
 
 TEST(ProjectValidatorTest, RejectsNtscLaserdiscVbiBurstOnPalProject) {
@@ -187,7 +189,8 @@ TEST(ProjectValidatorTest, RejectsNtscLaserdiscVbiBurstOnPalProject) {
   EXPECT_FALSE(result.is_valid);
   ASSERT_EQ(result.errors.size(), 1U);
   EXPECT_EQ(result.errors[0],
-            "MVP constraint violation: ntsc_laserdisc_vbi_burst can only be enabled for NTSC projects.");
+            "MVP constraint violation: ntsc_laserdisc_vbi_burst can only be "
+            "enabled for NTSC projects.");
 }
 
 TEST(ProjectValidatorTest, RejectsPalLaserdiscPilotBurstAsDeferredFeature) {
@@ -200,7 +203,8 @@ TEST(ProjectValidatorTest, RejectsPalLaserdiscPilotBurstAsDeferredFeature) {
   EXPECT_FALSE(result.is_valid);
   ASSERT_EQ(result.errors.size(), 1U);
   EXPECT_EQ(result.errors[0],
-            "MVP constraint violation: pal_laserdisc_pilot_burst is parsed but not implemented in the current runtime.");
+            "MVP constraint violation: pal_laserdisc_pilot_burst is parsed but "
+            "not implemented in the current runtime.");
 }
 
 TEST(ProjectValidatorTest, RejectsNtscLaserdiscVbiBurstAsDeferredFeature) {
@@ -214,7 +218,8 @@ TEST(ProjectValidatorTest, RejectsNtscLaserdiscVbiBurstAsDeferredFeature) {
   EXPECT_FALSE(result.is_valid);
   ASSERT_EQ(result.errors.size(), 1U);
   EXPECT_EQ(result.errors[0],
-            "MVP constraint violation: ntsc_laserdisc_vbi_burst is parsed but not implemented in the current runtime.");
+            "MVP constraint violation: ntsc_laserdisc_vbi_burst is parsed but "
+            "not implemented in the current runtime.");
 }
 
 TEST(ProjectValidatorTest, AcceptsVitsLineInjectionsForImplementedRuntimePath) {
@@ -244,7 +249,8 @@ TEST(ProjectValidatorTest, RejectsUnimplementedLaserdiscLineInjectionType) {
   EXPECT_FALSE(result.is_valid);
   ASSERT_EQ(result.errors.size(), 1U);
   EXPECT_EQ(result.errors[0],
-            "MVP constraint violation: line injection type 'laserdisc' is not implemented in the current runtime.");
+            "MVP constraint violation: line injection type 'laserdisc' is not "
+            "implemented in the current runtime.");
 }
 
 TEST(ProjectValidatorTest, RejectsVitsInjectionWithoutTargetLines) {
@@ -260,7 +266,8 @@ TEST(ProjectValidatorTest, RejectsVitsInjectionWithoutTargetLines) {
   EXPECT_FALSE(result.is_valid);
   ASSERT_FALSE(result.errors.empty());
   EXPECT_EQ(result.errors[0],
-            "Line injection validation error: target_lines must be provided and non-empty for injection type 'vits'.");
+            "Line injection validation error: target_lines must be provided "
+            "and non-empty for injection type 'vits'.");
 }
 
 TEST(ProjectValidatorTest, RejectsVitsTypeThatDoesNotMatchProjectStandard) {
@@ -277,7 +284,8 @@ TEST(ProjectValidatorTest, RejectsVitsTypeThatDoesNotMatchProjectStandard) {
   EXPECT_FALSE(result.is_valid);
   ASSERT_FALSE(result.errors.empty());
   EXPECT_EQ(result.errors[0],
-            "Line injection validation error: Unsupported vits_type 'ntc7-composite' for standard 'PAL'.");
+            "Line injection validation error: Unsupported vits_type "
+            "'ntc7-composite' for standard 'PAL'.");
 }
 
 TEST(ProjectValidatorTest, RejectsVitsTargetLineOutsideStandardRange) {
@@ -294,7 +302,8 @@ TEST(ProjectValidatorTest, RejectsVitsTargetLineOutsideStandardRange) {
   EXPECT_FALSE(result.is_valid);
   ASSERT_FALSE(result.errors.empty());
   EXPECT_EQ(result.errors[0],
-            "Line injection validation error: target line 626 is outside the valid frame-line range for PAL.");
+            "Line injection validation error: target line 626 is outside the "
+            "valid frame-line range for PAL.");
 }
 
 TEST(ProjectValidatorTest, RejectsVitsTypeOnNonRecommendedLine) {
@@ -311,7 +320,8 @@ TEST(ProjectValidatorTest, RejectsVitsTypeOnNonRecommendedLine) {
   EXPECT_FALSE(result.is_valid);
   ASSERT_FALSE(result.errors.empty());
   EXPECT_EQ(result.errors[0],
-            "Line injection validation error: vits_type 'vits17' must target frame line 17 for PAL.");
+            "Line injection validation error: vits_type 'vits17' must target "
+            "frame line 17 for PAL.");
 }
 
 TEST(ProjectValidatorTest, RejectsOverlappingTargetLinesAcrossInjections) {
@@ -334,7 +344,8 @@ TEST(ProjectValidatorTest, RejectsOverlappingTargetLinesAcrossInjections) {
   EXPECT_FALSE(result.is_valid);
   ASSERT_FALSE(result.errors.empty());
   EXPECT_EQ(result.errors[0],
-            "Line injection validation error: overlapping target line 17 within the same section.");
+            "Line injection validation error: overlapping target line 17 "
+            "within the same section.");
 }
 
 TEST(ProjectValidatorTest, RejectsLaserdiscInjectionWithExplicitTargetLines) {
@@ -351,7 +362,8 @@ TEST(ProjectValidatorTest, RejectsLaserdiscInjectionWithExplicitTargetLines) {
   EXPECT_FALSE(result.is_valid);
   ASSERT_FALSE(result.errors.empty());
   EXPECT_EQ(result.errors[0],
-            "Line injection validation error: target_lines must not be specified for laserdisc injections.");
+            "Line injection validation error: target_lines must not be "
+            "specified for laserdisc injections.");
 }
 
 TEST(ProjectValidatorTest, RejectsLaserdiscAndVitcInSameSection) {
@@ -372,10 +384,12 @@ TEST(ProjectValidatorTest, RejectsLaserdiscAndVitcInSameSection) {
   EXPECT_FALSE(result.is_valid);
   ASSERT_FALSE(result.errors.empty());
   EXPECT_EQ(result.errors[0],
-            "Line injection validation error: vitc and laserdisc injections cannot appear in the same section.");
+            "Line injection validation error: vitc and laserdisc injections "
+            "cannot appear in the same section.");
 }
 
-TEST(ProjectValidatorTest, RejectsLinesInLaserdiscReservedRangesWhenLaserdiscIsActive) {
+TEST(ProjectValidatorTest,
+     RejectsLinesInLaserdiscReservedRangesWhenLaserdiscIsActive) {
   Project project = MakeValidProject();
 
   Section::LineInjection laserdisc;
@@ -394,7 +408,8 @@ TEST(ProjectValidatorTest, RejectsLinesInLaserdiscReservedRangesWhenLaserdiscIsA
   EXPECT_FALSE(result.is_valid);
   ASSERT_FALSE(result.errors.empty());
   EXPECT_EQ(result.errors[0],
-            "Line injection validation error: target line 17 conflicts with laserdisc reserved VBI ranges for PAL.");
+            "Line injection validation error: target line 17 conflicts with "
+            "laserdisc reserved VBI ranges for PAL.");
 }
 
 TEST(ProjectValidatorTest, RejectsUnsupportedSectionType) {
@@ -409,7 +424,8 @@ TEST(ProjectValidatorTest, RejectsUnsupportedSectionType) {
 
 TEST(ProjectValidatorTest, AcceptsProgressiveExrSectionWithFixedDuration) {
   Project project = MakeValidProject();
-  project.sections[0].source = CreateTemporarySourceFile("videosynth_progressive.exr");
+  project.sections[0].source =
+      CreateTemporarySourceFile("videosynth_progressive.exr");
   project.sections[0].duration_frames = 8;
 
   ProjectValidator validator;
@@ -433,14 +449,16 @@ TEST(ProjectValidatorTest, RejectsProgressiveSectionWithoutSource) {
 
 TEST(ProjectValidatorTest, RejectsProgressiveRawSourceFamily) {
   Project project = MakeValidProject();
-  project.sections[0].source = CreateTemporarySourceFile("videosynth_progressive.raw");
+  project.sections[0].source =
+      CreateTemporarySourceFile("videosynth_progressive.raw");
 
   ProjectValidator validator;
   const ValidationResult result = validator.Validate(project);
 
   EXPECT_FALSE(result.is_valid);
   EXPECT_FALSE(result.errors.empty());
-  EXPECT_NE(result.errors[0].find("Unsupported progressive source family"), std::string::npos);
+  EXPECT_NE(result.errors[0].find("Unsupported progressive source family"),
+            std::string::npos);
 
   std::filesystem::remove(project.sections[0].source);
 }
@@ -469,7 +487,8 @@ TEST(ProjectValidatorTest, RejectsMissingDurationFrames) {
 TEST(ProjectValidatorTest, AcceptsProgressiveMkvWithSupportedFfv1Profile) {
   Project project = MakeValidProject();
   project.cvbs_presets.video_standard_preset = Standard::kPal;
-  project.sections[0].source = CreateTemporarySourceFile("videosynth_progressive_ok.mkv");
+  project.sections[0].source =
+      CreateTemporarySourceFile("videosynth_progressive_ok.mkv");
   project.sections[0].duration_frames_all = true;
   project.sections[0].duration_frames = 0;
 
@@ -497,10 +516,12 @@ TEST(ProjectValidatorTest, AcceptsProgressiveMkvWithSupportedFfv1Profile) {
   std::filesystem::remove(project.sections[0].source);
 }
 
-TEST(ProjectValidatorTest, RejectsProgressiveMkvWithMismatchedSampleAspectMetadata) {
+TEST(ProjectValidatorTest,
+     RejectsProgressiveMkvWithMismatchedSampleAspectMetadata) {
   Project project = MakeValidProject();
   project.cvbs_presets.video_standard_preset = Standard::kNtsc;
-  project.sections[0].source = CreateTemporarySourceFile("videosynth_progressive_bad_sar.mkv");
+  project.sections[0].source =
+      CreateTemporarySourceFile("videosynth_progressive_bad_sar.mkv");
   project.sections[0].duration_frames_all = true;
   project.sections[0].duration_frames = 0;
 
@@ -533,7 +554,8 @@ TEST(ProjectValidatorTest, RejectsProgressiveMkvWithMismatchedSampleAspectMetada
 TEST(ProjectValidatorTest, RejectsProgressiveMkvWithStreamCropMetadata) {
   Project project = MakeValidProject();
   project.cvbs_presets.video_standard_preset = Standard::kPal;
-  project.sections[0].source = CreateTemporarySourceFile("videosynth_progressive_bad_crop.mkv");
+  project.sections[0].source =
+      CreateTemporarySourceFile("videosynth_progressive_bad_crop.mkv");
   project.sections[0].duration_frames_all = true;
   project.sections[0].duration_frames = 0;
 
@@ -567,7 +589,8 @@ TEST(ProjectValidatorTest, RejectsProgressiveMkvWithStreamCropMetadata) {
 TEST(ProjectValidatorTest, RejectsProgressiveMkvWithUnsupportedCodecProfile) {
   Project project = MakeValidProject();
   project.cvbs_presets.video_standard_preset = Standard::kNtsc;
-  project.sections[0].source = CreateTemporarySourceFile("videosynth_progressive_bad.mkv");
+  project.sections[0].source =
+      CreateTemporarySourceFile("videosynth_progressive_bad.mkv");
   project.sections[0].duration_frames_all = true;
   project.sections[0].duration_frames = 0;
 
@@ -598,7 +621,8 @@ TEST(ProjectValidatorTest, RejectsProgressiveMkvWithUnsupportedCodecProfile) {
 TEST(ProjectValidatorTest, AcceptsProgressiveExrWithSupportedProfile) {
   Project project = MakeValidProject();
   project.cvbs_presets.video_standard_preset = Standard::kPal;
-  project.sections[0].source = CreateTemporarySourceFile("videosynth_progressive_ok.exr");
+  project.sections[0].source =
+      CreateTemporarySourceFile("videosynth_progressive_ok.exr");
   project.sections[0].duration_frames = 1;
 
   MockProgressiveFrameSourceProbe probe;
@@ -623,7 +647,8 @@ TEST(ProjectValidatorTest, AcceptsProgressiveExrWithSupportedProfile) {
 TEST(ProjectValidatorTest, RejectsProgressiveExrWithUnsupportedPixelProfile) {
   Project project = MakeValidProject();
   project.cvbs_presets.video_standard_preset = Standard::kNtsc;
-  project.sections[0].source = CreateTemporarySourceFile("videosynth_progressive_bad.exr");
+  project.sections[0].source =
+      CreateTemporarySourceFile("videosynth_progressive_bad.exr");
   project.sections[0].duration_frames = 1;
 
   MockProgressiveFrameSourceProbe probe;
@@ -645,9 +670,11 @@ TEST(ProjectValidatorTest, RejectsProgressiveExrWithUnsupportedPixelProfile) {
   std::filesystem::remove(project.sections[0].source);
 }
 
-TEST(ProjectValidatorTest, RejectsUnsupportedSourceFamilyWithExpectedErrorMessage) {
+TEST(ProjectValidatorTest,
+     RejectsUnsupportedSourceFamilyWithExpectedErrorMessage) {
   Project project = MakeValidProject();
-  project.sections[0].source = CreateTemporarySourceFile("videosynth_progressive_bad.avi");
+  project.sections[0].source =
+      CreateTemporarySourceFile("videosynth_progressive_bad.avi");
 
   ProjectValidator validator;
   const ValidationResult result = validator.Validate(project);
@@ -655,15 +682,18 @@ TEST(ProjectValidatorTest, RejectsUnsupportedSourceFamilyWithExpectedErrorMessag
   EXPECT_FALSE(result.is_valid);
   ASSERT_FALSE(result.errors.empty());
   EXPECT_EQ(result.errors[0],
-            "Unsupported progressive source family. Supported source families are EXR and MKV.");
+            "Unsupported progressive source family. Supported source families "
+            "are EXR and MKV.");
 
   std::filesystem::remove(project.sections[0].source);
 }
 
-TEST(ProjectValidatorTest, RejectsPalProjectWhenProgressiveRasterDoesNotMatchStandard) {
+TEST(ProjectValidatorTest,
+     RejectsPalProjectWhenProgressiveRasterDoesNotMatchStandard) {
   Project project = MakeValidProject();
   project.cvbs_presets.video_standard_preset = Standard::kPal;
-  project.sections[0].source = CreateTemporarySourceFile("videosynth_progressive_bad_raster.exr");
+  project.sections[0].source =
+      CreateTemporarySourceFile("videosynth_progressive_bad_raster.exr");
   project.sections[0].duration_frames = 1;
 
   MockProgressiveFrameSourceProbe probe;
@@ -682,15 +712,18 @@ TEST(ProjectValidatorTest, RejectsPalProjectWhenProgressiveRasterDoesNotMatchSta
   EXPECT_FALSE(result.is_valid);
   ASSERT_FALSE(result.errors.empty());
   EXPECT_EQ(result.errors[0],
-            "Progressive section validation error: source raster must be 720x576 for PAL and 720x486 for NTSC.");
+            "Progressive section validation error: source raster must be "
+            "720x576 for PAL and 720x486 for NTSC.");
 
   std::filesystem::remove(project.sections[0].source);
 }
 
-TEST(ProjectValidatorTest, RejectsPalProjectWhenProgressiveFrameRateDoesNotMatchStandard) {
+TEST(ProjectValidatorTest,
+     RejectsPalProjectWhenProgressiveFrameRateDoesNotMatchStandard) {
   Project project = MakeValidProject();
   project.cvbs_presets.video_standard_preset = Standard::kPal;
-  project.sections[0].source = CreateTemporarySourceFile("videosynth_progressive_bad_rate.exr");
+  project.sections[0].source =
+      CreateTemporarySourceFile("videosynth_progressive_bad_rate.exr");
   project.sections[0].duration_frames = 1;
 
   MockProgressiveFrameSourceProbe probe;
@@ -709,14 +742,16 @@ TEST(ProjectValidatorTest, RejectsPalProjectWhenProgressiveFrameRateDoesNotMatch
   EXPECT_FALSE(result.is_valid);
   ASSERT_FALSE(result.errors.empty());
   EXPECT_EQ(result.errors[0],
-            "Progressive section validation error: source frame rate must match selected video standard.");
+            "Progressive section validation error: source frame rate must "
+            "match selected video standard.");
 
   std::filesystem::remove(project.sections[0].source);
 }
 
 TEST(ProjectValidatorTest, PropagatesProgressiveProbeErrorMessage) {
   Project project = MakeValidProject();
-  project.sections[0].source = CreateTemporarySourceFile("videosynth_progressive_probe_error.mkv");
+  project.sections[0].source =
+      CreateTemporarySourceFile("videosynth_progressive_probe_error.mkv");
 
   MockProgressiveFrameSourceProbe probe;
   probe.should_succeed = false;

@@ -7,12 +7,11 @@
  * SPDX-FileCopyrightText: 2026 Simon Inns
  */
 
-#include <string>
+#include <gtest/gtest.h>
 
 #include <filesystem>
+#include <string>
 #include <vector>
-
-#include <gtest/gtest.h>
 
 #include "videosynth/progressive_frame_source.h"
 
@@ -40,12 +39,12 @@ TEST(FrameSourceTest, DecodesProgressivePalExrSource) {
 
   Section section;
   section.type = "progressive";
-  section.source =
-      (std::filesystem::path(VIDEOSYNTH_SOURCE_DIR) /
-       "videosynth-assets/assets/exr/720x576/100_BARS.exr")
-          .string();
+  section.source = (std::filesystem::path(VIDEOSYNTH_SOURCE_DIR) /
+                    "videosynth-assets/assets/exr/720x576/100_BARS.exr")
+                       .string();
 
-  ASSERT_TRUE(frame_source.GenerateFrame(section, 0, Standard::kPal, &image, &error));
+  ASSERT_TRUE(
+      frame_source.GenerateFrame(section, 0, Standard::kPal, &image, &error));
   EXPECT_TRUE(error.empty());
   EXPECT_EQ(image.width, 720);
   EXPECT_EQ(image.height, 576);
@@ -65,12 +64,12 @@ TEST(FrameSourceTest, DecodesProgressiveNtscExrSource) {
 
   Section section;
   section.type = "progressive";
-  section.source =
-      (std::filesystem::path(VIDEOSYNTH_SOURCE_DIR) /
-       "videosynth-assets/assets/exr/720x486/100_BARS.exr")
-          .string();
+  section.source = (std::filesystem::path(VIDEOSYNTH_SOURCE_DIR) /
+                    "videosynth-assets/assets/exr/720x486/100_BARS.exr")
+                       .string();
 
-  ASSERT_TRUE(frame_source.GenerateFrame(section, 0, Standard::kNtsc, &image, &error));
+  ASSERT_TRUE(
+      frame_source.GenerateFrame(section, 0, Standard::kNtsc, &image, &error));
   EXPECT_TRUE(error.empty());
   EXPECT_EQ(image.width, 720);
   EXPECT_EQ(image.height, 486);
@@ -90,13 +89,13 @@ TEST(FrameSourceTest, RejectsProgressiveRawSourceFamily) {
 
   Section section;
   section.type = "progressive";
-  section.source =
-      (std::filesystem::path(VIDEOSYNTH_SOURCE_DIR) /
-       "videosynth-assets/assets/exr/720x576/100_BARS.exr")
-          .string();
+  section.source = (std::filesystem::path(VIDEOSYNTH_SOURCE_DIR) /
+                    "videosynth-assets/assets/exr/720x576/100_BARS.exr")
+                       .string();
   section.source.replace(section.source.size() - 4, 4, ".raw");
 
-  EXPECT_FALSE(frame_source.GenerateFrame(section, 0, Standard::kPal, &image, &error));
+  EXPECT_FALSE(
+      frame_source.GenerateFrame(section, 0, Standard::kPal, &image, &error));
   EXPECT_FALSE(error.empty());
 }
 
@@ -106,17 +105,18 @@ TEST(FrameSourceTest, DecodesProgressivePalMkvSourceFrames) {
 
   Section section;
   section.type = "progressive";
-  section.source =
-      (std::filesystem::path(VIDEOSYNTH_SOURCE_DIR) /
-       "videosynth-assets/assets/mkv/720x576/MOVING_ZONE_2H.mkv")
-          .string();
+  section.source = (std::filesystem::path(VIDEOSYNTH_SOURCE_DIR) /
+                    "videosynth-assets/assets/mkv/720x576/MOVING_ZONE_2H.mkv")
+                       .string();
 
   int frame_count = 0;
-  ASSERT_TRUE(frame_source.ResolveFrameCount(section, Standard::kPal, &frame_count, &error));
+  ASSERT_TRUE(frame_source.ResolveFrameCount(section, Standard::kPal,
+                                             &frame_count, &error));
   ASSERT_GT(frame_count, 0);
 
   FrameSourceImage first_frame;
-  ASSERT_TRUE(frame_source.GenerateFrame(section, 0, Standard::kPal, &first_frame, &error));
+  ASSERT_TRUE(frame_source.GenerateFrame(section, 0, Standard::kPal,
+                                         &first_frame, &error));
   EXPECT_EQ(first_frame.width, 720);
   EXPECT_EQ(first_frame.height, 576);
   EXPECT_EQ(first_frame.active_x, 0);
@@ -131,17 +131,18 @@ TEST(FrameSourceTest, DecodesProgressiveNtscMkvSourceFrames) {
 
   Section section;
   section.type = "progressive";
-  section.source =
-      (std::filesystem::path(VIDEOSYNTH_SOURCE_DIR) /
-       "videosynth-assets/assets/mkv/720x486/MOVING_ZONE_2H.mkv")
-          .string();
+  section.source = (std::filesystem::path(VIDEOSYNTH_SOURCE_DIR) /
+                    "videosynth-assets/assets/mkv/720x486/MOVING_ZONE_2H.mkv")
+                       .string();
 
   int frame_count = 0;
-  ASSERT_TRUE(frame_source.ResolveFrameCount(section, Standard::kNtsc, &frame_count, &error));
+  ASSERT_TRUE(frame_source.ResolveFrameCount(section, Standard::kNtsc,
+                                             &frame_count, &error));
   ASSERT_GT(frame_count, 0);
 
   FrameSourceImage first_frame;
-  ASSERT_TRUE(frame_source.GenerateFrame(section, 0, Standard::kNtsc, &first_frame, &error));
+  ASSERT_TRUE(frame_source.GenerateFrame(section, 0, Standard::kNtsc,
+                                         &first_frame, &error));
   EXPECT_EQ(first_frame.width, 720);
   EXPECT_EQ(first_frame.height, 486);
   EXPECT_EQ(first_frame.active_x, 0);
@@ -157,13 +158,13 @@ TEST(FrameSourceTest, NtscMkvPreservesFullRasterActiveGeometry) {
 
   Section section;
   section.type = "progressive";
-  section.source =
-      (std::filesystem::path(VIDEOSYNTH_SOURCE_DIR) /
-       "videosynth-assets/assets/mkv/720x486/MOVING_ZONE_2H.mkv")
-          .string();
+  section.source = (std::filesystem::path(VIDEOSYNTH_SOURCE_DIR) /
+                    "videosynth-assets/assets/mkv/720x486/MOVING_ZONE_2H.mkv")
+                       .string();
 
   FrameSourceImage frame;
-  ASSERT_TRUE(frame_source.GenerateFrame(section, 0, Standard::kNtsc, &frame, &error));
+  ASSERT_TRUE(
+      frame_source.GenerateFrame(section, 0, Standard::kNtsc, &frame, &error));
   EXPECT_TRUE(error.empty());
 
   EXPECT_EQ(frame.width, 720);
@@ -185,7 +186,8 @@ TEST(FrameSourceTest, PalAndNtscMkvDecodedPixelsStayWithinStudioCodeRange) {
        "videosynth-assets/assets/mkv/720x576/MOVING_ZONE_2H.mkv")
           .string();
   FrameSourceImage pal_frame;
-  ASSERT_TRUE(frame_source.GenerateFrame(pal_section, 0, Standard::kPal, &pal_frame, &error));
+  ASSERT_TRUE(frame_source.GenerateFrame(pal_section, 0, Standard::kPal,
+                                         &pal_frame, &error));
   EXPECT_TRUE(error.empty());
   ExpectCodesWithinStudioRange(pal_frame);
 
@@ -196,7 +198,8 @@ TEST(FrameSourceTest, PalAndNtscMkvDecodedPixelsStayWithinStudioCodeRange) {
        "videosynth-assets/assets/mkv/720x486/MOVING_ZONE_2H.mkv")
           .string();
   FrameSourceImage ntsc_frame;
-  ASSERT_TRUE(frame_source.GenerateFrame(ntsc_section, 0, Standard::kNtsc, &ntsc_frame, &error));
+  ASSERT_TRUE(frame_source.GenerateFrame(ntsc_section, 0, Standard::kNtsc,
+                                         &ntsc_frame, &error));
   EXPECT_TRUE(error.empty());
   ExpectCodesWithinStudioRange(ntsc_frame);
 }
@@ -207,21 +210,18 @@ TEST(FrameSourceTest, RejectsProgressiveMkvFrameIndexOutOfRange) {
 
   Section section;
   section.type = "progressive";
-  section.source =
-      (std::filesystem::path(VIDEOSYNTH_SOURCE_DIR) /
-       "videosynth-assets/assets/mkv/720x486/MOVING_ZONE_2H.mkv")
-          .string();
+  section.source = (std::filesystem::path(VIDEOSYNTH_SOURCE_DIR) /
+                    "videosynth-assets/assets/mkv/720x486/MOVING_ZONE_2H.mkv")
+                       .string();
 
   int frame_count = 0;
-  ASSERT_TRUE(frame_source.ResolveFrameCount(section, Standard::kNtsc, &frame_count, &error));
+  ASSERT_TRUE(frame_source.ResolveFrameCount(section, Standard::kNtsc,
+                                             &frame_count, &error));
   ASSERT_GT(frame_count, 0);
 
   FrameSourceImage out_of_range;
-  EXPECT_FALSE(frame_source.GenerateFrame(section,
-                                          frame_count,
-                                          Standard::kNtsc,
-                                          &out_of_range,
-                                          &error));
+  EXPECT_FALSE(frame_source.GenerateFrame(section, frame_count, Standard::kNtsc,
+                                          &out_of_range, &error));
   EXPECT_FALSE(error.empty());
 }
 

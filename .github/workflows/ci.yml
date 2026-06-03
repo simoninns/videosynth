@@ -9,7 +9,40 @@ on:
 
 
 jobs:
+  clang-format:
+    name: Clang-Format
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@v19
+
+      - name: Setup Nix cache
+        uses: DeterminateSystems/magic-nix-cache-action@v7
+
+      - name: Check formatting
+        run: |
+          nix develop "path:$PWD" --command bash -c '
+          FAIL_COUNT=0
+          for f in $(find . -path ./build -prune -o -path ./build-gprof -prune -o -path ./.git -prune -o -type f \( -name "*.cpp" -o -name "*.h" -o -name "*.hpp" \) -print); do
+            OUTPUT=$(clang-format -style=file --dry-run --Werror "$f" 2>&1)
+            CLEAN_OUTPUT=$(echo "$OUTPUT" | grep -v "^warning: Git tree")
+            if [ -n "$CLEAN_OUTPUT" ]; then
+              echo "::error file=$f::Code formatting violation"
+              echo "$CLEAN_OUTPUT"
+              FAIL_COUNT=$((FAIL_COUNT + 1))
+            fi
+          done
+          if [ $FAIL_COUNT -gt 0 ]; then
+            echo "::error::$FAIL_COUNT file(s) have formatting issues"
+            exit 1
+          fi
+          '
+
   build-tests:
+    needs: clang-format
     name: Build Tests
     runs-on: ubuntu-latest
     steps:
