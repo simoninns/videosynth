@@ -314,8 +314,8 @@ ParseResult ParseYamlNode(const YAML::Node& root, ILogger* logger) {
     result.ok = true;
     if (logger != nullptr) {
       logger->Debug("Parsed project with " +
-                     std::to_string(result.project.sections.size()) +
-                     " section(s).");
+                    std::to_string(result.project.sections.size()) +
+                    " section(s).");
     }
     return result;
   } catch (const YAML::Exception& ex) {
@@ -340,7 +340,8 @@ ParseResult YamlProjectParser::ParseFile(const std::string& path) {
     return ParseYamlNode(root, logger_);
   } catch (const YAML::Exception& ex) {
     ParseResult result;
-    result.errors.push_back(std::string("YAML file loading failed: ") + ex.what());
+    result.errors.push_back(std::string("YAML file loading failed: ") +
+                            ex.what());
     return result;
   }
 }
@@ -355,7 +356,8 @@ ParseResult YamlProjectParser::ParseString(const std::string& yaml) {
     return ParseYamlNode(root, logger_);
   } catch (const YAML::Exception& ex) {
     ParseResult result;
-    result.errors.push_back(std::string("YAML string parsing failed: ") + ex.what());
+    result.errors.push_back(std::string("YAML string parsing failed: ") +
+                            ex.what());
     return result;
   }
 }

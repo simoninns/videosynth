@@ -17,9 +17,7 @@
 namespace videosynth {
 namespace {
 
-std::string DefaultProgressiveSourcePath() {
-  return "fixture.exr";
-}
+std::string DefaultProgressiveSourcePath() { return "fixture.exr"; }
 
 Project MakeValidProject() {
   Project project;
@@ -35,9 +33,7 @@ Project MakeValidProject() {
   return project;
 }
 
-std::string MakeSourcePath(const std::string& file_name) {
-  return file_name;
-}
+std::string MakeSourcePath(const std::string& file_name) { return file_name; }
 
 class MockProgressiveFrameSourceProbe final
     : public IProgressiveFrameSourceProbe {
