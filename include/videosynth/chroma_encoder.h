@@ -44,7 +44,8 @@ class PalChromaEncoder final : public IChromaEncoder {
   // Constructs a PAL chroma encoder with the given sample rate.
   //
   // Args:
-  //   sample_rate_hz: The output sample rate, used to compute filter tap counts.
+  //   sample_rate_hz: The output sample rate, used to compute filter tap
+  //   counts.
   explicit PalChromaEncoder(double sample_rate_hz);
 
   // Encodes a line of source pixels into chroma samples with color subcarrier.
@@ -74,7 +75,8 @@ class NtscChromaEncoder final : public IChromaEncoder {
   // Constructs an NTSC chroma encoder with the given sample rate.
   //
   // Args:
-  //   sample_rate_hz: The output sample rate, used to compute filter tap counts.
+  //   sample_rate_hz: The output sample rate, used to compute filter tap
+  //   counts.
   explicit NtscChromaEncoder(double sample_rate_hz);
 
   // Encodes a line of source pixels into chroma samples with color subcarrier.

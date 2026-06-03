@@ -40,7 +40,8 @@ inline TimingConstants GetTimingConstants(Standard standard) {
         // ITU-R BT.1700 Annex 1 Part B Table 1 item 1: 625-line PAL.
         .lines_per_frame = 625,
         // EBU Tech. 3280-E Section 1.2: 1135.0064 samples/line nominal,
-        // modelled here as 1135 integer samples plus phase-slip handling elsewhere.
+        // modelled here as 1135 integer samples plus phase-slip handling
+        // elsewhere.
         .samples_per_line_4fsc = 1135,
         // ITU-R BT.1700 Annex 1 Part B Table 1 item 3: 2fH/625 = 25 frames/s.
         .frame_rate_hz = 25.0,

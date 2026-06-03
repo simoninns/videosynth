@@ -123,9 +123,9 @@ class IGenerationStage {
                                   std::vector<std::string>* errors) = 0;
 
   // Ownership: out_y_mv, out_c_mv, and errors are output parameters. The caller
-  // owns the pointed-to vectors and must ensure the pointers are valid (non-null).
-  // The implementation clears and populates these vectors but does not take
-  // ownership.
+  // owns the pointed-to vectors and must ensure the pointers are valid
+  // (non-null). The implementation clears and populates these vectors but does
+  // not take ownership.
   virtual bool GenerateFrameBatch(
       const Project& project, const std::vector<FrameScheduleItem>& schedule,
       std::size_t start_frame, std::size_t frame_count,
@@ -133,9 +133,9 @@ class IGenerationStage {
       std::vector<std::string>* errors) = 0;
 
   // Ownership: out_y_mv, out_c_mv, and errors are output parameters. The caller
-  // owns the pointed-to vectors and must ensure the pointers are valid (non-null).
-  // The implementation clears and populates these vectors but does not take
-  // ownership.
+  // owns the pointed-to vectors and must ensure the pointers are valid
+  // (non-null). The implementation clears and populates these vectors but does
+  // not take ownership.
   virtual bool Generate(const Project& project,
                         std::vector<SampleFixed>* out_y_mv,
                         std::vector<SampleFixed>* out_c_mv,

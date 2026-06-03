@@ -24,7 +24,8 @@ constexpr int kInverseSCurveIterations = 48;
 constexpr int kMinRampSamples = 4;
 
 // Factor for converting half-amplitude time to full transition time.
-// Half-amplitude spans start->50%, so full transition is 2x the half-amplitude span.
+// Half-amplitude spans start->50%, so full transition is 2x the half-amplitude
+// span.
 constexpr double kHalfToFullTransitionFactor = 2.0;
 
 double ClampUnitInterval(double value) {
@@ -100,7 +101,8 @@ int TransitionTimeToRampSamples(double transition_time_seconds,
   const double measured_samples = transition_time_seconds * sample_rate_hz;
   const double full_transition_samples = measured_samples / measured_fraction;
 
-  // Keep at least kMinRampSamples samples so discrete S-curves are not degenerate.
+  // Keep at least kMinRampSamples samples so discrete S-curves are not
+  // degenerate.
   return std::max(kMinRampSamples,
                   static_cast<int>(std::ceil(full_transition_samples)));
 }
@@ -113,8 +115,8 @@ int HalfAmplitudeTimeToRampSamples(double half_amplitude_time_seconds,
 
   // Half-amplitude timing spans start->50%; the complete edge is twice this.
   return TransitionTimeToRampSamples(
-      kHalfToFullTransitionFactor * half_amplitude_time_seconds,
-      sample_rate_hz, 0.0, 1.0);
+      kHalfToFullTransitionFactor * half_amplitude_time_seconds, sample_rate_hz,
+      0.0, 1.0);
 }
 
 double ShapedPulseLevel(int relative_index, int pulse_width_samples,

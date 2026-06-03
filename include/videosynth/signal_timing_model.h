@@ -83,9 +83,9 @@ inline SyncPulseKind GetSyncPulseKind(Standard standard, int line_1based) {
   }
 
   if (standard == Standard::kNtsc) {
-    // SMPTE 170M-2004 Section 13.3/Table 3: defines a 9-line vertical sync block
-    // per field. With 1-indexed, line-granular framing, the field-1 block is at
-    // lines 1-9, and the field-2 block aligns to lines 264-272.
+    // SMPTE 170M-2004 Section 13.3/Table 3: defines a 9-line vertical sync
+    // block per field. With 1-indexed, line-granular framing, the field-1 block
+    // is at lines 1-9, and the field-2 block aligns to lines 264-272.
     if (IsLineInRange(line_1based, 1, 3) || IsLineInRange(line_1based, 7, 9) ||
         IsLineInRange(line_1based, 264, 266) ||
         IsLineInRange(line_1based, 270, 272)) {

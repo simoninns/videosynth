@@ -16,8 +16,9 @@
 
 namespace videosynth {
 
-// Thread-safety: Implementations of IVitsDefinitionProvider must be thread-safe.
-// TryGetDefinition may be called concurrently from multiple threads.
+// Thread-safety: Implementations of IVitsDefinitionProvider must be
+// thread-safe. TryGetDefinition may be called concurrently from multiple
+// threads.
 class IVitsDefinitionProvider {
  public:
   virtual ~IVitsDefinitionProvider() = default;

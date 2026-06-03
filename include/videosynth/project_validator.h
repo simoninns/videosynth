@@ -22,8 +22,8 @@ class ProjectValidator final : public IProjectValidator {
   // Constructs a project validator.
   //
   // Args:
-  //   progressive_frame_source_probe: Optional probe for validating frame sources.
-  //   logger: Optional logger for error reporting.
+  //   progressive_frame_source_probe: Optional probe for validating frame
+  //   sources. logger: Optional logger for error reporting.
   explicit ProjectValidator(
       IProgressiveFrameSourceProbe* progressive_frame_source_probe = nullptr,
       ILogger* logger = nullptr);

@@ -57,8 +57,8 @@ class OutputStage final : public IOutputStage {
   //   true on success, false on any error.
   bool FinalizeWrite(std::vector<std::string>* errors) override;
 
-  // Convenience method that performs BeginWrite, AppendSamples, and FinalizeWrite
-  // in sequence for a complete single-frame write.
+  // Convenience method that performs BeginWrite, AppendSamples, and
+  // FinalizeWrite in sequence for a complete single-frame write.
   //
   // Args:
   //   project: The project configuration containing output paths.
