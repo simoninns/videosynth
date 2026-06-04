@@ -14,6 +14,8 @@
 #include <exception>
 #include <set>
 
+#include "videosynth/biphase_types.h"
+
 namespace videosynth {
 
 YamlProjectParser::YamlProjectParser(ILogger* logger) : logger_(logger) {}
@@ -289,8 +291,9 @@ ParseResult ParseYamlNode(const YAML::Node& root, ILogger* logger) {
       }
 
       const std::set<std::string> section_keys = {
-          "name",   "type",       "duration_frames", "line_injections",
-          "source", "start_frame"};
+          "name",           "type",             "section_type",
+          "duration_frames", "line_injections", "source",
+          "start_frame"};
       ValidateAllowedKeys(section_node, section_keys, "section",
                           &result.errors);
       if (!result.errors.empty()) {
@@ -301,6 +304,19 @@ ParseResult ParseYamlNode(const YAML::Node& root, ILogger* logger) {
       section.name = section_node["name"].as<std::string>("");
       section.type = section_node["type"].as<std::string>("");
       section.source = section_node["source"].as<std::string>("");
+
+      if (section_node["section_type"]) {
+        const std::string section_type_str =
+            section_node["section_type"].as<std::string>("");
+        section.section_type = SectionTypeFromString(section_type_str);
+        if (section.section_type == SectionType::kUnknown) {
+          result.errors.push_back(
+              "section field 'section_type' has unrecognised value '" +
+              section_type_str +
+              "'. Expected one of: lead_in, programme_area, lead_out.");
+          return result;
+        }
+      }
       section.start_frame = section_node["start_frame"].as<int>(0);
       if (!ParseLineInjections(section_node, &section, &result.errors)) {
         return result;

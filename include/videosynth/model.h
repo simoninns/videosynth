@@ -13,6 +13,8 @@
 #include <string>
 #include <vector>
 
+#include "videosynth/biphase_types.h"
+
 namespace videosynth {
 
 // Thread-safety: All types, enums, and functions in this module are
@@ -45,6 +47,11 @@ inline std::string StandardToString(Standard standard) {
   }
 }
 
+// Placeholder for project-level biphase configuration.
+// All disc-specific biphase parameters are specified per section and
+// per injection; this struct is reserved for any future global settings.
+struct BiphasePresets {};
+
 struct CvbsPresets {
   Standard video_standard_preset = Standard::kUnknown;
   std::string sample_encoding_preset = "CVBS_U10_4FSC";
@@ -53,6 +60,7 @@ struct CvbsPresets {
   bool ntsc_laserdisc_vbi_burst = false;
   double ntsc_black_setup_ire = 7.5;
   bool ntsc_black_setup_ire_specified = false;
+  BiphasePresets biphase_presets;
 };
 
 inline bool IsSupportedNtscBlackSetupIre(double setup_ire) {
@@ -108,6 +116,7 @@ struct Section {
 
   std::string name;
   std::string type;
+  SectionType section_type = SectionType::kUnknown;
   std::vector<LineInjection> line_injections;
   std::string source;
   bool duration_frames_all = false;

@@ -720,5 +720,121 @@ TEST(ProjectValidatorTest, PropagatesProgressiveProbeErrorMessage) {
   EXPECT_EQ(result.errors[0], "Phase1 probe failure test message.");
 }
 
+TEST(ProjectValidatorTest, AcceptsLaserdiscInjectionWithValidCavDiscType) {
+  Project project = MakeValidProject();
+  Section::LineInjection injection;
+  injection.type = "laserdisc";
+  injection.disc_type = "CAV";
+  Section::LineInjectionCode code;
+  code.code_type = "picture_number";
+  code.start_value = 1;
+  code.start_value_specified = true;
+  injection.codes.push_back(code);
+  project.sections[0].line_injections.push_back(injection);
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_FALSE(result.is_valid);
+  ASSERT_FALSE(result.errors.empty());
+  EXPECT_EQ(result.errors[0],
+            "MVP constraint violation: line injection type 'laserdisc' is not "
+            "implemented in the current runtime.");
+}
+
+TEST(ProjectValidatorTest, AcceptsLaserdiscInjectionWithValidClvDiscType) {
+  Project project = MakeValidProject();
+  Section::LineInjection injection;
+  injection.type = "laserdisc";
+  injection.disc_type = "CLV";
+  Section::LineInjectionCode code;
+  code.code_type = "programme_time_code";
+  injection.codes.push_back(code);
+  project.sections[0].line_injections.push_back(injection);
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_FALSE(result.is_valid);
+  ASSERT_FALSE(result.errors.empty());
+  EXPECT_EQ(result.errors[0],
+            "MVP constraint violation: line injection type 'laserdisc' is not "
+            "implemented in the current runtime.");
+}
+
+TEST(ProjectValidatorTest, RejectsLaserdiscInjectionWithUnknownDiscType) {
+  Project project = MakeValidProject();
+  Section::LineInjection injection;
+  injection.type = "laserdisc";
+  injection.disc_type = "VHD";
+  project.sections[0].line_injections.push_back(injection);
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_FALSE(result.is_valid);
+  ASSERT_FALSE(result.errors.empty());
+  EXPECT_NE(result.errors[0].find("disc_type"), std::string::npos);
+  EXPECT_NE(result.errors[0].find("VHD"), std::string::npos);
+}
+
+TEST(ProjectValidatorTest,
+     RejectsLaserdiscInjectionWithCodeTypeInvalidForCav) {
+  Project project = MakeValidProject();
+  Section::LineInjection injection;
+  injection.type = "laserdisc";
+  injection.disc_type = "CAV";
+  Section::LineInjectionCode code;
+  code.code_type = "programme_time_code";
+  injection.codes.push_back(code);
+  project.sections[0].line_injections.push_back(injection);
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_FALSE(result.is_valid);
+  ASSERT_FALSE(result.errors.empty());
+  EXPECT_NE(result.errors[0].find("programme_time_code"), std::string::npos);
+  EXPECT_NE(result.errors[0].find("CAV"), std::string::npos);
+}
+
+TEST(ProjectValidatorTest,
+     RejectsLaserdiscInjectionWithCodeTypeInvalidForClv) {
+  Project project = MakeValidProject();
+  Section::LineInjection injection;
+  injection.type = "laserdisc";
+  injection.disc_type = "CLV";
+  Section::LineInjectionCode code;
+  code.code_type = "picture_number";
+  injection.codes.push_back(code);
+  project.sections[0].line_injections.push_back(injection);
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_FALSE(result.is_valid);
+  ASSERT_FALSE(result.errors.empty());
+  EXPECT_NE(result.errors[0].find("picture_number"), std::string::npos);
+  EXPECT_NE(result.errors[0].find("CLV"), std::string::npos);
+}
+
+TEST(ProjectValidatorTest, RejectsLaserdiscInjectionWithUnknownCodeType) {
+  Project project = MakeValidProject();
+  Section::LineInjection injection;
+  injection.type = "laserdisc";
+  injection.disc_type = "CAV";
+  Section::LineInjectionCode code;
+  code.code_type = "unknown_code";
+  injection.codes.push_back(code);
+  project.sections[0].line_injections.push_back(injection);
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_FALSE(result.is_valid);
+  ASSERT_FALSE(result.errors.empty());
+  EXPECT_NE(result.errors[0].find("unknown_code"), std::string::npos);
+}
+
 }  // namespace
 }  // namespace videosynth

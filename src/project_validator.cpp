@@ -15,6 +15,7 @@
 #include <set>
 #include <string>
 
+#include "videosynth/biphase_types.h"
 #include "videosynth/vits_definition_provider.h"
 
 namespace {
@@ -367,6 +368,69 @@ bool IsLaserdiscReservedLine(int line_1based, videosynth::Standard standard) {
   return false;
 }
 
+// Validates structural correctness of laserdisc injection fields when present.
+// When disc_type is specified it must be CAV or CLV; code_types must be valid
+// for the specified disc_type.  disc_type is optional in Phase 1 — it will be
+// enforced when laserdisc injection is fully implemented.
+bool ValidateLaserdiscInjectionStructure(
+    const videosynth::Section& section,
+    videosynth::ValidationResult* result) {
+  if (result == nullptr) {
+    return false;
+  }
+
+  for (const videosynth::Section::LineInjection& injection :
+       section.line_injections) {
+    if (Lowercase(injection.type) != "laserdisc") {
+      continue;
+    }
+
+    if (injection.disc_type.empty()) {
+      continue;
+    }
+
+    const videosynth::DiscType disc_type =
+        videosynth::DiscTypeFromString(injection.disc_type);
+    if (disc_type == videosynth::DiscType::kUnknown) {
+      result->is_valid = false;
+      result->errors.push_back(
+          "Laserdisc injection validation error: disc_type '" +
+          injection.disc_type + "' is not recognised. Expected 'CAV' or 'CLV'.");
+      return false;
+    }
+
+    for (const videosynth::Section::LineInjectionCode& code : injection.codes) {
+      if (!videosynth::IsKnownLaserdiscCodeType(code.code_type)) {
+        result->is_valid = false;
+        result->errors.push_back(
+            "Laserdisc injection validation error: code_type '" +
+            code.code_type + "' is not a recognised laserdisc code type.");
+        return false;
+      }
+
+      if (disc_type == videosynth::DiscType::kCAV &&
+          !videosynth::IsValidCavCodeType(code.code_type)) {
+        result->is_valid = false;
+        result->errors.push_back(
+            "Laserdisc injection validation error: code_type '" +
+            code.code_type + "' is not valid for CAV discs.");
+        return false;
+      }
+
+      if (disc_type == videosynth::DiscType::kCLV &&
+          !videosynth::IsValidClvCodeType(code.code_type)) {
+        result->is_valid = false;
+        result->errors.push_back(
+            "Laserdisc injection validation error: code_type '" +
+            code.code_type + "' is not valid for CLV discs.");
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
+
 bool ValidateLineInjectionsForSection(const videosynth::Section& section,
                                       videosynth::Standard standard,
                                       videosynth::ValidationResult* result) {
@@ -603,6 +667,10 @@ ValidationResult ProjectValidator::Validate(const Project& project) {
     }
 
     if (section.type == "progressive") {
+      if (!ValidateLaserdiscInjectionStructure(section, &result)) {
+        break;
+      }
+
       if (!ValidateLineInjectionsForSection(
               section, project.cvbs_presets.video_standard_preset, &result)) {
         break;

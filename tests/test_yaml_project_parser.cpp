@@ -231,5 +231,140 @@ TEST(YamlProjectParserTest, RejectsDeprecatedSourcePixelFormatField) {
   EXPECT_NE(result.errors[0].find("source_pixel_format"), std::string::npos);
 }
 
+TEST(YamlProjectParserTest, ParsesSectionTypeLeadIn) {
+  const std::string yaml =
+      "project:\n"
+      "  name: SectionTypeTest\n"
+      "  version: \"1.0\"\n"
+      "cvbs_presets:\n"
+      "  video_standard_preset: PAL\n"
+      "  sample_encoding_preset: CVBS_U10_4FSC\n"
+      "  signal_state_preset: STANDARD_TBC_LOCKED\n"
+      "output:\n"
+      "  video_path: out.composite\n"
+      "  metadata_path: out.meta\n"
+      "sections:\n"
+      "  - name: LeadInSection\n"
+      "    type: progressive\n"
+      "    source: fixture.exr\n"
+      "    duration_frames: 8\n"
+      "    section_type: lead_in\n";
+
+  YamlProjectParser parser;
+  const ParseResult result = parser.ParseString(yaml);
+
+  ASSERT_TRUE(result.ok);
+  ASSERT_EQ(result.project.sections.size(), 1U);
+  EXPECT_EQ(result.project.sections[0].section_type, SectionType::kLeadIn);
+}
+
+TEST(YamlProjectParserTest, ParsesSectionTypeProgrammeArea) {
+  const std::string yaml =
+      "project:\n"
+      "  name: SectionTypeTest\n"
+      "  version: \"1.0\"\n"
+      "cvbs_presets:\n"
+      "  video_standard_preset: PAL\n"
+      "  sample_encoding_preset: CVBS_U10_4FSC\n"
+      "  signal_state_preset: STANDARD_TBC_LOCKED\n"
+      "output:\n"
+      "  video_path: out.composite\n"
+      "  metadata_path: out.meta\n"
+      "sections:\n"
+      "  - name: ProgrammeSection\n"
+      "    type: progressive\n"
+      "    source: fixture.exr\n"
+      "    duration_frames: 8\n"
+      "    section_type: programme_area\n";
+
+  YamlProjectParser parser;
+  const ParseResult result = parser.ParseString(yaml);
+
+  ASSERT_TRUE(result.ok);
+  ASSERT_EQ(result.project.sections.size(), 1U);
+  EXPECT_EQ(result.project.sections[0].section_type, SectionType::kProgrammeArea);
+}
+
+TEST(YamlProjectParserTest, ParsesSectionTypeLeadOut) {
+  const std::string yaml =
+      "project:\n"
+      "  name: SectionTypeTest\n"
+      "  version: \"1.0\"\n"
+      "cvbs_presets:\n"
+      "  video_standard_preset: PAL\n"
+      "  sample_encoding_preset: CVBS_U10_4FSC\n"
+      "  signal_state_preset: STANDARD_TBC_LOCKED\n"
+      "output:\n"
+      "  video_path: out.composite\n"
+      "  metadata_path: out.meta\n"
+      "sections:\n"
+      "  - name: LeadOutSection\n"
+      "    type: progressive\n"
+      "    source: fixture.exr\n"
+      "    duration_frames: 8\n"
+      "    section_type: lead_out\n";
+
+  YamlProjectParser parser;
+  const ParseResult result = parser.ParseString(yaml);
+
+  ASSERT_TRUE(result.ok);
+  ASSERT_EQ(result.project.sections.size(), 1U);
+  EXPECT_EQ(result.project.sections[0].section_type, SectionType::kLeadOut);
+}
+
+TEST(YamlProjectParserTest, SectionWithNoSectionTypeDefaultsToUnknown) {
+  const std::string yaml =
+      "project:\n"
+      "  name: SectionTypeTest\n"
+      "  version: \"1.0\"\n"
+      "cvbs_presets:\n"
+      "  video_standard_preset: PAL\n"
+      "  sample_encoding_preset: CVBS_U10_4FSC\n"
+      "  signal_state_preset: STANDARD_TBC_LOCKED\n"
+      "output:\n"
+      "  video_path: out.composite\n"
+      "  metadata_path: out.meta\n"
+      "sections:\n"
+      "  - name: DefaultSection\n"
+      "    type: progressive\n"
+      "    source: fixture.exr\n"
+      "    duration_frames: 8\n";
+
+  YamlProjectParser parser;
+  const ParseResult result = parser.ParseString(yaml);
+
+  ASSERT_TRUE(result.ok);
+  ASSERT_EQ(result.project.sections.size(), 1U);
+  EXPECT_EQ(result.project.sections[0].section_type, SectionType::kUnknown);
+}
+
+TEST(YamlProjectParserTest, RejectsUnrecognisedSectionTypeValue) {
+  const std::string yaml =
+      "project:\n"
+      "  name: SectionTypeTest\n"
+      "  version: \"1.0\"\n"
+      "cvbs_presets:\n"
+      "  video_standard_preset: PAL\n"
+      "  sample_encoding_preset: CVBS_U10_4FSC\n"
+      "  signal_state_preset: STANDARD_TBC_LOCKED\n"
+      "output:\n"
+      "  video_path: out.composite\n"
+      "  metadata_path: out.meta\n"
+      "sections:\n"
+      "  - name: BadSection\n"
+      "    type: progressive\n"
+      "    source: fixture.exr\n"
+      "    duration_frames: 8\n"
+      "    section_type: programme\n";
+
+  YamlProjectParser parser;
+  const ParseResult result = parser.ParseString(yaml);
+
+  EXPECT_FALSE(result.ok);
+  ASSERT_FALSE(result.errors.empty());
+  EXPECT_NE(result.errors[0].find("section_type"), std::string::npos);
+  EXPECT_NE(result.errors[0].find("programme"), std::string::npos);
+}
+
 }  // namespace
 }  // namespace videosynth
