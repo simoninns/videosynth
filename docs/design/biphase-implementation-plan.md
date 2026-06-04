@@ -66,7 +66,7 @@ HLD Section 8.2 specifies laserdisc biphase encoding with CAV/CLV modes and sect
 
 ---
 
-## Phase 2A: Biphase Encoder Core
+## Phase 2: Biphase Encoder Core
 
 **Dependencies:** Phase 1
 
@@ -130,7 +130,7 @@ private:
 
 ---
 
-## Phase 2B: FM Encoder Core
+## Phase 3: FM Encoder Core
 
 **Dependencies:** Phase 1
 
@@ -178,9 +178,9 @@ private:
 
 ---
 
-## Phase 3A: CAV Code Type Implementation
+## Phase 4: CAV Code Type Implementation
 
-**Dependencies:** Phase 2A
+**Dependencies:** Phase 2
 
 **Purpose:** Implement all CAV-specific code types with their constraints and validation.
 
@@ -221,9 +221,9 @@ private:
 
 ---
 
-## Phase 3B: CLV Code Type Implementation
+## Phase 5: CLV Code Type Implementation
 
-**Dependencies:** Phase 2A
+**Dependencies:** Phase 2
 
 **Purpose:** Implement all CLV-specific code types with their constraints and validation.
 
@@ -238,6 +238,8 @@ private:
 | 3.18 | Implement programme time code BCD validation (X₂=0-5, X₃=0-9) | TimeCodeGenerator |
 | 3.19 | Implement users code X₁ range validation (0-7 only) | UsersCodeGenerator |
 | 3.29 | Unit tests for CLV code types | test_clv_code_generators.cpp |
+| 3.34 | Implement NTSC CLV picture number colour time error correction: seconds count jumps at frame counts N = 8991×L + 899×M (IEC 60857 Amendment 2 §10.1.10) | ClvPictureNumberGenerator |
+| 3.35 | Unit tests for NTSC CLV colour time error correction | test_clv_colour_time.cpp |
 
 **CLV Code Types:**
 - lead_in (88FFFF) - **lead_in section only**
@@ -248,6 +250,7 @@ private:
 - clv_picture_number (8X₁EX₃X₄X₅) - auto-increment, **programme_area only, CLV only**
   - **Constraints**: **X₁ = A-F**, **X₃ = 0-9**, **X₄ = 0-2**, **X₅ = 0-9**
   - **Time Calculation**: Seconds = (X₁ - 'A')×10 + X₃, Frame within second = X₄×10 + X₅ (0-29)
+  - **NTSC Colour Time Error Correction** (IEC 60857 Amendment 2 §10.1.10): On NTSC discs, the seconds count (X₁, X₃) must jump forward by 1 and the frame count (X₄, X₅) must reset to zero at the **first following picture number renewal** each time the accumulated frame count N equals any value in the sequence N = 8991×L + 899×M (L integer ≥ 0, M integer 0–9), i.e. at frames 899, 1798, …, 8091, 8991, 9890, … This correction does **not** apply to PAL discs.
 - chapter_number (8X₁X₂DDD) - **programme_area only**, max 79
   - **Encoding**: Chapter = (X₁ & 7)×16 + X₂, Stop-bit = (X₁ & 8) >> 3
 - programme_status (8DC/BA X₃X₄X₅) - **programme_area only**
@@ -257,21 +260,22 @@ private:
 **Validation:**
 - All CLV code types generate correct hex values
 - Auto-increment logic works correctly for programme_time_code and clv_picture_number
+- NTSC CLV colour time error correction applied at correct frame counts
 - All value range constraints are enforced
 - All unit tests pass
 
 ---
 
-## Phase 3C: FM Code Types and Validation
+## Phase 6: FM Code Types and Validation
 
-**Dependencies:** Phase 2B, Phase 3A, Phase 3B
+**Dependencies:** Phase 3, Phase 4, Phase 5
 
 **Purpose:** Implement NTSC 40-bit FM code types and comprehensive validation across all code types.
 
 **Tasks:**
 | ID | Description | Output |
 |----|-------------|--------|
-| 3.6 | Implement programme status code with Hamming code | status_code_generator.h/cpp |
+| 3.6 | Implement programme status code with Hamming code per IEC 60856/60857 Amendment 2 Appendix C (X34 = copy permission; simplified audio channel table) | status_code_generator.h/cpp |
 | 3.7 | Implement 40-bit FM coded signal (NTSC only) | fm_code_generator.h/cpp |
 | 3.20 | Implement 40-bit FM bit layout per IEC Figure 13 | FmCodeGenerator |
 | 3.21 | Implement white flag automatic placement for duplicate fields | FmCodeGenerator |
@@ -284,15 +288,25 @@ private:
 | 3.30 | Unit tests for chapter stop-bit behavior | test_chapter_stopbit.cpp |
 | 3.31 | Unit tests for NTSC frozen values | test_ntsc_frozen.cpp |
 
+**Programme Status Code — Amendment 2 Note:**
+
+IEC 60856/60857 Amendment 2 replaces Appendix C. The X34 field meaning changed and the audio channel table was simplified. Implement the **Amendment 2** semantics:
+- **X34**: 0 = copy prohibited, 1 = copy permitted (original spec had X34 = FM-FM multiplex)
+- **X41,X42,X43,X44 audio/video table**: 8 defined modes (0–3 standard video; mode 8 = mono dump; modes 4–7 and 9–15 = future use). See Amendment 2 Appendix C for the full table.
+- Hamming code (X₅ over X₄) and the G/M matrices are unchanged between original and Amendment 2.
+
 **NTSC 40-bit FM:**
 - fm_picture_number - CAV picture numbers, lines 10/273, **programme_area only**
   - **Format**: 40-bit FM with bit layout per Appendix G
-  - **Max**: 99,999
+  - **Max**: **79,999** (IEC 60857 Amendment 2 §10.2.3 — original spec said 99,999; Amendment 2 corrects this)
+  - **Field update**: Picture number is **updated on the second field** of each new picture (IEC 60857 §10.2.3)
 - fm_programme_time - CLV programme time, lines 10/273, **programme_area only**
   - **Format**: 40-bit FM with bit layout per Appendix G
   - **X₅ mode**: A=lead-in, B=lead-in+100f, D=picture, C=lead-out
-- fm_white_flag - First field marker, lines 11/274, **programme_area only**
-  - **Auto-placement**: Automatically placed on first field of next picture when fields are identical
+- fm_white_flag - 100 IRE white flag, **lead_in, programme_area, and lead_out** (IEC 60857 §10.2.1, §10.2.2)
+  - **Lead-in**: line 11 only (field 1 line)
+  - **Programme area**: line 11 or 274 depending on field; auto-placed on first field of next picture when fields are identical
+  - **Lead-out**: lines 11 and 274 for the full lead-out duration
 
 **Historical Note (Legacy Support):**
 - During the first years after introduction, picture stop was also indicated by the first bit of X₁ in the picture number code FX₁X₂X₃X₄X₅ (0=stop, 1=normal). This is **obsolete** but may be needed for compatibility with early players.
@@ -339,9 +353,9 @@ uint8_t chapter_number = (X₁ & 0x07) * 16 + X₂;  // Use lower 3 bits of X₁
 
 ---
 
-## Phase 4: Field-Aware Line Placement
+## Phase 7: Field-Aware Line Placement
 
-**Dependencies:** Phase 3C
+**Dependencies:** Phase 6
 
 **Purpose:** Implement intelligent line placement that respects field awareness, code type priorities, and IEC line allocations.
 
@@ -371,6 +385,14 @@ uint8_t chapter_number = (X₁ & 0x07) * 16 + X₂;  // Use lower 3 bits of X₁
 - Lines 10/273: 40-bit FM coded signal
 - Lines 11/274: White flag (100 IRE)
 - Lines 12-15, 275-278: Reserved, video content at blanking level
+
+**Horizontal Start Timing (IEC 60856 Figure 14, IEC 60857 Figure 11):**
+
+For most code types the biphase signal starts at the beginning of the active line. However, two code types have an explicit horizontal start time constraint in the IEC specs:
+- **Programme status code** (both PAL and NTSC): T = 0.172 ± 0.003 H from start of line
+- **CLV code** (NTSC only, per IEC 60857 Figure 11): T = 0.172 ± 0.003 H from start of line
+
+The `LinePlacementEngine` and `BiphaseInjectionManager` must apply this start offset when generating these two code types. All other code types begin at the start of the active video line.
 
 **Priority Rules (IEC Compliant):**
 1. **Absolute Priority:** Lead-in/lead-out codes have **absolute priority** in their respective sections (override all other codes)
@@ -427,9 +449,9 @@ uint8_t chapter_number = (X₁ & 0x07) * 16 + X₂;  // Use lower 3 bits of X₁
 
 ---
 
-## Phase 5A: Biphase Injection Manager
+## Phase 8: Biphase Injection Manager
 
-**Dependencies:** Phase 4
+**Dependencies:** Phase 7
 
 **Purpose:** Create the central manager class that orchestrates biphase injection into the video pipeline.
 
@@ -484,9 +506,9 @@ public:
 
 ---
 
-## Phase 5B: Validation Integration
+## Phase 9: Validation Integration
 
-**Dependencies:** Phase 5A
+**Dependencies:** Phase 8
 
 **Purpose:** Extend the project validator to enforce all biphase-specific rules and constraints.
 
@@ -496,9 +518,51 @@ public:
 | 5.4 | Extend validator for section types | Updated project_validator.cpp |
 | 5.5 | Add validation for code type parameters | Validator methods |
 | 5.8 | Integration tests | test_biphase_integration.cpp |
-| 5.9 | Validate minimum section durations (lead-in ≥ 1.5mm, lead-out ≥ 2mm/600 tracks) | Validator methods |
+| 5.9 | Validate minimum section durations (lead-in ≥ 1.5mm, lead-out ≥ 2mm) | Validator methods |
 | 5.10 | Implement track-to-frame conversion for duration validation | Validator helper functions |
+| 5.11 | Validate that VITS injections do not target biphase reserved lines when laserdisc is active in the same section (PAL: reject vits17, itu-multiburst, itu-composite, itu-combination; NTSC: reject ntc7-composite, fcc-multiburst, ntc7-combination, fcc-composite) | Validator methods |
+| 5.12 | Validate that line_content injections do not target any line in the biphase reserved ranges when laserdisc is active in the same section | Validator methods |
+| 5.13 | NTSC: validate that a virs VITS injection is present in every NTSC laserdisc section (mandatory for colour per IEC 60857 §9.1.3); emit error if absent | Validator methods |
+| 5.14 | PAL: validate mutual exclusion of vits20 (line 20) or any line_content on line 333 with VITS on those same lines — if subtitle line_content occupies line 20 or 333, VITS must not be present on that line (IEC 60856 §9.1.4) | Validator methods |
+| 5.15 | Unit tests for cross-injection type line conflict validation | test_cross_injection_validation.cpp |
+| 5.16 | Unit tests for NTSC VIRS mandatory presence validation | test_ntsc_virs_validation.cpp |
 | 5.33 | Unit tests for validation | test_biphase_validation.cpp |
+
+**Cross-Injection Line Conflict Rules (IEC 60856 §9.1.3–9.1.4, IEC 60857 §9.1.3–9.1.4):**
+
+The IEC standards specify that on a laserdisc, VITS are placed on **different lines than standard broadcast** — specifically chosen to avoid the biphase reserved ranges. The validator must enforce both the exclusion of incompatible VITS types and the presence of mandatory ones.
+
+**PAL Laserdisc VITS compatibility (IEC 60856 §9.1.3 + Amendment 2):**
+
+IEC 60856 §9.1.3 permits VITS on lines 19, 20, 332, 333 only. Amendment 2 adds 13 and 326 as alternates, but both fall inside the reserved ranges (13 inside 6–18; 326 inside 319–331), making them incompatible with laserdisc.
+
+| VITS Type | Line | In Reserved Range? | Valid with Laserdisc? |
+|-----------|------|--------------------|-----------------------|
+| `vits17` | 17 (field 1) | ✅ (6–18) | ❌ Reject |
+| `itu-multiburst` | 18 (field 1) | ✅ (6–18) | ❌ Reject |
+| `uk-national` | 19 (field 1) | ❌ | ✅ Allow |
+| `vits20` | 20 (field 1) | ❌ | ✅ Allow (see mutual exclusion below) |
+| `itu-composite` | 330 (field 2) | ✅ (319–331) | ❌ Reject |
+| `itu-combination` | 331 (field 2) | ✅ (319–331) | ❌ Reject |
+
+Lines 332 and 333 are outside the reserved range and are the IEC-specified field-2 VITS positions on a PAL laserdisc. No current catalog VITS type targets these lines; `line_content` injections on 332/333 are permitted.
+
+**PAL subtitle mutual exclusion (IEC 60856 §9.1.4):**
+If `line_content` subtitle data occupies **line 20** or **line 333**, VITS must not appear on that line. `vits20` (line 20) and any `line_content` VITS-equivalent on line 333 are mutually exclusive with subtitle `line_content` on those lines in the same section.
+
+**NTSC Laserdisc VITS compatibility (IEC 60857 §9.1.3–9.1.4):**
+
+IEC 60857 §9.1.3 mandates a VIR signal on lines 19 and 282 (mandatory for colour; absent for monochrome). §9.1.4 recommends ITS on lines 20 and 283. All standard NTSC VITS catalog types target the biphase reserved range and must be rejected.
+
+| VITS Type | Line | In Reserved Range? | Valid with Laserdisc? |
+|-----------|------|--------------------|-----------------------|
+| `ntc7-composite` | 17 (field 1) | ✅ (10–18) | ❌ Reject |
+| `fcc-multiburst` | 18 (field 1) | ✅ (10–18) | ❌ Reject |
+| `ntc7-combination` | 280 (field 2) | ✅ (273–281) | ❌ Reject |
+| `fcc-composite` | 281 (field 2) | ✅ (273–281) | ❌ Reject |
+| `virs` | 19, 282 | ❌ | ✅ **Required** for colour (§9.1.3) |
+
+Lines 20/283 (ITS recommended) are outside the reserved range; `line_content` on those lines is permitted alongside laserdisc.
 
 **Track-to-Frame Conversion (IEC 60856 §4.15):**
 - Track pitch: **1.4 μm to 2.0 μm** (nominal)
@@ -506,7 +570,7 @@ public:
 - **CAV discs**: 1 track = 1 frame (constant angular velocity)
   - Lead-in: ≥ 1.5mm = ≥ 1500μm / 1.6μm/track ≈ **938 tracks = 938 frames**
   - Lead-out (PAL): ≥ 2mm = ≥ 2000μm / 1.6μm/track ≈ **1250 tracks = 1250 frames**
-  - Lead-out (NTSC): ≥ **600 tracks = 600 frames** (specified directly)
+  - Lead-out (NTSC): ≥ 2mm = ≥ 2000μm / 1.6μm/track ≈ **1250 tracks = 1250 frames** (IEC 60857 §10.1.2: 24-bit biphase 80EEEE requires ≥ 2mm tracks; the 40-bit FM white flag has a separate, looser minimum of 600 tracks per §10.2.2, but the stricter biphase requirement dominates)
 - **CLV discs**: Track density varies, so duration must be validated in **tracks**, not frames
   - Validator must accept track-based duration for CLV lead-in/lead-out
 
@@ -517,9 +581,9 @@ public:
 
 ---
 
-## Phase 6A: System Testing
+## Phase 10: System Testing
 
-**Dependencies:** Phase 5B
+**Dependencies:** Phase 9
 
 **Purpose:** Comprehensive testing of the biphase injection system against IEC specifications.
 
@@ -549,9 +613,9 @@ public:
 
 ---
 
-## Phase 6B: Documentation and Examples
+## Phase 11: Documentation and Examples
 
-**Dependencies:** Phase 6A
+**Dependencies:** Phase 10
 
 **Purpose:** Create comprehensive user documentation and example projects for biphase injection.
 
@@ -804,9 +868,9 @@ docs/user/biphase-design.md
 | CLV | chapter_number | 8X₁X₂DDD | 18 or 331 | 18 or 281 | ❌ | programme_area | **Chapter=(X₁&7)×16+X₂, Stop-bit=(X₁&8)>>3, Max: 79** | Where no programme_time_code or clv_picture_number |
 | CLV | programme_status | 8DC/BA X₃X₄X₅ | 16 or 329 | 16 or 279 | ❌ | programme_area | DC=CX on, BA=CX off | Same fields as CLV code |
 | CLV | users_code | 8X₁DX₃X₄X₅ | 16,329 | 16,279 | ❌ | lead_in, lead_out | **X₁=0-7 only** | Only in lead-in/lead-out |
-| NTSC | fm_picture_number | (40-bit FM) | N/A | 10,273 | ✅ | programme_area | **Bit layout per Appendix G, Max: 99,999** | CAV only; frozen in lead-in/out |
+| NTSC | fm_picture_number | (40-bit FM) | N/A | 10,273 | ✅ | programme_area | **Bit layout per Appendix G, Max: 79,999** (Amendment 2) | CAV only; updated on 2nd field; frozen in lead-in/out |
 | NTSC | fm_programme_time | (40-bit FM) | N/A | 10,273 | ✅ | programme_area | **Bit layout per Appendix G, X₅=A/B/C/D** | CLV only; frozen in lead-in/out |
-| NTSC | fm_white_flag | (100 IRE) | N/A | 11,274 | ❌ | programme_area | **Auto-placed for duplicate fields** | First field marker |
+| NTSC | fm_white_flag | (100 IRE) | N/A | 11 or 274 | ❌ | lead_in (line 11 only), programme_area, lead_out (lines 11 and 274) | **Auto-placed for duplicate fields in programme area** | Lead-in/lead-out marker; first field marker in programme area |
 
 ---
 
@@ -867,7 +931,7 @@ sections:
   - name: "NTSC Lead-out"
     type: progressive
     source: "assets/lead-out.mkv"
-    duration_frames: 600  # NTSC: ≥ 600 tracks = 600 frames (CAV/CLV)
+    duration_frames: 1250  # NTSC: ≥ 1250 frames (2mm / 1.6μm pitch; 24-bit biphase §10.1.2 dominates 40-bit FM 600-track minimum §10.2.2)
     section_type: lead_out
     line_injections:
       - type: laserdisc
@@ -903,7 +967,7 @@ sections:
 - Minimum chapter length: 30 tracks
 - Lead-in section duration (CAV): ≥ 938 frames (at 1.6μm track pitch)
 - Lead-out section duration (PAL CAV): ≥ 1250 frames (at 1.6μm track pitch)
-- Lead-out section duration (NTSC): ≥ 600 frames
+- Lead-out section duration (NTSC CAV): ≥ 1250 frames (at 1.6μm track pitch; IEC 60857 §10.1.2 requires 24-bit biphase 80EEEE for ≥ 2mm; 40-bit FM white flag minimum of 600 tracks per §10.2.2 is satisfied by the stricter biphase requirement)
 - First chapter after lead-in must have stop-bit = 1 (enforced automatically if not specified)
 
 ---
@@ -924,7 +988,7 @@ sections:
 | programme_status | ❌ | ✅ | ❌ |
 | users_code | ✅ | ❌ | ✅ |
 | fm_picture_number (NTSC) | ❌ | ✅ | ❌ |
-| fm_white_flag (NTSC) | ❌ | ✅ | ❌ |
+| fm_white_flag (NTSC) | ✅ † | ✅ | ✅ †† |
 
 #### CLV Discs
 
@@ -939,7 +1003,14 @@ sections:
 | programme_status | ❌ | ✅ | ❌ |
 | users_code | ✅ | ❌ | ✅ |
 | fm_programme_time (NTSC) | ❌ | ✅ | ❌ |
-| fm_white_flag (NTSC) | ❌ | ✅ | ❌ |
+| fm_white_flag (NTSC) | ✅ † | ✅ | ✅ †† |
+
+**fm_white_flag line placement differs by section (IEC 60857 §10.2.1, §10.2.2):**
+- † **lead_in**: white flag on **line 11 only** (field 1 line); line 274 is not used during lead-in
+- **programme_area**: white flag on **line 11 or 274** depending on which field opens the picture (auto-placement for duplicate fields)
+- †† **lead_out**: white flag on **both lines 11 and 274** for the full lead-out duration
+
+The `LinePlacementEngine` must handle these three distinct placement cases for `fm_white_flag`.
 
 **Validation Implementation:**
 The validator MUST check that every `code_type` in a section's `codes` list is marked ✅ for that section's `section_type` and the section's `disc_type`. Any ❌ combination is an error.
@@ -1045,7 +1116,9 @@ uint32_t code_value = 0x800000 | (x1_nibble << 16) | ((chapter_number % 16) << 1
 
 1. **Lead-In Duration:** At least a number of tracks corresponding to **1.5mm** prior to the active programme start.
 
-2. **Lead-Out Duration:** At least **600 tracks** after the active programme stops (IEC 60857 §10.1.2).
+2. **Lead-Out Duration (24-bit biphase):** At least **1250 tracks** (≥ 2mm at 1.6μm pitch) after the active programme stops — IEC 60857 §10.1.2 requires the 80EEEE code for ≥ 2mm tracks, identical to PAL.
+
+3. **Lead-Out Duration (40-bit FM white flag):** At least **600 tracks** after the active programme stops — IEC 60857 §10.2.2. The white flag appears on **both lines 11 and 274** throughout the lead-out (different from lead-in where only line 11 is used). Because the 24-bit biphase requirement of ≥ 1250 tracks is stricter, the unified lead-out section must be ≥ 1250 frames to satisfy both systems.
 
 3. **Frozen Picture Numbers (CAV):**
    - During lead-in: picture_number is **always zero**
@@ -1139,7 +1212,8 @@ The 40-bit FM coded signal provides television field information, 20 data bits, 
 
 **For fm_picture_number (CAV):**
 - X₁-X₅ encode the picture number as decimal digits (0-9 each)
-- Maximum: 99,999
+- Maximum: **79,999** (IEC 60857 Amendment 2 §10.2.3 — original spec said 99,999; Amendment 2 corrects this to match the 24-bit biphase NTSC maximum)
+- Picture number is **updated on the second field** of each new picture (IEC 60857 §10.2.3)
 - Data bits represent: X₁ (MSB) ... X₅ (LSB)
 
 **For fm_programme_time (CLV):**
