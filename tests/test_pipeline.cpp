@@ -127,6 +127,7 @@ Project MakeProject() {
   p.output.metadata_path = "/tmp/videosynth_pipeline_test.meta";
   p.sections.push_back(Section{.name = "Valid",
                                .type = "progressive",
+                               .line_injections = {},
                                .source = "/tmp/videosynth_pipeline_test.exr",
                                .duration_frames = 1});
   return p;

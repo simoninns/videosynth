@@ -95,7 +95,8 @@ int MapCompositeFixedToCode(SampleFixed composite_mv_fixed,
   return static_cast<int>(mapped_delta) + profile.blanking_code;
 }
 
-int ClampToLegalCodeRange(int mapped_code, const QuantizationProfile& profile) {
+int ClampToLegalCodeRange(int mapped_code,
+                          [[maybe_unused]] const QuantizationProfile& profile) {
   // Preserve sub-black (4-15) and over-white-adjacent (1020-1023 are reserved).
   // Only clamp reserved/protected values: 0-3 (reserved low) and 1020-1023
   // (reserved high). Allow excursions in ranges 4-1019 to pass through (legal +

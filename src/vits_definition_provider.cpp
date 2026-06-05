@@ -74,6 +74,9 @@ VitsDefinition Definition(Standard standard, std::string vits_type,
       .timing_reference = VitsTimingReference::kSyncEdge,
       .y_rise_time_us = y_rise_time_us,
       .c_rise_time_us = c_rise_time_us,
+      .primitives = {},
+      .composites = {},
+      .render_order = {},
   };
 }
 

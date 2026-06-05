@@ -44,6 +44,7 @@ Project MakeProject(Standard standard, const std::string& source = "") {
   project.cvbs_presets.signal_state_preset = "STANDARD_TBC_LOCKED";
   project.sections.push_back(Section{.name = "Compliance",
                                      .type = "progressive",
+                                     .line_injections = {},
                                      .source = selected_source,
                                      .duration_frames = 1});
   return project;

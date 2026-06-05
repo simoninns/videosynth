@@ -28,6 +28,7 @@ Project MakeValidProject() {
   project.output.metadata_path = "/tmp/videosynth_validator_test.meta";
   project.sections.push_back(Section{.name = "Progressive",
                                      .type = "progressive",
+                                     .line_injections = {},
                                      .source = DefaultProgressiveSourcePath(),
                                      .duration_frames = 1});
   return project;

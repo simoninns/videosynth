@@ -236,7 +236,6 @@ TEST(VitsGeneratorPalTest, ItuMultiburstBurstTrainFrequencies) {
 
   // Burst train with amplitude ~210 mV at various frequencies
   const double kExpectedAmplitude = 210.0;
-  const double kTolerance = 40.0;
 
   // 0.5 MHz burst (24-28 us)
   const double amp_0_5 =

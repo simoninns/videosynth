@@ -44,27 +44,10 @@ std::vector<std::int16_t> ReadSamples(const std::filesystem::path& path,
   return samples;
 }
 
-std::string ReadTextFile(const std::filesystem::path& path) {
-  std::ifstream stream(path);
-  return std::string((std::istreambuf_iterator<char>(stream)),
-                     std::istreambuf_iterator<char>());
-}
-
 int QuantizePalReferenceCode(double composite_mv) {
   constexpr double kMillivoltsPerCode = 1.1905;
   constexpr int kBlankingCode = 256;
   constexpr int kMinCode = 4;
-  constexpr int kMaxCode = 1019;
-  const int mapped =
-      static_cast<int>(std::lround(composite_mv / kMillivoltsPerCode)) +
-      kBlankingCode;
-  return std::max(kMinCode, std::min(kMaxCode, mapped));
-}
-
-int QuantizeNtscReferenceCode(double composite_mv) {
-  constexpr double kMillivoltsPerCode = 1.2755;
-  constexpr int kBlankingCode = 240;
-  constexpr int kMinCode = 16;
   constexpr int kMaxCode = 1019;
   const int mapped =
       static_cast<int>(std::lround(composite_mv / kMillivoltsPerCode)) +

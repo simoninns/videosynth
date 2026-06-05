@@ -58,11 +58,11 @@ enum class VitsTransitionOutPolicy {
 };
 
 struct VitsPrimitiveDefinition {
-  std::string id;
+  std::string id = {};
   VitsPrimitiveType primitive_type = VitsPrimitiveType::kColourBar;
   VitsSignalComponent signal_component = VitsSignalComponent::kY;
   VitsCombineMode combine_mode = VitsCombineMode::kReplace;
-  std::string continuity_group;
+  std::string continuity_group = {};
   VitsTransitionOutPolicy transition_out_policy =
       VitsTransitionOutPolicy::kNone;
   double transition_out_duration_us = 0.0;
@@ -78,24 +78,24 @@ struct VitsPrimitiveDefinition {
 };
 
 struct VitsCompositeDefinition {
-  std::string id;
+  std::string id = {};
   VitsCompositeMode mode = VitsCompositeMode::kSerial;
-  std::vector<std::string> children;
-  std::string continuity_group;
-  std::string baseline_anchor;
+  std::vector<std::string> children = {};
+  std::string continuity_group = {};
+  std::string baseline_anchor = {};
 };
 
 struct VitsDefinition {
   Standard standard = Standard::kUnknown;
-  std::string vits_type;
+  std::string vits_type = {};
   int recommended_frame_line = 0;
   VitsLevelsUnit levels_unit = VitsLevelsUnit::kMillivolts;
   VitsTimingReference timing_reference = VitsTimingReference::kSyncEdge;
   double y_rise_time_us = 0.0;
   double c_rise_time_us = 0.0;
-  std::vector<VitsPrimitiveDefinition> primitives;
-  std::vector<VitsCompositeDefinition> composites;
-  std::vector<std::string> render_order;
+  std::vector<VitsPrimitiveDefinition> primitives = {};
+  std::vector<VitsCompositeDefinition> composites = {};
+  std::vector<std::string> render_order = {};
 };
 
 }  // namespace videosynth

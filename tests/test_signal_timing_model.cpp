@@ -83,8 +83,6 @@ TEST(SignalTimingModelTest, ModelsHalfLinePairingAndBurstPolicy) {
 
 TEST(SignalTimingModelTest,
      ModelsPalAlternatingAndNtscConstantBurstReferencePhase) {
-  constexpr double kPi = 3.14159265358979323846;
-
   // NTSC line-to-line subcarrier progression is handled by absolute-time
   // synthesis in generation_stage. Timing model burst reference is constant per
   // line.

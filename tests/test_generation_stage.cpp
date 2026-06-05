@@ -54,6 +54,7 @@ Project MakeProject(Standard standard, int duration_frames = 1) {
   project.cvbs_presets.signal_state_preset = "STANDARD_TBC_LOCKED";
   project.sections.push_back(Section{.name = "SignalTiming",
                                      .type = "progressive",
+                                     .line_injections = {},
                                      .source = DefaultBarsExrPath(standard),
                                      .duration_frames = duration_frames});
   return project;
@@ -67,6 +68,7 @@ Project MakeProgressiveSourceProject(Standard standard,
   project.cvbs_presets.signal_state_preset = "STANDARD_TBC_LOCKED";
   project.sections.push_back(Section{.name = "ProgressiveImport",
                                      .type = "progressive",
+                                     .line_injections = {},
                                      .source = source_path,
                                      .duration_frames = 1});
   return project;
@@ -79,10 +81,12 @@ Project MakeProjectWithSectionSpans(Standard standard) {
   project.cvbs_presets.signal_state_preset = "STANDARD_TBC_LOCKED";
   project.sections.push_back(Section{.name = "InjectedSection",
                                      .type = "progressive",
+                                     .line_injections = {},
                                      .source = DefaultBarsExrPath(standard),
                                      .duration_frames = 1});
   project.sections.push_back(Section{.name = "PlainSection",
                                      .type = "progressive",
+                                     .line_injections = {},
                                      .source = DefaultBarsExrPath(standard),
                                      .duration_frames = 1});
   return project;
@@ -97,7 +101,7 @@ class FakeVitsDefinitionProvider final : public IVitsDefinitionProvider {
       out_definition->standard = standard;
       out_definition->vits_type = vits_type;
       out_definition->primitives.push_back(
-          VitsPrimitiveDefinition{.id = "placeholder"});
+          VitsPrimitiveDefinition{.id = "placeholder", .continuity_group = ""});
       out_definition->render_order = {"placeholder"};
     }
     if (error != nullptr) {
@@ -196,23 +200,6 @@ int ActiveWindowEndSamples(Standard standard, double sample_rate_hz) {
   return static_cast<int>(std::lround(sample_rate_hz * 62.5e-6));
 }
 
-std::set<int> UniqueRoundedLumaLevelsInActiveWindow(
-    const std::vector<SampleFixed>& y_mv, int line_1based, Standard standard,
-    const TimingConstants& timing) {
-  const int line_start = (line_1based - 1) * timing.samples_per_line_4fsc;
-  const int start = line_start + ActiveWindowStartSamples(
-                                     standard, timing.sample_rate_4fsc_hz);
-  const int end = std::min(
-      line_start + ActiveWindowEndSamples(standard, timing.sample_rate_4fsc_hz),
-      line_start + timing.samples_per_line_4fsc);
-
-  std::set<int> levels;
-  for (int i = start; i < end; ++i) {
-    levels.insert(
-        static_cast<int>(std::lround(SampleFixedToMillivolts(y_mv[i]))));
-  }
-  return levels;
-}
 
 int CountSyncSamplesOnLine(const std::vector<SampleFixed>& y_mv,
                            int line_1based, const TimingConstants& timing,

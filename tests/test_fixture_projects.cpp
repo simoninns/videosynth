@@ -60,27 +60,6 @@ void ResolveProgressiveSourcePaths(Project* project) {
   }
 }
 
-std::string ReadTextFile(const std::filesystem::path& path) {
-  std::ifstream stream(path);
-  return std::string((std::istreambuf_iterator<char>(stream)),
-                     std::istreambuf_iterator<char>());
-}
-
-std::vector<std::uint8_t> ReadBinaryFile(const std::filesystem::path& path) {
-  std::ifstream stream(path, std::ios::binary);
-  return std::vector<std::uint8_t>((std::istreambuf_iterator<char>(stream)),
-                                   std::istreambuf_iterator<char>());
-}
-
-std::uint64_t Fnv1a64(const std::vector<std::uint8_t>& bytes) {
-  std::uint64_t hash = 1469598103934665603ULL;
-  for (std::uint8_t b : bytes) {
-    hash ^= static_cast<std::uint64_t>(b);
-    hash *= 1099511628211ULL;
-  }
-  return hash;
-}
-
 std::size_t ExpectedProgressiveExrSectionCount(Standard standard) {
   switch (standard) {
     case Standard::kPal:

@@ -116,11 +116,11 @@ struct Section {
     std::vector<LineInjectionCode> codes;
   };
 
-  std::string name;
-  std::string type;
+  std::string name = {};
+  std::string type = {};
   SectionType section_type = SectionType::kUnknown;
-  std::vector<LineInjection> line_injections;
-  std::string source;
+  std::vector<LineInjection> line_injections = {};
+  std::string source = {};
   bool duration_frames_all = false;
   int duration_frames = 0;
   int start_frame = 0;

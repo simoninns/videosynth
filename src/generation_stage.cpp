@@ -110,9 +110,6 @@ int MaxLineSamples(const std::vector<int>& line_samples) {
   return max_samples;
 }
 
-int ClampCode(int code, int lo, int hi) {
-  return std::max(lo, std::min(code, hi));
-}
 
 ActiveRasterGeometry GetActiveRasterGeometry(Standard standard,
                                              double sample_rate_hz) {
@@ -247,7 +244,7 @@ bool BuildFramePatternSchedule(
 }
 
 int ActiveFrameLineIndex(const ActiveRasterGeometry& geometry,
-                         Standard standard, int line_1based) {
+                         [[maybe_unused]] Standard standard, int line_1based) {
   if (line_1based >= geometry.first_active_line_field1 &&
       line_1based < (geometry.first_active_line_field1 +
                      geometry.active_lines_per_field)) {

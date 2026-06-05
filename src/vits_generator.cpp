@@ -283,7 +283,6 @@ void ApplyGateEnvelopeOverlapCorrections(VitsSynthesisPlan* plan) {
     // sequence.
     double best_gap = std::numeric_limits<double>::max();
     std::size_t best_index = plan->primitives.size();
-    bool found_group_join = false;
 
     for (std::size_t j = 0; j < plan->primitives.size(); ++j) {
       if (i == j) continue;
@@ -302,7 +301,6 @@ void ApplyGateEnvelopeOverlapCorrections(VitsSynthesisPlan* plan) {
               candidate.definition.continuity_group &&
           j > i) {
         best_index = j;
-        found_group_join = true;
         break;
       }
 
