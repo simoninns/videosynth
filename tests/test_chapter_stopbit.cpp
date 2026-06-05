@@ -191,8 +191,7 @@ TEST(ChapterStopBitTest, TwoConsecutiveChaptersHaveIndependentStopBitCounters) {
 
   // Second chapter: starts a fresh counter with stop-bit = 0 initially.
   ChapterNumberGenerator second_ch(1, /*always_stop_bit_one=*/false);
-  EXPECT_FALSE(
-      ChapterNumberGenerator::DecodeStopBit(second_ch.CurrentCode()));
+  EXPECT_FALSE(ChapterNumberGenerator::DecodeStopBit(second_ch.CurrentCode()));
 
   // After 400 tracks, second chapter transitions to stop-bit = 1.
   for (int i = 0; i < 400; ++i) {

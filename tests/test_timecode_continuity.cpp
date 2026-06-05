@@ -40,7 +40,8 @@ TEST(TimecodeContinuityTest, CavPictureNumberIncrementsEachFrame) {
   EXPECT_EQ(gen.current_value(), 3);
 }
 
-TEST(TimecodeContinuityTest, CavPictureNumberContinuouslyIncrementsOver1000Frames) {
+TEST(TimecodeContinuityTest,
+     CavPictureNumberContinuouslyIncrementsOver1000Frames) {
   CavPictureNumberGenerator gen(1, Standard::kPal);
   for (int i = 0; i < 1000; ++i) {
     gen.Advance();
@@ -112,7 +113,8 @@ TEST(TimecodeContinuityTest, ProgrammeTimeCodeStartsAtZeroZero) {
   EXPECT_EQ(gen.current_minutes(), 0);
 }
 
-TEST(TimecodeContinuityTest, ProgrammeTimeCodePalIncrementsMinutesAt1500Frames) {
+TEST(TimecodeContinuityTest,
+     ProgrammeTimeCodePalIncrementsMinutesAt1500Frames) {
   // PAL: 25 fps × 60 s = 1500 frames per minute.
   ProgrammeTimeCodeGenerator gen(0, 0, Standard::kPal);
   for (int i = 0; i < 1500; ++i) {
@@ -122,7 +124,8 @@ TEST(TimecodeContinuityTest, ProgrammeTimeCodePalIncrementsMinutesAt1500Frames) 
   EXPECT_EQ(gen.current_minutes(), 1);
 }
 
-TEST(TimecodeContinuityTest, ProgrammeTimeCodeNtscIncrementsMinutesAt1800Frames) {
+TEST(TimecodeContinuityTest,
+     ProgrammeTimeCodeNtscIncrementsMinutesAt1800Frames) {
   // NTSC: 30 fps × 60 s = 1800 frames per minute.
   ProgrammeTimeCodeGenerator gen(0, 0, Standard::kNtsc);
   for (int i = 0; i < 1800; ++i) {

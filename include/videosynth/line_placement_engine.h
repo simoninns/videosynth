@@ -40,8 +40,8 @@ struct LineCodeAssignment {
 // given a disc configuration and the set of code types present in the section.
 //
 // Usage pattern:
-//   LinePlacementEngine engine(standard, disc_type, section_type, codes_present);
-//   for each line in [1..lines_per_frame]:
+//   LinePlacementEngine engine(standard, disc_type, section_type,
+//   codes_present); for each line in [1..lines_per_frame]:
 //     bool f1 = LinePlacementEngine::IsFieldOne(standard, line);
 //     auto a = engine.GetAssignment(line, f1);
 //     if (a.assigned) { ... inject a.code_type ... }

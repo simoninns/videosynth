@@ -39,7 +39,8 @@ namespace {
 TEST(LinePlacementTest, PalReservedRangeField1) {
   // Lines 6–18: reserved (IEC 60856).
   for (int line = 6; line <= 18; ++line) {
-    EXPECT_TRUE(LinePlacementEngine::IsInBiphaseReservedRange(Standard::kPal, line))
+    EXPECT_TRUE(
+        LinePlacementEngine::IsInBiphaseReservedRange(Standard::kPal, line))
         << "line=" << line;
   }
 }
@@ -47,24 +48,32 @@ TEST(LinePlacementTest, PalReservedRangeField1) {
 TEST(LinePlacementTest, PalReservedRangeField2) {
   // Lines 319–331: reserved (IEC 60856).
   for (int line = 319; line <= 331; ++line) {
-    EXPECT_TRUE(LinePlacementEngine::IsInBiphaseReservedRange(Standard::kPal, line))
+    EXPECT_TRUE(
+        LinePlacementEngine::IsInBiphaseReservedRange(Standard::kPal, line))
         << "line=" << line;
   }
 }
 
 TEST(LinePlacementTest, PalOutsideReservedRange) {
-  EXPECT_FALSE(LinePlacementEngine::IsInBiphaseReservedRange(Standard::kPal, 1));
-  EXPECT_FALSE(LinePlacementEngine::IsInBiphaseReservedRange(Standard::kPal, 5));
-  EXPECT_FALSE(LinePlacementEngine::IsInBiphaseReservedRange(Standard::kPal, 19));
-  EXPECT_FALSE(LinePlacementEngine::IsInBiphaseReservedRange(Standard::kPal, 318));
-  EXPECT_FALSE(LinePlacementEngine::IsInBiphaseReservedRange(Standard::kPal, 332));
-  EXPECT_FALSE(LinePlacementEngine::IsInBiphaseReservedRange(Standard::kPal, 625));
+  EXPECT_FALSE(
+      LinePlacementEngine::IsInBiphaseReservedRange(Standard::kPal, 1));
+  EXPECT_FALSE(
+      LinePlacementEngine::IsInBiphaseReservedRange(Standard::kPal, 5));
+  EXPECT_FALSE(
+      LinePlacementEngine::IsInBiphaseReservedRange(Standard::kPal, 19));
+  EXPECT_FALSE(
+      LinePlacementEngine::IsInBiphaseReservedRange(Standard::kPal, 318));
+  EXPECT_FALSE(
+      LinePlacementEngine::IsInBiphaseReservedRange(Standard::kPal, 332));
+  EXPECT_FALSE(
+      LinePlacementEngine::IsInBiphaseReservedRange(Standard::kPal, 625));
 }
 
 TEST(LinePlacementTest, NtscReservedRangeField1) {
   // Lines 10–18: reserved (IEC 60857).
   for (int line = 10; line <= 18; ++line) {
-    EXPECT_TRUE(LinePlacementEngine::IsInBiphaseReservedRange(Standard::kNtsc, line))
+    EXPECT_TRUE(
+        LinePlacementEngine::IsInBiphaseReservedRange(Standard::kNtsc, line))
         << "line=" << line;
   }
 }
@@ -72,18 +81,25 @@ TEST(LinePlacementTest, NtscReservedRangeField1) {
 TEST(LinePlacementTest, NtscReservedRangeField2) {
   // Lines 273–281: reserved (IEC 60857).
   for (int line = 273; line <= 281; ++line) {
-    EXPECT_TRUE(LinePlacementEngine::IsInBiphaseReservedRange(Standard::kNtsc, line))
+    EXPECT_TRUE(
+        LinePlacementEngine::IsInBiphaseReservedRange(Standard::kNtsc, line))
         << "line=" << line;
   }
 }
 
 TEST(LinePlacementTest, NtscOutsideReservedRange) {
-  EXPECT_FALSE(LinePlacementEngine::IsInBiphaseReservedRange(Standard::kNtsc, 1));
-  EXPECT_FALSE(LinePlacementEngine::IsInBiphaseReservedRange(Standard::kNtsc, 9));
-  EXPECT_FALSE(LinePlacementEngine::IsInBiphaseReservedRange(Standard::kNtsc, 19));
-  EXPECT_FALSE(LinePlacementEngine::IsInBiphaseReservedRange(Standard::kNtsc, 272));
-  EXPECT_FALSE(LinePlacementEngine::IsInBiphaseReservedRange(Standard::kNtsc, 282));
-  EXPECT_FALSE(LinePlacementEngine::IsInBiphaseReservedRange(Standard::kNtsc, 525));
+  EXPECT_FALSE(
+      LinePlacementEngine::IsInBiphaseReservedRange(Standard::kNtsc, 1));
+  EXPECT_FALSE(
+      LinePlacementEngine::IsInBiphaseReservedRange(Standard::kNtsc, 9));
+  EXPECT_FALSE(
+      LinePlacementEngine::IsInBiphaseReservedRange(Standard::kNtsc, 19));
+  EXPECT_FALSE(
+      LinePlacementEngine::IsInBiphaseReservedRange(Standard::kNtsc, 272));
+  EXPECT_FALSE(
+      LinePlacementEngine::IsInBiphaseReservedRange(Standard::kNtsc, 282));
+  EXPECT_FALSE(
+      LinePlacementEngine::IsInBiphaseReservedRange(Standard::kNtsc, 525));
 }
 
 // ---------------------------------------------------------------------------
@@ -126,8 +142,7 @@ TEST(LinePlacementTest, LinesOutsideReservedRangeReturnNone) {
 // Lines 6–15 and 319–328 are reserved but carry no active biphase code.
 TEST(LinePlacementTest, PalReservedNonActiveLines) {
   LinePlacementEngine engine(Standard::kPal, DiscType::kCAV,
-                             SectionType::kLeadIn,
-                             {"lead_in", "users_code"});
+                             SectionType::kLeadIn, {"lead_in", "users_code"});
   for (int line : {6, 7, 8, 9, 10, 11, 12, 13, 14, 15}) {
     EXPECT_FALSE(engine.GetAssignment(line, true).assigned)
         << "Expected no code on reserved PAL line " << line;
@@ -264,7 +279,8 @@ TEST(LinePlacementTest, PalCavProgrammeProgrammeStatusOnField2Line329With172h) {
 // PAL CAV programme_area — picture_stop priority
 // ---------------------------------------------------------------------------
 
-TEST(LinePlacementTest, PalCavProgrammePictureStopOnLine16BeforeProgrammeStatus) {
+TEST(LinePlacementTest,
+     PalCavProgrammePictureStopOnLine16BeforeProgrammeStatus) {
   LinePlacementEngine engine(Standard::kPal, DiscType::kCAV,
                              SectionType::kProgrammeArea,
                              {"picture_stop", "programme_status"});
@@ -403,8 +419,7 @@ TEST(LinePlacementTest, PalClvProgrammeClvCodeOnLine17WhenNoProgrammeTimeCode) {
   EXPECT_FALSE(a.uses_172h_offset);
 }
 
-TEST(LinePlacementTest,
-     PalClvProgrammeProgrammeTimeCodeBeforeClvCodeOnLine17) {
+TEST(LinePlacementTest, PalClvProgrammeProgrammeTimeCodeBeforeClvCodeOnLine17) {
   LinePlacementEngine engine(Standard::kPal, DiscType::kCLV,
                              SectionType::kProgrammeArea,
                              {"programme_time_code", "clv_code"});
@@ -420,8 +435,7 @@ TEST(LinePlacementTest, PalClvProgrammeChapterOnLine18WhenNoPtc) {
   EXPECT_EQ(a.code_type, "chapter_number");
 }
 
-TEST(LinePlacementTest,
-     PalClvProgrammeProgrammeTimeCodeBeforeChapterOnLine18) {
+TEST(LinePlacementTest, PalClvProgrammeProgrammeTimeCodeBeforeChapterOnLine18) {
   LinePlacementEngine engine(Standard::kPal, DiscType::kCLV,
                              SectionType::kProgrammeArea,
                              {"programme_time_code", "chapter_number"});
@@ -486,7 +500,8 @@ TEST(LinePlacementTest, NtscLeadInField2Line279GetsUsersCode) {
 // White flag in lead_in: line 11 (field 1) only, line 274 NOT used.
 TEST(LinePlacementTest, NtscLeadInWhiteFlagOnLine11Only) {
   LinePlacementEngine engine(Standard::kNtsc, DiscType::kCAV,
-                             SectionType::kLeadIn, {"lead_in", "fm_white_flag"});
+                             SectionType::kLeadIn,
+                             {"lead_in", "fm_white_flag"});
 
   auto a11 = engine.GetAssignment(11, true);
   EXPECT_TRUE(a11.assigned);
@@ -528,10 +543,9 @@ TEST(LinePlacementTest, NtscLeadInLine10And273ReturnNone) {
 // ---------------------------------------------------------------------------
 
 TEST(LinePlacementTest, NtscCavProgrammeFmPictureNumberOnLines10And273) {
-  LinePlacementEngine engine(Standard::kNtsc, DiscType::kCAV,
-                             SectionType::kProgrammeArea,
-                             {"picture_number", "fm_picture_number",
-                              "fm_white_flag"});
+  LinePlacementEngine engine(
+      Standard::kNtsc, DiscType::kCAV, SectionType::kProgrammeArea,
+      {"picture_number", "fm_picture_number", "fm_white_flag"});
 
   auto a10 = engine.GetAssignment(10, true);
   EXPECT_TRUE(a10.assigned);
@@ -546,10 +560,9 @@ TEST(LinePlacementTest, NtscCavProgrammeFmPictureNumberOnLines10And273) {
 }
 
 TEST(LinePlacementTest, NtscCavProgrammeWhiteFlagOnLines11And274) {
-  LinePlacementEngine engine(Standard::kNtsc, DiscType::kCAV,
-                             SectionType::kProgrammeArea,
-                             {"picture_number", "fm_picture_number",
-                              "fm_white_flag"});
+  LinePlacementEngine engine(
+      Standard::kNtsc, DiscType::kCAV, SectionType::kProgrammeArea,
+      {"picture_number", "fm_picture_number", "fm_white_flag"});
 
   auto a11 = engine.GetAssignment(11, true);
   EXPECT_TRUE(a11.assigned);
@@ -608,7 +621,8 @@ TEST(LinePlacementTest, NtscCavProgrammeProgrammeStatusOnLine16With172h) {
   EXPECT_TRUE(a279.uses_172h_offset);
 }
 
-TEST(LinePlacementTest, NtscCavProgrammePictureStopBeforeProgrammeStatusOnLine16) {
+TEST(LinePlacementTest,
+     NtscCavProgrammePictureStopBeforeProgrammeStatusOnLine16) {
   LinePlacementEngine engine(Standard::kNtsc, DiscType::kCAV,
                              SectionType::kProgrammeArea,
                              {"picture_stop", "programme_status"});
@@ -658,10 +672,9 @@ TEST(LinePlacementTest, NtscCavProgrammePriorityOnLine18) {
 // ---------------------------------------------------------------------------
 
 TEST(LinePlacementTest, NtscClvProgrammeFmProgrammeTimeOnLines10And273) {
-  LinePlacementEngine engine(Standard::kNtsc, DiscType::kCLV,
-                             SectionType::kProgrammeArea,
-                             {"programme_time_code", "fm_programme_time",
-                              "fm_white_flag"});
+  LinePlacementEngine engine(
+      Standard::kNtsc, DiscType::kCLV, SectionType::kProgrammeArea,
+      {"programme_time_code", "fm_programme_time", "fm_white_flag"});
 
   auto a10 = engine.GetAssignment(10, true);
   EXPECT_TRUE(a10.assigned);
@@ -773,10 +786,9 @@ TEST(LinePlacementTest,
 // ---------------------------------------------------------------------------
 
 TEST(LinePlacementTest, NtscReservedNonActiveLines) {
-  LinePlacementEngine engine(Standard::kNtsc, DiscType::kCAV,
-                             SectionType::kProgrammeArea,
-                             {"picture_number", "fm_picture_number",
-                              "fm_white_flag"});
+  LinePlacementEngine engine(
+      Standard::kNtsc, DiscType::kCAV, SectionType::kProgrammeArea,
+      {"picture_number", "fm_picture_number", "fm_white_flag"});
   for (int line : {12, 13, 14, 15}) {
     EXPECT_FALSE(engine.GetAssignment(line, true).assigned)
         << "Expected no code on reserved NTSC line " << line;

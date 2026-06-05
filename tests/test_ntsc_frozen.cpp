@@ -338,7 +338,8 @@ TEST(NtscFrozenValuesTest, WhiteFlagEmittedOnNextField1AfterDeferral) {
   tracker.ShouldEmit(/*field_one=*/true, SectionType::kProgrammeArea,
                      /*fields_are_identical=*/true);
   // Next field-1: deferred emission fires.
-  EXPECT_TRUE(tracker.ShouldEmit(/*field_one=*/true, SectionType::kProgrammeArea,
+  EXPECT_TRUE(tracker.ShouldEmit(/*field_one=*/true,
+                                 SectionType::kProgrammeArea,
                                  /*fields_are_identical=*/false));
 }
 
@@ -349,8 +350,7 @@ TEST(NtscFrozenValuesTest, WhiteFlagGetLineReturnsLine11ForField1LeadIn) {
 
 TEST(NtscFrozenValuesTest, WhiteFlagGetLineReturnsMinusOneForField2LeadIn) {
   EXPECT_EQ(
-      WhiteFlagTracker::GetLine(/*field_one=*/false, SectionType::kLeadIn),
-      -1);
+      WhiteFlagTracker::GetLine(/*field_one=*/false, SectionType::kLeadIn), -1);
 }
 
 TEST(NtscFrozenValuesTest, WhiteFlagGetLineReturnsLine11ForField1LeadOut) {
@@ -370,8 +370,7 @@ TEST(NtscFrozenValuesTest, WhiteFlagTrackerResetClearsDeferral) {
   tracker.ShouldEmit(true, SectionType::kProgrammeArea, true);
   tracker.Reset();
   // After reset, field-1 in programme area should emit normally.
-  EXPECT_TRUE(
-      tracker.ShouldEmit(true, SectionType::kProgrammeArea, false));
+  EXPECT_TRUE(tracker.ShouldEmit(true, SectionType::kProgrammeArea, false));
 }
 
 // ---------------------------------------------------------------------------
@@ -428,11 +427,11 @@ TEST(NtscFrozenValuesTest, HammingCheckModeZeroIsZero) {
 
 TEST(NtscFrozenValuesTest, HammingCheckIsConsistentWithBuildOutput) {
   for (uint8_t x4 = 0; x4 < 16; ++x4) {
-    const uint8_t expected_x5 = ProgrammeStatusCodeBuilder::ComputeHammingCheck(x4);
+    const uint8_t expected_x5 =
+        ProgrammeStatusCodeBuilder::ComputeHammingCheck(x4);
     ProgrammeStatusCodeBuilder builder(CxMode::kOn, false, x4);
     const uint32_t code = builder.Build();
-    EXPECT_EQ(code & 0xFu, expected_x5)
-        << "x4 = " << static_cast<int>(x4);
+    EXPECT_EQ(code & 0xFu, expected_x5) << "x4 = " << static_cast<int>(x4);
   }
 }
 

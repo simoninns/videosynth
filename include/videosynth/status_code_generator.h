@@ -24,11 +24,11 @@ enum class CxMode : uint8_t {
 // IEC 60856/60857 Amendment 2 Appendix C: 8 defined modes (X41–X44).
 // Modes 4–7 and 9–15 are reserved for future use.
 enum class AudioVideoMode : uint8_t {
-  kStandardVideoStereo = 0x0,    // Standard video, stereo audio
-  kStandardVideoStereoB = 0x1,   // Standard video, stereo channel 2
-  kStandardVideoStereoC = 0x2,   // Standard video, stereo channel 3
-  kStandardVideoStereoD = 0x3,   // Standard video, stereo channel 4
-  kMonoDump = 0x8,               // Mono dump (bilingual first language)
+  kStandardVideoStereo = 0x0,   // Standard video, stereo audio
+  kStandardVideoStereoB = 0x1,  // Standard video, stereo channel 2
+  kStandardVideoStereoC = 0x2,  // Standard video, stereo channel 3
+  kStandardVideoStereoD = 0x3,  // Standard video, stereo channel 4
+  kMonoDump = 0x8,              // Mono dump (bilingual first language)
   // Modes 4–7 and 9–15: future use (valid as raw nibble values)
 };
 

@@ -22,11 +22,13 @@ namespace videosynth {
 // Section-aware frozen value behaviour (IEC 60857 Appendix F):
 //   kLeadIn:        value emitted = 0 (frozen at zero)
 //   kProgrammeArea: value auto-increments from start_value on each Advance()
-//   kLeadOut:       value emitted = frozen_lead_out_value() (last programme value)
+//   kLeadOut:       value emitted = frozen_lead_out_value() (last programme
+//   value)
 //
 // Per IEC 60857 §10.2.3, the picture number is updated on the second field
-// of each new picture. The caller supplies field_one to CurrentData() to reflect
-// the current field; the emitted value itself does not change between fields.
+// of each new picture. The caller supplies field_one to CurrentData() to
+// reflect the current field; the emitted value itself does not change between
+// fields.
 //
 // NTSC maximum: 79,999 (IEC 60857 Amendment 2 §10.2.3).
 // Saturates at the maximum rather than wrapping.
@@ -93,7 +95,8 @@ class FmPictureNumberGenerator {
 // Section-aware frozen value behaviour (IEC 60857 Appendix F):
 //   kLeadIn:        time = 0:00, mode = kModeLeadIn
 //   kProgrammeArea: time auto-increments each Advance(), mode = kModePicture
-//   kLeadOut:       time frozen at last programme_area value, mode = kModeLeadOut
+//   kLeadOut:       time frozen at last programme_area value, mode =
+//   kModeLeadOut
 //
 // Frames per second: 30 (NTSC nominal). Minutes wrap at 59.
 //
