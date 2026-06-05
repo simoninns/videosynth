@@ -87,6 +87,10 @@ add_executable(videosynth_tests
     tests/test_line_injection_vits_integration.cpp
     tests/test_yaml_project_parser.cpp
     tests/test_timing_constants.cpp
+    tests/test_biphase_validation.cpp
+    tests/test_cross_injection_validation.cpp
+    tests/test_ntsc_virs_validation.cpp
+    tests/test_biphase_integration.cpp
 )
 
 target_compile_definitions(videosynth_tests
@@ -134,6 +138,10 @@ set(videosynth_unit_test_patterns
     "^ChromaEncoderTest\\."
     "^PipelineTest\\."
     "^ProjectValidatorTest\\."
+    "^BiphaseValidationTest\\."
+    "^CrossInjectionValidationTest\\."
+    "^NtscVirsValidationTest\\."
+    "^BiphaseIntegrationTest\\."
     "^SignalShapingTest\\."
     "^SignalTimingModelTest\\."
     "^TimingConstantsTest\\."

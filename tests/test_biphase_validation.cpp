@@ -1,0 +1,731 @@
+/*
+ * File:        test_biphase_validation.cpp
+ * Module:      project_validator_tests
+ * Purpose:     Validates biphase-specific section type, code parameter, and
+ *              section duration constraints (IEC 60856/60857 §§ 5.4, 5.5,
+ *              5.9, 5.10).
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: 2026 Simon Inns
+ */
+
+#include <gtest/gtest.h>
+
+#include <string>
+
+#include "videosynth/project_validator.h"
+
+namespace videosynth {
+namespace {
+
+// ─── helpers ──────────────────────────────────────────────────────────────────
+
+Project MakeBasePalProject() {
+  Project p;
+  p.cvbs_presets.video_standard_preset = Standard::kPal;
+  p.cvbs_presets.sample_encoding_preset = "CVBS_U10_4FSC";
+  p.cvbs_presets.signal_state_preset = "STANDARD_TBC_LOCKED";
+  p.output.video_path = "/tmp/bv_test.composite";
+  p.output.metadata_path = "/tmp/bv_test.meta";
+  return p;
+}
+
+Project MakeBaseNtscProject() {
+  Project p = MakeBasePalProject();
+  p.cvbs_presets.video_standard_preset = Standard::kNtsc;
+  return p;
+}
+
+Section MakeSection(SectionType stype, int frames = 100) {
+  Section s;
+  s.name = "Section";
+  s.type = "progressive";
+  s.section_type = stype;
+  s.source = "fixture.exr";
+  s.duration_frames = frames;
+  return s;
+}
+
+Section::LineInjection MakeLaserdiscInjection(const std::string& disc_type) {
+  Section::LineInjection inj;
+  inj.type = "laserdisc";
+  inj.disc_type = disc_type;
+  return inj;
+}
+
+Section::LineInjectionCode MakeCode(const std::string& code_type) {
+  Section::LineInjectionCode c;
+  c.code_type = code_type;
+  return c;
+}
+
+// ─── Task 5.4: section_type requirement ───────────────────────────────────────
+
+TEST(BiphaseValidationTest, RequiresSectionTypeWhenDiscTypeIsPresent) {
+  // section_type defaults to kUnknown; should be rejected when disc_type set.
+  Project p = MakeBasePalProject();
+  Section s = MakeSection(SectionType::kUnknown);
+  auto inj = MakeLaserdiscInjection("CAV");
+  s.line_injections.push_back(inj);
+  p.sections.push_back(s);
+
+  ProjectValidator v;
+  const auto r = v.Validate(p);
+
+  EXPECT_FALSE(r.is_valid);
+  ASSERT_FALSE(r.errors.empty());
+  EXPECT_NE(r.errors[0].find("section_type"), std::string::npos);
+}
+
+TEST(BiphaseValidationTest, AcceptsSectionTypeLeadInWithDiscType) {
+  Project p = MakeBasePalProject();
+  Section s = MakeSection(SectionType::kLeadIn, 938);
+  auto inj = MakeLaserdiscInjection("CAV");
+  inj.codes.push_back(MakeCode("lead_in"));
+  s.line_injections.push_back(inj);
+  p.sections.push_back(s);
+
+  ProjectValidator v;
+  const auto r = v.Validate(p);
+  EXPECT_TRUE(r.is_valid) << (!r.errors.empty() ? r.errors[0] : "");
+}
+
+TEST(BiphaseValidationTest, AcceptsSectionTypeProgrammeAreaWithDiscType) {
+  Project p = MakeBasePalProject();
+  Section s = MakeSection(SectionType::kProgrammeArea);
+  auto inj = MakeLaserdiscInjection("CAV");
+  inj.codes.push_back(MakeCode("picture_number"));
+  s.line_injections.push_back(inj);
+  p.sections.push_back(s);
+
+  ProjectValidator v;
+  const auto r = v.Validate(p);
+  EXPECT_TRUE(r.is_valid) << (!r.errors.empty() ? r.errors[0] : "");
+}
+
+TEST(BiphaseValidationTest, AcceptsSectionTypeLeadOutWithDiscType) {
+  Project p = MakeBasePalProject();
+  Section s = MakeSection(SectionType::kLeadOut, 1250);
+  auto inj = MakeLaserdiscInjection("CAV");
+  inj.codes.push_back(MakeCode("lead_out"));
+  s.line_injections.push_back(inj);
+  p.sections.push_back(s);
+
+  ProjectValidator v;
+  const auto r = v.Validate(p);
+  EXPECT_TRUE(r.is_valid) << (!r.errors.empty() ? r.errors[0] : "");
+}
+
+// ─── Task 5.4: code_type / section_type compatibility matrix ─────────────────
+
+TEST(BiphaseValidationTest, RejectsLeadInCodeInProgrammeAreaSection) {
+  Project p = MakeBasePalProject();
+  Section s = MakeSection(SectionType::kProgrammeArea);
+  auto inj = MakeLaserdiscInjection("CAV");
+  inj.codes.push_back(MakeCode("lead_in"));
+  s.line_injections.push_back(inj);
+  p.sections.push_back(s);
+
+  ProjectValidator v;
+  const auto r = v.Validate(p);
+  EXPECT_FALSE(r.is_valid);
+  ASSERT_FALSE(r.errors.empty());
+  EXPECT_NE(r.errors[0].find("lead_in"), std::string::npos);
+}
+
+TEST(BiphaseValidationTest, RejectsLeadOutCodeInProgrammeAreaSection) {
+  Project p = MakeBasePalProject();
+  Section s = MakeSection(SectionType::kProgrammeArea);
+  auto inj = MakeLaserdiscInjection("CAV");
+  inj.codes.push_back(MakeCode("lead_out"));
+  s.line_injections.push_back(inj);
+  p.sections.push_back(s);
+
+  ProjectValidator v;
+  const auto r = v.Validate(p);
+  EXPECT_FALSE(r.is_valid);
+}
+
+TEST(BiphaseValidationTest, RejectsPictureNumberInLeadInSection) {
+  Project p = MakeBasePalProject();
+  Section s = MakeSection(SectionType::kLeadIn, 938);
+  auto inj = MakeLaserdiscInjection("CAV");
+  inj.codes.push_back(MakeCode("picture_number"));
+  s.line_injections.push_back(inj);
+  p.sections.push_back(s);
+
+  ProjectValidator v;
+  const auto r = v.Validate(p);
+  EXPECT_FALSE(r.is_valid);
+  ASSERT_FALSE(r.errors.empty());
+  EXPECT_NE(r.errors[0].find("picture_number"), std::string::npos);
+}
+
+TEST(BiphaseValidationTest, RejectsPictureNumberInLeadOutSection) {
+  Project p = MakeBasePalProject();
+  Section s = MakeSection(SectionType::kLeadOut, 1250);
+  auto inj = MakeLaserdiscInjection("CAV");
+  inj.codes.push_back(MakeCode("picture_number"));
+  s.line_injections.push_back(inj);
+  p.sections.push_back(s);
+
+  ProjectValidator v;
+  const auto r = v.Validate(p);
+  EXPECT_FALSE(r.is_valid);
+}
+
+TEST(BiphaseValidationTest, RejectsUsersCodeInProgrammeArea) {
+  Project p = MakeBasePalProject();
+  Section s = MakeSection(SectionType::kProgrammeArea);
+  auto inj = MakeLaserdiscInjection("CAV");
+  inj.codes.push_back(MakeCode("users_code"));
+  s.line_injections.push_back(inj);
+  p.sections.push_back(s);
+
+  ProjectValidator v;
+  const auto r = v.Validate(p);
+  EXPECT_FALSE(r.is_valid);
+  ASSERT_FALSE(r.errors.empty());
+  EXPECT_NE(r.errors[0].find("users_code"), std::string::npos);
+}
+
+TEST(BiphaseValidationTest, AcceptsUsersCodeInLeadIn) {
+  Project p = MakeBasePalProject();
+  Section s = MakeSection(SectionType::kLeadIn, 938);
+  auto inj = MakeLaserdiscInjection("CAV");
+  auto code = MakeCode("users_code");
+  code.users_code = "0x801234";
+  code.users_code_specified = true;
+  inj.codes.push_back(code);
+  inj.codes.push_back(MakeCode("lead_in"));
+  s.line_injections.push_back(inj);
+  p.sections.push_back(s);
+
+  ProjectValidator v;
+  const auto r = v.Validate(p);
+  EXPECT_TRUE(r.is_valid) << (!r.errors.empty() ? r.errors[0] : "");
+}
+
+TEST(BiphaseValidationTest, AcceptsUsersCodeInLeadOut) {
+  Project p = MakeBasePalProject();
+  Section s = MakeSection(SectionType::kLeadOut, 1250);
+  auto inj = MakeLaserdiscInjection("CAV");
+  auto code = MakeCode("users_code");
+  code.users_code = "0x801234";
+  code.users_code_specified = true;
+  inj.codes.push_back(code);
+  inj.codes.push_back(MakeCode("lead_out"));
+  s.line_injections.push_back(inj);
+  p.sections.push_back(s);
+
+  ProjectValidator v;
+  const auto r = v.Validate(p);
+  EXPECT_TRUE(r.is_valid) << (!r.errors.empty() ? r.errors[0] : "");
+}
+
+TEST(BiphaseValidationTest, AcceptsFmWhiteFlagInAllSections) {
+  // fm_white_flag is allowed in lead_in, programme_area, and lead_out on NTSC.
+  for (SectionType st :
+       {SectionType::kLeadIn, SectionType::kProgrammeArea, SectionType::kLeadOut}) {
+    Project p = MakeBaseNtscProject();
+    int frames = (st == SectionType::kLeadIn)    ? 938
+                 : (st == SectionType::kLeadOut)  ? 1250
+                                                  : 100;
+    Section s = MakeSection(st, frames);
+    auto inj = MakeLaserdiscInjection("CAV");
+    inj.codes.push_back(MakeCode("fm_white_flag"));
+    if (st == SectionType::kLeadIn) inj.codes.push_back(MakeCode("lead_in"));
+    if (st == SectionType::kLeadOut) inj.codes.push_back(MakeCode("lead_out"));
+    if (st == SectionType::kProgrammeArea)
+      inj.codes.push_back(MakeCode("picture_number"));
+    s.line_injections.push_back(inj);
+
+    // Add mandatory NTSC virs.
+    Section::LineInjection virs;
+    virs.type = "vits";
+    virs.vits_type = "virs";
+    virs.target_lines = {19, 282};
+    s.line_injections.push_back(virs);
+
+    p.sections.push_back(s);
+    ProjectValidator v;
+    const auto r = v.Validate(p);
+    EXPECT_TRUE(r.is_valid)
+        << "section_type=" << SectionTypeToString(st)
+        << (!r.errors.empty() ? ": " + r.errors[0] : "");
+  }
+}
+
+TEST(BiphaseValidationTest, RejectsProgrammeTimeCodeInLeadIn) {
+  Project p = MakeBasePalProject();
+  Section s = MakeSection(SectionType::kLeadIn, 938);
+  auto inj = MakeLaserdiscInjection("CLV");
+  inj.codes.push_back(MakeCode("programme_time_code"));
+  s.line_injections.push_back(inj);
+  p.sections.push_back(s);
+
+  ProjectValidator v;
+  const auto r = v.Validate(p);
+  EXPECT_FALSE(r.is_valid);
+  ASSERT_FALSE(r.errors.empty());
+  EXPECT_NE(r.errors[0].find("programme_time_code"), std::string::npos);
+}
+
+// ─── Task 5.5: NTSC-only FM code restrictions ─────────────────────────────────
+
+TEST(BiphaseValidationTest, RejectsFmPictureNumberOnPalProject) {
+  Project p = MakeBasePalProject();
+  Section s = MakeSection(SectionType::kProgrammeArea);
+  auto inj = MakeLaserdiscInjection("CAV");
+  inj.codes.push_back(MakeCode("fm_picture_number"));
+  inj.codes.push_back(MakeCode("picture_number"));
+  s.line_injections.push_back(inj);
+  p.sections.push_back(s);
+
+  ProjectValidator v;
+  const auto r = v.Validate(p);
+  EXPECT_FALSE(r.is_valid);
+  ASSERT_FALSE(r.errors.empty());
+  EXPECT_NE(r.errors[0].find("fm_picture_number"), std::string::npos);
+  EXPECT_NE(r.errors[0].find("NTSC"), std::string::npos);
+}
+
+TEST(BiphaseValidationTest, RejectsFmWhiteFlagOnPalProject) {
+  Project p = MakeBasePalProject();
+  Section s = MakeSection(SectionType::kProgrammeArea);
+  auto inj = MakeLaserdiscInjection("CAV");
+  inj.codes.push_back(MakeCode("fm_white_flag"));
+  inj.codes.push_back(MakeCode("picture_number"));
+  s.line_injections.push_back(inj);
+  p.sections.push_back(s);
+
+  ProjectValidator v;
+  const auto r = v.Validate(p);
+  EXPECT_FALSE(r.is_valid);
+  ASSERT_FALSE(r.errors.empty());
+  EXPECT_NE(r.errors[0].find("NTSC"), std::string::npos);
+}
+
+// ─── Task 5.5: picture_number value range ─────────────────────────────────────
+
+TEST(BiphaseValidationTest, AcceptsPalPictureNumberAtMaximum) {
+  Project p = MakeBasePalProject();
+  Section s = MakeSection(SectionType::kProgrammeArea);
+  auto inj = MakeLaserdiscInjection("CAV");
+  auto code = MakeCode("picture_number");
+  code.start_value = 99999;
+  code.start_value_specified = true;
+  inj.codes.push_back(code);
+  s.line_injections.push_back(inj);
+  p.sections.push_back(s);
+
+  ProjectValidator v;
+  const auto r = v.Validate(p);
+  EXPECT_TRUE(r.is_valid) << (!r.errors.empty() ? r.errors[0] : "");
+}
+
+TEST(BiphaseValidationTest, RejectsPalPictureNumberAboveMaximum) {
+  Project p = MakeBasePalProject();
+  Section s = MakeSection(SectionType::kProgrammeArea);
+  auto inj = MakeLaserdiscInjection("CAV");
+  auto code = MakeCode("picture_number");
+  code.start_value = 100000;
+  code.start_value_specified = true;
+  inj.codes.push_back(code);
+  s.line_injections.push_back(inj);
+  p.sections.push_back(s);
+
+  ProjectValidator v;
+  const auto r = v.Validate(p);
+  EXPECT_FALSE(r.is_valid);
+  ASSERT_FALSE(r.errors.empty());
+  EXPECT_NE(r.errors[0].find("picture_number"), std::string::npos);
+}
+
+TEST(BiphaseValidationTest, AcceptsNtscPictureNumberAtMaximum) {
+  Project p = MakeBaseNtscProject();
+  Section s = MakeSection(SectionType::kProgrammeArea);
+  auto inj = MakeLaserdiscInjection("CAV");
+  auto code = MakeCode("picture_number");
+  code.start_value = 79999;
+  code.start_value_specified = true;
+  inj.codes.push_back(code);
+  inj.codes.push_back(MakeCode("fm_picture_number"));
+  s.line_injections.push_back(inj);
+
+  Section::LineInjection virs;
+  virs.type = "vits";
+  virs.vits_type = "virs";
+  virs.target_lines = {19, 282};
+  s.line_injections.push_back(virs);
+
+  p.sections.push_back(s);
+  ProjectValidator v;
+  const auto r = v.Validate(p);
+  EXPECT_TRUE(r.is_valid) << (!r.errors.empty() ? r.errors[0] : "");
+}
+
+TEST(BiphaseValidationTest, RejectsNtscPictureNumberAboveNtscMaximum) {
+  Project p = MakeBaseNtscProject();
+  Section s = MakeSection(SectionType::kProgrammeArea);
+  auto inj = MakeLaserdiscInjection("CAV");
+  auto code = MakeCode("picture_number");
+  code.start_value = 80000;
+  code.start_value_specified = true;
+  inj.codes.push_back(code);
+  s.line_injections.push_back(inj);
+  p.sections.push_back(s);
+
+  ProjectValidator v;
+  const auto r = v.Validate(p);
+  EXPECT_FALSE(r.is_valid);
+  ASSERT_FALSE(r.errors.empty());
+  EXPECT_NE(r.errors[0].find("picture_number"), std::string::npos);
+}
+
+TEST(BiphaseValidationTest, RejectsPictureNumberBelowZero) {
+  Project p = MakeBasePalProject();
+  Section s = MakeSection(SectionType::kProgrammeArea);
+  auto inj = MakeLaserdiscInjection("CAV");
+  auto code = MakeCode("picture_number");
+  code.start_value = -1;
+  code.start_value_specified = true;
+  inj.codes.push_back(code);
+  s.line_injections.push_back(inj);
+  p.sections.push_back(s);
+
+  ProjectValidator v;
+  const auto r = v.Validate(p);
+  EXPECT_FALSE(r.is_valid);
+}
+
+// ─── Task 5.5: fm_picture_number value range ──────────────────────────────────
+
+TEST(BiphaseValidationTest, AcceptsFmPictureNumberAtMaximum) {
+  Project p = MakeBaseNtscProject();
+  Section s = MakeSection(SectionType::kProgrammeArea);
+  auto inj = MakeLaserdiscInjection("CAV");
+  auto code = MakeCode("fm_picture_number");
+  code.start_value = 79999;
+  code.start_value_specified = true;
+  inj.codes.push_back(code);
+  inj.codes.push_back(MakeCode("picture_number"));
+  s.line_injections.push_back(inj);
+
+  Section::LineInjection virs;
+  virs.type = "vits";
+  virs.vits_type = "virs";
+  virs.target_lines = {19, 282};
+  s.line_injections.push_back(virs);
+
+  p.sections.push_back(s);
+  ProjectValidator v;
+  const auto r = v.Validate(p);
+  EXPECT_TRUE(r.is_valid) << (!r.errors.empty() ? r.errors[0] : "");
+}
+
+TEST(BiphaseValidationTest, RejectsFmPictureNumberAboveMaximum) {
+  Project p = MakeBaseNtscProject();
+  Section s = MakeSection(SectionType::kProgrammeArea);
+  auto inj = MakeLaserdiscInjection("CAV");
+  auto code = MakeCode("fm_picture_number");
+  code.start_value = 80000;
+  code.start_value_specified = true;
+  inj.codes.push_back(code);
+  s.line_injections.push_back(inj);
+  p.sections.push_back(s);
+
+  ProjectValidator v;
+  const auto r = v.Validate(p);
+  EXPECT_FALSE(r.is_valid);
+  ASSERT_FALSE(r.errors.empty());
+  EXPECT_NE(r.errors[0].find("fm_picture_number"), std::string::npos);
+}
+
+// ─── Task 5.5: chapter_number range ───────────────────────────────────────────
+
+TEST(BiphaseValidationTest, AcceptsChapterNumberAtMaximum) {
+  Project p = MakeBasePalProject();
+  Section s = MakeSection(SectionType::kProgrammeArea);
+  auto inj = MakeLaserdiscInjection("CAV");
+  auto code = MakeCode("chapter_number");
+  code.chapter = 79;
+  code.chapter_specified = true;
+  inj.codes.push_back(code);
+  s.line_injections.push_back(inj);
+  p.sections.push_back(s);
+
+  ProjectValidator v;
+  const auto r = v.Validate(p);
+  EXPECT_TRUE(r.is_valid) << (!r.errors.empty() ? r.errors[0] : "");
+}
+
+TEST(BiphaseValidationTest, AcceptsChapterNumberAtZero) {
+  Project p = MakeBasePalProject();
+  Section s = MakeSection(SectionType::kProgrammeArea);
+  auto inj = MakeLaserdiscInjection("CAV");
+  auto code = MakeCode("chapter_number");
+  code.chapter = 0;
+  code.chapter_specified = true;
+  inj.codes.push_back(code);
+  s.line_injections.push_back(inj);
+  p.sections.push_back(s);
+
+  ProjectValidator v;
+  const auto r = v.Validate(p);
+  EXPECT_TRUE(r.is_valid) << (!r.errors.empty() ? r.errors[0] : "");
+}
+
+TEST(BiphaseValidationTest, RejectsChapterNumberAboveMaximum) {
+  Project p = MakeBasePalProject();
+  Section s = MakeSection(SectionType::kProgrammeArea);
+  auto inj = MakeLaserdiscInjection("CAV");
+  auto code = MakeCode("chapter_number");
+  code.chapter = 80;
+  code.chapter_specified = true;
+  inj.codes.push_back(code);
+  s.line_injections.push_back(inj);
+  p.sections.push_back(s);
+
+  ProjectValidator v;
+  const auto r = v.Validate(p);
+  EXPECT_FALSE(r.is_valid);
+  ASSERT_FALSE(r.errors.empty());
+  EXPECT_NE(r.errors[0].find("chapter"), std::string::npos);
+}
+
+TEST(BiphaseValidationTest, RejectsChapterNumberBelowZero) {
+  Project p = MakeBasePalProject();
+  Section s = MakeSection(SectionType::kProgrammeArea);
+  auto inj = MakeLaserdiscInjection("CAV");
+  auto code = MakeCode("chapter_number");
+  code.chapter = -1;
+  code.chapter_specified = true;
+  inj.codes.push_back(code);
+  s.line_injections.push_back(inj);
+  p.sections.push_back(s);
+
+  ProjectValidator v;
+  const auto r = v.Validate(p);
+  EXPECT_FALSE(r.is_valid);
+}
+
+// ─── Task 5.5: users_code X1 nibble constraint ────────────────────────────────
+
+TEST(BiphaseValidationTest, AcceptsUsersCodeWithX1EqualSeven) {
+  Project p = MakeBasePalProject();
+  Section s = MakeSection(SectionType::kLeadIn, 938);
+  auto inj = MakeLaserdiscInjection("CAV");
+  inj.codes.push_back(MakeCode("lead_in"));
+  auto code = MakeCode("users_code");
+  code.users_code = "0x871234";  // X1 = 7, valid
+  code.users_code_specified = true;
+  inj.codes.push_back(code);
+  s.line_injections.push_back(inj);
+  p.sections.push_back(s);
+
+  ProjectValidator v;
+  const auto r = v.Validate(p);
+  EXPECT_TRUE(r.is_valid) << (!r.errors.empty() ? r.errors[0] : "");
+}
+
+TEST(BiphaseValidationTest, RejectsUsersCodeWithX1EqualEight) {
+  Project p = MakeBasePalProject();
+  Section s = MakeSection(SectionType::kLeadIn, 938);
+  auto inj = MakeLaserdiscInjection("CAV");
+  inj.codes.push_back(MakeCode("lead_in"));
+  auto code = MakeCode("users_code");
+  code.users_code = "0x881234";  // X1 = 8, invalid
+  code.users_code_specified = true;
+  inj.codes.push_back(code);
+  s.line_injections.push_back(inj);
+  p.sections.push_back(s);
+
+  ProjectValidator v;
+  const auto r = v.Validate(p);
+  EXPECT_FALSE(r.is_valid);
+  ASSERT_FALSE(r.errors.empty());
+  EXPECT_NE(r.errors[0].find("X1"), std::string::npos);
+}
+
+TEST(BiphaseValidationTest, RejectsUsersCodeWithX1EqualFifteen) {
+  Project p = MakeBasePalProject();
+  Section s = MakeSection(SectionType::kLeadIn, 938);
+  auto inj = MakeLaserdiscInjection("CAV");
+  inj.codes.push_back(MakeCode("lead_in"));
+  auto code = MakeCode("users_code");
+  code.users_code = "0x8F1234";  // X1 = 15, invalid
+  code.users_code_specified = true;
+  inj.codes.push_back(code);
+  s.line_injections.push_back(inj);
+  p.sections.push_back(s);
+
+  ProjectValidator v;
+  const auto r = v.Validate(p);
+  EXPECT_FALSE(r.is_valid);
+}
+
+TEST(BiphaseValidationTest, RejectsUsersCodeWithNonHexString) {
+  Project p = MakeBasePalProject();
+  Section s = MakeSection(SectionType::kLeadIn, 938);
+  auto inj = MakeLaserdiscInjection("CAV");
+  inj.codes.push_back(MakeCode("lead_in"));
+  auto code = MakeCode("users_code");
+  code.users_code = "not_a_hex";
+  code.users_code_specified = true;
+  inj.codes.push_back(code);
+  s.line_injections.push_back(inj);
+  p.sections.push_back(s);
+
+  ProjectValidator v;
+  const auto r = v.Validate(p);
+  EXPECT_FALSE(r.is_valid);
+}
+
+TEST(BiphaseValidationTest, RejectsUsersCodeExceeding24BitRange) {
+  Project p = MakeBasePalProject();
+  Section s = MakeSection(SectionType::kLeadIn, 938);
+  auto inj = MakeLaserdiscInjection("CAV");
+  inj.codes.push_back(MakeCode("lead_in"));
+  auto code = MakeCode("users_code");
+  code.users_code = "0x1000000";  // > 0xFFFFFF
+  code.users_code_specified = true;
+  inj.codes.push_back(code);
+  s.line_injections.push_back(inj);
+  p.sections.push_back(s);
+
+  ProjectValidator v;
+  const auto r = v.Validate(p);
+  EXPECT_FALSE(r.is_valid);
+}
+
+// ─── Task 5.9/5.10: minimum section duration (CAV) ────────────────────────────
+
+TEST(BiphaseValidationTest, AcceptsLeadInWithExactMinimumFrames) {
+  Project p = MakeBasePalProject();
+  Section s = MakeSection(SectionType::kLeadIn, 938);
+  auto inj = MakeLaserdiscInjection("CAV");
+  inj.codes.push_back(MakeCode("lead_in"));
+  s.line_injections.push_back(inj);
+  p.sections.push_back(s);
+
+  ProjectValidator v;
+  const auto r = v.Validate(p);
+  EXPECT_TRUE(r.is_valid) << (!r.errors.empty() ? r.errors[0] : "");
+}
+
+TEST(BiphaseValidationTest, RejectsLeadInBelowMinimumFrames) {
+  Project p = MakeBasePalProject();
+  Section s = MakeSection(SectionType::kLeadIn, 937);  // one too few
+  auto inj = MakeLaserdiscInjection("CAV");
+  inj.codes.push_back(MakeCode("lead_in"));
+  s.line_injections.push_back(inj);
+  p.sections.push_back(s);
+
+  ProjectValidator v;
+  const auto r = v.Validate(p);
+  EXPECT_FALSE(r.is_valid);
+  ASSERT_FALSE(r.errors.empty());
+  EXPECT_NE(r.errors[0].find("lead_in"), std::string::npos);
+}
+
+TEST(BiphaseValidationTest, AcceptsLeadOutWithExactMinimumFrames) {
+  Project p = MakeBasePalProject();
+  Section s = MakeSection(SectionType::kLeadOut, 1250);
+  auto inj = MakeLaserdiscInjection("CAV");
+  inj.codes.push_back(MakeCode("lead_out"));
+  s.line_injections.push_back(inj);
+  p.sections.push_back(s);
+
+  ProjectValidator v;
+  const auto r = v.Validate(p);
+  EXPECT_TRUE(r.is_valid) << (!r.errors.empty() ? r.errors[0] : "");
+}
+
+TEST(BiphaseValidationTest, RejectsLeadOutBelowMinimumFrames) {
+  Project p = MakeBasePalProject();
+  Section s = MakeSection(SectionType::kLeadOut, 1249);  // one too few
+  auto inj = MakeLaserdiscInjection("CAV");
+  inj.codes.push_back(MakeCode("lead_out"));
+  s.line_injections.push_back(inj);
+  p.sections.push_back(s);
+
+  ProjectValidator v;
+  const auto r = v.Validate(p);
+  EXPECT_FALSE(r.is_valid);
+  ASSERT_FALSE(r.errors.empty());
+  EXPECT_NE(r.errors[0].find("lead_out"), std::string::npos);
+}
+
+TEST(BiphaseValidationTest, AcceptsLeadInWithDurationAll) {
+  // "all" semantics skip the frame-count check.
+  Project p = MakeBasePalProject();
+  Section s = MakeSection(SectionType::kLeadIn, 0);
+  s.duration_frames_all = true;
+  auto inj = MakeLaserdiscInjection("CAV");
+  inj.codes.push_back(MakeCode("lead_in"));
+  s.line_injections.push_back(inj);
+  p.sections.push_back(s);
+
+  ProjectValidator v;
+  const auto r = v.Validate(p);
+  EXPECT_TRUE(r.is_valid) << (!r.errors.empty() ? r.errors[0] : "");
+}
+
+TEST(BiphaseValidationTest, SkipsMinDurationCheckForClvLeadIn) {
+  // CLV track density varies; no minimum frame count is enforced for CLV.
+  Project p = MakeBasePalProject();
+  Section s = MakeSection(SectionType::kLeadIn, 10);  // tiny, accepted for CLV
+  auto inj = MakeLaserdiscInjection("CLV");
+  inj.codes.push_back(MakeCode("lead_in"));
+  s.line_injections.push_back(inj);
+  p.sections.push_back(s);
+
+  ProjectValidator v;
+  const auto r = v.Validate(p);
+  EXPECT_TRUE(r.is_valid) << (!r.errors.empty() ? r.errors[0] : "");
+}
+
+TEST(BiphaseValidationTest, SkipsMinDurationCheckForClvLeadOut) {
+  Project p = MakeBasePalProject();
+  Section s = MakeSection(SectionType::kLeadOut, 10);
+  auto inj = MakeLaserdiscInjection("CLV");
+  inj.codes.push_back(MakeCode("lead_out"));
+  s.line_injections.push_back(inj);
+  p.sections.push_back(s);
+
+  ProjectValidator v;
+  const auto r = v.Validate(p);
+  EXPECT_TRUE(r.is_valid) << (!r.errors.empty() ? r.errors[0] : "");
+}
+
+TEST(BiphaseValidationTest, ProgrammeAreaHasNoDurationConstraint) {
+  // Programme area sections have no IEC minimum frame count.
+  Project p = MakeBasePalProject();
+  Section s = MakeSection(SectionType::kProgrammeArea, 1);
+  auto inj = MakeLaserdiscInjection("CAV");
+  inj.codes.push_back(MakeCode("picture_number"));
+  s.line_injections.push_back(inj);
+  p.sections.push_back(s);
+
+  ProjectValidator v;
+  const auto r = v.Validate(p);
+  EXPECT_TRUE(r.is_valid) << (!r.errors.empty() ? r.errors[0] : "");
+}
+
+TEST(BiphaseValidationTest, SkipsValidationWhenDiscTypeIsAbsent) {
+  // Laserdisc injection without disc_type skips Phase-9 validation.
+  Project p = MakeBasePalProject();
+  Section s = MakeSection(SectionType::kUnknown);  // kUnknown is otherwise rejected
+  Section::LineInjection inj;
+  inj.type = "laserdisc";  // No disc_type set
+  s.line_injections.push_back(inj);
+  p.sections.push_back(s);
+
+  ProjectValidator v;
+  const auto r = v.Validate(p);
+  EXPECT_TRUE(r.is_valid) << (!r.errors.empty() ? r.errors[0] : "");
+}
+
+}  // namespace
+}  // namespace videosynth

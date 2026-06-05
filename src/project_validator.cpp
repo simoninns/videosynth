@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <cstdint>
 #include <set>
 #include <string>
 
@@ -20,11 +21,71 @@
 
 namespace {
 
+// Minimum CAV laserdisc section durations derived from IEC track-pitch limits.
+// IEC 60856/60857: lead-in ≥ 1.5 mm, lead-out ≥ 2 mm at nominal 1.6 µm pitch.
+constexpr int kLaserdiscLeadInMinFrames = 938;   // ceil(1500 µm / 1.6 µm)
+constexpr int kLaserdiscLeadOutMinFrames = 1250;  // ceil(2000 µm / 1.6 µm)
+
+// Maximum picture/timecode values per IEC 60856/60857.
+constexpr int kPalMaxPictureNumber = 99999;
+constexpr int kNtscMaxPictureNumber = 79999;
+constexpr int kMaxChapterNumber = 79;
+constexpr uint32_t kMaxUsersCodeX1Nibble = 7;
+
 std::string Lowercase(std::string value) {
   std::transform(
       value.begin(), value.end(), value.begin(),
       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
   return value;
+}
+
+// Returns true if code_type is allowed in the given section_type per IEC
+// 60856/60857 Appendix D.
+bool IsCodeTypeValidForSectionType(const std::string& code_type,
+                                   videosynth::SectionType section_type) {
+  using ST = videosynth::SectionType;
+  if (code_type == "lead_in") {
+    return section_type == ST::kLeadIn;
+  }
+  if (code_type == "lead_out") {
+    return section_type == ST::kLeadOut;
+  }
+  if (code_type == "users_code") {
+    return section_type == ST::kLeadIn || section_type == ST::kLeadOut;
+  }
+  if (code_type == "fm_white_flag") {
+    // Valid in all three section types.
+    return section_type == ST::kLeadIn || section_type == ST::kProgrammeArea ||
+           section_type == ST::kLeadOut;
+  }
+  // All remaining codes (picture_number, picture_stop, chapter_number,
+  // programme_status, programme_time_code, clv_code, clv_picture_number,
+  // fm_picture_number, fm_programme_time) are programme_area only.
+  return section_type == ST::kProgrammeArea;
+}
+
+// Returns true if code_type requires NTSC standard (IEC 60857 FM codes).
+bool IsNtscOnlyCodeType(const std::string& code_type) {
+  return code_type == "fm_picture_number" || code_type == "fm_programme_time" ||
+         code_type == "fm_white_flag";
+}
+
+// Parses a decimal or "0x"-prefixed hex string into a uint32_t.
+bool ParseHexValue(const std::string& hex_str, uint32_t* out_value) {
+  if (hex_str.empty() || out_value == nullptr) {
+    return false;
+  }
+  try {
+    std::size_t pos = 0;
+    const unsigned long val = std::stoul(hex_str, &pos, 0);
+    if (pos != hex_str.size()) {
+      return false;
+    }
+    *out_value = static_cast<uint32_t>(val);
+    return true;
+  } catch (...) {
+    return false;
+  }
 }
 
 bool EndsWith(const std::string& value, const std::string& suffix) {
@@ -328,7 +389,8 @@ void ValidateDeferredLineInjectionSupport(
 
   for (const videosynth::Section::LineInjection& injection :
        section.line_injections) {
-    if (Lowercase(injection.type) == "vits") {
+    const std::string type = Lowercase(injection.type);
+    if (type == "vits" || type == "laserdisc") {
       continue;
     }
 
@@ -424,6 +486,167 @@ bool ValidateLaserdiscInjectionStructure(const videosynth::Section& section,
             "Laserdisc injection validation error: code_type '" +
             code.code_type + "' is not valid for CLV discs.");
         return false;
+      }
+    }
+  }
+
+  return true;
+}
+
+// Validates IEC section-type compatibility, standard restrictions, minimum
+// durations, and code-parameter value ranges for laserdisc injections.
+// Only runs when disc_type is present on an injection (Phase-1 injections
+// without disc_type pass through without error).
+bool ValidateLaserdiscSectionTypeAndCodes(const videosynth::Section& section,
+                                          videosynth::Standard standard,
+                                          videosynth::ValidationResult* result) {
+  if (result == nullptr) {
+    return false;
+  }
+
+  for (const videosynth::Section::LineInjection& injection :
+       section.line_injections) {
+    if (Lowercase(injection.type) != "laserdisc") {
+      continue;
+    }
+    if (injection.disc_type.empty()) {
+      continue;
+    }
+
+    const videosynth::DiscType disc_type =
+        videosynth::DiscTypeFromString(injection.disc_type);
+
+    // 5.4: section_type must be set when disc_type is specified.
+    if (section.section_type == videosynth::SectionType::kUnknown) {
+      result->is_valid = false;
+      result->errors.push_back(
+          "Laserdisc injection validation error: section_type must be set to "
+          "'lead_in', 'programme_area', or 'lead_out' when disc_type is "
+          "specified.");
+      return false;
+    }
+
+    // 5.9/5.10: Minimum section duration for CAV discs.
+    // CLV track density varies, so frame-based minimum is not validated.
+    if (disc_type == videosynth::DiscType::kCAV &&
+        !section.duration_frames_all) {
+      if (section.section_type == videosynth::SectionType::kLeadIn &&
+          section.duration_frames < kLaserdiscLeadInMinFrames) {
+        result->is_valid = false;
+        result->errors.push_back(
+            "Laserdisc injection validation error: CAV lead_in section "
+            "requires at least " +
+            std::to_string(kLaserdiscLeadInMinFrames) +
+            " frames (IEC 1.5 mm minimum at 1.6 um track pitch); has " +
+            std::to_string(section.duration_frames) + ".");
+        return false;
+      }
+      if (section.section_type == videosynth::SectionType::kLeadOut &&
+          section.duration_frames < kLaserdiscLeadOutMinFrames) {
+        result->is_valid = false;
+        result->errors.push_back(
+            "Laserdisc injection validation error: CAV lead_out section "
+            "requires at least " +
+            std::to_string(kLaserdiscLeadOutMinFrames) +
+            " frames (IEC 2 mm minimum at 1.6 um track pitch); has " +
+            std::to_string(section.duration_frames) + ".");
+        return false;
+      }
+    }
+
+    // 5.4/5.5: Validate each code type.
+    for (const videosynth::Section::LineInjectionCode& code : injection.codes) {
+      // Section-type compatibility (IEC Appendix D matrix).
+      if (!IsCodeTypeValidForSectionType(code.code_type,
+                                         section.section_type)) {
+        result->is_valid = false;
+        result->errors.push_back(
+            "Laserdisc injection validation error: code_type '" +
+            code.code_type + "' is not allowed in '" +
+            videosynth::SectionTypeToString(section.section_type) +
+            "' sections.");
+        return false;
+      }
+
+      // Standard restriction: FM codes require NTSC.
+      if (IsNtscOnlyCodeType(code.code_type) &&
+          standard != videosynth::Standard::kNtsc) {
+        result->is_valid = false;
+        result->errors.push_back(
+            "Laserdisc injection validation error: code_type '" +
+            code.code_type + "' is only valid for NTSC projects.");
+        return false;
+      }
+
+      // 5.5: picture_number value range (IEC 60856/60857).
+      if (code.code_type == "picture_number" && code.start_value_specified) {
+        const int max_pn = (standard == videosynth::Standard::kNtsc)
+                               ? kNtscMaxPictureNumber
+                               : kPalMaxPictureNumber;
+        if (code.start_value < 0 || code.start_value > max_pn) {
+          result->is_valid = false;
+          result->errors.push_back(
+              "Laserdisc injection validation error: picture_number "
+              "start_value must be in the range 0-" +
+              std::to_string(max_pn) + " for " +
+              videosynth::StandardToString(standard) + "; got " +
+              std::to_string(code.start_value) + ".");
+          return false;
+        }
+      }
+
+      // 5.5: fm_picture_number value range (IEC 60857 Amendment 2 §10.2.3).
+      if (code.code_type == "fm_picture_number" && code.start_value_specified) {
+        if (code.start_value < 0 || code.start_value > kNtscMaxPictureNumber) {
+          result->is_valid = false;
+          result->errors.push_back(
+              "Laserdisc injection validation error: fm_picture_number "
+              "start_value must be in the range 0-" +
+              std::to_string(kNtscMaxPictureNumber) + "; got " +
+              std::to_string(code.start_value) + ".");
+          return false;
+        }
+      }
+
+      // 5.5: chapter_number range (IEC 60856/60857: max 79 chapters).
+      if (code.code_type == "chapter_number" && code.chapter_specified) {
+        if (code.chapter < 0 || code.chapter > kMaxChapterNumber) {
+          result->is_valid = false;
+          result->errors.push_back(
+              "Laserdisc injection validation error: chapter_number chapter "
+              "must be in the range 0-" +
+              std::to_string(kMaxChapterNumber) + "; got " +
+              std::to_string(code.chapter) + ".");
+          return false;
+        }
+      }
+
+      // 5.5: users_code X1 nibble constraint (IEC 60856/60857: X1 = 0-7).
+      if (code.code_type == "users_code" && code.users_code_specified) {
+        uint32_t hex_value = 0;
+        if (!ParseHexValue(code.users_code, &hex_value)) {
+          result->is_valid = false;
+          result->errors.push_back(
+              "Laserdisc injection validation error: users_code '" +
+              code.users_code + "' is not a valid hex value.");
+          return false;
+        }
+        if (hex_value > 0xFFFFFFu) {
+          result->is_valid = false;
+          result->errors.push_back(
+              "Laserdisc injection validation error: users_code '" +
+              code.users_code + "' exceeds 24-bit range (max 0xFFFFFF).");
+          return false;
+        }
+        const uint32_t x1 = (hex_value >> 16u) & 0x0Fu;
+        if (x1 > kMaxUsersCodeX1Nibble) {
+          result->is_valid = false;
+          result->errors.push_back(
+              "Laserdisc injection validation error: users_code X1 nibble "
+              "must be 0-7; '" +
+              code.users_code + "' has X1=" + std::to_string(x1) + ".");
+          return false;
+        }
       }
     }
   }
@@ -545,6 +768,8 @@ bool ValidateLineInjectionsForSection(const videosynth::Section& section,
   }
 
   if (has_laserdisc_injection) {
+    // 5.11/5.12: All non-laserdisc injections must not target laserdisc
+    // reserved VBI lines.
     for (const videosynth::Section::LineInjection& injection :
          section.line_injections) {
       if (Lowercase(injection.type) == "laserdisc") {
@@ -561,6 +786,26 @@ bool ValidateLineInjectionsForSection(const videosynth::Section& section,
               videosynth::StandardToString(standard) + ".");
           return false;
         }
+      }
+    }
+
+    // 5.13: NTSC laserdisc sections require a virs VITS injection for colour
+    // (IEC 60857 §9.1.3).
+    if (standard == videosynth::Standard::kNtsc) {
+      bool has_virs = false;
+      for (const videosynth::Section::LineInjection& injection :
+           section.line_injections) {
+        if (Lowercase(injection.type) == "vits" && injection.vits_type == "virs") {
+          has_virs = true;
+          break;
+        }
+      }
+      if (!has_virs) {
+        result->is_valid = false;
+        result->errors.push_back(
+            "Line injection validation error: NTSC laserdisc sections require "
+            "a virs VITS injection for colour (IEC 60857 §9.1.3).");
+        return false;
       }
     }
   }
@@ -668,6 +913,11 @@ ValidationResult ProjectValidator::Validate(const Project& project) {
 
     if (section.type == "progressive") {
       if (!ValidateLaserdiscInjectionStructure(section, &result)) {
+        break;
+      }
+
+      if (!ValidateLaserdiscSectionTypeAndCodes(
+              section, project.cvbs_presets.video_standard_preset, &result)) {
         break;
       }
 

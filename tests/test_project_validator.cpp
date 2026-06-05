@@ -227,7 +227,9 @@ TEST(ProjectValidatorTest, AcceptsVitsLineInjectionsForImplementedRuntimePath) {
   EXPECT_TRUE(result.errors.empty());
 }
 
-TEST(ProjectValidatorTest, RejectsUnimplementedLaserdiscLineInjectionType) {
+TEST(ProjectValidatorTest, AcceptsLaserdiscInjectionWithoutDiscTypeField) {
+  // Bare laserdisc injection with no disc_type: structurally valid and now
+  // fully implemented via BiphaseInjectionManager.
   Project project = MakeValidProject();
   Section::LineInjection injection;
   injection.type = "laserdisc";
@@ -236,11 +238,8 @@ TEST(ProjectValidatorTest, RejectsUnimplementedLaserdiscLineInjectionType) {
   ProjectValidator validator;
   const ValidationResult result = validator.Validate(project);
 
-  EXPECT_FALSE(result.is_valid);
-  ASSERT_EQ(result.errors.size(), 1U);
-  EXPECT_EQ(result.errors[0],
-            "MVP constraint violation: line injection type 'laserdisc' is not "
-            "implemented in the current runtime.");
+  EXPECT_TRUE(result.is_valid);
+  EXPECT_TRUE(result.errors.empty());
 }
 
 TEST(ProjectValidatorTest, RejectsVitsInjectionWithoutTargetLines) {
@@ -723,6 +722,7 @@ TEST(ProjectValidatorTest, PropagatesProgressiveProbeErrorMessage) {
 
 TEST(ProjectValidatorTest, AcceptsLaserdiscInjectionWithValidCavDiscType) {
   Project project = MakeValidProject();
+  project.sections[0].section_type = SectionType::kProgrammeArea;
   Section::LineInjection injection;
   injection.type = "laserdisc";
   injection.disc_type = "CAV";
@@ -736,15 +736,13 @@ TEST(ProjectValidatorTest, AcceptsLaserdiscInjectionWithValidCavDiscType) {
   ProjectValidator validator;
   const ValidationResult result = validator.Validate(project);
 
-  EXPECT_FALSE(result.is_valid);
-  ASSERT_FALSE(result.errors.empty());
-  EXPECT_EQ(result.errors[0],
-            "MVP constraint violation: line injection type 'laserdisc' is not "
-            "implemented in the current runtime.");
+  EXPECT_TRUE(result.is_valid);
+  EXPECT_TRUE(result.errors.empty());
 }
 
 TEST(ProjectValidatorTest, AcceptsLaserdiscInjectionWithValidClvDiscType) {
   Project project = MakeValidProject();
+  project.sections[0].section_type = SectionType::kProgrammeArea;
   Section::LineInjection injection;
   injection.type = "laserdisc";
   injection.disc_type = "CLV";
@@ -756,11 +754,8 @@ TEST(ProjectValidatorTest, AcceptsLaserdiscInjectionWithValidClvDiscType) {
   ProjectValidator validator;
   const ValidationResult result = validator.Validate(project);
 
-  EXPECT_FALSE(result.is_valid);
-  ASSERT_FALSE(result.errors.empty());
-  EXPECT_EQ(result.errors[0],
-            "MVP constraint violation: line injection type 'laserdisc' is not "
-            "implemented in the current runtime.");
+  EXPECT_TRUE(result.is_valid);
+  EXPECT_TRUE(result.errors.empty());
 }
 
 TEST(ProjectValidatorTest, RejectsLaserdiscInjectionWithUnknownDiscType) {
