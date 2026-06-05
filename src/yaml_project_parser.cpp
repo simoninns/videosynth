@@ -97,7 +97,8 @@ bool ParseLineInjectionCodes(const YAML::Node& codes_node,
     }
 
     const std::set<std::string> code_keys = {"code_type", "start_value",
-                                             "chapter", "programme_status"};
+                                             "chapter", "programme_status",
+                                             "users_code"};
     ValidateAllowedKeys(code_node, code_keys, "line_injections[].codes[]",
                         errors);
     if (!errors->empty()) {
@@ -123,6 +124,10 @@ bool ParseLineInjectionCodes(const YAML::Node& codes_node,
     if (code_node["programme_status"]) {
       code.programme_status = code_node["programme_status"].as<std::string>("");
       code.programme_status_specified = true;
+    }
+    if (code_node["users_code"]) {
+      code.users_code = code_node["users_code"].as<std::string>("");
+      code.users_code_specified = true;
     }
 
     injection->codes.push_back(code);

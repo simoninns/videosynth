@@ -14,6 +14,7 @@ find_package(OpenEXR REQUIRED)
 
 add_library(videosynth_core
     src/biphase_encoder.cpp
+    src/cav_code_generator.cpp
     src/fm_encoder.cpp
     src/chroma_encoder.cpp
     src/progressive_frame_source.cpp
@@ -56,6 +57,7 @@ enable_testing()
 add_executable(videosynth_tests
     tests/test_active_sample_mapping.cpp
     tests/test_biphase_encoder.cpp
+    tests/test_cav_code_generators.cpp
     tests/test_fm_encoder.cpp
     tests/test_chroma_encoder.cpp
     tests/test_compliance_harness.cpp
@@ -106,6 +108,7 @@ set(videosynth_unit_test_patterns
     "^ActiveSampleMappingTest\\."
     "^BiphaseEncoderTest\\."
     "^BiphaseUtilsTest\\."
+    "^CavCodeGeneratorTest\\."
     "^FmEncoderTest\\."
     "^ChromaEncoderTest\\."
     "^PipelineTest\\."

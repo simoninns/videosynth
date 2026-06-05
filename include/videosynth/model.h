@@ -104,6 +104,8 @@ struct Section {
     bool chapter_specified = false;
     std::string programme_status;
     bool programme_status_specified = false;
+    std::string users_code;
+    bool users_code_specified = false;
   };
 
   struct LineInjection {
