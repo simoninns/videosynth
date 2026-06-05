@@ -64,7 +64,9 @@
 
 ### 4.1 Baseline & Tooling
 - Follow the [Google C++ Style Guide](https://google.github.io/styleguide/cppguide.html).
-- Verify compliance: `clang-format --style=Google`.
+- **After writing or editing any C++ file**, run `clang-format -i --style=Google <file>` before considering the task complete.
+- **Never** use manual column-alignment (e.g. double-spacing before `=`, aligning continuation lines to opening parentheses) — clang-format will undo these and leave violations.
+- Verify compliance before finishing: `clang-format --style=Google --dry-run -Werror <file>` must produce no errors.
 - Use static analysers (`clang-tidy`) and sanitizers where available in the Nix environment.
 
 ### 4.2 Source File Headers

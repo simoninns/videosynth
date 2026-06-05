@@ -76,8 +76,7 @@ class FmEncoder {
   //   bit_cell_duration_us:   Bit cell duration in microseconds (default 2.0).
   //   transition_duration_ns: 10%-90% transition time in nanoseconds
   //                            (default 135.0 for 40-bit FM).
-  explicit FmEncoder(double sample_rate_hz,
-                     double bit_cell_duration_us = 2.0,
+  explicit FmEncoder(double sample_rate_hz, double bit_cell_duration_us = 2.0,
                      double transition_duration_ns = 135.0);
 
   // Returns samples for the raw 40-bit FM waveform (no line padding).
@@ -96,7 +95,8 @@ class FmEncoder {
   // Returns samples for a full video line with the 40-bit FM signal at the
   // start. The remainder of the buffer is filled with baseline_level_mv.
   //
-  // The returned vector length equals GetTimingConstants(standard).samples_per_line_4fsc.
+  // The returned vector length equals
+  // GetTimingConstants(standard).samples_per_line_4fsc.
   //
   // Args:
   //   data:               FM payload — field indicator and data nibbles X1-X5.
@@ -111,7 +111,8 @@ class FmEncoder {
   // Returns samples for a full video line at constant 100 IRE (white flag).
   //
   // The entire line is filled with peak_level_mv per IEC 60857 §10.2.1.
-  // The returned vector length equals GetTimingConstants(standard).samples_per_line_4fsc.
+  // The returned vector length equals
+  // GetTimingConstants(standard).samples_per_line_4fsc.
   //
   // Args:
   //   standard:       PAL or NTSC (determines line buffer length).
@@ -138,8 +139,8 @@ class FmEncoder {
   // rising == true:  baseline_level_mv → peak_level_mv
   // rising == false: peak_level_mv → baseline_level_mv
   void ApplyStepTransition(std::vector<double>& samples, int center_sample,
-                            bool rising, double baseline_level_mv,
-                            double peak_level_mv) const;
+                           bool rising, double baseline_level_mv,
+                           double peak_level_mv) const;
 
   // Encodes `bits` as a Manchester waveform with IEC-compliant inter-bit
   // transitions. Returns 40 * bit_cell_samples() samples.

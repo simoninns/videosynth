@@ -138,48 +138,47 @@ TEST(CavCodeGeneratorTest, EncodedPictureNumberHasValidKeyNibble) {
 // ---------------------------------------------------------------------------
 
 TEST(CavCodeGeneratorTest, PictureNumberZeroIsValidForPal) {
-  EXPECT_TRUE(CavPictureNumberGenerator::IsValidPictureNumber(
-      0, Standard::kPal));
+  EXPECT_TRUE(
+      CavPictureNumberGenerator::IsValidPictureNumber(0, Standard::kPal));
 }
 
 TEST(CavCodeGeneratorTest, PictureNumberZeroIsValidForNtsc) {
-  EXPECT_TRUE(CavPictureNumberGenerator::IsValidPictureNumber(
-      0, Standard::kNtsc));
+  EXPECT_TRUE(
+      CavPictureNumberGenerator::IsValidPictureNumber(0, Standard::kNtsc));
 }
 
 TEST(CavCodeGeneratorTest, PictureNumber99999IsValidForPal) {
-  EXPECT_TRUE(CavPictureNumberGenerator::IsValidPictureNumber(
-      99999, Standard::kPal));
+  EXPECT_TRUE(
+      CavPictureNumberGenerator::IsValidPictureNumber(99999, Standard::kPal));
 }
 
 TEST(CavCodeGeneratorTest, PictureNumber100000IsInvalidForPal) {
-  EXPECT_FALSE(CavPictureNumberGenerator::IsValidPictureNumber(
-      100000, Standard::kPal));
+  EXPECT_FALSE(
+      CavPictureNumberGenerator::IsValidPictureNumber(100000, Standard::kPal));
 }
 
 TEST(CavCodeGeneratorTest, PictureNumber79999IsValidForNtsc) {
-  EXPECT_TRUE(CavPictureNumberGenerator::IsValidPictureNumber(
-      79999, Standard::kNtsc));
+  EXPECT_TRUE(
+      CavPictureNumberGenerator::IsValidPictureNumber(79999, Standard::kNtsc));
 }
 
 TEST(CavCodeGeneratorTest, PictureNumber80000IsInvalidForNtsc) {
-  EXPECT_FALSE(CavPictureNumberGenerator::IsValidPictureNumber(
-      80000, Standard::kNtsc));
+  EXPECT_FALSE(
+      CavPictureNumberGenerator::IsValidPictureNumber(80000, Standard::kNtsc));
 }
 
 TEST(CavCodeGeneratorTest, PictureNumber99999IsInvalidForNtsc) {
-  EXPECT_FALSE(CavPictureNumberGenerator::IsValidPictureNumber(
-      99999, Standard::kNtsc));
+  EXPECT_FALSE(
+      CavPictureNumberGenerator::IsValidPictureNumber(99999, Standard::kNtsc));
 }
 
 TEST(CavCodeGeneratorTest, NegativePictureNumberIsInvalid) {
-  EXPECT_FALSE(CavPictureNumberGenerator::IsValidPictureNumber(
-      -1, Standard::kPal));
+  EXPECT_FALSE(
+      CavPictureNumberGenerator::IsValidPictureNumber(-1, Standard::kPal));
 }
 
 TEST(CavCodeGeneratorTest, PalMaxPictureNumberIs99999) {
-  EXPECT_EQ(CavPictureNumberGenerator::MaxPictureNumber(Standard::kPal),
-            99999);
+  EXPECT_EQ(CavPictureNumberGenerator::MaxPictureNumber(Standard::kPal), 99999);
 }
 
 TEST(CavCodeGeneratorTest, NtscMaxPictureNumberIs79999) {
@@ -319,8 +318,10 @@ TEST(CavCodeGeneratorTest, EncodeChapter79StopBitTrue) {
 TEST(CavCodeGeneratorTest, EncodedChapterCodeHasDddPattern) {
   // Bits 11-0 of the encoded chapter code must always be 0xDDD.
   for (int ch = 0; ch <= 79; ++ch) {
-    const uint32_t code_zero = ChapterNumberGenerator::EncodeChapterCode(ch, false);
-    const uint32_t code_one = ChapterNumberGenerator::EncodeChapterCode(ch, true);
+    const uint32_t code_zero =
+        ChapterNumberGenerator::EncodeChapterCode(ch, false);
+    const uint32_t code_one =
+        ChapterNumberGenerator::EncodeChapterCode(ch, true);
     EXPECT_EQ(code_zero & 0x000FFFu, 0x000DDDu) << "chapter=" << ch;
     EXPECT_EQ(code_one & 0x000FFFu, 0x000DDDu) << "chapter=" << ch;
   }

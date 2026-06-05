@@ -27,9 +27,9 @@ namespace {
 // ---------------------------------------------------------------------------
 
 constexpr double kNtscSampleRate = 14318180.0;
-constexpr double kPalSampleRate  = 17734475.0;
-constexpr double kBaseline       = 0.0;    // 0 IRE in mV
-constexpr double kPeak           = 714.3;  // 100 IRE in mV
+constexpr double kPalSampleRate = 17734475.0;
+constexpr double kBaseline = 0.0;  // 0 IRE in mV
+constexpr double kPeak = 714.3;    // 100 IRE in mV
 
 // Returns a zero-data FmData with field_one set as specified.
 FmData ZeroData(bool field_one = false) {
@@ -37,33 +37,39 @@ FmData ZeroData(bool field_one = false) {
 }
 
 // Returns the value at the first quarter of bit cell `bit_idx` in `samples`.
-double FirstQuarterLevel(const std::vector<SampleFixed>& samples,
-                          int bit_idx, int bit_cell_samples) {
+double FirstQuarterLevel(const std::vector<SampleFixed>& samples, int bit_idx,
+                         int bit_cell_samples) {
   const int start = bit_idx * bit_cell_samples;
   const int quarter = bit_cell_samples / 4;
   // Average over the stable first-quarter region (a few samples in).
   double sum = 0.0;
   int count = 0;
-  for (int i = start + 1; i < start + quarter - 1 && i < static_cast<int>(samples.size()); ++i) {
+  for (int i = start + 1;
+       i < start + quarter - 1 && i < static_cast<int>(samples.size()); ++i) {
     sum += SampleFixedToMillivolts(samples[static_cast<std::size_t>(i)]);
     ++count;
   }
-  return count > 0 ? sum / count : SampleFixedToMillivolts(samples[static_cast<std::size_t>(start)]);
+  return count > 0 ? sum / count
+                   : SampleFixedToMillivolts(
+                         samples[static_cast<std::size_t>(start)]);
 }
 
 // Returns the value at the last quarter of bit cell `bit_idx` in `samples`.
-double LastQuarterLevel(const std::vector<SampleFixed>& samples,
-                         int bit_idx, int bit_cell_samples) {
+double LastQuarterLevel(const std::vector<SampleFixed>& samples, int bit_idx,
+                        int bit_cell_samples) {
   const int start = bit_idx * bit_cell_samples;
   const int three_quarters = (3 * bit_cell_samples) / 4;
   const int end = start + bit_cell_samples;
   double sum = 0.0;
   int count = 0;
-  for (int i = start + three_quarters + 1; i < end - 1 && i < static_cast<int>(samples.size()); ++i) {
+  for (int i = start + three_quarters + 1;
+       i < end - 1 && i < static_cast<int>(samples.size()); ++i) {
     sum += SampleFixedToMillivolts(samples[static_cast<std::size_t>(i)]);
     ++count;
   }
-  return count > 0 ? sum / count : SampleFixedToMillivolts(samples[static_cast<std::size_t>(end - 1)]);
+  return count > 0 ? sum / count
+                   : SampleFixedToMillivolts(
+                         samples[static_cast<std::size_t>(end - 1)]);
 }
 
 // ---------------------------------------------------------------------------
@@ -98,7 +104,7 @@ TEST(FmEncoderTest, RampSamplesPositiveForPal4Fsc) {
 // 24-bit biphase uses 225 ns.  At the same NTSC sample rate, the FM ramp must
 // be strictly narrower.
 TEST(FmEncoderTest, FmRampSamplesNarrowerThanBiphaseRampAtNtsc) {
-  const FmEncoder     fm_enc(kNtscSampleRate);
+  const FmEncoder fm_enc(kNtscSampleRate);
   const BiphaseEncoder bi_enc(kNtscSampleRate);  // default 225 ns
   EXPECT_LT(fm_enc.ramp_samples(), bi_enc.ramp_samples());
 }
@@ -214,9 +220,9 @@ TEST(FmEncoderTest, ParityIsOddOverBits0To32) {
   // Verify odd parity property holds for a variety of payloads.
   const std::vector<FmData> payloads = {
       {false, 0x0, 0x0, 0x0, 0x0, 0x0},
-      {true,  0x5, 0x3, 0xA, 0x1, 0x7},
+      {true, 0x5, 0x3, 0xA, 0x1, 0x7},
       {false, 0xF, 0xF, 0xF, 0xF, 0xF},
-      {true,  0x1, 0x2, 0x3, 0x4, 0x5},
+      {true, 0x1, 0x2, 0x3, 0x4, 0x5},
   };
   for (const auto& payload : payloads) {
     const auto bits = FmEncoder::BuildBitPattern(payload);
@@ -234,8 +240,7 @@ TEST(FmEncoderTest, ParityIsOddOverBits0To32) {
 
 TEST(FmEncoderTest, Generate40BitWaveformHasCorrectSampleCount) {
   const FmEncoder enc(kNtscSampleRate);
-  const auto samples =
-      enc.Generate40BitWaveform(ZeroData(), kBaseline, kPeak);
+  const auto samples = enc.Generate40BitWaveform(ZeroData(), kBaseline, kPeak);
   EXPECT_EQ(static_cast<int>(samples.size()), 40 * enc.bit_cell_samples());
 }
 
@@ -243,14 +248,17 @@ TEST(FmEncoderTest, Generate40BitWaveformHasCorrectSampleCount) {
 TEST(FmEncoderTest, BitZeroIsClockSyncZeroStartsAtPeak) {
   const FmEncoder enc(kNtscSampleRate);
   const auto samples = enc.Generate40BitWaveform(ZeroData(), kBaseline, kPeak);
-  EXPECT_NEAR(FirstQuarterLevel(samples, 0, enc.bit_cell_samples()), kPeak, 1.0);
+  EXPECT_NEAR(FirstQuarterLevel(samples, 0, enc.bit_cell_samples()), kPeak,
+              1.0);
 }
 
-// Bit [2] = 1 (clock sync '1'): first quarter of bit cell 2 must be at baseline.
+// Bit [2] = 1 (clock sync '1'): first quarter of bit cell 2 must be at
+// baseline.
 TEST(FmEncoderTest, BitTwoIsClockSyncOneStartsAtBaseline) {
   const FmEncoder enc(kNtscSampleRate);
   const auto samples = enc.Generate40BitWaveform(ZeroData(), kBaseline, kPeak);
-  EXPECT_NEAR(FirstQuarterLevel(samples, 2, enc.bit_cell_samples()), kBaseline, 1.0);
+  EXPECT_NEAR(FirstQuarterLevel(samples, 2, enc.bit_cell_samples()), kBaseline,
+              1.0);
 }
 
 // Bit [5] = 1 (leading recognition '1'): last quarter of bit cell 5 at peak.
@@ -260,11 +268,13 @@ TEST(FmEncoderTest, BitFiveIsLeadingRecognitionOneEndsAtPeak) {
   EXPECT_NEAR(LastQuarterLevel(samples, 5, enc.bit_cell_samples()), kPeak, 1.0);
 }
 
-// Bit [8] = 0 (leading recognition '0'): last quarter of bit cell 8 at baseline.
+// Bit [8] = 0 (leading recognition '0'): last quarter of bit cell 8 at
+// baseline.
 TEST(FmEncoderTest, BitEightIsLeadingRecognitionZeroEndsAtBaseline) {
   const FmEncoder enc(kNtscSampleRate);
   const auto samples = enc.Generate40BitWaveform(ZeroData(), kBaseline, kPeak);
-  EXPECT_NEAR(LastQuarterLevel(samples, 8, enc.bit_cell_samples()), kBaseline, 1.0);
+  EXPECT_NEAR(LastQuarterLevel(samples, 8, enc.bit_cell_samples()), kBaseline,
+              1.0);
 }
 
 // Field indicator bit [4] = 1 when field_one=true.
@@ -273,7 +283,8 @@ TEST(FmEncoderTest, FieldOneTrueMakesBit4AOneCell) {
   const auto samples =
       enc.Generate40BitWaveform(FmData{true, 0, 0, 0, 0, 0}, kBaseline, kPeak);
   // A '1' bit: first quarter at baseline.
-  EXPECT_NEAR(FirstQuarterLevel(samples, 4, enc.bit_cell_samples()), kBaseline, 1.0);
+  EXPECT_NEAR(FirstQuarterLevel(samples, 4, enc.bit_cell_samples()), kBaseline,
+              1.0);
 }
 
 // Field indicator bit [4] = 0 when field_one=false.
@@ -282,35 +293,39 @@ TEST(FmEncoderTest, FieldOneFalseMakesBit4AZeroCell) {
   const auto samples =
       enc.Generate40BitWaveform(FmData{false, 0, 0, 0, 0, 0}, kBaseline, kPeak);
   // A '0' bit: first quarter at peak.
-  EXPECT_NEAR(FirstQuarterLevel(samples, 4, enc.bit_cell_samples()), kPeak, 1.0);
+  EXPECT_NEAR(FirstQuarterLevel(samples, 4, enc.bit_cell_samples()), kPeak,
+              1.0);
 }
 
 // Trailing recognition bit [36] = 1.
 TEST(FmEncoderTest, TrailingBit36IsOneCell) {
   const FmEncoder enc(kNtscSampleRate);
   const auto samples = enc.Generate40BitWaveform(ZeroData(), kBaseline, kPeak);
-  EXPECT_NEAR(FirstQuarterLevel(samples, 36, enc.bit_cell_samples()), kBaseline, 1.0);
+  EXPECT_NEAR(FirstQuarterLevel(samples, 36, enc.bit_cell_samples()), kBaseline,
+              1.0);
 }
 
 // Trailing recognition bit [35] = 0.
 TEST(FmEncoderTest, TrailingBit35IsZeroCell) {
   const FmEncoder enc(kNtscSampleRate);
   const auto samples = enc.Generate40BitWaveform(ZeroData(), kBaseline, kPeak);
-  EXPECT_NEAR(FirstQuarterLevel(samples, 35, enc.bit_cell_samples()), kPeak, 1.0);
+  EXPECT_NEAR(FirstQuarterLevel(samples, 35, enc.bit_cell_samples()), kPeak,
+              1.0);
 }
 
 // Trailing recognition bit [39] = 1 (last bit of pattern).
 TEST(FmEncoderTest, TrailingBit39IsOneCell) {
   const FmEncoder enc(kNtscSampleRate);
   const auto samples = enc.Generate40BitWaveform(ZeroData(), kBaseline, kPeak);
-  EXPECT_NEAR(LastQuarterLevel(samples, 39, enc.bit_cell_samples()), kPeak, 1.0);
+  EXPECT_NEAR(LastQuarterLevel(samples, 39, enc.bit_cell_samples()), kPeak,
+              1.0);
 }
 
 // X5 = 0x5 = 0101 → bit[12]=1 (LSB), bit[13]=0, bit[14]=1, bit[15]=0
 TEST(FmEncoderTest, X5NibbleEncodedCorrectlyInWaveform) {
   const FmEncoder enc(kNtscSampleRate);
-  const auto samples =
-      enc.Generate40BitWaveform(FmData{false, 0, 0, 0, 0, 0x05}, kBaseline, kPeak);
+  const auto samples = enc.Generate40BitWaveform(
+      FmData{false, 0, 0, 0, 0, 0x05}, kBaseline, kPeak);
   const int bcs = enc.bit_cell_samples();
   // bit[12] = 1 → starts at baseline
   EXPECT_NEAR(FirstQuarterLevel(samples, 12, bcs), kBaseline, 1.0);
@@ -325,8 +340,8 @@ TEST(FmEncoderTest, X5NibbleEncodedCorrectlyInWaveform) {
 // X1 = 0x9 = 1001 → bit[28]=1 (LSB), bit[29]=0, bit[30]=0, bit[31]=1
 TEST(FmEncoderTest, X1NibbleEncodedCorrectlyInWaveform) {
   const FmEncoder enc(kNtscSampleRate);
-  const auto samples =
-      enc.Generate40BitWaveform(FmData{false, 0x09, 0, 0, 0, 0}, kBaseline, kPeak);
+  const auto samples = enc.Generate40BitWaveform(
+      FmData{false, 0x09, 0, 0, 0, 0}, kBaseline, kPeak);
   const int bcs = enc.bit_cell_samples();
   // bit[28] = 1 → starts at baseline
   EXPECT_NEAR(FirstQuarterLevel(samples, 28, bcs), kBaseline, 1.0);
@@ -338,9 +353,9 @@ TEST(FmEncoderTest, X1NibbleEncodedCorrectlyInWaveform) {
   EXPECT_NEAR(FirstQuarterLevel(samples, 31, bcs), kBaseline, 1.0);
 }
 
-// Inter-bit transition: bits [0,1] are both '0' → rising transition at boundary.
-// Before the boundary (end of cell 0): near baseline.
-// After the boundary (start of cell 1): near peak.
+// Inter-bit transition: bits [0,1] are both '0' → rising transition at
+// boundary. Before the boundary (end of cell 0): near baseline. After the
+// boundary (start of cell 1): near peak.
 TEST(FmEncoderTest, ConsecutiveZeroBitsHaveRisingInterBitTransition) {
   const FmEncoder enc(kNtscSampleRate);
   const auto samples = enc.Generate40BitWaveform(ZeroData(), kBaseline, kPeak);
@@ -350,10 +365,12 @@ TEST(FmEncoderTest, ConsecutiveZeroBitsHaveRisingInterBitTransition) {
   // Bits [0,1] are both '0'. Before boundary: baseline. After: peak.
   const int pre_idx = boundary - ramp - 1;
   const int post_idx = boundary + ramp + 1;
-  EXPECT_NEAR(SampleFixedToMillivolts(samples[static_cast<std::size_t>(pre_idx)]),
-              kBaseline, 1.0);
-  EXPECT_NEAR(SampleFixedToMillivolts(samples[static_cast<std::size_t>(post_idx)]),
-              kPeak, 1.0);
+  EXPECT_NEAR(
+      SampleFixedToMillivolts(samples[static_cast<std::size_t>(pre_idx)]),
+      kBaseline, 1.0);
+  EXPECT_NEAR(
+      SampleFixedToMillivolts(samples[static_cast<std::size_t>(post_idx)]),
+      kPeak, 1.0);
 }
 
 // Bits [2,3] are both '1' → falling inter-bit transition at boundary.
@@ -366,10 +383,12 @@ TEST(FmEncoderTest, ConsecutiveOneBitsHaveFallingInterBitTransition) {
   const int boundary = 3 * bcs;
   const int pre_idx = boundary - ramp - 1;
   const int post_idx = boundary + ramp + 1;
-  EXPECT_NEAR(SampleFixedToMillivolts(samples[static_cast<std::size_t>(pre_idx)]),
-              kPeak, 1.0);
-  EXPECT_NEAR(SampleFixedToMillivolts(samples[static_cast<std::size_t>(post_idx)]),
-              kBaseline, 1.0);
+  EXPECT_NEAR(
+      SampleFixedToMillivolts(samples[static_cast<std::size_t>(pre_idx)]),
+      kPeak, 1.0);
+  EXPECT_NEAR(
+      SampleFixedToMillivolts(samples[static_cast<std::size_t>(post_idx)]),
+      kBaseline, 1.0);
 }
 
 // ---------------------------------------------------------------------------
@@ -443,7 +462,8 @@ TEST(FmEncoderTest, GenerateWhiteFlagWorksWithDifferentPeakLevel) {
 }
 
 // ---------------------------------------------------------------------------
-// FmEncoderTest — picture number encoding (fm_picture_number, IEC 60857 §10.2.3)
+// FmEncoderTest — picture number encoding (fm_picture_number, IEC 60857
+// §10.2.3)
 // ---------------------------------------------------------------------------
 
 // fm_picture_number = 12345: X1=1, X2=2, X3=3, X4=4, X5=5
@@ -499,7 +519,8 @@ TEST(FmEncoderTest, ModeIndicatorALeadInEncodesCorrectly) {
   EXPECT_TRUE(bits[15]);
 }
 
-// X5 = 0xD (mode D = picture/active programme): 0xD = 1101 → LSB first: 1, 0, 1, 1
+// X5 = 0xD (mode D = picture/active programme): 0xD = 1101 → LSB first: 1, 0,
+// 1, 1
 TEST(FmEncoderTest, ModeIndicatorDPictureEncodesCorrectly) {
   const auto bits = FmEncoder::BuildBitPattern(FmData{false, 0, 0, 0, 0, 0x0D});
   // 0xD = 1101 → LSB first: 1, 0, 1, 1

@@ -32,8 +32,8 @@ constexpr int kLargePulseWidth = 10000;
 BiphaseEncoder::BiphaseEncoder(double sample_rate_hz,
                                double bit_cell_duration_us,
                                double transition_duration_ns)
-    : ramp_samples_(TransitionTimeToRampSamples(
-          transition_duration_ns * 1.0e-9, sample_rate_hz, 0.1, 0.9)),
+    : ramp_samples_(TransitionTimeToRampSamples(transition_duration_ns * 1.0e-9,
+                                                sample_rate_hz, 0.1, 0.9)),
       bit_cell_samples_(static_cast<int>(
           std::round(bit_cell_duration_us * 1.0e-6 * sample_rate_hz))) {
   if (bit_cell_samples_ <= 0) {
@@ -48,16 +48,15 @@ BiphaseEncoder::BiphaseEncoder(double sample_rate_hz,
 }
 
 void BiphaseEncoder::ApplyStepTransition(std::vector<double>& samples,
-                                          int center_sample, bool rising,
-                                          double baseline_level_mv,
-                                          double peak_level_mv) const {
+                                         int center_sample, bool rising,
+                                         double baseline_level_mv,
+                                         double peak_level_mv) const {
   const int ramp_half = ramp_samples_ / 2;
   const int ramp_start = center_sample - ramp_half;
   const int ramp_end = ramp_start + ramp_samples_;
   const int buf_size = static_cast<int>(samples.size());
 
-  for (int i = std::max(0, ramp_start); i < std::min(buf_size, ramp_end);
-       ++i) {
+  for (int i = std::max(0, ramp_start); i < std::min(buf_size, ramp_end); ++i) {
     const int rel = i - ramp_start;
     if (rising) {
       // Leading edge of a very wide pulse: baseline → peak.
@@ -65,10 +64,9 @@ void BiphaseEncoder::ApplyStepTransition(std::vector<double>& samples,
                                     baseline_level_mv, peak_level_mv);
     } else {
       // Trailing edge of a very wide pulse: peak → baseline.
-      samples[i] =
-          ShapedPulseLevel(kLargePulseWidth - ramp_samples_ + rel,
-                           kLargePulseWidth, ramp_samples_,
-                           baseline_level_mv, peak_level_mv);
+      samples[i] = ShapedPulseLevel(kLargePulseWidth - ramp_samples_ + rel,
+                                    kLargePulseWidth, ramp_samples_,
+                                    baseline_level_mv, peak_level_mv);
     }
   }
 }
@@ -106,8 +104,7 @@ std::vector<SampleFixed> BiphaseEncoder::GenerateBit(
 }
 
 std::vector<SampleFixed> BiphaseEncoder::Generate24BitCode(
-    uint32_t code_value, double baseline_level_mv,
-    double peak_level_mv) const {
+    uint32_t code_value, double baseline_level_mv, double peak_level_mv) const {
   const int total = 24 * bit_cell_samples_;
   std::vector<double> samples(static_cast<std::size_t>(total));
 
@@ -136,8 +133,7 @@ std::vector<SampleFixed> BiphaseEncoder::Generate24BitCode(
     }
 
     // Centre transition (always present for every bit).
-    ApplyStepTransition(samples, center, bit, baseline_level_mv,
-                        peak_level_mv);
+    ApplyStepTransition(samples, center, bit, baseline_level_mv, peak_level_mv);
   }
 
   // --- Pass 2: apply inter-bit transitions where consecutive bits are equal

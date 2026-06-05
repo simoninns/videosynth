@@ -58,7 +58,7 @@ class ProgrammeTimeCodeGenerator final : public CodeGenerator {
   // start_minutes: Initial minutes value, must be in [0, kMaxMinutes].
   // standard:      Determines frames per minute (PAL: 1500, NTSC: 1800).
   ProgrammeTimeCodeGenerator(int start_hours, int start_minutes,
-                              Standard standard);
+                             Standard standard);
 
   uint32_t CurrentCode() const override;
   void Advance() override;

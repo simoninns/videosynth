@@ -361,8 +361,7 @@ TEST(BiphaseEncoderTest, AllOneCodeHasInterBitTransitionAtEveryBoundary) {
   constexpr double kBaseline = 0.0;
   constexpr double kPeak = 100.0;
   const BiphaseEncoder enc(kPalSampleRate);
-  const auto samples =
-      enc.Generate24BitCode(0xFFFFFFu, kBaseline, kPeak);
+  const auto samples = enc.Generate24BitCode(0xFFFFFFu, kBaseline, kPeak);
 
   const int bcs = enc.bit_cell_samples();
   const int ramp = enc.ramp_samples();
@@ -389,7 +388,8 @@ TEST(BiphaseEncoderTest, AllOneCodeHasInterBitTransitionAtEveryBoundary) {
 // An all-zeros 24-bit code has a rising inter-bit transition at every
 // boundary (each '0' must start at peak; adjacent '0's need to be brought
 // back from baseline to peak at the boundary).
-TEST(BiphaseEncoderTest, AllZeroCodeHasRisingInterBitTransitionAtEveryBoundary) {
+TEST(BiphaseEncoderTest,
+     AllZeroCodeHasRisingInterBitTransitionAtEveryBoundary) {
   constexpr double kPalSampleRate = 17734475.0;
   constexpr double kBaseline = 0.0;
   constexpr double kPeak = 100.0;
@@ -478,8 +478,7 @@ TEST(BiphaseEncoderTest, GenerateLinePalReturnsCorrectSampleCount) {
 TEST(BiphaseEncoderTest, GenerateLineNtscReturnsCorrectSampleCount) {
   constexpr double kNtscSampleRate = 14318180.0;
   const BiphaseEncoder enc(kNtscSampleRate);
-  const auto samples =
-      enc.GenerateLine("80EEEE", Standard::kNtsc, 0.0, 714.3);
+  const auto samples = enc.GenerateLine("80EEEE", Standard::kNtsc, 0.0, 714.3);
   EXPECT_EQ(static_cast<int>(samples.size()),
             GetTimingConstants(Standard::kNtsc).samples_per_line_4fsc);
 }
@@ -545,8 +544,7 @@ TEST(BiphaseEncoderTest, PalLeadInCodeFirstBitFirstQuarterAtPalBaseline) {
   constexpr double kPalBaseline = 210.0;
   constexpr double kPalPeak = 700.0;
   const BiphaseEncoder enc(kPalSampleRate);
-  const auto samples =
-      enc.Generate24BitCode(0x88FFFFu, kPalBaseline, kPalPeak);
+  const auto samples = enc.Generate24BitCode(0x88FFFFu, kPalBaseline, kPalPeak);
 
   const int quarter = enc.bit_cell_samples() / 4;
   for (int i = 0; i < quarter; ++i) {
@@ -559,7 +557,8 @@ TEST(BiphaseEncoderTest, PalLeadInCodeFirstBitFirstQuarterAtPalBaseline) {
 // BiphaseEncoderTest — NTSC level mapping (IEC 60857: 0-100 IRE)
 // ---------------------------------------------------------------------------
 
-TEST(BiphaseEncoderTest, NtscLeadOutCodeLastBitCellTrailingQuarterAtNtscBaseline) {
+TEST(BiphaseEncoderTest,
+     NtscLeadOutCodeLastBitCellTrailingQuarterAtNtscBaseline) {
   constexpr double kNtscSampleRate = 14318180.0;
   constexpr double kNtscBaseline = 0.0;
   constexpr double kNtscPeak = 714.3;

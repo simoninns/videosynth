@@ -282,7 +282,8 @@ TEST(YamlProjectParserTest, ParsesSectionTypeProgrammeArea) {
 
   ASSERT_TRUE(result.ok);
   ASSERT_EQ(result.project.sections.size(), 1U);
-  EXPECT_EQ(result.project.sections[0].section_type, SectionType::kProgrammeArea);
+  EXPECT_EQ(result.project.sections[0].section_type,
+            SectionType::kProgrammeArea);
 }
 
 TEST(YamlProjectParserTest, ParsesSectionTypeLeadOut) {

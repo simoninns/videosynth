@@ -84,7 +84,8 @@ TEST(ClvCodeGeneratorTest, EncodeTimeCodeFixedPatternDDIsPresent) {
   for (int h = 0; h <= 15; ++h) {
     for (int m : {0, 15, 30, 45, 59}) {
       const uint32_t code = ProgrammeTimeCodeGenerator::EncodeTimeCode(h, m);
-      EXPECT_EQ((code >> 8) & 0xFFu, 0xDDu) << "hours=" << h << " minutes=" << m;
+      EXPECT_EQ((code >> 8) & 0xFFu, 0xDDu)
+          << "hours=" << h << " minutes=" << m;
     }
   }
 }
@@ -133,8 +134,7 @@ TEST(ClvCodeGeneratorTest, PalFramesPerMinuteIs1500) {
 }
 
 TEST(ClvCodeGeneratorTest, NtscFramesPerMinuteIs1800) {
-  EXPECT_EQ(ProgrammeTimeCodeGenerator::FramesPerMinute(Standard::kNtsc),
-            1800);
+  EXPECT_EQ(ProgrammeTimeCodeGenerator::FramesPerMinute(Standard::kNtsc), 1800);
 }
 
 // ---------------------------------------------------------------------------
@@ -218,7 +218,8 @@ TEST(ClvCodeGeneratorTest, TimeCodePalMinutesRollOverAt60) {
 }
 
 TEST(ClvCodeGeneratorTest, TimeCodeHoursSaturateAtMax) {
-  // Start close to max: hours=15, minutes=59. After 1 more minute = hours saturates.
+  // Start close to max: hours=15, minutes=59. After 1 more minute = hours
+  // saturates.
   ProgrammeTimeCodeGenerator gen(15, 59, Standard::kPal);
   for (int i = 0; i < 1500; ++i) {
     gen.Advance();
@@ -261,21 +262,24 @@ TEST(ClvCodeGeneratorTest, EncodeClvPictureNumberZeroZero) {
 TEST(ClvCodeGeneratorTest, EncodeClvPictureNumberSeconds10Frame0) {
   // seconds=10: X₁=0xA+1=0xB, X₃=0; frame=0
   // Code = 0x800000 | (0xB<<16) | 0x00E000 = 0x8BE000
-  EXPECT_EQ(ClvPictureNumberGenerator::EncodeClvPictureNumber(10, 0), 0x8BE000u);
+  EXPECT_EQ(ClvPictureNumberGenerator::EncodeClvPictureNumber(10, 0),
+            0x8BE000u);
 }
 
 TEST(ClvCodeGeneratorTest, EncodeClvPictureNumberSeconds59Frame29) {
   // seconds=59: X₁=0xA+5=0xF, X₃=9; frame=29: X₄=2, X₅=9
   // Code = 0x800000 | (0xF<<16) | 0x00E000 | (9<<8) | (2<<4) | 9
   //      = 0x8F0000 | 0x00E000 | 0x000900 | 0x20 | 0x9 = 0x8FE929
-  EXPECT_EQ(ClvPictureNumberGenerator::EncodeClvPictureNumber(59, 29), 0x8FE929u);
+  EXPECT_EQ(ClvPictureNumberGenerator::EncodeClvPictureNumber(59, 29),
+            0x8FE929u);
 }
 
 TEST(ClvCodeGeneratorTest, EncodeClvPictureNumberSeconds30Frame15) {
   // seconds=30: X₁=0xA+3=0xD, X₃=0; frame=15: X₄=1, X₅=5
   // Code = 0x800000 | (0xD<<16) | 0x00E000 | (0<<8) | (1<<4) | 5
   //      = 0x8DE015
-  EXPECT_EQ(ClvPictureNumberGenerator::EncodeClvPictureNumber(30, 15), 0x8DE015u);
+  EXPECT_EQ(ClvPictureNumberGenerator::EncodeClvPictureNumber(30, 15),
+            0x8DE015u);
 }
 
 TEST(ClvCodeGeneratorTest, EncodeClvPictureNumberFixedENibblePresent) {
@@ -284,8 +288,7 @@ TEST(ClvCodeGeneratorTest, EncodeClvPictureNumberFixedENibblePresent) {
     for (int f : {0, 10, 20, 29}) {
       const uint32_t code =
           ClvPictureNumberGenerator::EncodeClvPictureNumber(s, f);
-      EXPECT_EQ((code >> 12) & 0xFu, 0xEu)
-          << "seconds=" << s << " frame=" << f;
+      EXPECT_EQ((code >> 12) & 0xFu, 0xEu) << "seconds=" << s << " frame=" << f;
     }
   }
 }
@@ -405,7 +408,8 @@ TEST(ClvCodeGeneratorTest, NtscCorrectionPointAllFirstNinePoints) {
   // First 9 correction points: multiples of 899 from 1*899 to 9*899.
   const int expected[] = {899, 1798, 2697, 3596, 4495, 5394, 6293, 7192, 8091};
   for (int n : expected) {
-    EXPECT_TRUE(ClvPictureNumberGenerator::IsNtscCorrectionPoint(n)) << "N=" << n;
+    EXPECT_TRUE(ClvPictureNumberGenerator::IsNtscCorrectionPoint(n))
+        << "N=" << n;
   }
 }
 
@@ -558,13 +562,14 @@ TEST(ClvCodeGeneratorTest, NtscCorrectionAt8991) {
   // Frame 8991 (L=1, M=0) is a correction point.
   // Verify the total_frames count is correct and a correction occurred.
   // Counting how many corrections happen before 8991:
-  //   Corrections at: 899, 1798, 2697, 3596, 4495, 5394, 6293, 7192, 8091 (9 corrections)
-  //   Plus the correction at 8991 itself = 10th correction
+  //   Corrections at: 899, 1798, 2697, 3596, 4495, 5394, 6293, 7192, 8091 (9
+  //   corrections) Plus the correction at 8991 itself = 10th correction
   // Each correction adds 1 to seconds beyond the nominal count.
   // Nominal (no correction) at frame 8991: seconds = 8991/30 = 299 remainder 21
   //   So seconds (modulo 60) = 299%60 = 59, frame = 21
   // With 10 corrections: seconds += 10 extra steps
-  //   Total seconds = 299 + 10 = 309, seconds%60 = 9, frame=0 (correction at 8991)
+  //   Total seconds = 299 + 10 = 309, seconds%60 = 9, frame=0 (correction at
+  //   8991)
   ClvPictureNumberGenerator gen(Standard::kNtsc);
   for (int i = 0; i < 8991; ++i) {
     gen.Advance();
@@ -575,7 +580,8 @@ TEST(ClvCodeGeneratorTest, NtscCorrectionAt8991) {
 }
 
 TEST(ClvCodeGeneratorTest, NtscNoCorrectionForPalGenerator) {
-  // PAL generator must NOT apply NTSC correction, even at correction point frames.
+  // PAL generator must NOT apply NTSC correction, even at correction point
+  // frames.
   ClvPictureNumberGenerator pal_gen(Standard::kPal);
   for (int i = 0; i < 899; ++i) {
     pal_gen.Advance();

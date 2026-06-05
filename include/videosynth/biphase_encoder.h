@@ -53,7 +53,8 @@ class BiphaseEncoder {
   // placed at the start of the returned buffer. The remainder of the buffer
   // is filled with baseline_level_mv.
   //
-  // The returned vector length equals GetTimingConstants(standard).samples_per_line_4fsc.
+  // The returned vector length equals
+  // GetTimingConstants(standard).samples_per_line_4fsc.
   //
   // Args:
   //   hex_code:           6-character hex string (e.g. "88FFFF") optionally
@@ -93,8 +94,7 @@ class BiphaseEncoder {
   //   bit_value:          Logic value to encode (true = '1', false = '0').
   //   baseline_level_mv:  Signal low level in millivolts.
   //   peak_level_mv:      Signal high level in millivolts.
-  std::vector<SampleFixed> GenerateBit(bool bit_value,
-                                       double baseline_level_mv,
+  std::vector<SampleFixed> GenerateBit(bool bit_value, double baseline_level_mv,
                                        double peak_level_mv) const;
 
   // Number of samples per bit cell at the configured sample rate.
@@ -113,8 +113,8 @@ class BiphaseEncoder {
   // rising == false: peak_level_mv → baseline_level_mv (negative step)
   // Uses ShapedPulseLevel from signal_shaping.h for the S-curve edge.
   void ApplyStepTransition(std::vector<double>& samples, int center_sample,
-                            bool rising, double baseline_level_mv,
-                            double peak_level_mv) const;
+                           bool rising, double baseline_level_mv,
+                           double peak_level_mv) const;
 };
 
 }  // namespace videosynth

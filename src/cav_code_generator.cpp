@@ -54,8 +54,7 @@ uint32_t CavPictureNumberGenerator::EncodePictureNumber(int n) {
 }
 
 // static
-bool CavPictureNumberGenerator::IsValidPictureNumber(int n,
-                                                     Standard standard) {
+bool CavPictureNumberGenerator::IsValidPictureNumber(int n, Standard standard) {
   return n >= 0 && n <= MaxPictureNumber(standard);
 }
 
@@ -105,7 +104,7 @@ bool ChapterNumberGenerator::IsValidChapterNumber(int chapter_num) {
 uint32_t ChapterNumberGenerator::EncodeChapterCode(int chapter_num,
                                                    bool stop_bit) {
   const uint8_t x1_nibble = (stop_bit ? 0x08u : 0x00u) |
-                             (static_cast<uint8_t>(chapter_num / 16) & 0x07u);
+                            (static_cast<uint8_t>(chapter_num / 16) & 0x07u);
   const uint8_t x2_nibble = static_cast<uint8_t>(chapter_num % 16);
   return 0x800000u | (static_cast<uint32_t>(x1_nibble) << 16) |
          (static_cast<uint32_t>(x2_nibble) << 12) | kDddPattern;

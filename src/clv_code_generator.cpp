@@ -34,15 +34,15 @@ void ProgrammeTimeCodeGenerator::Advance() { ++frame_count_; }
 void ProgrammeTimeCodeGenerator::Reset() { frame_count_ = 0; }
 
 int ProgrammeTimeCodeGenerator::current_hours() const {
-  const int total_minutes =
-      start_hours_ * 60 + start_minutes_ + frame_count_ / FramesPerMinute(standard_);
+  const int total_minutes = start_hours_ * 60 + start_minutes_ +
+                            frame_count_ / FramesPerMinute(standard_);
   const int hours = total_minutes / 60;
   return (hours > kMaxHours) ? kMaxHours : hours;
 }
 
 int ProgrammeTimeCodeGenerator::current_minutes() const {
-  const int total_minutes =
-      start_hours_ * 60 + start_minutes_ + frame_count_ / FramesPerMinute(standard_);
+  const int total_minutes = start_hours_ * 60 + start_minutes_ +
+                            frame_count_ / FramesPerMinute(standard_);
   return total_minutes % 60;
 }
 

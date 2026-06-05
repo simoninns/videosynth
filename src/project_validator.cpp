@@ -372,9 +372,8 @@ bool IsLaserdiscReservedLine(int line_1based, videosynth::Standard standard) {
 // When disc_type is specified it must be CAV or CLV; code_types must be valid
 // for the specified disc_type.  disc_type is optional in Phase 1 — it will be
 // enforced when laserdisc injection is fully implemented.
-bool ValidateLaserdiscInjectionStructure(
-    const videosynth::Section& section,
-    videosynth::ValidationResult* result) {
+bool ValidateLaserdiscInjectionStructure(const videosynth::Section& section,
+                                         videosynth::ValidationResult* result) {
   if (result == nullptr) {
     return false;
   }
@@ -395,7 +394,8 @@ bool ValidateLaserdiscInjectionStructure(
       result->is_valid = false;
       result->errors.push_back(
           "Laserdisc injection validation error: disc_type '" +
-          injection.disc_type + "' is not recognised. Expected 'CAV' or 'CLV'.");
+          injection.disc_type +
+          "' is not recognised. Expected 'CAV' or 'CLV'.");
       return false;
     }
 

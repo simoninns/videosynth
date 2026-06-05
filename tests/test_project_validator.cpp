@@ -778,8 +778,7 @@ TEST(ProjectValidatorTest, RejectsLaserdiscInjectionWithUnknownDiscType) {
   EXPECT_NE(result.errors[0].find("VHD"), std::string::npos);
 }
 
-TEST(ProjectValidatorTest,
-     RejectsLaserdiscInjectionWithCodeTypeInvalidForCav) {
+TEST(ProjectValidatorTest, RejectsLaserdiscInjectionWithCodeTypeInvalidForCav) {
   Project project = MakeValidProject();
   Section::LineInjection injection;
   injection.type = "laserdisc";
@@ -798,8 +797,7 @@ TEST(ProjectValidatorTest,
   EXPECT_NE(result.errors[0].find("CAV"), std::string::npos);
 }
 
-TEST(ProjectValidatorTest,
-     RejectsLaserdiscInjectionWithCodeTypeInvalidForClv) {
+TEST(ProjectValidatorTest, RejectsLaserdiscInjectionWithCodeTypeInvalidForClv) {
   Project project = MakeValidProject();
   Section::LineInjection injection;
   injection.type = "laserdisc";

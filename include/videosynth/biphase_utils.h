@@ -1,7 +1,8 @@
 /*
  * File:        biphase_utils.h
  * Module:      biphase_utils
- * Purpose:     Hex parsing and validation utilities for LaserDisc biphase codes.
+ * Purpose:     Hex parsing and validation utilities for LaserDisc biphase
+ * codes.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Simon Inns

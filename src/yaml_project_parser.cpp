@@ -295,10 +295,13 @@ ParseResult ParseYamlNode(const YAML::Node& root, ILogger* logger) {
         return result;
       }
 
-      const std::set<std::string> section_keys = {
-          "name",           "type",             "section_type",
-          "duration_frames", "line_injections", "source",
-          "start_frame"};
+      const std::set<std::string> section_keys = {"name",
+                                                  "type",
+                                                  "section_type",
+                                                  "duration_frames",
+                                                  "line_injections",
+                                                  "source",
+                                                  "start_frame"};
       ValidateAllowedKeys(section_node, section_keys, "section",
                           &result.errors);
       if (!result.errors.empty()) {

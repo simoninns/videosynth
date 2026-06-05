@@ -29,8 +29,8 @@ constexpr int kLargePulseWidth = 10000;
 
 FmEncoder::FmEncoder(double sample_rate_hz, double bit_cell_duration_us,
                      double transition_duration_ns)
-    : ramp_samples_(TransitionTimeToRampSamples(
-          transition_duration_ns * 1.0e-9, sample_rate_hz, 0.1, 0.9)),
+    : ramp_samples_(TransitionTimeToRampSamples(transition_duration_ns * 1.0e-9,
+                                                sample_rate_hz, 0.1, 0.9)),
       bit_cell_samples_(static_cast<int>(
           std::round(bit_cell_duration_us * 1.0e-6 * sample_rate_hz))) {
   if (bit_cell_samples_ <= 0) {
@@ -45,25 +45,23 @@ FmEncoder::FmEncoder(double sample_rate_hz, double bit_cell_duration_us,
 }
 
 void FmEncoder::ApplyStepTransition(std::vector<double>& samples,
-                                     int center_sample, bool rising,
-                                     double baseline_level_mv,
-                                     double peak_level_mv) const {
+                                    int center_sample, bool rising,
+                                    double baseline_level_mv,
+                                    double peak_level_mv) const {
   const int ramp_half = ramp_samples_ / 2;
   const int ramp_start = center_sample - ramp_half;
   const int ramp_end = ramp_start + ramp_samples_;
   const int buf_size = static_cast<int>(samples.size());
 
-  for (int i = std::max(0, ramp_start); i < std::min(buf_size, ramp_end);
-       ++i) {
+  for (int i = std::max(0, ramp_start); i < std::min(buf_size, ramp_end); ++i) {
     const int rel = i - ramp_start;
     if (rising) {
       samples[i] = ShapedPulseLevel(rel, kLargePulseWidth, ramp_samples_,
                                     baseline_level_mv, peak_level_mv);
     } else {
-      samples[i] =
-          ShapedPulseLevel(kLargePulseWidth - ramp_samples_ + rel,
-                           kLargePulseWidth, ramp_samples_,
-                           baseline_level_mv, peak_level_mv);
+      samples[i] = ShapedPulseLevel(kLargePulseWidth - ramp_samples_ + rel,
+                                    kLargePulseWidth, ramp_samples_,
+                                    baseline_level_mv, peak_level_mv);
     }
   }
 }
@@ -82,11 +80,11 @@ std::array<bool, 40> FmEncoder::BuildBitPattern(const FmData& data) {
   bits[4] = data.field_one;
 
   // Bits [5-11]: leading data recognition bits = 1110010
-  bits[5]  = true;
-  bits[6]  = true;
-  bits[7]  = true;
-  bits[8]  = false;
-  bits[9]  = false;
+  bits[5] = true;
+  bits[6] = true;
+  bits[7] = true;
+  bits[8] = false;
+  bits[9] = false;
   bits[10] = true;
   bits[11] = false;
 
@@ -158,7 +156,7 @@ std::vector<SampleFixed> FmEncoder::GenerateBitsManchester(
     const int post_start = center + (ramp_samples_ - ramp_half);
 
     const double start_level = bit ? baseline_level_mv : peak_level_mv;
-    const double end_level   = bit ? peak_level_mv    : baseline_level_mv;
+    const double end_level = bit ? peak_level_mv : baseline_level_mv;
 
     for (int i = bit_start; i < center - ramp_half; ++i) {
       samples[static_cast<std::size_t>(i)] = start_level;
@@ -212,9 +210,8 @@ std::vector<SampleFixed> FmEncoder::Generate40BitCode(
                                 MillivoltsToSampleFixed(baseline_level_mv));
 
   // Embed the 40-bit FM waveform starting at sample 0.
-  const auto code_samples =
-      GenerateBitsManchester(BuildBitPattern(data), baseline_level_mv,
-                             peak_level_mv);
+  const auto code_samples = GenerateBitsManchester(
+      BuildBitPattern(data), baseline_level_mv, peak_level_mv);
   const int copy_count =
       std::min(static_cast<int>(code_samples.size()), line_samples);
   for (int i = 0; i < copy_count; ++i) {
@@ -230,9 +227,8 @@ std::vector<SampleFixed> FmEncoder::GenerateWhiteFlag(
   const TimingConstants timing = GetTimingConstants(standard);
   const int line_samples = timing.samples_per_line_4fsc;
   // White flag is a constant 100 IRE level across the entire line.
-  return std::vector<SampleFixed>(
-      static_cast<std::size_t>(line_samples),
-      MillivoltsToSampleFixed(peak_level_mv));
+  return std::vector<SampleFixed>(static_cast<std::size_t>(line_samples),
+                                  MillivoltsToSampleFixed(peak_level_mv));
 }
 
 }  // namespace videosynth
