@@ -19,6 +19,8 @@
 #include <utility>
 #include <vector>
 
+#include "videosynth/biphase_injection_manager.h"
+
 #include "videosynth/active_sample_mapping.h"
 #include "videosynth/chroma_encoder.h"
 #include "videosynth/fixed_point.h"
@@ -563,6 +565,7 @@ bool GenerationStage::BuildFrameSchedule(
 
   out_schedule->clear();
   progressive_source_.ClearCache();
+  biphase_manager_.Reset();
   std::vector<std::pair<const Section*, int>> frame_sections;
   std::string schedule_error;
   if (!BuildFramePatternSchedule(project, progressive_source_,
@@ -921,6 +924,15 @@ bool GenerationStage::GenerateFrameBatch(
                   .c_samples_mv[static_cast<std::size_t>(sample_offset)];
         }
       }
+    }
+
+    if (!biphase_manager_.ProcessFrame(
+            out_y_mv, local_frame_base, synth.line_sample_offsets,
+            synth.line_sample_counts, *section,
+            project.cvbs_presets.video_standard_preset,
+            timing.sample_rate_4fsc_hz, synth.frame_lines, active_window_start,
+            errors)) {
+      return false;
     }
   }
 

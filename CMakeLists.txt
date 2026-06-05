@@ -14,6 +14,7 @@ find_package(OpenEXR REQUIRED)
 
 add_library(videosynth_core
     src/biphase_encoder.cpp
+    src/biphase_injection_manager.cpp
     src/cav_code_generator.cpp
     src/clv_code_generator.cpp
     src/fm_encoder.cpp
@@ -68,6 +69,7 @@ add_executable(videosynth_tests
     tests/test_timecode_continuity.cpp
     tests/test_chapter_stopbit.cpp
     tests/test_ntsc_frozen.cpp
+    tests/test_biphase_injection_manager.cpp
     tests/test_chroma_encoder.cpp
     tests/test_compliance_harness.cpp
     tests/test_progressive_frame_source.cpp
@@ -124,6 +126,11 @@ set(videosynth_unit_test_patterns
     "^TimecodeContinuityTest\\."
     "^ChapterStopBitTest\\."
     "^NtscFrozenValuesTest\\."
+    "^BiphaseInjectionManagerTest\\."
+    "^BiphaseInjectionManagerPalCavTest\\."
+    "^BiphaseInjectionManagerPalClvTest\\."
+    "^BiphaseInjectionManagerNtscCavTest\\."
+    "^BiphaseInjectionManagerNtscClvTest\\."
     "^ChromaEncoderTest\\."
     "^PipelineTest\\."
     "^ProjectValidatorTest\\."

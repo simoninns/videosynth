@@ -10,6 +10,7 @@
 
 #pragma once
 
+#include "videosynth/biphase_injection_manager.h"
 #include "videosynth/interfaces.h"
 #include "videosynth/progressive_frame_source.h"
 #include "videosynth/vits_definition_provider.h"
@@ -81,6 +82,7 @@ class GenerationStage final : public IGenerationStage {
   VitsGenerator default_vits_generator_;
   const IVitsDefinitionProvider* vits_definition_provider_;
   const IVitsGenerator* vits_generator_;
+  BiphaseInjectionManager biphase_manager_;
 };
 
 }  // namespace videosynth
