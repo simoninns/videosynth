@@ -110,7 +110,6 @@ int MaxLineSamples(const std::vector<int>& line_samples) {
   return max_samples;
 }
 
-
 ActiveRasterGeometry GetActiveRasterGeometry(Standard standard,
                                              double sample_rate_hz) {
   if (standard == Standard::kPal) {

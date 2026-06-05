@@ -62,9 +62,9 @@ Project CreateProjectWithVits(Standard standard, const std::string& vits_type,
 }
 
 // Helper to get the sample index for a given line and time
-int GetSampleIndexForLine([[maybe_unused]] const std::vector<SampleFixed>& samples,
-                          const TimingConstants& timing, int line_number,
-                          double time_us) {
+int GetSampleIndexForLine(
+    [[maybe_unused]] const std::vector<SampleFixed>& samples,
+    const TimingConstants& timing, int line_number, double time_us) {
   const int samples_per_line = timing.samples_per_line_4fsc;
   const int line_offset = (line_number - 1) * samples_per_line;
   const int time_offset = static_cast<int>(

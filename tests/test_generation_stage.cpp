@@ -200,7 +200,6 @@ int ActiveWindowEndSamples(Standard standard, double sample_rate_hz) {
   return static_cast<int>(std::lround(sample_rate_hz * 62.5e-6));
 }
 
-
 int CountSyncSamplesOnLine(const std::vector<SampleFixed>& y_mv,
                            int line_1based, const TimingConstants& timing,
                            double sync_tip_mv) {
