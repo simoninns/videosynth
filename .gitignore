@@ -102,6 +102,9 @@ ENV/
 .env.*
 *.env
 
+# AI artifacts
+memory/
+
 # Common editor/OS artifacts
 .vscode/
 .idea/

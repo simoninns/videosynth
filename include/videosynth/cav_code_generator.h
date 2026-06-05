@@ -122,6 +122,8 @@ class ChapterNumberGenerator final : public CodeGenerator {
  public:
   // IEC 60856/60857: maximum chapter number.
   static constexpr int kMaxChapterNumber = 79;
+  // IEC 60856/60857 §10.1.5: minimum chapter length in tracks.
+  static constexpr int kMinimumChapterTracks = 30;
   // IEC 60856/60857 §10.1.5: tracks with stop-bit = 0.
   static constexpr int kStopBitTransitionTrack = 400;
   // IEC 60856/60857 §10.1.5: value of the constant DDD pattern in the code.
