@@ -13,6 +13,7 @@ find_package(SQLite3 REQUIRED)
 find_package(OpenEXR REQUIRED)
 
 add_library(videosynth_core
+    src/biphase_encoder.cpp
     src/chroma_encoder.cpp
     src/progressive_frame_source.cpp
     src/generation_stage.cpp
@@ -53,6 +54,7 @@ enable_testing()
 
 add_executable(videosynth_tests
     tests/test_active_sample_mapping.cpp
+    tests/test_biphase_encoder.cpp
     tests/test_chroma_encoder.cpp
     tests/test_compliance_harness.cpp
     tests/test_progressive_frame_source.cpp
@@ -100,6 +102,8 @@ set(videosynth_functional_test_patterns
 
 set(videosynth_unit_test_patterns
     "^ActiveSampleMappingTest\\."
+    "^BiphaseEncoderTest\\."
+    "^BiphaseUtilsTest\\."
     "^ChromaEncoderTest\\."
     "^PipelineTest\\."
     "^ProjectValidatorTest\\."
