@@ -17,6 +17,8 @@ add_library(videosynth_core
     src/cav_code_generator.cpp
     src/clv_code_generator.cpp
     src/fm_encoder.cpp
+    src/fm_code_generator.cpp
+    src/status_code_generator.cpp
     src/chroma_encoder.cpp
     src/progressive_frame_source.cpp
     src/generation_stage.cpp
@@ -61,6 +63,9 @@ add_executable(videosynth_tests
     tests/test_cav_code_generators.cpp
     tests/test_clv_code_generators.cpp
     tests/test_fm_encoder.cpp
+    tests/test_timecode_continuity.cpp
+    tests/test_chapter_stopbit.cpp
+    tests/test_ntsc_frozen.cpp
     tests/test_chroma_encoder.cpp
     tests/test_compliance_harness.cpp
     tests/test_progressive_frame_source.cpp
@@ -113,6 +118,9 @@ set(videosynth_unit_test_patterns
     "^CavCodeGeneratorTest\\."
     "^ClvCodeGeneratorTest\\."
     "^FmEncoderTest\\."
+    "^TimecodeContinuityTest\\."
+    "^ChapterStopBitTest\\."
+    "^NtscFrozenValuesTest\\."
     "^ChromaEncoderTest\\."
     "^PipelineTest\\."
     "^ProjectValidatorTest\\."
