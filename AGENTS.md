@@ -62,11 +62,17 @@
 
 ## 4. C++ Coding Standards
 
+> **MANDATORY GATE — do not skip, do not defer:**
+> After writing or editing **any** C++ file (`.cpp` or `.h`), you **must**:
+> 1. Run `clang-format -i --style=Google <file>` on every modified file.
+> 2. Run `clang-format --style=Google --dry-run -Werror <file>` and confirm it prints **no errors**.
+> 3. Only then consider the task complete.
+>
+> This applies even to single-line edits. CI will fail if this step is skipped.
+
 ### 4.1 Baseline & Tooling
 - Follow the [Google C++ Style Guide](https://google.github.io/styleguide/cppguide.html).
-- **After writing or editing any C++ file**, run `clang-format -i --style=Google <file>` before considering the task complete.
 - **Never** use manual column-alignment (e.g. double-spacing before `=`, aligning continuation lines to opening parentheses) — clang-format will undo these and leave violations.
-- Verify compliance before finishing: `clang-format --style=Google --dry-run -Werror <file>` must produce no errors.
 - Use static analysers (`clang-tidy`) and sanitizers where available in the Nix environment.
 
 ### 4.2 Source File Headers

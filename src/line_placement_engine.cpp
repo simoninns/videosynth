@@ -31,7 +31,7 @@ LinePlacementEngine::LinePlacementEngine(
 // ---------------------------------------------------------------------------
 
 bool LinePlacementEngine::IsInBiphaseReservedRange(Standard standard,
-                                                    int line_number) {
+                                                   int line_number) {
   if (standard == Standard::kPal) {
     return (line_number >= 6 && line_number <= 18) ||
            (line_number >= 319 && line_number <= 331);
@@ -54,12 +54,10 @@ bool LinePlacementEngine::IsFieldOne(Standard standard, int line_number) {
 // Private factory helpers
 // ---------------------------------------------------------------------------
 
-LineCodeAssignment LinePlacementEngine::None() {
-  return LineCodeAssignment{};
-}
+LineCodeAssignment LinePlacementEngine::None() { return LineCodeAssignment{}; }
 
-LineCodeAssignment LinePlacementEngine::Biphase(
-    const std::string& code_type, bool uses_172h_offset) {
+LineCodeAssignment LinePlacementEngine::Biphase(const std::string& code_type,
+                                                bool uses_172h_offset) {
   return LineCodeAssignment{
       .assigned = true,
       .code_type = code_type,
@@ -69,8 +67,7 @@ LineCodeAssignment LinePlacementEngine::Biphase(
   };
 }
 
-LineCodeAssignment LinePlacementEngine::Fm(
-    const std::string& code_type) {
+LineCodeAssignment LinePlacementEngine::Fm(const std::string& code_type) {
   return LineCodeAssignment{
       .assigned = true,
       .code_type = code_type,
@@ -99,7 +96,7 @@ bool LinePlacementEngine::Has(const std::string& code_type) const {
 // ---------------------------------------------------------------------------
 
 LineCodeAssignment LinePlacementEngine::GetAssignment(int line_number,
-                                                       bool field_one) const {
+                                                      bool field_one) const {
   if (!IsInBiphaseReservedRange(standard_, line_number)) {
     return None();
   }
@@ -236,8 +233,8 @@ LineCodeAssignment LinePlacementEngine::GetPalClvProgramme(int line) const {
 // NTSC dispatch
 // ---------------------------------------------------------------------------
 
-LineCodeAssignment LinePlacementEngine::GetNtscAssignment(int line,
-                                                           bool field_one) const {
+LineCodeAssignment LinePlacementEngine::GetNtscAssignment(
+    int line, bool field_one) const {
   if (section_type_ == SectionType::kLeadIn ||
       section_type_ == SectionType::kLeadOut) {
     return GetNtscLeadInOut(line, field_one);
@@ -266,7 +263,7 @@ LineCodeAssignment LinePlacementEngine::GetNtscAssignment(int line,
 // ---------------------------------------------------------------------------
 
 LineCodeAssignment LinePlacementEngine::GetNtscLeadInOut(int line,
-                                                          bool field_one) const {
+                                                         bool field_one) const {
   const std::string marker =
       (section_type_ == SectionType::kLeadIn) ? "lead_in" : "lead_out";
 
