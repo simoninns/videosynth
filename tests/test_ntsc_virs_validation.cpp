@@ -18,7 +18,8 @@
 namespace videosynth {
 namespace {
 
-// ─── helpers ──────────────────────────────────────────────────────────────────
+// ─── helpers
+// ──────────────────────────────────────────────────────────────────
 
 Project MakeBaseNtscProject() {
   Project p;
@@ -59,7 +60,8 @@ Section::LineInjection MakeVirsInjection() {
   return inj;
 }
 
-// ─── Task 5.13: NTSC VIRS mandatory presence ──────────────────────────────────
+// ─── Task 5.13: NTSC VIRS mandatory presence
+// ──────────────────────────────────
 
 TEST(NtscVirsValidationTest, RejectsNtscLaserdiscSectionWithoutVirs) {
   // IEC 60857 §9.1.3: VIR signal is mandatory for colour on NTSC laserdisc.
@@ -113,7 +115,8 @@ TEST(NtscVirsValidationTest, AcceptsPalLaserdiscSectionWithoutVirs) {
   EXPECT_TRUE(r.is_valid) << (!r.errors.empty() ? r.errors[0] : "");
 }
 
-TEST(NtscVirsValidationTest, RejectsNtscMultipleSectionsWhenOnlyOneMissingVirs) {
+TEST(NtscVirsValidationTest,
+     RejectsNtscMultipleSectionsWhenOnlyOneMissingVirs) {
   // Each section that has a laserdisc injection must independently have virs.
   Project p = MakeBaseNtscProject();
 
@@ -152,7 +155,8 @@ TEST(NtscVirsValidationTest, AcceptsNtscMultipleSectionsEachWithVirs) {
   EXPECT_TRUE(r.is_valid) << (!r.errors.empty() ? r.errors[0] : "");
 }
 
-TEST(NtscVirsValidationTest, AcceptsNtscSectionWithLaserdiscAndVirsOnLine19Only) {
+TEST(NtscVirsValidationTest,
+     AcceptsNtscSectionWithLaserdiscAndVirsOnLine19Only) {
   // VIRS may target line 19 (field 1) only; line 282 is optional.
   Project p = MakeBaseNtscProject();
   Section s = MakeSection();
@@ -170,7 +174,8 @@ TEST(NtscVirsValidationTest, AcceptsNtscSectionWithLaserdiscAndVirsOnLine19Only)
   EXPECT_TRUE(r.is_valid) << (!r.errors.empty() ? r.errors[0] : "");
 }
 
-TEST(NtscVirsValidationTest, AcceptsNtscSectionWithLaserdiscAndVirsOnLine282Only) {
+TEST(NtscVirsValidationTest,
+     AcceptsNtscSectionWithLaserdiscAndVirsOnLine282Only) {
   // VIRS may target line 282 (field 2) only.
   Project p = MakeBaseNtscProject();
   Section s = MakeSection();

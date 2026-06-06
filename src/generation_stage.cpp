@@ -19,9 +19,8 @@
 #include <utility>
 #include <vector>
 
-#include "videosynth/biphase_injection_manager.h"
-
 #include "videosynth/active_sample_mapping.h"
+#include "videosynth/biphase_injection_manager.h"
 #include "videosynth/chroma_encoder.h"
 #include "videosynth/fixed_point.h"
 #include "videosynth/progressive_frame_source.h"

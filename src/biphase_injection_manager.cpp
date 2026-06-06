@@ -40,8 +40,9 @@ double BiphaseBaselineMv(Standard standard) {
 }
 
 std::string Lowercase(std::string value) {
-  std::transform(value.begin(), value.end(), value.begin(),
-                 [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+  std::transform(
+      value.begin(), value.end(), value.begin(),
+      [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
   return value;
 }
 
@@ -98,8 +99,7 @@ bool BiphaseInjectionManager::ProcessFrame(
       continue;
     }
 
-    const bool field_one =
-        LinePlacementEngine::IsFieldOne(standard, line_num);
+    const bool field_one = LinePlacementEngine::IsFieldOne(standard, line_num);
     const LineCodeAssignment assignment =
         placement_engine_->GetAssignment(line_num, field_one);
 
@@ -124,8 +124,8 @@ bool BiphaseInjectionManager::ProcessFrame(
       InjectFmCode(out_y_mv, line_base, line_samples, assignment.code_type,
                    field_one, levels, start_sample);
     } else {
-      InjectBiphaseCode(out_y_mv, line_base, line_samples,
-                        assignment.code_type, standard, levels, start_sample);
+      InjectBiphaseCode(out_y_mv, line_base, line_samples, assignment.code_type,
+                        standard, levels, start_sample);
     }
   }
 
@@ -254,8 +254,8 @@ bool BiphaseInjectionManager::InitializeSection(
 
 void BiphaseInjectionManager::InjectBiphaseCode(
     std::vector<SampleFixed>* out_y_mv, int line_base, int line_samples,
-    const std::string& code_type, Standard standard,
-    const SignalLevels& levels, int start_sample) {
+    const std::string& code_type, Standard standard, const SignalLevels& levels,
+    int start_sample) {
   CodeGenerator* gen = GetGenerator(code_type);
   if (gen == nullptr || biphase_encoder_ == nullptr) {
     return;
@@ -277,17 +277,19 @@ void BiphaseInjectionManager::InjectBiphaseCode(
   for (int i = start_sample; i < line_samples; ++i) {
     (*out_y_mv)[static_cast<std::size_t>(line_base + i)] = baseline_fixed;
   }
-  for (int i = 0;
-       i < waveform_count && (start_sample + i) < line_samples; ++i) {
+  for (int i = 0; i < waveform_count && (start_sample + i) < line_samples;
+       ++i) {
     (*out_y_mv)[static_cast<std::size_t>(line_base + start_sample + i)] =
         waveform[static_cast<std::size_t>(i)];
   }
 }
 
-void BiphaseInjectionManager::InjectFmCode(
-    std::vector<SampleFixed>* out_y_mv, int line_base, int line_samples,
-    const std::string& code_type, bool field_one, const SignalLevels& levels,
-    int start_sample) {
+void BiphaseInjectionManager::InjectFmCode(std::vector<SampleFixed>* out_y_mv,
+                                           int line_base, int line_samples,
+                                           const std::string& code_type,
+                                           bool field_one,
+                                           const SignalLevels& levels,
+                                           int start_sample) {
   if (fm_encoder_ == nullptr) {
     return;
   }
@@ -318,8 +320,8 @@ void BiphaseInjectionManager::InjectFmCode(
   for (int i = start_sample; i < line_samples; ++i) {
     (*out_y_mv)[static_cast<std::size_t>(line_base + i)] = baseline_fixed;
   }
-  for (int i = 0;
-       i < waveform_count && (start_sample + i) < line_samples; ++i) {
+  for (int i = 0; i < waveform_count && (start_sample + i) < line_samples;
+       ++i) {
     (*out_y_mv)[static_cast<std::size_t>(line_base + start_sample + i)] =
         waveform[static_cast<std::size_t>(i)];
   }

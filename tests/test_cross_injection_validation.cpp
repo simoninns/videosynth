@@ -19,7 +19,8 @@
 namespace videosynth {
 namespace {
 
-// ─── helpers ──────────────────────────────────────────────────────────────────
+// ─── helpers
+// ──────────────────────────────────────────────────────────────────
 
 Project MakeBasePalProject() {
   Project p;
@@ -52,7 +53,8 @@ Section::LineInjection MakeLaserdiscInjection() {
   return inj;
 }
 
-Section::LineInjection MakeVitsInjection(const std::string& vits_type, int line) {
+Section::LineInjection MakeVitsInjection(const std::string& vits_type,
+                                         int line) {
   Section::LineInjection inj;
   inj.type = "vits";
   inj.vits_type = vits_type;
@@ -68,10 +70,10 @@ Section::LineInjection MakeVirsInjection() {
   return inj;
 }
 
-// ─── Task 5.11: PAL incompatible VITS types ───────────────────────────────────
+// ─── Task 5.11: PAL incompatible VITS types
+// ───────────────────────────────────
 
-TEST(CrossInjectionValidationTest,
-     RejectsPalVits17WhenLaserdiscIsActive) {
+TEST(CrossInjectionValidationTest, RejectsPalVits17WhenLaserdiscIsActive) {
   // vits17 targets line 17 which is in the PAL reserved range 6–18.
   Project p = MakeBasePalProject();
   Section s = MakePalSection();
@@ -134,7 +136,8 @@ TEST(CrossInjectionValidationTest,
   EXPECT_NE(r.errors[0].find("331"), std::string::npos);
 }
 
-// ─── Task 5.11: NTSC incompatible VITS types ──────────────────────────────────
+// ─── Task 5.11: NTSC incompatible VITS types
+// ──────────────────────────────────
 
 TEST(CrossInjectionValidationTest,
      RejectsNtscNtc7CompositeWhenLaserdiscIsActive) {
@@ -244,7 +247,8 @@ TEST(CrossInjectionValidationTest,
   EXPECT_TRUE(r.is_valid) << (!r.errors.empty() ? r.errors[0] : "");
 }
 
-// ─── Task 5.12: line_content on reserved ranges ───────────────────────────────
+// ─── Task 5.12: line_content on reserved ranges
+// ───────────────────────────────
 
 TEST(CrossInjectionValidationTest,
      RejectsPalLineContentOnReservedLine6WhenLaserdiscIsActive) {
@@ -304,9 +308,10 @@ TEST(CrossInjectionValidationTest,
   EXPECT_NE(r.errors[0].find("10"), std::string::npos);
 }
 
-// ─── Task 5.14: PAL subtitle mutual exclusion ─────────────────────────────────
-// IEC 60856 §9.1.4: line_content subtitles on line 20 or 333 are mutually
-// exclusive with VITS injections targeting those same lines.
+// ─── Task 5.14: PAL subtitle mutual exclusion
+// ───────────────────────────────── IEC 60856 §9.1.4: line_content subtitles on
+// line 20 or 333 are mutually exclusive with VITS injections targeting those
+// same lines.
 
 TEST(CrossInjectionValidationTest,
      RejectsVits20WhenLineContentAlsoTargetsLine20) {
@@ -330,8 +335,7 @@ TEST(CrossInjectionValidationTest,
   EXPECT_NE(r.errors[0].find("20"), std::string::npos);
 }
 
-TEST(CrossInjectionValidationTest,
-     RejectsDualLineContentOnLine333) {
+TEST(CrossInjectionValidationTest, RejectsDualLineContentOnLine333) {
   // Two injections both targeting line 333 are caught by the overlapping check.
   Project p = MakeBasePalProject();
   Section s = MakePalSection();
@@ -379,7 +383,8 @@ TEST(CrossInjectionValidationTest,
   EXPECT_NE(r.errors[0].find("line_content"), std::string::npos);
 }
 
-// ─── No-laserdisc baseline ────────────────────────────────────────────────────
+// ─── No-laserdisc baseline
+// ────────────────────────────────────────────────────
 
 TEST(CrossInjectionValidationTest,
      AllowsAllVitsTypesWhenNoLaserdiscInjectionIsPresent) {

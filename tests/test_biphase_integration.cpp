@@ -20,7 +20,8 @@
 namespace videosynth {
 namespace {
 
-// ─── helpers ──────────────────────────────────────────────────────────────────
+// ─── helpers
+// ──────────────────────────────────────────────────────────────────
 
 Project MakeBaseProject(Standard standard) {
   Project p;
@@ -79,7 +80,8 @@ Section::LineInjectionCode MakeChapterCode(int chapter) {
   return c;
 }
 
-// ─── Complete PAL CAV project ─────────────────────────────────────────────────
+// ─── Complete PAL CAV project
+// ─────────────────────────────────────────────────
 
 TEST(BiphaseIntegrationTest, AcceptsCompletePalCavProject) {
   Project p = MakeBaseProject(Standard::kPal);
@@ -110,7 +112,8 @@ TEST(BiphaseIntegrationTest, AcceptsCompletePalCavProject) {
   EXPECT_TRUE(r.is_valid) << (!r.errors.empty() ? r.errors[0] : "");
 }
 
-// ─── Complete PAL CLV project ─────────────────────────────────────────────────
+// ─── Complete PAL CLV project
+// ─────────────────────────────────────────────────
 
 TEST(BiphaseIntegrationTest, AcceptsCompletePalClvProject) {
   Project p = MakeBaseProject(Standard::kPal);
@@ -142,7 +145,8 @@ TEST(BiphaseIntegrationTest, AcceptsCompletePalClvProject) {
   EXPECT_TRUE(r.is_valid) << (!r.errors.empty() ? r.errors[0] : "");
 }
 
-// ─── Complete NTSC CAV project ────────────────────────────────────────────────
+// ─── Complete NTSC CAV project
+// ────────────────────────────────────────────────
 
 TEST(BiphaseIntegrationTest, AcceptsCompleteNtscCavProject) {
   Project p = MakeBaseProject(Standard::kNtsc);
@@ -178,7 +182,8 @@ TEST(BiphaseIntegrationTest, AcceptsCompleteNtscCavProject) {
   EXPECT_TRUE(r.is_valid) << (!r.errors.empty() ? r.errors[0] : "");
 }
 
-// ─── Complete NTSC CLV project ────────────────────────────────────────────────
+// ─── Complete NTSC CLV project
+// ────────────────────────────────────────────────
 
 TEST(BiphaseIntegrationTest, AcceptsCompleteNtscClvProject) {
   Project p = MakeBaseProject(Standard::kNtsc);
@@ -273,7 +278,8 @@ TEST(BiphaseIntegrationTest,
   EXPECT_TRUE(r.is_valid) << (!r.errors.empty() ? r.errors[0] : "");
 }
 
-// ─── Invalid complete project: wrong code type in wrong section ───────────────
+// ─── Invalid complete project: wrong code type in wrong section
+// ───────────────
 
 TEST(BiphaseIntegrationTest, RejectsProjectWithLeadInCodeInProgrammeSection) {
   Project p = MakeBaseProject(Standard::kPal);
@@ -296,7 +302,8 @@ TEST(BiphaseIntegrationTest, RejectsProjectWithLeadInCodeInProgrammeSection) {
 TEST(BiphaseIntegrationTest, RejectsCompleteProjectWithInsufficientLeadIn) {
   Project p = MakeBaseProject(Standard::kPal);
 
-  Section lead_in = MakeSection("Lead-in", SectionType::kLeadIn, 100);  // too short
+  Section lead_in =
+      MakeSection("Lead-in", SectionType::kLeadIn, 100);  // too short
   auto li_inj = MakeLaserdiscInjection("CAV");
   li_inj.codes.push_back(MakeCode("lead_in"));
   lead_in.line_injections.push_back(li_inj);
@@ -309,7 +316,8 @@ TEST(BiphaseIntegrationTest, RejectsCompleteProjectWithInsufficientLeadIn) {
   EXPECT_NE(r.errors[0].find("lead_in"), std::string::npos);
 }
 
-// ─── Invalid project: NTSC missing VIRS in one section ────────────────────────
+// ─── Invalid project: NTSC missing VIRS in one section
+// ────────────────────────
 
 TEST(BiphaseIntegrationTest, RejectsNtscProjectWhenOneSectionMissingVirs) {
   Project p = MakeBaseProject(Standard::kNtsc);

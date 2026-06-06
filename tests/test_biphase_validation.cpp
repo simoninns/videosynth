@@ -18,7 +18,8 @@
 namespace videosynth {
 namespace {
 
-// ─── helpers ──────────────────────────────────────────────────────────────────
+// ─── helpers
+// ──────────────────────────────────────────────────────────────────
 
 Project MakeBasePalProject() {
   Project p;
@@ -59,7 +60,8 @@ Section::LineInjectionCode MakeCode(const std::string& code_type) {
   return c;
 }
 
-// ─── Task 5.4: section_type requirement ───────────────────────────────────────
+// ─── Task 5.4: section_type requirement
+// ───────────────────────────────────────
 
 TEST(BiphaseValidationTest, RequiresSectionTypeWhenDiscTypeIsPresent) {
   // section_type defaults to kUnknown; should be rejected when disc_type set.
@@ -225,12 +227,12 @@ TEST(BiphaseValidationTest, AcceptsUsersCodeInLeadOut) {
 
 TEST(BiphaseValidationTest, AcceptsFmWhiteFlagInAllSections) {
   // fm_white_flag is allowed in lead_in, programme_area, and lead_out on NTSC.
-  for (SectionType st :
-       {SectionType::kLeadIn, SectionType::kProgrammeArea, SectionType::kLeadOut}) {
+  for (SectionType st : {SectionType::kLeadIn, SectionType::kProgrammeArea,
+                         SectionType::kLeadOut}) {
     Project p = MakeBaseNtscProject();
     int frames = (st == SectionType::kLeadIn)    ? 938
-                 : (st == SectionType::kLeadOut)  ? 1250
-                                                  : 100;
+                 : (st == SectionType::kLeadOut) ? 1250
+                                                 : 100;
     Section s = MakeSection(st, frames);
     auto inj = MakeLaserdiscInjection("CAV");
     inj.codes.push_back(MakeCode("fm_white_flag"));
@@ -250,9 +252,8 @@ TEST(BiphaseValidationTest, AcceptsFmWhiteFlagInAllSections) {
     p.sections.push_back(s);
     ProjectValidator v;
     const auto r = v.Validate(p);
-    EXPECT_TRUE(r.is_valid)
-        << "section_type=" << SectionTypeToString(st)
-        << (!r.errors.empty() ? ": " + r.errors[0] : "");
+    EXPECT_TRUE(r.is_valid) << "section_type=" << SectionTypeToString(st)
+                            << (!r.errors.empty() ? ": " + r.errors[0] : "");
   }
 }
 
@@ -271,7 +272,8 @@ TEST(BiphaseValidationTest, RejectsProgrammeTimeCodeInLeadIn) {
   EXPECT_NE(r.errors[0].find("programme_time_code"), std::string::npos);
 }
 
-// ─── Task 5.5: NTSC-only FM code restrictions ─────────────────────────────────
+// ─── Task 5.5: NTSC-only FM code restrictions
+// ─────────────────────────────────
 
 TEST(BiphaseValidationTest, RejectsFmPictureNumberOnPalProject) {
   Project p = MakeBasePalProject();
@@ -306,7 +308,8 @@ TEST(BiphaseValidationTest, RejectsFmWhiteFlagOnPalProject) {
   EXPECT_NE(r.errors[0].find("NTSC"), std::string::npos);
 }
 
-// ─── Task 5.5: picture_number value range ─────────────────────────────────────
+// ─── Task 5.5: picture_number value range
+// ─────────────────────────────────────
 
 TEST(BiphaseValidationTest, AcceptsPalPictureNumberAtMaximum) {
   Project p = MakeBasePalProject();
@@ -399,7 +402,8 @@ TEST(BiphaseValidationTest, RejectsPictureNumberBelowZero) {
   EXPECT_FALSE(r.is_valid);
 }
 
-// ─── Task 5.5: fm_picture_number value range ──────────────────────────────────
+// ─── Task 5.5: fm_picture_number value range
+// ──────────────────────────────────
 
 TEST(BiphaseValidationTest, AcceptsFmPictureNumberAtMaximum) {
   Project p = MakeBaseNtscProject();
@@ -442,7 +446,8 @@ TEST(BiphaseValidationTest, RejectsFmPictureNumberAboveMaximum) {
   EXPECT_NE(r.errors[0].find("fm_picture_number"), std::string::npos);
 }
 
-// ─── Task 5.5: chapter_number range ───────────────────────────────────────────
+// ─── Task 5.5: chapter_number range
+// ───────────────────────────────────────────
 
 TEST(BiphaseValidationTest, AcceptsChapterNumberAtMaximum) {
   Project p = MakeBasePalProject();
@@ -510,7 +515,8 @@ TEST(BiphaseValidationTest, RejectsChapterNumberBelowZero) {
   EXPECT_FALSE(r.is_valid);
 }
 
-// ─── Task 5.5: users_code X1 nibble constraint ────────────────────────────────
+// ─── Task 5.5: users_code X1 nibble constraint
+// ────────────────────────────────
 
 TEST(BiphaseValidationTest, AcceptsUsersCodeWithX1EqualSeven) {
   Project p = MakeBasePalProject();
@@ -599,7 +605,8 @@ TEST(BiphaseValidationTest, RejectsUsersCodeExceeding24BitRange) {
   EXPECT_FALSE(r.is_valid);
 }
 
-// ─── Task 5.9/5.10: minimum section duration (CAV) ────────────────────────────
+// ─── Task 5.9/5.10: minimum section duration (CAV)
+// ────────────────────────────
 
 TEST(BiphaseValidationTest, AcceptsLeadInWithExactMinimumFrames) {
   Project p = MakeBasePalProject();
@@ -716,7 +723,8 @@ TEST(BiphaseValidationTest, ProgrammeAreaHasNoDurationConstraint) {
 TEST(BiphaseValidationTest, SkipsValidationWhenDiscTypeIsAbsent) {
   // Laserdisc injection without disc_type skips Phase-9 validation.
   Project p = MakeBasePalProject();
-  Section s = MakeSection(SectionType::kUnknown);  // kUnknown is otherwise rejected
+  Section s =
+      MakeSection(SectionType::kUnknown);  // kUnknown is otherwise rejected
   Section::LineInjection inj;
   inj.type = "laserdisc";  // No disc_type set
   s.line_injections.push_back(inj);

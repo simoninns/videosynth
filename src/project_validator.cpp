@@ -23,7 +23,7 @@ namespace {
 
 // Minimum CAV laserdisc section durations derived from IEC track-pitch limits.
 // IEC 60856/60857: lead-in ≥ 1.5 mm, lead-out ≥ 2 mm at nominal 1.6 µm pitch.
-constexpr int kLaserdiscLeadInMinFrames = 938;   // ceil(1500 µm / 1.6 µm)
+constexpr int kLaserdiscLeadInMinFrames = 938;    // ceil(1500 µm / 1.6 µm)
 constexpr int kLaserdiscLeadOutMinFrames = 1250;  // ceil(2000 µm / 1.6 µm)
 
 // Maximum picture/timecode values per IEC 60856/60857.
@@ -497,9 +497,9 @@ bool ValidateLaserdiscInjectionStructure(const videosynth::Section& section,
 // durations, and code-parameter value ranges for laserdisc injections.
 // Only runs when disc_type is present on an injection (Phase-1 injections
 // without disc_type pass through without error).
-bool ValidateLaserdiscSectionTypeAndCodes(const videosynth::Section& section,
-                                          videosynth::Standard standard,
-                                          videosynth::ValidationResult* result) {
+bool ValidateLaserdiscSectionTypeAndCodes(
+    const videosynth::Section& section, videosynth::Standard standard,
+    videosynth::ValidationResult* result) {
   if (result == nullptr) {
     return false;
   }
@@ -795,7 +795,8 @@ bool ValidateLineInjectionsForSection(const videosynth::Section& section,
       bool has_virs = false;
       for (const videosynth::Section::LineInjection& injection :
            section.line_injections) {
-        if (Lowercase(injection.type) == "vits" && injection.vits_type == "virs") {
+        if (Lowercase(injection.type) == "vits" &&
+            injection.vits_type == "virs") {
           has_virs = true;
           break;
         }

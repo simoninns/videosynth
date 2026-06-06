@@ -9,14 +9,13 @@
  * SPDX-FileCopyrightText: 2026 Simon Inns
  */
 
-#include "videosynth/biphase_injection_manager.h"
-
 #include <gtest/gtest.h>
 
 #include <cmath>
 #include <string>
 #include <vector>
 
+#include "videosynth/biphase_injection_manager.h"
 #include "videosynth/biphase_types.h"
 #include "videosynth/fixed_point.h"
 #include "videosynth/line_placement_engine.h"
@@ -37,9 +36,8 @@ std::vector<SampleFixed> MakeBlankingBuffer(Standard standard) {
   const int lines = timing.lines_per_frame;
   const int spl = timing.samples_per_line_4fsc;
   // Approximate total: lines × spl (ignoring PAL long-line correction)
-  return std::vector<SampleFixed>(
-      static_cast<std::size_t>(lines * spl),
-      MillivoltsToSampleFixed(0.0));
+  return std::vector<SampleFixed>(static_cast<std::size_t>(lines * spl),
+                                  MillivoltsToSampleFixed(0.0));
 }
 
 // Builds per-line sample offset/count vectors (uniform nominal line length).
@@ -62,13 +60,13 @@ int ActiveWindowStart(Standard standard) {
   if (standard == Standard::kPal) {
     return 177;
   }
-  return static_cast<int>(
-      std::lround(timing.sample_rate_4fsc_hz * 10.5e-6));
+  return static_cast<int>(std::lround(timing.sample_rate_4fsc_hz * 10.5e-6));
 }
 
 // Builds a minimal Section with one laserdisc LineInjection.
-Section MakeLaserdiscSection(SectionType section_type, DiscType disc_type,
-                             const std::vector<Section::LineInjectionCode>& codes) {
+Section MakeLaserdiscSection(
+    SectionType section_type, DiscType disc_type,
+    const std::vector<Section::LineInjectionCode>& codes) {
   Section section;
   section.name = "TestSection";
   section.type = "progressive";
@@ -93,22 +91,27 @@ double MeanMvOnLine(const std::vector<SampleFixed>& y_mv, Standard standard,
   const int line_base = (line_1based - 1) * spl;
   double sum = 0.0;
   int count = 0;
-  for (int i = start_sample; i < end_sample && (line_base + i) < static_cast<int>(y_mv.size()); ++i) {
-    sum += SampleFixedToMillivolts(y_mv[static_cast<std::size_t>(line_base + i)]);
+  for (int i = start_sample;
+       i < end_sample && (line_base + i) < static_cast<int>(y_mv.size()); ++i) {
+    sum +=
+        SampleFixedToMillivolts(y_mv[static_cast<std::size_t>(line_base + i)]);
     ++count;
   }
   return (count > 0) ? (sum / count) : 0.0;
 }
 
-// Returns the max millivolt level on a given line in [start_sample, end_sample).
+// Returns the max millivolt level on a given line in [start_sample,
+// end_sample).
 double MaxMvOnLine(const std::vector<SampleFixed>& y_mv, Standard standard,
                    int line_1based, int start_sample, int end_sample) {
   const TimingConstants timing = GetTimingConstants(standard);
   const int spl = timing.samples_per_line_4fsc;
   const int line_base = (line_1based - 1) * spl;
   double max_mv = -1e9;
-  for (int i = start_sample; i < end_sample && (line_base + i) < static_cast<int>(y_mv.size()); ++i) {
-    const double mv = SampleFixedToMillivolts(y_mv[static_cast<std::size_t>(line_base + i)]);
+  for (int i = start_sample;
+       i < end_sample && (line_base + i) < static_cast<int>(y_mv.size()); ++i) {
+    const double mv =
+        SampleFixedToMillivolts(y_mv[static_cast<std::size_t>(line_base + i)]);
     if (mv > max_mv) {
       max_mv = mv;
     }
@@ -116,15 +119,18 @@ double MaxMvOnLine(const std::vector<SampleFixed>& y_mv, Standard standard,
   return max_mv;
 }
 
-// Returns the min millivolt level on a given line in [start_sample, end_sample).
+// Returns the min millivolt level on a given line in [start_sample,
+// end_sample).
 double MinMvOnLine(const std::vector<SampleFixed>& y_mv, Standard standard,
                    int line_1based, int start_sample, int end_sample) {
   const TimingConstants timing = GetTimingConstants(standard);
   const int spl = timing.samples_per_line_4fsc;
   const int line_base = (line_1based - 1) * spl;
   double min_mv = 1e9;
-  for (int i = start_sample; i < end_sample && (line_base + i) < static_cast<int>(y_mv.size()); ++i) {
-    const double mv = SampleFixedToMillivolts(y_mv[static_cast<std::size_t>(line_base + i)]);
+  for (int i = start_sample;
+       i < end_sample && (line_base + i) < static_cast<int>(y_mv.size()); ++i) {
+    const double mv =
+        SampleFixedToMillivolts(y_mv[static_cast<std::size_t>(line_base + i)]);
     if (mv < min_mv) {
       min_mv = mv;
     }
@@ -140,7 +146,8 @@ bool LineHasSignal(const std::vector<SampleFixed>& y_mv, Standard standard,
   const int spl = timing.samples_per_line_4fsc;
   const int line_base = (line_1based - 1) * spl;
   const SampleFixed blanking = MillivoltsToSampleFixed(0.0);
-  for (int i = start_sample; i < end_sample && (line_base + i) < static_cast<int>(y_mv.size()); ++i) {
+  for (int i = start_sample;
+       i < end_sample && (line_base + i) < static_cast<int>(y_mv.size()); ++i) {
     if (y_mv[static_cast<std::size_t>(line_base + i)] != blanking) {
       return true;
     }
@@ -193,7 +200,8 @@ TEST_F(BiphaseInjectionManagerTest, NoLaserdiscInjectionSucceeds) {
 TEST_F(BiphaseInjectionManagerTest, ResetAllowsReinit) {
   Section::LineInjectionCode code;
   code.code_type = "lead_in";
-  auto section = MakeLaserdiscSection(SectionType::kLeadIn, DiscType::kCAV, {code});
+  auto section =
+      MakeLaserdiscSection(SectionType::kLeadIn, DiscType::kCAV, {code});
 
   EXPECT_TRUE(RunProcessFrame(Standard::kPal, section));
   manager_.Reset();
@@ -221,9 +229,9 @@ TEST_F(BiphaseInjectionManagerTest, UnknownDiscTypeReturnsError) {
   BuildLineLayout(Standard::kPal, &offsets, &counts);
   const auto frame_lines = BuildFrameTimingPrimitives(Standard::kPal);
   const TimingConstants timing = GetTimingConstants(Standard::kPal);
-  const bool ok = manager_.ProcessFrame(&y_mv, 0, offsets, counts, section,
-                                        Standard::kPal, timing.sample_rate_4fsc_hz,
-                                        frame_lines, 177, &errors_);
+  const bool ok = manager_.ProcessFrame(
+      &y_mv, 0, offsets, counts, section, Standard::kPal,
+      timing.sample_rate_4fsc_hz, frame_lines, 177, &errors_);
   EXPECT_FALSE(ok);
   EXPECT_FALSE(errors_.empty());
 }
@@ -335,8 +343,8 @@ TEST(BiphaseInjectionManagerPalCavTest, PictureNumberIncrementsAcrossFrames) {
   code.code_type = "picture_number";
   code.start_value = 1;
   code.start_value_specified = true;
-  const auto section = MakeLaserdiscSection(SectionType::kProgrammeArea,
-                                            DiscType::kCAV, {code});
+  const auto section =
+      MakeLaserdiscSection(SectionType::kProgrammeArea, DiscType::kCAV, {code});
 
   BiphaseInjectionManager manager;
   std::vector<int> offsets, counts;
@@ -381,11 +389,12 @@ TEST(BiphaseInjectionManagerPalCavTest, PictureNumberIncrementsAcrossFrames) {
 // PAL CLV programme area: programme_time_code appears on correct lines.
 // ---------------------------------------------------------------------------
 
-TEST(BiphaseInjectionManagerPalClvTest, ProgrammeTimeCodeAppearsOnCorrectLines) {
+TEST(BiphaseInjectionManagerPalClvTest,
+     ProgrammeTimeCodeAppearsOnCorrectLines) {
   Section::LineInjectionCode code;
   code.code_type = "programme_time_code";
-  const auto section = MakeLaserdiscSection(SectionType::kProgrammeArea,
-                                            DiscType::kCLV, {code});
+  const auto section =
+      MakeLaserdiscSection(SectionType::kProgrammeArea, DiscType::kCLV, {code});
 
   BiphaseInjectionManager manager;
   auto y_mv = MakeBlankingBuffer(Standard::kPal);
@@ -459,8 +468,8 @@ TEST(BiphaseInjectionManagerPalCavTest, ProgrammeStatusUses172HOffset) {
   ps.programme_status_specified = true;
   codes.push_back(ps);
 
-  const auto section = MakeLaserdiscSection(SectionType::kProgrammeArea,
-                                            DiscType::kCAV, codes);
+  const auto section =
+      MakeLaserdiscSection(SectionType::kProgrammeArea, DiscType::kCAV, codes);
 
   BiphaseInjectionManager manager;
   const TimingConstants timing = GetTimingConstants(Standard::kPal);
@@ -484,7 +493,8 @@ TEST(BiphaseInjectionManagerPalCavTest, ProgrammeStatusUses172HOffset) {
   // aws (177) but at offset_172h (195). Samples in [aws, offset_172h)
   // are at blanking level (0 mV) since no biphase baseline is written before
   // the 0.172 H horizontal start position.
-  const double mean_before = MeanMvOnLine(y_mv, Standard::kPal, 16, aws, offset_172h);
+  const double mean_before =
+      MeanMvOnLine(y_mv, Standard::kPal, 16, aws, offset_172h);
   EXPECT_NEAR(mean_before, 0.0, 1.0);
 
   // Signal region (first bit cell starts at offset_172h) must have content.
@@ -502,8 +512,8 @@ TEST(BiphaseInjectionManagerPalClvTest, ClvCodeAppearsWithNoOffset) {
   clvc.code_type = "clv_code";
   codes.push_back(clvc);
 
-  const auto section = MakeLaserdiscSection(SectionType::kProgrammeArea,
-                                            DiscType::kCLV, codes);
+  const auto section =
+      MakeLaserdiscSection(SectionType::kProgrammeArea, DiscType::kCLV, codes);
 
   BiphaseInjectionManager manager;
   const TimingConstants timing = GetTimingConstants(Standard::kPal);
@@ -543,9 +553,8 @@ TEST(BiphaseInjectionManagerNtscCavTest, LeadInCodeAppearsOnField1Lines) {
   std::vector<std::string> errors;
 
   ASSERT_TRUE(manager.ProcessFrame(&y_mv, 0, offsets, counts, section,
-                                   Standard::kNtsc,
-                                   timing.sample_rate_4fsc_hz, frame_lines,
-                                   aws, &errors));
+                                   Standard::kNtsc, timing.sample_rate_4fsc_hz,
+                                   frame_lines, aws, &errors));
   EXPECT_TRUE(errors.empty());
 
   const int end = timing.samples_per_line_4fsc;
@@ -574,9 +583,8 @@ TEST(BiphaseInjectionManagerNtscCavTest, SignalLevelsWithinSpec) {
   std::vector<std::string> errors;
 
   ASSERT_TRUE(manager.ProcessFrame(&y_mv, 0, offsets, counts, section,
-                                   Standard::kNtsc,
-                                   timing.sample_rate_4fsc_hz, frame_lines,
-                                   aws, &errors));
+                                   Standard::kNtsc, timing.sample_rate_4fsc_hz,
+                                   frame_lines, aws, &errors));
 
   const int end = timing.samples_per_line_4fsc;
   const double min_mv = MinMvOnLine(y_mv, Standard::kNtsc, 17, aws, end);
@@ -607,8 +615,8 @@ TEST(BiphaseInjectionManagerNtscCavTest, FmPictureNumberAppearsOnFmLines) {
   wf.code_type = "fm_white_flag";
   codes.push_back(wf);
 
-  const auto section = MakeLaserdiscSection(SectionType::kProgrammeArea,
-                                            DiscType::kCAV, codes);
+  const auto section =
+      MakeLaserdiscSection(SectionType::kProgrammeArea, DiscType::kCAV, codes);
 
   BiphaseInjectionManager manager;
   auto y_mv = MakeBlankingBuffer(Standard::kNtsc);
@@ -620,9 +628,8 @@ TEST(BiphaseInjectionManagerNtscCavTest, FmPictureNumberAppearsOnFmLines) {
   std::vector<std::string> errors;
 
   ASSERT_TRUE(manager.ProcessFrame(&y_mv, 0, offsets, counts, section,
-                                   Standard::kNtsc,
-                                   timing.sample_rate_4fsc_hz, frame_lines,
-                                   aws, &errors));
+                                   Standard::kNtsc, timing.sample_rate_4fsc_hz,
+                                   frame_lines, aws, &errors));
   EXPECT_TRUE(errors.empty());
 
   const int end = timing.samples_per_line_4fsc;
@@ -646,8 +653,8 @@ TEST(BiphaseInjectionManagerNtscCavTest, WhiteFlagAppearsOnLine11) {
   wf.code_type = "fm_white_flag";
   codes.push_back(wf);
 
-  const auto section = MakeLaserdiscSection(SectionType::kProgrammeArea,
-                                            DiscType::kCAV, codes);
+  const auto section =
+      MakeLaserdiscSection(SectionType::kProgrammeArea, DiscType::kCAV, codes);
 
   BiphaseInjectionManager manager;
   auto y_mv = MakeBlankingBuffer(Standard::kNtsc);
@@ -659,9 +666,8 @@ TEST(BiphaseInjectionManagerNtscCavTest, WhiteFlagAppearsOnLine11) {
   std::vector<std::string> errors;
 
   ASSERT_TRUE(manager.ProcessFrame(&y_mv, 0, offsets, counts, section,
-                                   Standard::kNtsc,
-                                   timing.sample_rate_4fsc_hz, frame_lines,
-                                   aws, &errors));
+                                   Standard::kNtsc, timing.sample_rate_4fsc_hz,
+                                   frame_lines, aws, &errors));
   EXPECT_TRUE(errors.empty());
 
   const int end = timing.samples_per_line_4fsc;
@@ -688,8 +694,8 @@ TEST(BiphaseInjectionManagerNtscClvTest, FmProgrammeTimeAppearsOnFmLines) {
   wf.code_type = "fm_white_flag";
   codes.push_back(wf);
 
-  const auto section = MakeLaserdiscSection(SectionType::kProgrammeArea,
-                                            DiscType::kCLV, codes);
+  const auto section =
+      MakeLaserdiscSection(SectionType::kProgrammeArea, DiscType::kCLV, codes);
 
   BiphaseInjectionManager manager;
   auto y_mv = MakeBlankingBuffer(Standard::kNtsc);
@@ -701,9 +707,8 @@ TEST(BiphaseInjectionManagerNtscClvTest, FmProgrammeTimeAppearsOnFmLines) {
   std::vector<std::string> errors;
 
   ASSERT_TRUE(manager.ProcessFrame(&y_mv, 0, offsets, counts, section,
-                                   Standard::kNtsc,
-                                   timing.sample_rate_4fsc_hz, frame_lines,
-                                   aws, &errors));
+                                   Standard::kNtsc, timing.sample_rate_4fsc_hz,
+                                   frame_lines, aws, &errors));
   EXPECT_TRUE(errors.empty());
 
   const int end = timing.samples_per_line_4fsc;
@@ -737,9 +742,8 @@ TEST(BiphaseInjectionManagerNtscCavTest, WhiteFlagLeadInOnlyLine11) {
   std::vector<std::string> errors;
 
   ASSERT_TRUE(manager.ProcessFrame(&y_mv, 0, offsets, counts, section,
-                                   Standard::kNtsc,
-                                   timing.sample_rate_4fsc_hz, frame_lines,
-                                   aws, &errors));
+                                   Standard::kNtsc, timing.sample_rate_4fsc_hz,
+                                   frame_lines, aws, &errors));
   EXPECT_TRUE(errors.empty());
 
   const int end = timing.samples_per_line_4fsc;
@@ -774,9 +778,8 @@ TEST(BiphaseInjectionManagerNtscCavTest, WhiteFlagLeadOutBothLines) {
   std::vector<std::string> errors;
 
   ASSERT_TRUE(manager.ProcessFrame(&y_mv, 0, offsets, counts, section,
-                                   Standard::kNtsc,
-                                   timing.sample_rate_4fsc_hz, frame_lines,
-                                   aws, &errors));
+                                   Standard::kNtsc, timing.sample_rate_4fsc_hz,
+                                   frame_lines, aws, &errors));
   EXPECT_TRUE(errors.empty());
 
   const int end = timing.samples_per_line_4fsc;
@@ -814,8 +817,8 @@ TEST(BiphaseInjectionManagerPalCavTest, SectionTransitionReinitialises) {
   pn_code.code_type = "picture_number";
   pn_code.start_value = 1;
   pn_code.start_value_specified = true;
-  const auto prog_section = MakeLaserdiscSection(
-      SectionType::kProgrammeArea, DiscType::kCAV, {pn_code});
+  const auto prog_section = MakeLaserdiscSection(SectionType::kProgrammeArea,
+                                                 DiscType::kCAV, {pn_code});
 
   auto y2 = MakeBlankingBuffer(Standard::kPal);
   std::vector<std::string> errors2;
@@ -843,8 +846,8 @@ TEST(BiphaseInjectionManagerPalCavTest, UsersCodeInLeadIn) {
   uc.users_code = "0x801234";
   uc.users_code_specified = true;
 
-  const auto section = MakeLaserdiscSection(SectionType::kLeadIn,
-                                            DiscType::kCAV, {li, uc});
+  const auto section =
+      MakeLaserdiscSection(SectionType::kLeadIn, DiscType::kCAV, {li, uc});
 
   BiphaseInjectionManager manager;
   auto y_mv = MakeBlankingBuffer(Standard::kPal);
@@ -940,8 +943,8 @@ TEST(BiphaseInjectionManagerPalCavTest, MultipleFramesSameSection) {
   code.code_type = "picture_number";
   code.start_value = 1;
   code.start_value_specified = true;
-  const auto section = MakeLaserdiscSection(SectionType::kProgrammeArea,
-                                            DiscType::kCAV, {code});
+  const auto section =
+      MakeLaserdiscSection(SectionType::kProgrammeArea, DiscType::kCAV, {code});
 
   BiphaseInjectionManager manager;
   std::vector<int> offsets, counts;
