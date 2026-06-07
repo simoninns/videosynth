@@ -1,0 +1,83 @@
+project:
+  name: PalBiphaseCavFixture
+  version: "1.0"
+  description: PAL CAV laserdisc biphase fixture — exercises all CAV code types across lead-in, two programme chapters, and lead-out
+
+cvbs_presets:
+  video_standard_preset: PAL
+  sample_encoding_preset: CVBS_TPG21_4FSC
+  signal_state_preset: STANDARD_TBC_LOCKED
+
+output:
+  video_path: tests/projects/output/videosynth_pal_biphase_cav.composite
+  metadata_path: tests/projects/output/videosynth_pal_biphase_cav.meta
+
+sections:
+  # Lead-in: minimum 938 frames (1.5 mm / 1.6 µm pitch); IEC 60856 §8.2.
+  # Injects lead_in sentinel code and a users_code carrier.
+  - name: PalCavLeadIn
+    type: progressive
+    source: videosynth-assets/assets/exr/720x576/100_BARS.exr
+    duration_frames: 938
+    section_type: lead_in
+    line_injections:
+      - type: laserdisc
+        disc_type: CAV
+        codes:
+          - code_type: lead_in
+          - code_type: users_code
+            users_code: "0x801234"
+
+  # Programme area — chapter 0: picture numbers 1–500.
+  # Exercises picture_number (with start_value), chapter_number, picture_stop,
+  # and programme_status in the programme area.  users_code is lead_in/lead_out
+  # only per IEC Appendix D, so it does not appear here.
+  - name: PalCavProgrammeChapter0
+    type: progressive
+    source: videosynth-assets/assets/exr/720x576/100_BARS.exr
+    duration_frames: 500
+    section_type: programme_area
+    line_injections:
+      - type: laserdisc
+        disc_type: CAV
+        codes:
+          - code_type: picture_number
+            start_value: 1
+          - code_type: chapter_number
+            chapter: 0
+          - code_type: picture_stop
+          - code_type: programme_status
+            programme_status: "0x8DC001"
+
+  # Programme area — chapter 1: picture numbers 501–1000.
+  # Verifies that chapter_number advances and picture_number continues from
+  # where the previous section left off.
+  - name: PalCavProgrammeChapter1
+    type: progressive
+    source: videosynth-assets/assets/exr/720x576/100_BARS.exr
+    duration_frames: 500
+    section_type: programme_area
+    line_injections:
+      - type: laserdisc
+        disc_type: CAV
+        codes:
+          - code_type: picture_number
+            start_value: 501
+          - code_type: chapter_number
+            chapter: 1
+          - code_type: programme_status
+            programme_status: "0x8DC001"
+
+  # Lead-out: minimum 1250 frames (2 mm / 1.6 µm pitch); IEC 60856 §8.2.
+  - name: PalCavLeadOut
+    type: progressive
+    source: videosynth-assets/assets/exr/720x576/100_BARS.exr
+    duration_frames: 1250
+    section_type: lead_out
+    line_injections:
+      - type: laserdisc
+        disc_type: CAV
+        codes:
+          - code_type: lead_out
+          - code_type: users_code
+            users_code: "0x870000"

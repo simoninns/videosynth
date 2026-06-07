@@ -91,6 +91,11 @@ add_executable(videosynth_tests
     tests/test_cross_injection_validation.cpp
     tests/test_ntsc_virs_validation.cpp
     tests/test_biphase_integration.cpp
+    tests/test_fm_transitions.cpp
+    tests/test_value_constraints.cpp
+    tests/test_chapter_encoding.cpp
+    tests/test_biphase_system.cpp
+    tests/test_biphase_final.cpp
 )
 
 target_compile_definitions(videosynth_tests
@@ -142,6 +147,11 @@ set(videosynth_unit_test_patterns
     "^CrossInjectionValidationTest\\."
     "^NtscVirsValidationTest\\."
     "^BiphaseIntegrationTest\\."
+    "^FmTransitionTest\\."
+    "^ValueConstraintsTest\\."
+    "^ChapterEncodingTest\\."
+    "^BiphaseSystemTest\\."
+    "^BiphaseFinalTest\\."
     "^SignalShapingTest\\."
     "^SignalTimingModelTest\\."
     "^TimingConstantsTest\\."

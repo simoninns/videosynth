@@ -1,0 +1,101 @@
+project:
+  name: NtscBiphaseCavFixture
+  version: "1.0"
+  description: NTSC CAV laserdisc biphase fixture — exercises all CAV and FM code types; mandatory VIRS on lines 19/282 per IEC 60857 §9.1.3
+
+cvbs_presets:
+  video_standard_preset: NTSC
+  sample_encoding_preset: CVBS_TPG21_4FSC
+  signal_state_preset: STANDARD_TBC_LOCKED
+
+output:
+  video_path: tests/projects/output/videosynth_ntsc_biphase_cav.composite
+  metadata_path: tests/projects/output/videosynth_ntsc_biphase_cav.meta
+
+sections:
+  # Lead-in: minimum 938 frames (1.5 mm / 1.6 µm pitch); IEC 60857 §8.2.
+  # FM white flag is injected alongside the 24-bit lead_in code per §10.
+  # VIRS on lines 19/282 is mandatory for NTSC laserdisc (IEC 60857 §9.1.3).
+  - name: NtscCavLeadIn
+    type: progressive
+    source: videosynth-assets/assets/exr/720x486/100_BARS.exr
+    duration_frames: 938
+    section_type: lead_in
+    line_injections:
+      - type: laserdisc
+        disc_type: CAV
+        codes:
+          - code_type: lead_in
+          - code_type: fm_white_flag
+          - code_type: users_code
+            users_code: "0x801234"
+      - type: vits
+        target_lines: [19, 282]
+        vits_type: virs
+
+  # Programme area — chapter 0: picture numbers 1–500.
+  # Exercises all NTSC CAV programme codes: picture_number, chapter_number,
+  # picture_stop, programme_status, fm_picture_number, and fm_white_flag.
+  # users_code is lead_in/lead_out only per IEC Appendix D.
+  - name: NtscCavProgrammeChapter0
+    type: progressive
+    source: videosynth-assets/assets/exr/720x486/100_BARS.exr
+    duration_frames: 500
+    section_type: programme_area
+    line_injections:
+      - type: laserdisc
+        disc_type: CAV
+        codes:
+          - code_type: picture_number
+            start_value: 1
+          - code_type: chapter_number
+            chapter: 0
+          - code_type: picture_stop
+          - code_type: programme_status
+            programme_status: "0x8DC001"
+          - code_type: fm_picture_number
+          - code_type: fm_white_flag
+      - type: vits
+        target_lines: [19, 282]
+        vits_type: virs
+
+  # Programme area — chapter 1: picture numbers 501–1000.
+  # Verifies chapter_number advances; fm_picture_number continues tracking.
+  - name: NtscCavProgrammeChapter1
+    type: progressive
+    source: videosynth-assets/assets/exr/720x486/100_BARS.exr
+    duration_frames: 500
+    section_type: programme_area
+    line_injections:
+      - type: laserdisc
+        disc_type: CAV
+        codes:
+          - code_type: picture_number
+            start_value: 501
+          - code_type: chapter_number
+            chapter: 1
+          - code_type: programme_status
+            programme_status: "0x8DC001"
+          - code_type: fm_picture_number
+          - code_type: fm_white_flag
+      - type: vits
+        target_lines: [19, 282]
+        vits_type: virs
+
+  # Lead-out: minimum 1250 frames (2 mm / 1.6 µm pitch); IEC 60857 §8.2.
+  - name: NtscCavLeadOut
+    type: progressive
+    source: videosynth-assets/assets/exr/720x486/100_BARS.exr
+    duration_frames: 1250
+    section_type: lead_out
+    line_injections:
+      - type: laserdisc
+        disc_type: CAV
+        codes:
+          - code_type: lead_out
+          - code_type: fm_white_flag
+          - code_type: users_code
+            users_code: "0x870000"
+      - type: vits
+        target_lines: [19, 282]
+        vits_type: virs

@@ -1,0 +1,84 @@
+project:
+  name: PalBiphaseClvFixture
+  version: "1.0"
+  description: PAL CLV laserdisc biphase fixture — exercises all CLV code types across lead-in, two programme chapters, and lead-out
+
+cvbs_presets:
+  video_standard_preset: PAL
+  sample_encoding_preset: CVBS_TPG21_4FSC
+  signal_state_preset: STANDARD_TBC_LOCKED
+
+output:
+  video_path: tests/projects/output/videosynth_pal_biphase_clv.composite
+  metadata_path: tests/projects/output/videosynth_pal_biphase_clv.meta
+
+sections:
+  # Lead-in: CLV has no minimum frame count constraint; 100 frames used here.
+  # Injects lead_in sentinel code and a users_code carrier.
+  - name: PalClvLeadIn
+    type: progressive
+    source: videosynth-assets/assets/exr/720x576/100_BARS.exr
+    duration_frames: 100
+    section_type: lead_in
+    line_injections:
+      - type: laserdisc
+        disc_type: CLV
+        codes:
+          - code_type: lead_in
+          - code_type: users_code
+            users_code: "0x801234"
+
+  # Programme area — chapter 0.
+  # Exercises all CLV programme codes: programme_time_code, clv_code,
+  # clv_picture_number, chapter_number, and programme_status.  users_code is
+  # lead_in/lead_out only per IEC Appendix D.
+  - name: PalClvProgrammeChapter0
+    type: progressive
+    source: videosynth-assets/assets/exr/720x576/100_BARS.exr
+    duration_frames: 1800
+    section_type: programme_area
+    line_injections:
+      - type: laserdisc
+        disc_type: CLV
+        codes:
+          - code_type: programme_time_code
+          - code_type: clv_code
+          - code_type: clv_picture_number
+          - code_type: chapter_number
+            chapter: 0
+          - code_type: programme_status
+            programme_status: "0x8DC001"
+
+  # Programme area — chapter 1.
+  # Verifies that chapter_number advances while CLV-specific timecode codes
+  # continue alongside it.
+  - name: PalClvProgrammeChapter1
+    type: progressive
+    source: videosynth-assets/assets/exr/720x576/100_BARS.exr
+    duration_frames: 1800
+    section_type: programme_area
+    line_injections:
+      - type: laserdisc
+        disc_type: CLV
+        codes:
+          - code_type: programme_time_code
+          - code_type: clv_code
+          - code_type: clv_picture_number
+          - code_type: chapter_number
+            chapter: 1
+          - code_type: programme_status
+            programme_status: "0x8DC001"
+
+  # Lead-out: CLV has no minimum frame count constraint.
+  - name: PalClvLeadOut
+    type: progressive
+    source: videosynth-assets/assets/exr/720x576/100_BARS.exr
+    duration_frames: 100
+    section_type: lead_out
+    line_injections:
+      - type: laserdisc
+        disc_type: CLV
+        codes:
+          - code_type: lead_out
+          - code_type: users_code
+            users_code: "0x870000"
