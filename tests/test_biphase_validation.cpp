@@ -619,11 +619,12 @@ TEST(BiphaseValidationTest, AcceptsLeadInWithExactMinimumFrames) {
   ProjectValidator v;
   const auto r = v.Validate(p);
   EXPECT_TRUE(r.is_valid) << (!r.errors.empty() ? r.errors[0] : "");
+  EXPECT_TRUE(r.warnings.empty());
 }
 
-TEST(BiphaseValidationTest, RejectsLeadInBelowMinimumFrames) {
+TEST(BiphaseValidationTest, WarnsLeadInBelowMinimumFrames) {
   Project p = MakeBasePalProject();
-  Section s = MakeSection(SectionType::kLeadIn, 937);  // one too few
+  Section s = MakeSection(SectionType::kLeadIn, 937);  // one below IEC minimum
   auto inj = MakeLaserdiscInjection("CAV");
   inj.codes.push_back(MakeCode("lead_in"));
   s.line_injections.push_back(inj);
@@ -631,9 +632,9 @@ TEST(BiphaseValidationTest, RejectsLeadInBelowMinimumFrames) {
 
   ProjectValidator v;
   const auto r = v.Validate(p);
-  EXPECT_FALSE(r.is_valid);
-  ASSERT_FALSE(r.errors.empty());
-  EXPECT_NE(r.errors[0].find("lead_in"), std::string::npos);
+  EXPECT_TRUE(r.is_valid);
+  ASSERT_FALSE(r.warnings.empty());
+  EXPECT_NE(r.warnings[0].find("lead_in"), std::string::npos);
 }
 
 TEST(BiphaseValidationTest, AcceptsLeadOutWithExactMinimumFrames) {
@@ -647,11 +648,12 @@ TEST(BiphaseValidationTest, AcceptsLeadOutWithExactMinimumFrames) {
   ProjectValidator v;
   const auto r = v.Validate(p);
   EXPECT_TRUE(r.is_valid) << (!r.errors.empty() ? r.errors[0] : "");
+  EXPECT_TRUE(r.warnings.empty());
 }
 
-TEST(BiphaseValidationTest, RejectsLeadOutBelowMinimumFrames) {
+TEST(BiphaseValidationTest, WarnsLeadOutBelowMinimumFrames) {
   Project p = MakeBasePalProject();
-  Section s = MakeSection(SectionType::kLeadOut, 1249);  // one too few
+  Section s = MakeSection(SectionType::kLeadOut, 1249);  // one below IEC minimum
   auto inj = MakeLaserdiscInjection("CAV");
   inj.codes.push_back(MakeCode("lead_out"));
   s.line_injections.push_back(inj);
@@ -659,9 +661,9 @@ TEST(BiphaseValidationTest, RejectsLeadOutBelowMinimumFrames) {
 
   ProjectValidator v;
   const auto r = v.Validate(p);
-  EXPECT_FALSE(r.is_valid);
-  ASSERT_FALSE(r.errors.empty());
-  EXPECT_NE(r.errors[0].find("lead_out"), std::string::npos);
+  EXPECT_TRUE(r.is_valid);
+  ASSERT_FALSE(r.warnings.empty());
+  EXPECT_NE(r.warnings[0].find("lead_out"), std::string::npos);
 }
 
 TEST(BiphaseValidationTest, AcceptsLeadInWithDurationAll) {

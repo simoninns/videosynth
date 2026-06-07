@@ -1,7 +1,7 @@
 project:
   name: PalBiphaseClvFixture
   version: "1.0"
-  description: PAL CLV laserdisc biphase fixture — exercises all CLV code types across lead-in, two programme chapters, and lead-out
+  description: PAL CLV laserdisc biphase fixture — 8 programme chapters with varied content and programme_status
 
 cvbs_presets:
   video_standard_preset: PAL
@@ -13,12 +13,10 @@ output:
   metadata_path: tests/projects/output/videosynth_pal_biphase_clv.meta
 
 sections:
-  # Lead-in: CLV has no minimum frame count constraint; 100 frames used here.
-  # Injects lead_in sentinel code and a users_code carrier.
   - name: PalClvLeadIn
     type: progressive
-    source: videosynth-assets/assets/exr/720x576/100_BARS.exr
-    duration_frames: 100
+    source: videosynth-assets/assets/exr/720x576/75_BARS.exr
+    duration_frames: 8
     section_type: lead_in
     line_injections:
       - type: laserdisc
@@ -28,14 +26,10 @@ sections:
           - code_type: users_code
             users_code: "0x801234"
 
-  # Programme area — chapter 0.
-  # Exercises all CLV programme codes: programme_time_code, clv_code,
-  # clv_picture_number, chapter_number, and programme_status.  users_code is
-  # lead_in/lead_out only per IEC Appendix D.
   - name: PalClvProgrammeChapter0
     type: progressive
-    source: videosynth-assets/assets/exr/720x576/100_BARS.exr
-    duration_frames: 1800
+    source: videosynth-assets/assets/exr/720x576/75_BARS.exr
+    duration_frames: 8
     section_type: programme_area
     line_injections:
       - type: laserdisc
@@ -49,13 +43,10 @@ sections:
           - code_type: programme_status
             programme_status: "0x8DC001"
 
-  # Programme area — chapter 1.
-  # Verifies that chapter_number advances while CLV-specific timecode codes
-  # continue alongside it.
   - name: PalClvProgrammeChapter1
     type: progressive
-    source: videosynth-assets/assets/exr/720x576/100_BARS.exr
-    duration_frames: 1800
+    source: videosynth-assets/assets/exr/720x576/75_BARS_RED.exr
+    duration_frames: 8
     section_type: programme_area
     line_injections:
       - type: laserdisc
@@ -67,13 +58,114 @@ sections:
           - code_type: chapter_number
             chapter: 1
           - code_type: programme_status
-            programme_status: "0x8DC001"
+            programme_status: "0x8DC002"
 
-  # Lead-out: CLV has no minimum frame count constraint.
+  - name: PalClvProgrammeChapter2
+    type: progressive
+    source: videosynth-assets/assets/exr/720x576/CHROMA_RAMP.exr
+    duration_frames: 8
+    section_type: programme_area
+    line_injections:
+      - type: laserdisc
+        disc_type: CLV
+        codes:
+          - code_type: programme_time_code
+          - code_type: clv_code
+          - code_type: clv_picture_number
+          - code_type: chapter_number
+            chapter: 2
+          - code_type: programme_status
+            programme_status: "0x8DC003"
+
+  - name: PalClvProgrammeChapter3
+    type: progressive
+    source: videosynth-assets/assets/exr/720x576/LUMA_RAMP.exr
+    duration_frames: 8
+    section_type: programme_area
+    line_injections:
+      - type: laserdisc
+        disc_type: CLV
+        codes:
+          - code_type: programme_time_code
+          - code_type: clv_code
+          - code_type: clv_picture_number
+          - code_type: chapter_number
+            chapter: 3
+          - code_type: programme_status
+            programme_status: "0x8D8001"
+
+  - name: PalClvProgrammeChapter4
+    type: progressive
+    source: videosynth-assets/assets/exr/720x576/TARTAN.exr
+    duration_frames: 8
+    section_type: programme_area
+    line_injections:
+      - type: laserdisc
+        disc_type: CLV
+        codes:
+          - code_type: programme_time_code
+          - code_type: clv_code
+          - code_type: clv_picture_number
+          - code_type: chapter_number
+            chapter: 4
+          - code_type: programme_status
+            programme_status: "0x8D8002"
+
+  - name: PalClvProgrammeChapter5
+    type: progressive
+    source: videosynth-assets/assets/exr/720x576/PLUGE.exr
+    duration_frames: 8
+    section_type: programme_area
+    line_injections:
+      - type: laserdisc
+        disc_type: CLV
+        codes:
+          - code_type: programme_time_code
+          - code_type: clv_code
+          - code_type: clv_picture_number
+          - code_type: chapter_number
+            chapter: 5
+          - code_type: programme_status
+            programme_status: "0x8D4001"
+
+  - name: PalClvProgrammeChapter6
+    type: progressive
+    source: videosynth-assets/assets/exr/720x576/MULTIBURST.exr
+    duration_frames: 8
+    section_type: programme_area
+    line_injections:
+      - type: laserdisc
+        disc_type: CLV
+        codes:
+          - code_type: programme_time_code
+          - code_type: clv_code
+          - code_type: clv_picture_number
+          - code_type: chapter_number
+            chapter: 6
+          - code_type: programme_status
+            programme_status: "0x8D4002"
+
+  - name: PalClvProgrammeChapter7
+    type: progressive
+    source: videosynth-assets/assets/exr/720x576/Y_CB_CR_RAMPS.exr
+    duration_frames: 8
+    section_type: programme_area
+    line_injections:
+      - type: laserdisc
+        disc_type: CLV
+        codes:
+          - code_type: programme_time_code
+          - code_type: clv_code
+          - code_type: clv_picture_number
+          - code_type: chapter_number
+            chapter: 7
+          - code_type: programme_status
+            programme_status: "0x8DC000"
+
   - name: PalClvLeadOut
     type: progressive
-    source: videosynth-assets/assets/exr/720x576/100_BARS.exr
-    duration_frames: 100
+    source: videosynth-assets/assets/exr/720x576/75_BARS.exr
+    duration_frames: 8
     section_type: lead_out
     line_injections:
       - type: laserdisc

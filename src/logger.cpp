@@ -49,6 +49,10 @@ SpdlogLogger::SpdlogLogger(LogLevel level, const std::string& log_file) {
 
 void SpdlogLogger::Info(const std::string& message) { logger_->info(message); }
 
+void SpdlogLogger::Warning(const std::string& message) {
+  logger_->warn(message);
+}
+
 void SpdlogLogger::Error(const std::string& message) {
   logger_->error(message);
 }

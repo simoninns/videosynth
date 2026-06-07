@@ -299,11 +299,11 @@ TEST(BiphaseIntegrationTest, RejectsProjectWithLeadInCodeInProgrammeSection) {
 
 // ─── Invalid project: insufficient lead-in duration ──────────────────────────
 
-TEST(BiphaseIntegrationTest, RejectsCompleteProjectWithInsufficientLeadIn) {
+TEST(BiphaseIntegrationTest, WarnsCompleteProjectWithInsufficientLeadIn) {
   Project p = MakeBaseProject(Standard::kPal);
 
   Section lead_in =
-      MakeSection("Lead-in", SectionType::kLeadIn, 100);  // too short
+      MakeSection("Lead-in", SectionType::kLeadIn, 100);  // below IEC minimum
   auto li_inj = MakeLaserdiscInjection("CAV");
   li_inj.codes.push_back(MakeCode("lead_in"));
   lead_in.line_injections.push_back(li_inj);
@@ -311,9 +311,9 @@ TEST(BiphaseIntegrationTest, RejectsCompleteProjectWithInsufficientLeadIn) {
 
   ProjectValidator v;
   const auto r = v.Validate(p);
-  EXPECT_FALSE(r.is_valid);
-  ASSERT_FALSE(r.errors.empty());
-  EXPECT_NE(r.errors[0].find("lead_in"), std::string::npos);
+  EXPECT_TRUE(r.is_valid);
+  ASSERT_FALSE(r.warnings.empty());
+  EXPECT_NE(r.warnings[0].find("lead_in"), std::string::npos);
 }
 
 // ─── Invalid project: NTSC missing VIRS in one section

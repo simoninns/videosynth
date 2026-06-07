@@ -1,7 +1,7 @@
 project:
   name: PalBiphaseCavFixture
   version: "1.0"
-  description: PAL CAV laserdisc biphase fixture — exercises all CAV code types across lead-in, two programme chapters, and lead-out
+  description: PAL CAV laserdisc biphase fixture — 8 programme chapters with varied content and programme_status
 
 cvbs_presets:
   video_standard_preset: PAL
@@ -13,12 +13,10 @@ output:
   metadata_path: tests/projects/output/videosynth_pal_biphase_cav.meta
 
 sections:
-  # Lead-in: minimum 938 frames (1.5 mm / 1.6 µm pitch); IEC 60856 §8.2.
-  # Injects lead_in sentinel code and a users_code carrier.
   - name: PalCavLeadIn
     type: progressive
-    source: videosynth-assets/assets/exr/720x576/100_BARS.exr
-    duration_frames: 938
+    source: videosynth-assets/assets/exr/720x576/75_BARS.exr
+    duration_frames: 8
     section_type: lead_in
     line_injections:
       - type: laserdisc
@@ -28,14 +26,10 @@ sections:
           - code_type: users_code
             users_code: "0x801234"
 
-  # Programme area — chapter 0: picture numbers 1–500.
-  # Exercises picture_number (with start_value), chapter_number, picture_stop,
-  # and programme_status in the programme area.  users_code is lead_in/lead_out
-  # only per IEC Appendix D, so it does not appear here.
   - name: PalCavProgrammeChapter0
     type: progressive
-    source: videosynth-assets/assets/exr/720x576/100_BARS.exr
-    duration_frames: 500
+    source: videosynth-assets/assets/exr/720x576/75_BARS.exr
+    duration_frames: 8
     section_type: programme_area
     line_injections:
       - type: laserdisc
@@ -49,30 +43,125 @@ sections:
           - code_type: programme_status
             programme_status: "0x8DC001"
 
-  # Programme area — chapter 1: picture numbers 501–1000.
-  # Verifies that chapter_number advances and picture_number continues from
-  # where the previous section left off.
   - name: PalCavProgrammeChapter1
     type: progressive
-    source: videosynth-assets/assets/exr/720x576/100_BARS.exr
-    duration_frames: 500
+    source: videosynth-assets/assets/exr/720x576/75_BARS_RED.exr
+    duration_frames: 8
     section_type: programme_area
     line_injections:
       - type: laserdisc
         disc_type: CAV
         codes:
           - code_type: picture_number
-            start_value: 501
+            start_value: 9
           - code_type: chapter_number
             chapter: 1
           - code_type: programme_status
-            programme_status: "0x8DC001"
+            programme_status: "0x8DC002"
 
-  # Lead-out: minimum 1250 frames (2 mm / 1.6 µm pitch); IEC 60856 §8.2.
+  - name: PalCavProgrammeChapter2
+    type: progressive
+    source: videosynth-assets/assets/exr/720x576/CHROMA_RAMP.exr
+    duration_frames: 8
+    section_type: programme_area
+    line_injections:
+      - type: laserdisc
+        disc_type: CAV
+        codes:
+          - code_type: picture_number
+            start_value: 17
+          - code_type: chapter_number
+            chapter: 2
+          - code_type: picture_stop
+          - code_type: programme_status
+            programme_status: "0x8DC003"
+
+  - name: PalCavProgrammeChapter3
+    type: progressive
+    source: videosynth-assets/assets/exr/720x576/LUMA_RAMP.exr
+    duration_frames: 8
+    section_type: programme_area
+    line_injections:
+      - type: laserdisc
+        disc_type: CAV
+        codes:
+          - code_type: picture_number
+            start_value: 25
+          - code_type: chapter_number
+            chapter: 3
+          - code_type: programme_status
+            programme_status: "0x8D8001"
+
+  - name: PalCavProgrammeChapter4
+    type: progressive
+    source: videosynth-assets/assets/exr/720x576/TARTAN.exr
+    duration_frames: 8
+    section_type: programme_area
+    line_injections:
+      - type: laserdisc
+        disc_type: CAV
+        codes:
+          - code_type: picture_number
+            start_value: 33
+          - code_type: chapter_number
+            chapter: 4
+          - code_type: picture_stop
+          - code_type: programme_status
+            programme_status: "0x8D8002"
+
+  - name: PalCavProgrammeChapter5
+    type: progressive
+    source: videosynth-assets/assets/exr/720x576/PLUGE.exr
+    duration_frames: 8
+    section_type: programme_area
+    line_injections:
+      - type: laserdisc
+        disc_type: CAV
+        codes:
+          - code_type: picture_number
+            start_value: 41
+          - code_type: chapter_number
+            chapter: 5
+          - code_type: programme_status
+            programme_status: "0x8D4001"
+
+  - name: PalCavProgrammeChapter6
+    type: progressive
+    source: videosynth-assets/assets/exr/720x576/MULTIBURST.exr
+    duration_frames: 8
+    section_type: programme_area
+    line_injections:
+      - type: laserdisc
+        disc_type: CAV
+        codes:
+          - code_type: picture_number
+            start_value: 49
+          - code_type: chapter_number
+            chapter: 6
+          - code_type: picture_stop
+          - code_type: programme_status
+            programme_status: "0x8D4002"
+
+  - name: PalCavProgrammeChapter7
+    type: progressive
+    source: videosynth-assets/assets/exr/720x576/Y_CB_CR_RAMPS.exr
+    duration_frames: 8
+    section_type: programme_area
+    line_injections:
+      - type: laserdisc
+        disc_type: CAV
+        codes:
+          - code_type: picture_number
+            start_value: 57
+          - code_type: chapter_number
+            chapter: 7
+          - code_type: programme_status
+            programme_status: "0x8DC000"
+
   - name: PalCavLeadOut
     type: progressive
-    source: videosynth-assets/assets/exr/720x576/100_BARS.exr
-    duration_frames: 1250
+    source: videosynth-assets/assets/exr/720x576/75_BARS.exr
+    duration_frames: 8
     section_type: lead_out
     line_injections:
       - type: laserdisc

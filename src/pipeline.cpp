@@ -71,6 +71,9 @@ bool VideoSynthPipeline::Run(const RunOptions& options) {
 
   const ValidationResult validation_result =
       validator_->Validate(parse_result.project);
+  for (const std::string& warning : validation_result.warnings) {
+    logger_->Warning(warning);
+  }
   if (!validation_result.is_valid) {
     for (const std::string& error : validation_result.errors) {
       logger_->Error(error);

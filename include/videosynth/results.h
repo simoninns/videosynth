@@ -28,6 +28,7 @@ struct ParseResult {
 struct ValidationResult {
   bool is_valid = false;
   std::vector<std::string> errors;
+  std::vector<std::string> warnings;
 };
 
 }  // namespace videosynth

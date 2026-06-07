@@ -532,25 +532,19 @@ bool ValidateLaserdiscSectionTypeAndCodes(
         !section.duration_frames_all) {
       if (section.section_type == videosynth::SectionType::kLeadIn &&
           section.duration_frames < kLaserdiscLeadInMinFrames) {
-        result->is_valid = false;
-        result->errors.push_back(
-            "Laserdisc injection validation error: CAV lead_in section "
-            "requires at least " +
-            std::to_string(kLaserdiscLeadInMinFrames) +
-            " frames (IEC 1.5 mm minimum at 1.6 um track pitch); has " +
-            std::to_string(section.duration_frames) + ".");
-        return false;
+        result->warnings.push_back(
+            "Laserdisc injection warning: CAV lead_in section has " +
+            std::to_string(section.duration_frames) +
+            " frames; IEC 1.5 mm minimum at 1.6 um track pitch requires " +
+            std::to_string(kLaserdiscLeadInMinFrames) + ".");
       }
       if (section.section_type == videosynth::SectionType::kLeadOut &&
           section.duration_frames < kLaserdiscLeadOutMinFrames) {
-        result->is_valid = false;
-        result->errors.push_back(
-            "Laserdisc injection validation error: CAV lead_out section "
-            "requires at least " +
-            std::to_string(kLaserdiscLeadOutMinFrames) +
-            " frames (IEC 2 mm minimum at 1.6 um track pitch); has " +
-            std::to_string(section.duration_frames) + ".");
-        return false;
+        result->warnings.push_back(
+            "Laserdisc injection warning: CAV lead_out section has " +
+            std::to_string(section.duration_frames) +
+            " frames; IEC 2 mm minimum at 1.6 um track pitch requires " +
+            std::to_string(kLaserdiscLeadOutMinFrames) + ".");
       }
     }
 

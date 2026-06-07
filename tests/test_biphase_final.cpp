@@ -387,13 +387,14 @@ TEST(BiphaseFinalTest, AcceptsPalCavWithExactMinimumLeadIn938Frames) {
   EXPECT_TRUE(r.is_valid) << (!r.errors.empty() ? r.errors[0] : "");
 }
 
-TEST(BiphaseFinalTest, RejectsPalCavWithLeadInBelow938Frames) {
+TEST(BiphaseFinalTest, WarnsPalCavWithLeadInBelow938Frames) {
   Project p = MakeMinimalPalCavProject();
-  p.sections[0].duration_frames = 937;  // one below minimum
+  p.sections[0].duration_frames = 937;  // one below IEC minimum
 
   ProjectValidator v;
   const auto r = v.Validate(p);
-  EXPECT_FALSE(r.is_valid);
+  EXPECT_TRUE(r.is_valid);
+  EXPECT_FALSE(r.warnings.empty());
 }
 
 TEST(BiphaseFinalTest, AcceptsPalCavWithExactMinimumLeadOut1250Frames) {
@@ -405,13 +406,14 @@ TEST(BiphaseFinalTest, AcceptsPalCavWithExactMinimumLeadOut1250Frames) {
   EXPECT_TRUE(r.is_valid) << (!r.errors.empty() ? r.errors[0] : "");
 }
 
-TEST(BiphaseFinalTest, RejectsPalCavWithLeadOutBelow1250Frames) {
+TEST(BiphaseFinalTest, WarnsPalCavWithLeadOutBelow1250Frames) {
   Project p = MakeMinimalPalCavProject();
-  p.sections[2].duration_frames = 1249;  // one below minimum
+  p.sections[2].duration_frames = 1249;  // one below IEC minimum
 
   ProjectValidator v;
   const auto r = v.Validate(p);
-  EXPECT_FALSE(r.is_valid);
+  EXPECT_TRUE(r.is_valid);
+  EXPECT_FALSE(r.warnings.empty());
 }
 
 // ---------------------------------------------------------------------------
