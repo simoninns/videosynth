@@ -25,6 +25,9 @@ namespace {
 // always used within the ramp region (ramp_samples_ << kLargePulseWidth).
 constexpr int kLargePulseWidth = 10000;
 
+// White flag pulse length as a fraction of H (IEC 60857 Figure 12).
+constexpr double kWhiteFlagLengthH = 0.790;
+
 }  // namespace
 
 FmEncoder::FmEncoder(double sample_rate_hz, double bit_cell_duration_us,
@@ -223,12 +226,23 @@ std::vector<SampleFixed> FmEncoder::Generate40BitCode(
 }
 
 std::vector<SampleFixed> FmEncoder::GenerateWhiteFlag(
-    Standard standard, double peak_level_mv) const {
+    Standard standard, double peak_level_mv, double baseline_level_mv) const {
   const TimingConstants timing = GetTimingConstants(standard);
   const int line_samples = timing.samples_per_line_4fsc;
-  // White flag is a constant 100 IRE level across the entire line.
-  return std::vector<SampleFixed>(static_cast<std::size_t>(line_samples),
-                                  MillivoltsToSampleFixed(peak_level_mv));
+
+  // White flag pulse length = 0.790 H per IEC 60857 Figure 12.
+  const int flag_length_samples = static_cast<int>(
+      std::round(kWhiteFlagLengthH * line_samples));
+
+  // Fill full line with baseline; overlay shaped pulse from sample 0.
+  std::vector<SampleFixed> line(static_cast<std::size_t>(line_samples),
+                                MillivoltsToSampleFixed(baseline_level_mv));
+  for (int i = 0; i < flag_length_samples; ++i) {
+    line[static_cast<std::size_t>(i)] = MillivoltsToSampleFixed(
+        ShapedPulseLevel(i, flag_length_samples, ramp_samples_,
+                         baseline_level_mv, peak_level_mv));
+  }
+  return line;
 }
 
 }  // namespace videosynth

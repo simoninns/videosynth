@@ -54,12 +54,15 @@ namespace videosynth {
 //   PAL  24-bit biphase: baseline = 210 mV (30% white), peak = 700 mV
 //   NTSC 24-bit biphase: baseline =   0 mV (0 IRE),    peak = 714.3 mV
 //   NTSC 40-bit FM:      baseline =   0 mV,             peak = 714.3 mV
-//   White flag:          constant 714.3 mV (100 IRE) across active region
+//   White flag:          100 IRE pulse, 135 ns rise/fall (IEC 60857 Figure 12)
 //
 // Horizontal start timing per IEC 60856 Figure 14 / IEC 60857 Figures 11–13:
 //   24-bit biphase codes: signal starts at active_window_start_samples.
 //   0.172 H offset codes (programme_status, NTSC clv_code):
 //                        signal starts at round(0.172 × samples_per_line).
+//   NTSC white flag (IEC 60857 Figure 12):
+//                        pulse starts at round(0.160 × samples_per_line),
+//                        length = round(0.790 × samples_per_line).
 //   NTSC 40-bit FM codes (IEC 60857 Figure 13):
 //                        signal starts at round(0.215 × samples_per_line).
 //   All codes end at active_window_end_samples (exclusive).
@@ -152,11 +155,13 @@ class BiphaseInjectionManager {
                     bool field_one, const SignalLevels& levels,
                     int start_sample);
 
-  // Fills the active region of a VBI line at 100 IRE (white flag, NTSC only).
-  // Fills from start_sample up to (not including) active_end.
+  // Writes the white flag pulse into a VBI line (NTSC only).
+  // Fills blanking from start_sample to active_end, then overlays a shaped
+  // 100 IRE pulse of flag_length_samples with 135 ns rise/fall transitions
+  // per IEC 60857 Figure 12.
   void InjectWhiteFlag(std::vector<SampleFixed>* out_y_mv, int line_base,
                        int active_end, const SignalLevels& levels,
-                       int start_sample);
+                       int start_sample, int flag_length_samples);
 
   // Advances all stateful code generators by one frame.
   void AdvanceGenerators();

@@ -303,14 +303,23 @@ TEST(BiphaseSystemTest, FmLineBufferHasCorrectLength) {
             GetTimingConstants(Standard::kNtsc).samples_per_line_4fsc);
 }
 
-TEST(BiphaseSystemTest, FmWhiteFlagEntireLineAtPeak) {
+// IEC 60857 Figure 12: white flag pulse = 0.790H, tail at baseline.
+// For NTSC 910 samples: flag_length = round(0.790 * 910) = 719.
+TEST(BiphaseSystemTest, FmWhiteFlagPulseRegionAtPeakAndTailAtBaseline) {
   const FmEncoder enc(kNtscSampleRate);
-  const auto line =
-      enc.GenerateWhiteFlag(Standard::kNtsc, kNtscPeak);
+  const auto line = enc.GenerateWhiteFlag(Standard::kNtsc, kNtscPeak);
   ASSERT_EQ(static_cast<int>(line.size()), 910);
-  for (std::size_t i = 0; i < line.size(); ++i) {
-    EXPECT_NEAR(SampleFixedToMillivolts(line[i]), kNtscPeak, 1.0)
-        << "White flag sample " << i << " should be at peak";
+  const int flag_length = static_cast<int>(std::round(0.790 * 910));
+  const int skip = enc.ramp_samples() + 1;
+  for (int i = skip; i < flag_length - skip; ++i) {
+    EXPECT_NEAR(SampleFixedToMillivolts(line[static_cast<std::size_t>(i)]),
+                kNtscPeak, 1.0)
+        << "White flag interior sample " << i << " should be at peak";
+  }
+  for (std::size_t i = static_cast<std::size_t>(flag_length);
+       i < line.size(); ++i) {
+    EXPECT_NEAR(SampleFixedToMillivolts(line[i]), 0.0, 1.0)
+        << "White flag tail sample " << i << " should be at baseline";
   }
 }
 

@@ -60,8 +60,9 @@ struct FmData {
 //   - Transition time: 135 ns ± 15 ns (10%-90%), S-curve shaped
 //   - Bit cell duration: 2.0 µs ± 0.01 µs
 //
-// White flag:
-//   - Constant 100 IRE level across the full video line (not modulated)
+// White flag (IEC 60857 Figure 12):
+//   - 100 IRE pulse, 0.790 H long, with 135 ns ± 15 ns rise/fall transitions
+//   - Starts at 0.160 H from sync (offset applied by the injection manager)
 //   - Indicates the start of a new picture field during the active programme
 //
 // Thread-safety: FmEncoder is immutable after construction and may be called
@@ -110,17 +111,22 @@ class FmEncoder {
                                              double baseline_level_mv,
                                              double peak_level_mv) const;
 
-  // Returns samples for a full video line at constant 100 IRE (white flag).
+  // Returns samples for a full video line containing the white flag pulse.
   //
-  // The entire line is filled with peak_level_mv per IEC 60857 §10.2.1.
+  // The pulse occupies the first 0.790 H of the buffer with shaped 135 ns
+  // rise/fall transitions (IEC 60857 Figure 12). The remainder is filled with
+  // baseline_level_mv. The 0.160 H start offset is applied by the caller
+  // (injection manager), consistent with the design of Generate40BitCode.
   // The returned vector length equals
   // GetTimingConstants(standard).samples_per_line_4fsc.
   //
   // Args:
-  //   standard:       PAL or NTSC (determines line buffer length).
-  //   peak_level_mv:  100 IRE level in millivolts (e.g. 714.3 mV for NTSC).
+  //   standard:           PAL or NTSC (determines line buffer length).
+  //   peak_level_mv:      100 IRE level in millivolts (e.g. 714.3 mV for NTSC).
+  //   baseline_level_mv:  0 IRE blanking level in millivolts (default 0.0).
   std::vector<SampleFixed> GenerateWhiteFlag(Standard standard,
-                                             double peak_level_mv) const;
+                                             double peak_level_mv,
+                                             double baseline_level_mv = 0.0) const;
 
   // Number of samples per bit cell at the configured sample rate.
   int bit_cell_samples() const { return bit_cell_samples_; }

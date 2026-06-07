@@ -442,12 +442,24 @@ TEST(FmEncoderTest, GenerateWhiteFlagPalLineHasCorrectLength) {
             GetTimingConstants(Standard::kPal).samples_per_line_4fsc);
 }
 
-TEST(FmEncoderTest, GenerateWhiteFlagEntireLineAtPeakLevel) {
+// IEC 60857 Figure 12: white flag length = 0.790H.
+// For NTSC 910 samples/line: flag_length = round(0.790 * 910) = 719.
+TEST(FmEncoderTest, GenerateWhiteFlagPulseRegionAtPeakAndTailAtBaseline) {
   const FmEncoder enc(kNtscSampleRate);
   const auto line = enc.GenerateWhiteFlag(Standard::kNtsc, kPeak);
-  for (std::size_t i = 0; i < line.size(); ++i) {
-    EXPECT_NEAR(SampleFixedToMillivolts(line[i]), kPeak, 0.01)
-        << "Sample " << i << " of white flag should be at 100 IRE";
+  const int flag_length = static_cast<int>(std::round(0.790 * 910));
+  // Interior of pulse (skip transition ramp at each edge) should be at peak.
+  const int skip = enc.ramp_samples() + 1;
+  for (int i = skip; i < flag_length - skip; ++i) {
+    EXPECT_NEAR(SampleFixedToMillivolts(line[static_cast<std::size_t>(i)]),
+                kPeak, 1.0)
+        << "White flag interior sample " << i << " should be at 100 IRE";
+  }
+  // Tail (after pulse) should be at baseline.
+  for (std::size_t i = static_cast<std::size_t>(flag_length);
+       i < line.size(); ++i) {
+    EXPECT_NEAR(SampleFixedToMillivolts(line[i]), 0.0, 1.0)
+        << "White flag tail sample " << i << " should be at baseline";
   }
 }
 
@@ -455,9 +467,12 @@ TEST(FmEncoderTest, GenerateWhiteFlagWorksWithDifferentPeakLevel) {
   const FmEncoder enc(kNtscSampleRate);
   constexpr double kCustomPeak = 500.0;
   const auto line = enc.GenerateWhiteFlag(Standard::kNtsc, kCustomPeak);
-  for (std::size_t i = 0; i < line.size(); ++i) {
-    EXPECT_NEAR(SampleFixedToMillivolts(line[i]), kCustomPeak, 0.01)
-        << "Sample " << i << " should be at custom peak level";
+  const int flag_length = static_cast<int>(std::round(0.790 * 910));
+  const int skip = enc.ramp_samples() + 1;
+  for (int i = skip; i < flag_length - skip; ++i) {
+    EXPECT_NEAR(SampleFixedToMillivolts(line[static_cast<std::size_t>(i)]),
+                kCustomPeak, 1.0)
+        << "White flag sample " << i << " should be at custom peak level";
   }
 }
 
