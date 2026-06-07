@@ -327,13 +327,14 @@ TEST(LinePlacementTest, PalCavProgrammeChapterOnLine18WhenNoPictureNumber) {
 }
 
 TEST(LinePlacementTest, PalCavProgrammePictureNumberBeforeChapterOnLine17) {
+  // picture_number takes line 17; chapter_number claims line 18 exclusively.
   LinePlacementEngine engine(Standard::kPal, DiscType::kCAV,
                              SectionType::kProgrammeArea,
                              {"picture_number", "chapter_number"});
   auto a17 = engine.GetAssignment(17, true);
   EXPECT_EQ(a17.code_type, "picture_number");
   auto a18 = engine.GetAssignment(18, true);
-  EXPECT_EQ(a18.code_type, "picture_number");
+  EXPECT_EQ(a18.code_type, "chapter_number");
 }
 
 TEST(LinePlacementTest,
@@ -435,12 +436,13 @@ TEST(LinePlacementTest, PalClvProgrammeChapterOnLine18WhenNoPtc) {
   EXPECT_EQ(a.code_type, "chapter_number");
 }
 
-TEST(LinePlacementTest, PalClvProgrammeProgrammeTimeCodeBeforeChapterOnLine18) {
+TEST(LinePlacementTest, PalClvProgrammeChapterBeforeProgrammeTimeCodeOnLine18) {
+  // chapter_number claims line 18 exclusively; programme_time_code is on line 17.
   LinePlacementEngine engine(Standard::kPal, DiscType::kCLV,
                              SectionType::kProgrammeArea,
                              {"programme_time_code", "chapter_number"});
   auto a = engine.GetAssignment(18, true);
-  EXPECT_EQ(a.code_type, "programme_time_code");
+  EXPECT_EQ(a.code_type, "chapter_number");
 }
 
 TEST(LinePlacementTest, PalClvProgrammeField2Lines330And331) {
@@ -653,17 +655,24 @@ TEST(LinePlacementTest, NtscCavProgrammePriorityOnLine17) {
 }
 
 TEST(LinePlacementTest, NtscCavProgrammePriorityOnLine18) {
-  // picture_number > chapter_number
+  // chapter_number claims line 18 exclusively; picture_number fills it only
+  // as a redundant copy when no chapter is present.
   {
     LinePlacementEngine e(Standard::kNtsc, DiscType::kCAV,
                           SectionType::kProgrammeArea,
                           {"picture_number", "chapter_number"});
-    EXPECT_EQ(e.GetAssignment(18, true).code_type, "picture_number");
+    EXPECT_EQ(e.GetAssignment(18, true).code_type, "chapter_number");
   }
   {
     LinePlacementEngine e(Standard::kNtsc, DiscType::kCAV,
                           SectionType::kProgrammeArea, {"chapter_number"});
     EXPECT_EQ(e.GetAssignment(18, true).code_type, "chapter_number");
+  }
+  {
+    // picture_number alone (no chapter): fills line 18 redundantly.
+    LinePlacementEngine e(Standard::kNtsc, DiscType::kCAV,
+                          SectionType::kProgrammeArea, {"picture_number"});
+    EXPECT_EQ(e.GetAssignment(18, true).code_type, "picture_number");
   }
 }
 
@@ -773,12 +782,13 @@ TEST(LinePlacementTest, NtscClvProgrammeChapterOnLine18WhenNoPtc) {
 }
 
 TEST(LinePlacementTest,
-     NtscClvProgrammeProgrammeTimeCodeBeforeChapterOnLine18) {
+     NtscClvProgrammeChapterBeforeProgrammeTimeCodeOnLine18) {
+  // chapter_number claims line 18 exclusively; programme_time_code is on line 17.
   LinePlacementEngine engine(Standard::kNtsc, DiscType::kCLV,
                              SectionType::kProgrammeArea,
                              {"programme_time_code", "chapter_number"});
   auto a = engine.GetAssignment(18, true);
-  EXPECT_EQ(a.code_type, "programme_time_code");
+  EXPECT_EQ(a.code_type, "chapter_number");
 }
 
 // ---------------------------------------------------------------------------

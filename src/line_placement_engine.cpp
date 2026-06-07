@@ -184,8 +184,8 @@ LineCodeAssignment LinePlacementEngine::GetPalCavProgramme(int line) const {
       return None();
 
     case 18:
-      if (Has("picture_number")) return Biphase("picture_number");
       if (Has("chapter_number")) return Biphase("chapter_number");
+      if (Has("picture_number")) return Biphase("picture_number");
       return None();
 
     default:
@@ -219,9 +219,10 @@ LineCodeAssignment LinePlacementEngine::GetPalClvProgramme(int line) const {
       return None();
 
     case 18:
-      // IEC 60856: programme_time_code takes precedence over chapter_number.
-      if (Has("programme_time_code")) return Biphase("programme_time_code");
+      // chapter_number claims line 18 exclusively; programme_time_code fills
+      // line 18 only as a redundant copy when no chapter is present.
       if (Has("chapter_number")) return Biphase("chapter_number");
+      if (Has("programme_time_code")) return Biphase("programme_time_code");
       return None();
 
     default:
@@ -347,8 +348,8 @@ LineCodeAssignment LinePlacementEngine::GetNtscCavProgramme(
       return None();
 
     case 18:
-      if (Has("picture_number")) return Biphase("picture_number");
       if (Has("chapter_number")) return Biphase("chapter_number");
+      if (Has("picture_number")) return Biphase("picture_number");
       return None();
 
     default:
@@ -398,8 +399,10 @@ LineCodeAssignment LinePlacementEngine::GetNtscClvProgramme(
       return None();
 
     case 18:
-      if (Has("programme_time_code")) return Biphase("programme_time_code");
+      // chapter_number claims line 18 exclusively; programme_time_code fills
+      // line 18 only as a redundant copy when no chapter is present.
       if (Has("chapter_number")) return Biphase("chapter_number");
+      if (Has("programme_time_code")) return Biphase("programme_time_code");
       return None();
 
     default:
