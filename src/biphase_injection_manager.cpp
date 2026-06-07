@@ -34,6 +34,10 @@ constexpr double kNtscBiphaseBaselineMv = 0.0;
 // IEC 60857 Figure 11.
 constexpr double k172hFraction = 0.172;
 
+// 0.215 H horizontal start offset for NTSC 40-bit FM codes per
+// IEC 60857 Figure 13.
+constexpr double k215hFraction = 0.215;
+
 double BiphaseBaselineMv(Standard standard) {
   return (standard == Standard::kPal) ? kPalBiphaseBaselineMv
                                       : kNtscBiphaseBaselineMv;
@@ -68,7 +72,8 @@ bool BiphaseInjectionManager::ProcessFrame(
     const std::vector<int>& line_sample_counts, const Section& section,
     Standard standard, double sample_rate_hz,
     const std::vector<LineTimingPrimitive>& frame_lines,
-    int active_window_start_samples, std::vector<std::string>* errors) {
+    int active_window_start_samples, int active_window_end_samples,
+    std::vector<std::string>* errors) {
   if (out_y_mv == nullptr || errors == nullptr) {
     return false;
   }
@@ -92,6 +97,10 @@ bool BiphaseInjectionManager::ProcessFrame(
   const int offset_172h_samples = static_cast<int>(
       std::round(k172hFraction * timing.samples_per_line_4fsc));
 
+  // Per IEC 60857 Figure 13: NTSC 40-bit FM codes start at 0.215 H.
+  const int offset_215h_samples = static_cast<int>(
+      std::round(k215hFraction * timing.samples_per_line_4fsc));
+
   for (const LineTimingPrimitive& line : frame_lines) {
     const int line_num = line.line_number_1based;
 
@@ -114,17 +123,23 @@ bool BiphaseInjectionManager::ProcessFrame(
     const int line_samples =
         line_sample_counts[static_cast<std::size_t>(line_index)];
 
+    // Cap the active end at the line boundary to prevent out-of-bounds writes.
+    const int active_end =
+        std::min(active_window_end_samples, line_samples);
+
     const int start_sample = assignment.uses_172h_offset
                                  ? offset_172h_samples
-                                 : active_window_start_samples;
+                                 : (assignment.is_fm
+                                        ? offset_215h_samples
+                                        : active_window_start_samples);
 
     if (assignment.is_white_flag) {
-      InjectWhiteFlag(out_y_mv, line_base, line_samples, levels, start_sample);
+      InjectWhiteFlag(out_y_mv, line_base, active_end, levels, start_sample);
     } else if (assignment.is_fm) {
-      InjectFmCode(out_y_mv, line_base, line_samples, assignment.code_type,
+      InjectFmCode(out_y_mv, line_base, active_end, assignment.code_type,
                    field_one, levels, start_sample);
     } else {
-      InjectBiphaseCode(out_y_mv, line_base, line_samples, assignment.code_type,
+      InjectBiphaseCode(out_y_mv, line_base, active_end, assignment.code_type,
                         standard, levels, start_sample);
     }
   }
@@ -253,7 +268,7 @@ bool BiphaseInjectionManager::InitializeSection(
 }
 
 void BiphaseInjectionManager::InjectBiphaseCode(
-    std::vector<SampleFixed>* out_y_mv, int line_base, int line_samples,
+    std::vector<SampleFixed>* out_y_mv, int line_base, int active_end,
     const std::string& code_type, Standard standard, const SignalLevels& levels,
     int start_sample) {
   CodeGenerator* gen = GetGenerator(code_type);
@@ -272,20 +287,18 @@ void BiphaseInjectionManager::InjectBiphaseCode(
   const SampleFixed baseline_fixed = MillivoltsToSampleFixed(baseline_mv);
 
   // Overwrite the VBI data region with the biphase baseline, then overlay the
-  // waveform. This replaces any prior content (blanking) with the correct
-  // digital low level (30% white for PAL, 0 IRE for NTSC).
-  for (int i = start_sample; i < line_samples; ++i) {
+  // waveform. Stops at active_end to avoid writing into the front porch.
+  for (int i = start_sample; i < active_end; ++i) {
     (*out_y_mv)[static_cast<std::size_t>(line_base + i)] = baseline_fixed;
   }
-  for (int i = 0; i < waveform_count && (start_sample + i) < line_samples;
-       ++i) {
+  for (int i = 0; i < waveform_count && (start_sample + i) < active_end; ++i) {
     (*out_y_mv)[static_cast<std::size_t>(line_base + start_sample + i)] =
         waveform[static_cast<std::size_t>(i)];
   }
 }
 
 void BiphaseInjectionManager::InjectFmCode(std::vector<SampleFixed>* out_y_mv,
-                                           int line_base, int line_samples,
+                                           int line_base, int active_end,
                                            const std::string& code_type,
                                            bool field_one,
                                            const SignalLevels& levels,
@@ -317,22 +330,21 @@ void BiphaseInjectionManager::InjectFmCode(std::vector<SampleFixed>* out_y_mv,
 
   const SampleFixed baseline_fixed = MillivoltsToSampleFixed(baseline_mv);
 
-  for (int i = start_sample; i < line_samples; ++i) {
+  for (int i = start_sample; i < active_end; ++i) {
     (*out_y_mv)[static_cast<std::size_t>(line_base + i)] = baseline_fixed;
   }
-  for (int i = 0; i < waveform_count && (start_sample + i) < line_samples;
-       ++i) {
+  for (int i = 0; i < waveform_count && (start_sample + i) < active_end; ++i) {
     (*out_y_mv)[static_cast<std::size_t>(line_base + start_sample + i)] =
         waveform[static_cast<std::size_t>(i)];
   }
 }
 
 void BiphaseInjectionManager::InjectWhiteFlag(
-    std::vector<SampleFixed>* out_y_mv, int line_base, int line_samples,
+    std::vector<SampleFixed>* out_y_mv, int line_base, int active_end,
     const SignalLevels& levels, int start_sample) {
-  // White flag: constant 100 IRE across the active line region.
+  // White flag: constant 100 IRE across the active line region only.
   const SampleFixed peak_fixed = MillivoltsToSampleFixed(levels.white_mv);
-  for (int i = start_sample; i < line_samples; ++i) {
+  for (int i = start_sample; i < active_end; ++i) {
     (*out_y_mv)[static_cast<std::size_t>(line_base + i)] = peak_fixed;
   }
 }

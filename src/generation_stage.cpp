@@ -930,7 +930,7 @@ bool GenerationStage::GenerateFrameBatch(
             synth.line_sample_counts, *section,
             project.cvbs_presets.video_standard_preset,
             timing.sample_rate_4fsc_hz, synth.frame_lines, active_window_start,
-            errors)) {
+            active_window_end, errors)) {
       return false;
     }
   }

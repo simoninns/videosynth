@@ -63,6 +63,16 @@ int ActiveWindowStart(Standard standard) {
   return static_cast<int>(std::lround(timing.sample_rate_4fsc_hz * 10.5e-6));
 }
 
+// Active-picture window end samples, exclusive (mirrors generation_stage.cpp).
+int ActiveWindowEnd(Standard standard) {
+  const TimingConstants timing = GetTimingConstants(standard);
+  if (standard == Standard::kPal) {
+    return 177 +
+           static_cast<int>(std::lround(timing.sample_rate_4fsc_hz * 52.0e-6));
+  }
+  return static_cast<int>(std::lround(timing.sample_rate_4fsc_hz * 62.5e-6));
+}
+
 // Builds a minimal Section with one laserdisc LineInjection.
 Section MakeLaserdiscSection(
     SectionType section_type, DiscType disc_type,
@@ -170,11 +180,12 @@ class BiphaseInjectionManagerTest : public ::testing::Test {
     BuildLineLayout(standard, &offsets, &counts);
     const auto frame_lines = BuildFrameTimingPrimitives(standard);
     const int aws = ActiveWindowStart(standard);
+    const int awe = ActiveWindowEnd(standard);
     const TimingConstants timing = GetTimingConstants(standard);
 
     return manager_.ProcessFrame(&y_mv, 0, offsets, counts, section, standard,
                                  timing.sample_rate_4fsc_hz, frame_lines, aws,
-                                 &errors_);
+                                 awe, &errors_);
   }
 };
 
@@ -231,7 +242,8 @@ TEST_F(BiphaseInjectionManagerTest, UnknownDiscTypeReturnsError) {
   const TimingConstants timing = GetTimingConstants(Standard::kPal);
   const bool ok = manager_.ProcessFrame(
       &y_mv, 0, offsets, counts, section, Standard::kPal,
-      timing.sample_rate_4fsc_hz, frame_lines, 177, &errors_);
+      timing.sample_rate_4fsc_hz, frame_lines, 177,
+      ActiveWindowEnd(Standard::kPal), &errors_);
   EXPECT_FALSE(ok);
   EXPECT_FALSE(errors_.empty());
 }
@@ -256,7 +268,8 @@ TEST(BiphaseInjectionManagerPalCavTest, LeadInCodeAppearsOnCorrectLines) {
 
   ASSERT_TRUE(manager.ProcessFrame(&y_mv, 0, offsets, counts, section,
                                    Standard::kPal, timing.sample_rate_4fsc_hz,
-                                   frame_lines, 177, &errors));
+                                   frame_lines, 177,
+                                   ActiveWindowEnd(Standard::kPal), &errors));
   EXPECT_TRUE(errors.empty());
 
   const int aws = 177;
@@ -291,14 +304,16 @@ TEST(BiphaseInjectionManagerPalCavTest, LeadInSignalLevelsWithinSpec) {
 
   ASSERT_TRUE(manager.ProcessFrame(&y_mv, 0, offsets, counts, section,
                                    Standard::kPal, timing.sample_rate_4fsc_hz,
-                                   frame_lines, 177, &errors));
+                                   frame_lines, 177,
+                                   ActiveWindowEnd(Standard::kPal), &errors));
 
   const int aws = 177;
-  const int end = timing.samples_per_line_4fsc;
+  const int awe = ActiveWindowEnd(Standard::kPal);
 
   // Baseline (digital low) should be ~210 mV; peak should be ~700 mV.
-  const double min_mv = MinMvOnLine(y_mv, Standard::kPal, 17, aws, end);
-  const double max_mv = MaxMvOnLine(y_mv, Standard::kPal, 17, aws, end);
+  // Check within the active window only (front porch stays at blanking 0 mV).
+  const double min_mv = MinMvOnLine(y_mv, Standard::kPal, 17, aws, awe);
+  const double max_mv = MaxMvOnLine(y_mv, Standard::kPal, 17, aws, awe);
 
   EXPECT_NEAR(min_mv, 210.0, 5.0);
   EXPECT_NEAR(max_mv, 700.0, 5.0);
@@ -324,7 +339,8 @@ TEST(BiphaseInjectionManagerPalCavTest, LeadOutCodeAppearsOnField2Lines) {
 
   ASSERT_TRUE(manager.ProcessFrame(&y_mv, 0, offsets, counts, section,
                                    Standard::kPal, timing.sample_rate_4fsc_hz,
-                                   frame_lines, 177, &errors));
+                                   frame_lines, 177,
+                                   ActiveWindowEnd(Standard::kPal), &errors));
 
   const int aws = 177;
   const int end = timing.samples_per_line_4fsc;
@@ -352,19 +368,20 @@ TEST(BiphaseInjectionManagerPalCavTest, PictureNumberIncrementsAcrossFrames) {
   const auto frame_lines = BuildFrameTimingPrimitives(Standard::kPal);
   const TimingConstants timing = GetTimingConstants(Standard::kPal);
   const int aws = 177;
+  const int awe = ActiveWindowEnd(Standard::kPal);
 
   // Generate two frames and capture the Y buffer state for line 17 each time.
   auto y1 = MakeBlankingBuffer(Standard::kPal);
   std::vector<std::string> errors1;
   ASSERT_TRUE(manager.ProcessFrame(&y1, 0, offsets, counts, section,
                                    Standard::kPal, timing.sample_rate_4fsc_hz,
-                                   frame_lines, aws, &errors1));
+                                   frame_lines, aws, awe, &errors1));
 
   auto y2 = MakeBlankingBuffer(Standard::kPal);
   std::vector<std::string> errors2;
   ASSERT_TRUE(manager.ProcessFrame(&y2, 0, offsets, counts, section,
                                    Standard::kPal, timing.sample_rate_4fsc_hz,
-                                   frame_lines, aws, &errors2));
+                                   frame_lines, aws, awe, &errors2));
 
   // Both frames must have signal on the picture_number lines.
   const int end = timing.samples_per_line_4fsc;
@@ -406,7 +423,8 @@ TEST(BiphaseInjectionManagerPalClvTest,
 
   ASSERT_TRUE(manager.ProcessFrame(&y_mv, 0, offsets, counts, section,
                                    Standard::kPal, timing.sample_rate_4fsc_hz,
-                                   frame_lines, 177, &errors));
+                                   frame_lines, 177,
+                                   ActiveWindowEnd(Standard::kPal), &errors));
   EXPECT_TRUE(errors.empty());
 
   const int aws = 177;
@@ -443,7 +461,8 @@ TEST(BiphaseInjectionManagerPalClvTest, ClvPictureNumberAppearsOnLine16) {
 
   ASSERT_TRUE(manager.ProcessFrame(&y_mv, 0, offsets, counts, section,
                                    Standard::kPal, timing.sample_rate_4fsc_hz,
-                                   frame_lines, 177, &errors));
+                                   frame_lines, 177,
+                                   ActiveWindowEnd(Standard::kPal), &errors));
   EXPECT_TRUE(errors.empty());
 
   const int aws = 177;
@@ -479,11 +498,12 @@ TEST(BiphaseInjectionManagerPalCavTest, ProgrammeStatusUses172HOffset) {
   BuildLineLayout(Standard::kPal, &offsets, &counts);
   const auto frame_lines = BuildFrameTimingPrimitives(Standard::kPal);
   const int aws = 177;
+  const int awe = ActiveWindowEnd(Standard::kPal);
   std::vector<std::string> errors;
 
   ASSERT_TRUE(manager.ProcessFrame(&y_mv, 0, offsets, counts, section,
                                    Standard::kPal, timing.sample_rate_4fsc_hz,
-                                   frame_lines, aws, &errors));
+                                   frame_lines, aws, awe, &errors));
   EXPECT_TRUE(errors.empty());
 
   // 0.172 H offset for PAL: round(0.172 × 1135) = 195
@@ -525,7 +545,8 @@ TEST(BiphaseInjectionManagerPalClvTest, ClvCodeAppearsWithNoOffset) {
 
   ASSERT_TRUE(manager.ProcessFrame(&y_mv, 0, offsets, counts, section,
                                    Standard::kPal, timing.sample_rate_4fsc_hz,
-                                   frame_lines, 177, &errors));
+                                   frame_lines, 177,
+                                   ActiveWindowEnd(Standard::kPal), &errors));
   EXPECT_TRUE(errors.empty());
 
   const int aws = 177;
@@ -550,11 +571,12 @@ TEST(BiphaseInjectionManagerNtscCavTest, LeadInCodeAppearsOnField1Lines) {
   const auto frame_lines = BuildFrameTimingPrimitives(Standard::kNtsc);
   const TimingConstants timing = GetTimingConstants(Standard::kNtsc);
   const int aws = ActiveWindowStart(Standard::kNtsc);
+  const int awe = ActiveWindowEnd(Standard::kNtsc);
   std::vector<std::string> errors;
 
   ASSERT_TRUE(manager.ProcessFrame(&y_mv, 0, offsets, counts, section,
                                    Standard::kNtsc, timing.sample_rate_4fsc_hz,
-                                   frame_lines, aws, &errors));
+                                   frame_lines, aws, awe, &errors));
   EXPECT_TRUE(errors.empty());
 
   const int end = timing.samples_per_line_4fsc;
@@ -580,11 +602,12 @@ TEST(BiphaseInjectionManagerNtscCavTest, SignalLevelsWithinSpec) {
   const auto frame_lines = BuildFrameTimingPrimitives(Standard::kNtsc);
   const TimingConstants timing = GetTimingConstants(Standard::kNtsc);
   const int aws = ActiveWindowStart(Standard::kNtsc);
+  const int awe = ActiveWindowEnd(Standard::kNtsc);
   std::vector<std::string> errors;
 
   ASSERT_TRUE(manager.ProcessFrame(&y_mv, 0, offsets, counts, section,
                                    Standard::kNtsc, timing.sample_rate_4fsc_hz,
-                                   frame_lines, aws, &errors));
+                                   frame_lines, aws, awe, &errors));
 
   const int end = timing.samples_per_line_4fsc;
   const double min_mv = MinMvOnLine(y_mv, Standard::kNtsc, 17, aws, end);
@@ -625,11 +648,12 @@ TEST(BiphaseInjectionManagerNtscCavTest, FmPictureNumberAppearsOnFmLines) {
   const auto frame_lines = BuildFrameTimingPrimitives(Standard::kNtsc);
   const TimingConstants timing = GetTimingConstants(Standard::kNtsc);
   const int aws = ActiveWindowStart(Standard::kNtsc);
+  const int awe = ActiveWindowEnd(Standard::kNtsc);
   std::vector<std::string> errors;
 
   ASSERT_TRUE(manager.ProcessFrame(&y_mv, 0, offsets, counts, section,
                                    Standard::kNtsc, timing.sample_rate_4fsc_hz,
-                                   frame_lines, aws, &errors));
+                                   frame_lines, aws, awe, &errors));
   EXPECT_TRUE(errors.empty());
 
   const int end = timing.samples_per_line_4fsc;
@@ -663,11 +687,12 @@ TEST(BiphaseInjectionManagerNtscCavTest, WhiteFlagAppearsOnLine11) {
   const auto frame_lines = BuildFrameTimingPrimitives(Standard::kNtsc);
   const TimingConstants timing = GetTimingConstants(Standard::kNtsc);
   const int aws = ActiveWindowStart(Standard::kNtsc);
+  const int awe = ActiveWindowEnd(Standard::kNtsc);
   std::vector<std::string> errors;
 
   ASSERT_TRUE(manager.ProcessFrame(&y_mv, 0, offsets, counts, section,
                                    Standard::kNtsc, timing.sample_rate_4fsc_hz,
-                                   frame_lines, aws, &errors));
+                                   frame_lines, aws, awe, &errors));
   EXPECT_TRUE(errors.empty());
 
   const int end = timing.samples_per_line_4fsc;
@@ -704,11 +729,12 @@ TEST(BiphaseInjectionManagerNtscClvTest, FmProgrammeTimeAppearsOnFmLines) {
   const auto frame_lines = BuildFrameTimingPrimitives(Standard::kNtsc);
   const TimingConstants timing = GetTimingConstants(Standard::kNtsc);
   const int aws = ActiveWindowStart(Standard::kNtsc);
+  const int awe = ActiveWindowEnd(Standard::kNtsc);
   std::vector<std::string> errors;
 
   ASSERT_TRUE(manager.ProcessFrame(&y_mv, 0, offsets, counts, section,
                                    Standard::kNtsc, timing.sample_rate_4fsc_hz,
-                                   frame_lines, aws, &errors));
+                                   frame_lines, aws, awe, &errors));
   EXPECT_TRUE(errors.empty());
 
   const int end = timing.samples_per_line_4fsc;
@@ -739,11 +765,12 @@ TEST(BiphaseInjectionManagerNtscCavTest, WhiteFlagLeadInOnlyLine11) {
   const auto frame_lines = BuildFrameTimingPrimitives(Standard::kNtsc);
   const TimingConstants timing = GetTimingConstants(Standard::kNtsc);
   const int aws = ActiveWindowStart(Standard::kNtsc);
+  const int awe = ActiveWindowEnd(Standard::kNtsc);
   std::vector<std::string> errors;
 
   ASSERT_TRUE(manager.ProcessFrame(&y_mv, 0, offsets, counts, section,
                                    Standard::kNtsc, timing.sample_rate_4fsc_hz,
-                                   frame_lines, aws, &errors));
+                                   frame_lines, aws, awe, &errors));
   EXPECT_TRUE(errors.empty());
 
   const int end = timing.samples_per_line_4fsc;
@@ -775,11 +802,12 @@ TEST(BiphaseInjectionManagerNtscCavTest, WhiteFlagLeadOutBothLines) {
   const auto frame_lines = BuildFrameTimingPrimitives(Standard::kNtsc);
   const TimingConstants timing = GetTimingConstants(Standard::kNtsc);
   const int aws = ActiveWindowStart(Standard::kNtsc);
+  const int awe = ActiveWindowEnd(Standard::kNtsc);
   std::vector<std::string> errors;
 
   ASSERT_TRUE(manager.ProcessFrame(&y_mv, 0, offsets, counts, section,
                                    Standard::kNtsc, timing.sample_rate_4fsc_hz,
-                                   frame_lines, aws, &errors));
+                                   frame_lines, aws, awe, &errors));
   EXPECT_TRUE(errors.empty());
 
   const int end = timing.samples_per_line_4fsc;
@@ -796,6 +824,7 @@ TEST(BiphaseInjectionManagerPalCavTest, SectionTransitionReinitialises) {
   BiphaseInjectionManager manager;
   const TimingConstants timing = GetTimingConstants(Standard::kPal);
   const int aws = 177;
+  const int awe = ActiveWindowEnd(Standard::kPal);
   std::vector<int> offsets, counts;
   BuildLineLayout(Standard::kPal, &offsets, &counts);
   const auto frame_lines = BuildFrameTimingPrimitives(Standard::kPal);
@@ -810,7 +839,7 @@ TEST(BiphaseInjectionManagerPalCavTest, SectionTransitionReinitialises) {
   std::vector<std::string> errors1;
   ASSERT_TRUE(manager.ProcessFrame(&y1, 0, offsets, counts, lead_in_section,
                                    Standard::kPal, timing.sample_rate_4fsc_hz,
-                                   frame_lines, aws, &errors1));
+                                   frame_lines, aws, awe, &errors1));
 
   // Process one programme_area frame (picture_number).
   Section::LineInjectionCode pn_code;
@@ -824,7 +853,7 @@ TEST(BiphaseInjectionManagerPalCavTest, SectionTransitionReinitialises) {
   std::vector<std::string> errors2;
   ASSERT_TRUE(manager.ProcessFrame(&y2, 0, offsets, counts, prog_section,
                                    Standard::kPal, timing.sample_rate_4fsc_hz,
-                                   frame_lines, aws, &errors2));
+                                   frame_lines, aws, awe, &errors2));
 
   EXPECT_TRUE(errors1.empty());
   EXPECT_TRUE(errors2.empty());
@@ -859,7 +888,8 @@ TEST(BiphaseInjectionManagerPalCavTest, UsersCodeInLeadIn) {
 
   ASSERT_TRUE(manager.ProcessFrame(&y_mv, 0, offsets, counts, section,
                                    Standard::kPal, timing.sample_rate_4fsc_hz,
-                                   frame_lines, 177, &errors));
+                                   frame_lines, 177,
+                                   ActiveWindowEnd(Standard::kPal), &errors));
   EXPECT_TRUE(errors.empty());
 
   // users_code goes on line 16 (or 329) in lead-in for PAL CAV.
@@ -897,7 +927,8 @@ TEST(BiphaseInjectionManagerPalCavTest, ChapterNumberInProgrammeArea) {
 
   ASSERT_TRUE(manager.ProcessFrame(&y_mv, 0, offsets, counts, section,
                                    Standard::kPal, timing.sample_rate_4fsc_hz,
-                                   frame_lines, 177, &errors));
+                                   frame_lines, 177,
+                                   ActiveWindowEnd(Standard::kPal), &errors));
   EXPECT_TRUE(errors.empty());
 
   // chapter_number on lines where picture_number is NOT present (the engine
@@ -926,7 +957,8 @@ TEST(BiphaseInjectionManagerPalCavTest, ActivePictureLinesUnaffected) {
 
   ASSERT_TRUE(manager.ProcessFrame(&y_mv, 0, offsets, counts, section,
                                    Standard::kPal, timing.sample_rate_4fsc_hz,
-                                   frame_lines, 177, &errors));
+                                   frame_lines, 177,
+                                   ActiveWindowEnd(Standard::kPal), &errors));
 
   const int aws = 177;
   const int end = timing.samples_per_line_4fsc;
@@ -952,6 +984,7 @@ TEST(BiphaseInjectionManagerPalCavTest, MultipleFramesSameSection) {
   const auto frame_lines = BuildFrameTimingPrimitives(Standard::kPal);
   const TimingConstants timing = GetTimingConstants(Standard::kPal);
   const int aws = 177;
+  const int awe = ActiveWindowEnd(Standard::kPal);
   std::vector<std::string> errors;
 
   // Process 5 frames; all must succeed.
@@ -959,7 +992,7 @@ TEST(BiphaseInjectionManagerPalCavTest, MultipleFramesSameSection) {
     auto y_mv = MakeBlankingBuffer(Standard::kPal);
     EXPECT_TRUE(manager.ProcessFrame(&y_mv, 0, offsets, counts, section,
                                      Standard::kPal, timing.sample_rate_4fsc_hz,
-                                     frame_lines, aws, &errors))
+                                     frame_lines, aws, awe, &errors))
         << "Frame " << f << " failed";
   }
   EXPECT_TRUE(errors.empty());

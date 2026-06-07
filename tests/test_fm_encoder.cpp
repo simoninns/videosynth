@@ -77,15 +77,15 @@ double LastQuarterLevel(const std::vector<SampleFixed>& samples, int bit_idx,
 // ---------------------------------------------------------------------------
 
 TEST(FmEncoderTest, BitCellSamplesCorrectForNtsc4Fsc) {
-  // NTSC 4fsc: 14318180 Hz, 2 µs bit cell → round(2e-6 × 14318180) = 29
+  // NTSC 4fsc: 14318180 Hz, 1 µs bit cell → round(1e-6 × 14318180) = 14
   const FmEncoder enc(kNtscSampleRate);
-  EXPECT_EQ(enc.bit_cell_samples(), 29);
+  EXPECT_EQ(enc.bit_cell_samples(), 14);
 }
 
 TEST(FmEncoderTest, BitCellSamplesCorrectForPal4Fsc) {
-  // PAL 4fsc: 17734475 Hz, 2 µs bit cell → round(2e-6 × 17734475) = 35
+  // PAL 4fsc: 17734475 Hz, 1 µs bit cell → round(1e-6 × 17734475) = 18
   const FmEncoder enc(kPalSampleRate);
-  EXPECT_EQ(enc.bit_cell_samples(), 35);
+  EXPECT_EQ(enc.bit_cell_samples(), 18);
 }
 
 TEST(FmEncoderTest, RampSamplesPositiveForNtsc4Fsc) {

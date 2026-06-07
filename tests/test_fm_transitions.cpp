@@ -238,37 +238,39 @@ TEST(FmTransitionTest, NtscFmWaveformRisingEdgeWithinSpec) {
 // FmTransitionTest — bit cell duration is identical for FM and biphase
 // ---------------------------------------------------------------------------
 
-TEST(FmTransitionTest, NtscFmAndBiphaseShareSameBitCellDuration) {
-  // IEC 60857 §10.2: bit cell = 2.0 µs ± 0.01 µs for both systems.
+TEST(FmTransitionTest, NtscFmBitCellIsHalfBiphaseBitCell) {
+  // IEC 60857 §10.2: FM uses 1.0 µs bit cells (half the 2.0 µs biphase cell)
+  // so that 40 bits fit within a 63.5 µs NTSC line.  The doubling relationship
+  // is approximate due to independent rounding of each bit cell duration.
   const FmEncoder fm_enc(kNtscSampleRate);
   const BiphaseEncoder bi_enc(kNtscSampleRate);
-  EXPECT_EQ(fm_enc.bit_cell_samples(), bi_enc.bit_cell_samples());
+  EXPECT_NEAR(fm_enc.bit_cell_samples() * 2, bi_enc.bit_cell_samples(), 1);
 }
 
-TEST(FmTransitionTest, PalFmAndBiphaseShareSameBitCellDuration) {
+TEST(FmTransitionTest, PalFmBitCellIsHalfBiphaseBitCell) {
   const FmEncoder fm_enc(kPalSampleRate);
   const BiphaseEncoder bi_enc(kPalSampleRate);
-  EXPECT_EQ(fm_enc.bit_cell_samples(), bi_enc.bit_cell_samples());
+  EXPECT_NEAR(fm_enc.bit_cell_samples() * 2, bi_enc.bit_cell_samples(), 1);
 }
 
-TEST(FmTransitionTest, NtscBitCellIs29Samples) {
-  // NTSC 4fsc 14318180 Hz × 2 µs = 28.636 → rounds to 29.
+TEST(FmTransitionTest, NtscBitCellIs14Samples) {
+  // NTSC 4fsc 14318180 Hz × 1 µs = 14.318 → rounds to 14.
   const FmEncoder enc(kNtscSampleRate);
-  EXPECT_EQ(enc.bit_cell_samples(), 29);
+  EXPECT_EQ(enc.bit_cell_samples(), 14);
 }
 
-TEST(FmTransitionTest, PalBitCellIs35Samples) {
-  // PAL 4fsc 17734475 Hz × 2 µs = 35.469 → rounds to 35.
+TEST(FmTransitionTest, PalBitCellIs18Samples) {
+  // PAL 4fsc 17734475 Hz × 1 µs = 17.734 → rounds to 18.
   const FmEncoder enc(kPalSampleRate);
-  EXPECT_EQ(enc.bit_cell_samples(), 35);
+  EXPECT_EQ(enc.bit_cell_samples(), 18);
 }
 
 // ---------------------------------------------------------------------------
-// FmTransitionTest — FM bit cell IEC timing accuracy (2.0 µs ± 0.01 µs)
+// FmTransitionTest — FM bit cell IEC timing accuracy (1.0 µs ± 0.01 µs)
 // ---------------------------------------------------------------------------
 
 TEST(FmTransitionTest, NtscFmBitCellDurationWithinIecSpec) {
-  // IEC 60857 §10.2: bit cell = 2.0 µs ± 0.01 µs.
+  // IEC 60857 §10.2: FM bit cell = 1.0 µs (half the 2.0 µs biphase cell).
   // At 4fsc the minimum quantisation step is 1/14318180 ≈ 0.070 µs, so the
   // implemented duration deviates by up to half a sample period (≈ 0.035 µs)
   // from the ideal. Use half-sample tolerance to verify best-achievable fit.
@@ -276,7 +278,7 @@ TEST(FmTransitionTest, NtscFmBitCellDurationWithinIecSpec) {
   const double bit_cell_us =
       static_cast<double>(enc.bit_cell_samples()) / kNtscSampleRate * 1.0e6;
   constexpr double kHalfSampleUs = 1.0e6 / (2.0 * kNtscSampleRate);
-  EXPECT_NEAR(bit_cell_us, 2.0, kHalfSampleUs)
+  EXPECT_NEAR(bit_cell_us, 1.0, kHalfSampleUs)
       << "NTSC FM bit cell duration " << bit_cell_us << " µs out of spec";
 }
 
@@ -285,7 +287,7 @@ TEST(FmTransitionTest, PalFmBitCellDurationWithinIecSpec) {
   const double bit_cell_us =
       static_cast<double>(enc.bit_cell_samples()) / kPalSampleRate * 1.0e6;
   constexpr double kHalfSampleUs = 1.0e6 / (2.0 * kPalSampleRate);
-  EXPECT_NEAR(bit_cell_us, 2.0, kHalfSampleUs)
+  EXPECT_NEAR(bit_cell_us, 1.0, kHalfSampleUs)
       << "PAL FM bit cell duration " << bit_cell_us << " µs out of spec";
 }
 

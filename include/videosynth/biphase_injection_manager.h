@@ -56,10 +56,13 @@ namespace videosynth {
 //   NTSC 40-bit FM:      baseline =   0 mV,             peak = 714.3 mV
 //   White flag:          constant 714.3 mV (100 IRE) across active region
 //
-// Horizontal start timing per IEC 60856 Figure 14 / IEC 60857 Figure 11:
-//   Normal codes:        signal starts at active_window_start_samples
+// Horizontal start timing per IEC 60856 Figure 14 / IEC 60857 Figures 11–13:
+//   24-bit biphase codes: signal starts at active_window_start_samples.
 //   0.172 H offset codes (programme_status, NTSC clv_code):
-//                        signal starts at round(0.172 × samples_per_line)
+//                        signal starts at round(0.172 × samples_per_line).
+//   NTSC 40-bit FM codes (IEC 60857 Figure 13):
+//                        signal starts at round(0.215 × samples_per_line).
+//   All codes end at active_window_end_samples (exclusive).
 //
 // Thread-safety: NOT thread-safe. Maintains mutable generator state.
 class BiphaseInjectionManager {
@@ -91,6 +94,10 @@ class BiphaseInjectionManager {
   //   active_window_start_samples: Sample offset of the active-picture window
   //                              start within a line; used as the normal
   //                              biphase horizontal start position.
+  //   active_window_end_samples: Sample offset (exclusive) of the active-picture
+  //                              window end within a line; injection is clamped
+  //                              to this boundary so signals do not bleed into
+  //                              the front porch.
   //   errors:                    Output for error messages; non-null required.
   //
   // Returns true on success. Returns false and appends a message to errors
@@ -102,6 +109,7 @@ class BiphaseInjectionManager {
                     double sample_rate_hz,
                     const std::vector<LineTimingPrimitive>& frame_lines,
                     int active_window_start_samples,
+                    int active_window_end_samples,
                     std::vector<std::string>* errors);
 
  private:
@@ -130,22 +138,24 @@ class BiphaseInjectionManager {
                          std::vector<std::string>* errors);
 
   // Writes a 24-bit biphase waveform into the Y buffer for one VBI line.
-  // Overwrites samples from start_sample to line_samples - 1 with the
-  // biphase signal (baseline for the post-signal tail, waveform at the front).
+  // Overwrites samples from start_sample up to (not including) active_end with
+  // the biphase signal (baseline for the post-signal tail, waveform at front).
   void InjectBiphaseCode(std::vector<SampleFixed>* out_y_mv, int line_base,
-                         int line_samples, const std::string& code_type,
+                         int active_end, const std::string& code_type,
                          Standard standard, const SignalLevels& levels,
                          int start_sample);
 
   // Writes a 40-bit FM waveform into the Y buffer for one VBI line (NTSC).
+  // Writes from start_sample up to (not including) active_end.
   void InjectFmCode(std::vector<SampleFixed>* out_y_mv, int line_base,
-                    int line_samples, const std::string& code_type,
+                    int active_end, const std::string& code_type,
                     bool field_one, const SignalLevels& levels,
                     int start_sample);
 
   // Fills the active region of a VBI line at 100 IRE (white flag, NTSC only).
+  // Fills from start_sample up to (not including) active_end.
   void InjectWhiteFlag(std::vector<SampleFixed>* out_y_mv, int line_base,
-                       int line_samples, const SignalLevels& levels,
+                       int active_end, const SignalLevels& levels,
                        int start_sample);
 
   // Advances all stateful code generators by one frame.

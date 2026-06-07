@@ -73,10 +73,12 @@ class FmEncoder {
   // Args:
   //   sample_rate_hz:         Output sample rate in Hz (e.g. 14318180 for NTSC
   //                           4fsc).
-  //   bit_cell_duration_us:   Bit cell duration in microseconds (default 2.0).
+  //   bit_cell_duration_us:   Bit cell duration in microseconds (default 1.0).
+  //                           IEC 60857 §10.2: 1.0 µs per bit (half the 24-bit
+  //                           biphase cell) so 40 bits fit within an NTSC line.
   //   transition_duration_ns: 10%-90% transition time in nanoseconds
   //                            (default 135.0 for 40-bit FM).
-  explicit FmEncoder(double sample_rate_hz, double bit_cell_duration_us = 2.0,
+  explicit FmEncoder(double sample_rate_hz, double bit_cell_duration_us = 1.0,
                      double transition_duration_ns = 135.0);
 
   // Returns samples for the raw 40-bit FM waveform (no line padding).
