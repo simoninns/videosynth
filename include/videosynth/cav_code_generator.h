@@ -203,8 +203,9 @@ class UsersCodeGenerator final : public CodeGenerator {
 
   uint32_t CurrentCode() const override { return code_value_; }
 
-  // Returns true if the X₁ nibble (bits 19–16) is in the range [0, 7].
-  // IEC 60856/60857 §10.1.6: X₁ must not exceed 7.
+  // Returns true if the code has a valid X₁ nibble (bits 19–16 in [0, 7]) AND
+  // a valid D nibble (bits 15–12 == 0xD).
+  // IEC 60856/60857 §10.1.9: format 8 X₁ D X₃ X₄ X₅ where D is fixed 0xD.
   static bool IsValidUsersCode(uint32_t code_value);
 
   // Extracts the X₁ nibble (bits 19–16) from a 24-bit users_code value.

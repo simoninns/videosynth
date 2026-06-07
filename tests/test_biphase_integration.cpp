@@ -353,7 +353,7 @@ TEST(BiphaseIntegrationTest, AcceptsUsersCodeInBothLeadInAndLeadOut) {
   li_inj.codes.push_back(MakeCode("lead_in"));
   Section::LineInjectionCode uc1;
   uc1.code_type = "users_code";
-  uc1.users_code = "0x801234";
+  uc1.users_code = "0x80D234";  // X1=0, D=0xD (canonical per IEC §10.1.9)
   uc1.users_code_specified = true;
   li_inj.codes.push_back(uc1);
   lead_in.line_injections.push_back(li_inj);
@@ -364,7 +364,7 @@ TEST(BiphaseIntegrationTest, AcceptsUsersCodeInBothLeadInAndLeadOut) {
   lo_inj.codes.push_back(MakeCode("lead_out"));
   Section::LineInjectionCode uc2;
   uc2.code_type = "users_code";
-  uc2.users_code = "0x870000";  // X1 = 7, valid (format: 8X1...)
+  uc2.users_code = "0x87D000";  // X1=7, D=0xD (canonical per IEC §10.1.9)
   uc2.users_code_specified = true;
   lo_inj.codes.push_back(uc2);
   lead_out.line_injections.push_back(lo_inj);

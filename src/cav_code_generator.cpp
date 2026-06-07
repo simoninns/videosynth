@@ -149,10 +149,12 @@ bool ProgrammeStatusCodeGenerator::IsValidProgrammeStatusCode(
 UsersCodeGenerator::UsersCodeGenerator(uint32_t code_value)
     : code_value_(code_value) {}
 
-// IEC 60856/60857 §10.1.6: X₁ (bits 19–16) must be in [0, 7].
+// IEC 60856/60857 §10.1.9: X₁ (bits 19–16) must be in [0, 7];
+// D (bits 15–12) must be the fixed hex digit 0xD.
 // static
 bool UsersCodeGenerator::IsValidUsersCode(uint32_t code_value) {
-  return ExtractX1(code_value) <= 7u;
+  const uint8_t d_nibble = static_cast<uint8_t>((code_value >> 12) & 0x0Fu);
+  return ExtractX1(code_value) <= 7u && d_nibble == 0xDu;
 }
 
 // static

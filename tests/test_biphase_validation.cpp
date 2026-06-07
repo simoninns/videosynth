@@ -196,7 +196,7 @@ TEST(BiphaseValidationTest, AcceptsUsersCodeInLeadIn) {
   Section s = MakeSection(SectionType::kLeadIn, 938);
   auto inj = MakeLaserdiscInjection("CAV");
   auto code = MakeCode("users_code");
-  code.users_code = "0x801234";
+  code.users_code = "0x80D234";  // X1=0, D=0xD (canonical format per IEC §10.1.9)
   code.users_code_specified = true;
   inj.codes.push_back(code);
   inj.codes.push_back(MakeCode("lead_in"));
@@ -213,7 +213,7 @@ TEST(BiphaseValidationTest, AcceptsUsersCodeInLeadOut) {
   Section s = MakeSection(SectionType::kLeadOut, 1250);
   auto inj = MakeLaserdiscInjection("CAV");
   auto code = MakeCode("users_code");
-  code.users_code = "0x801234";
+  code.users_code = "0x80D234";  // X1=0, D=0xD (canonical format per IEC §10.1.9)
   code.users_code_specified = true;
   inj.codes.push_back(code);
   inj.codes.push_back(MakeCode("lead_out"));
@@ -524,7 +524,7 @@ TEST(BiphaseValidationTest, AcceptsUsersCodeWithX1EqualSeven) {
   auto inj = MakeLaserdiscInjection("CAV");
   inj.codes.push_back(MakeCode("lead_in"));
   auto code = MakeCode("users_code");
-  code.users_code = "0x871234";  // X1 = 7, valid
+  code.users_code = "0x87D234";  // X1=7 (max valid), D=0xD (canonical)
   code.users_code_specified = true;
   inj.codes.push_back(code);
   s.line_injections.push_back(inj);
@@ -541,7 +541,7 @@ TEST(BiphaseValidationTest, RejectsUsersCodeWithX1EqualEight) {
   auto inj = MakeLaserdiscInjection("CAV");
   inj.codes.push_back(MakeCode("lead_in"));
   auto code = MakeCode("users_code");
-  code.users_code = "0x881234";  // X1 = 8, invalid
+  code.users_code = "0x88D234";  // X1=8 (invalid), D=0xD (canonical)
   code.users_code_specified = true;
   inj.codes.push_back(code);
   s.line_injections.push_back(inj);
@@ -560,7 +560,7 @@ TEST(BiphaseValidationTest, RejectsUsersCodeWithX1EqualFifteen) {
   auto inj = MakeLaserdiscInjection("CAV");
   inj.codes.push_back(MakeCode("lead_in"));
   auto code = MakeCode("users_code");
-  code.users_code = "0x8F1234";  // X1 = 15, invalid
+  code.users_code = "0x8FD234";  // X1=15 (invalid), D=0xD (canonical)
   code.users_code_specified = true;
   inj.codes.push_back(code);
   s.line_injections.push_back(inj);
@@ -569,6 +569,28 @@ TEST(BiphaseValidationTest, RejectsUsersCodeWithX1EqualFifteen) {
   ProjectValidator v;
   const auto r = v.Validate(p);
   EXPECT_FALSE(r.is_valid);
+}
+
+TEST(BiphaseValidationTest, RejectsUsersCodeWithInvalidDNibble) {
+  // D nibble must be 0xD (IEC §10.1.9); 0x801234 has D=1, 0x870000 has D=0.
+  for (const char* bad_code : {"0x801234", "0x870000", "0x80A000"}) {
+    Project p = MakeBasePalProject();
+    Section s = MakeSection(SectionType::kLeadIn, 938);
+    auto inj = MakeLaserdiscInjection("CAV");
+    inj.codes.push_back(MakeCode("lead_in"));
+    auto code = MakeCode("users_code");
+    code.users_code = bad_code;
+    code.users_code_specified = true;
+    inj.codes.push_back(code);
+    s.line_injections.push_back(inj);
+    p.sections.push_back(s);
+
+    ProjectValidator v;
+    const auto r = v.Validate(p);
+    EXPECT_FALSE(r.is_valid) << "Expected rejection for D-nibble violation: " << bad_code;
+    ASSERT_FALSE(r.errors.empty()) << bad_code;
+    EXPECT_NE(r.errors[0].find("D nibble"), std::string::npos) << bad_code;
+  }
 }
 
 TEST(BiphaseValidationTest, RejectsUsersCodeWithNonHexString) {

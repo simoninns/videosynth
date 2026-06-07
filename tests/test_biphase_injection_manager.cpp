@@ -843,7 +843,7 @@ TEST(BiphaseInjectionManagerPalCavTest, UsersCodeInLeadIn) {
   li.code_type = "lead_in";
   Section::LineInjectionCode uc;
   uc.code_type = "users_code";
-  uc.users_code = "0x801234";
+  uc.users_code = "0x80D234";  // X1=0, D=0xD (canonical per IEC §10.1.9)
   uc.users_code_specified = true;
 
   const auto section =

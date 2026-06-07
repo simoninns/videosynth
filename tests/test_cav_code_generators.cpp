@@ -464,41 +464,51 @@ TEST(CavCodeGeneratorTest, UsersCodeAdvanceDoesNotChangeCode) {
 }
 
 TEST(CavCodeGeneratorTest, UsersCodeX1ZeroIsValid) {
-  // X₁ = 0: bits 19-16 = 0.
-  EXPECT_TRUE(UsersCodeGenerator::IsValidUsersCode(0x800000u));
+  // X₁ = 0 with canonical D nibble (0xD): valid.
+  EXPECT_TRUE(UsersCodeGenerator::IsValidUsersCode(0x80D000u));
 }
 
 TEST(CavCodeGeneratorTest, UsersCodeX1SevenIsValid) {
-  // X₁ = 7: bits 19-16 = 7.
-  EXPECT_TRUE(UsersCodeGenerator::IsValidUsersCode(0x870000u));
+  // X₁ = 7 with canonical D nibble (0xD): valid.
+  EXPECT_TRUE(UsersCodeGenerator::IsValidUsersCode(0x87D000u));
 }
 
 TEST(CavCodeGeneratorTest, UsersCodeX1EightIsInvalid) {
-  // X₁ = 8: bits 19-16 = 8, which exceeds the IEC limit of 7.
-  EXPECT_FALSE(UsersCodeGenerator::IsValidUsersCode(0x880000u));
+  // X₁ = 8 with canonical D nibble: invalid because X₁ exceeds 7.
+  EXPECT_FALSE(UsersCodeGenerator::IsValidUsersCode(0x88D000u));
 }
 
 TEST(CavCodeGeneratorTest, UsersCodeX1FifteenIsInvalid) {
-  // X₁ = 0xF: clearly out of range.
-  EXPECT_FALSE(UsersCodeGenerator::IsValidUsersCode(0x8F0000u));
+  // X₁ = 0xF with canonical D nibble: invalid because X₁ exceeds 7.
+  EXPECT_FALSE(UsersCodeGenerator::IsValidUsersCode(0x8FD000u));
+}
+
+TEST(CavCodeGeneratorTest, UsersCodeInvalidDNibbleIsInvalid) {
+  // D nibble ≠ 0xD (IEC §10.1.9): invalid regardless of valid X₁.
+  EXPECT_FALSE(UsersCodeGenerator::IsValidUsersCode(0x801234u));  // D=1
+  EXPECT_FALSE(UsersCodeGenerator::IsValidUsersCode(0x870000u));  // D=0
 }
 
 TEST(CavCodeGeneratorTest, UsersCodeExtractX1ReturnsCorrectNibble) {
-  // Code 0x830000: nibble at bits 19-16 = 3.
-  EXPECT_EQ(UsersCodeGenerator::ExtractX1(0x830000u), 3u);
+  // Code 0x83D000: nibble at bits 19-16 = 3.
+  EXPECT_EQ(UsersCodeGenerator::ExtractX1(0x83D000u), 3u);
 }
 
 TEST(CavCodeGeneratorTest, UsersCodeExtractX1ForAllValidValues) {
+  // Use canonical D nibble (0xD) so codes are also valid for IsValidUsersCode.
   for (uint8_t x1 = 0; x1 <= 7; ++x1) {
-    const uint32_t code = 0x800000u | (static_cast<uint32_t>(x1) << 16);
+    const uint32_t code =
+        0x800000u | (static_cast<uint32_t>(x1) << 16) | 0x00D000u;
     EXPECT_EQ(UsersCodeGenerator::ExtractX1(code), x1);
     EXPECT_TRUE(UsersCodeGenerator::IsValidUsersCode(code));
   }
 }
 
 TEST(CavCodeGeneratorTest, UsersCodeExtractX1ForInvalidValues) {
+  // Use canonical D nibble: X₁ alone makes these invalid.
   for (uint8_t x1 = 8; x1 <= 15; ++x1) {
-    const uint32_t code = 0x800000u | (static_cast<uint32_t>(x1) << 16);
+    const uint32_t code =
+        0x800000u | (static_cast<uint32_t>(x1) << 16) | 0x00D000u;
     EXPECT_EQ(UsersCodeGenerator::ExtractX1(code), x1);
     EXPECT_FALSE(UsersCodeGenerator::IsValidUsersCode(code));
   }

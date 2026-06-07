@@ -197,7 +197,7 @@ TEST(BiphaseFinalTest, AcceptsPalCavProjectWithPictureStop) {
 
 TEST(BiphaseFinalTest, AcceptsPalCavProjectWithUsersCodeInLeadIn) {
   Project p = MakeMinimalPalCavProject();
-  p.sections[0].line_injections[0].codes.push_back(MakeUsersCode("0x801234"));
+  p.sections[0].line_injections[0].codes.push_back(MakeUsersCode("0x80D234"));
 
   ProjectValidator v;
   const auto r = v.Validate(p);
@@ -206,7 +206,7 @@ TEST(BiphaseFinalTest, AcceptsPalCavProjectWithUsersCodeInLeadIn) {
 
 TEST(BiphaseFinalTest, AcceptsPalCavProjectWithUsersCodeInLeadOut) {
   Project p = MakeMinimalPalCavProject();
-  p.sections[2].line_injections[0].codes.push_back(MakeUsersCode("0x870000"));
+  p.sections[2].line_injections[0].codes.push_back(MakeUsersCode("0x87D000"));
 
   ProjectValidator v;
   const auto r = v.Validate(p);
@@ -465,7 +465,7 @@ TEST(BiphaseFinalTest, RejectsPalProjectWithFmWhiteFlag) {
 TEST(BiphaseFinalTest, RejectsUsersCodeInProgrammeArea) {
   // Users code is only permitted in lead-in and lead-out.
   Project p = MakeMinimalPalCavProject();
-  p.sections[1].line_injections[0].codes.push_back(MakeUsersCode("0x801234"));
+  p.sections[1].line_injections[0].codes.push_back(MakeUsersCode("0x80D234"));
 
   ProjectValidator v;
   const auto r = v.Validate(p);

@@ -615,7 +615,8 @@ bool ValidateLaserdiscSectionTypeAndCodes(
         }
       }
 
-      // 5.5: users_code X1 nibble constraint (IEC 60856/60857: X1 = 0-7).
+      // 5.5: users_code format (IEC 60856/60857 §10.1.9): 8 X1 D X3 X4 X5.
+      //   X1 (bits 19-16) must be 0-7; D (bits 15-12) must be 0xD.
       if (code.code_type == "users_code" && code.users_code_specified) {
         uint32_t hex_value = 0;
         if (!ParseHexValue(code.users_code, &hex_value)) {
@@ -639,6 +640,16 @@ bool ValidateLaserdiscSectionTypeAndCodes(
               "Laserdisc injection validation error: users_code X1 nibble "
               "must be 0-7; '" +
               code.users_code + "' has X1=" + std::to_string(x1) + ".");
+          return false;
+        }
+        const uint32_t d_nibble = (hex_value >> 12u) & 0x0Fu;
+        if (d_nibble != 0xDu) {
+          result->is_valid = false;
+          result->errors.push_back(
+              "Laserdisc injection validation error: users_code D nibble "
+              "(bits 15-12) must be 0xD (IEC §10.1.9); '" +
+              code.users_code + "' has D=0x" +
+              std::to_string(d_nibble) + ".");
           return false;
         }
       }

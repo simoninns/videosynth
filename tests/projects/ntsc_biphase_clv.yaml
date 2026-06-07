@@ -25,7 +25,7 @@ sections:
           - code_type: lead_in
           - code_type: fm_white_flag
           - code_type: users_code
-            users_code: "0x801234"
+            users_code: "0x80D234"
       - type: vits
         target_lines: [19, 282]
         vits_type: virs
@@ -218,7 +218,7 @@ sections:
           - code_type: lead_out
           - code_type: fm_white_flag
           - code_type: users_code
-            users_code: "0x870000"
+            users_code: "0x87D000"
       - type: vits
         target_lines: [19, 282]
         vits_type: virs

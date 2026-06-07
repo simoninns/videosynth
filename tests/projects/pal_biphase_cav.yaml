@@ -24,7 +24,7 @@ sections:
         codes:
           - code_type: lead_in
           - code_type: users_code
-            users_code: "0x801234"
+            users_code: "0x80D234"
 
   - name: PalCavProgrammeChapter0
     type: progressive
@@ -169,4 +169,4 @@ sections:
         codes:
           - code_type: lead_out
           - code_type: users_code
-            users_code: "0x870000"
+            users_code: "0x87D000"

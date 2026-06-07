@@ -114,23 +114,41 @@ TEST(ValueConstraintsTest, ChapterStopBitTransitionTrackIs400) {
 // ---------------------------------------------------------------------------
 
 TEST(ValueConstraintsTest, UsersCodeX1RangeIsZeroToSeven) {
-  // IEC 60856/60857 §10.1.6: X₁ nibble (bits 19-16) must be 0–7.
+  // IEC 60856/60857 §10.1.9: X₁ nibble (bits 19-16) must be 0–7.
+  // Use canonical D nibble (0xD at bits 15-12) to isolate the X₁ constraint.
   for (int x1 = 0; x1 <= 7; ++x1) {
-    const uint32_t code = 0x800000u | (static_cast<uint32_t>(x1) << 16);
+    const uint32_t code =
+        0x800000u | (static_cast<uint32_t>(x1) << 16) | 0x00D000u;
     EXPECT_TRUE(UsersCodeGenerator::IsValidUsersCode(code))
         << "X1=" << x1 << " should be valid";
   }
   for (int x1 = 8; x1 <= 15; ++x1) {
-    const uint32_t code = 0x800000u | (static_cast<uint32_t>(x1) << 16);
+    const uint32_t code =
+        0x800000u | (static_cast<uint32_t>(x1) << 16) | 0x00D000u;
     EXPECT_FALSE(UsersCodeGenerator::IsValidUsersCode(code))
         << "X1=" << x1 << " should be invalid";
   }
 }
 
+TEST(ValueConstraintsTest, UsersCodeDNibbleMustBeHexD) {
+  // IEC 60856/60857 §10.1.9: D nibble (bits 15-12) must be 0xD.
+  // X₁=0 used throughout to isolate the D nibble constraint.
+  for (int d = 0; d <= 15; ++d) {
+    const uint32_t code = 0x800000u | (static_cast<uint32_t>(d) << 12);
+    if (d == 0xD) {
+      EXPECT_TRUE(UsersCodeGenerator::IsValidUsersCode(code))
+          << "D=0xD should be valid";
+    } else {
+      EXPECT_FALSE(UsersCodeGenerator::IsValidUsersCode(code))
+          << "D=0x" << d << " should be invalid";
+    }
+  }
+}
+
 TEST(ValueConstraintsTest, UsersCodeX1ExtractedCorrectly) {
   // Verify that ExtractX1 returns the nibble at bits 19-16.
-  // Code format 8X₁DX₃X₄X₅: for 0x831234, X₁ nibble is at bits 19-16 = 0x3.
-  const uint32_t code = 0x831234u;  // X₁ = 3
+  // Code format 8X₁DX₃X₄X₅: for 0x83D234, X₁ nibble is at bits 19-16 = 0x3.
+  const uint32_t code = 0x83D234u;  // X₁ = 3, D = 0xD
   EXPECT_EQ(UsersCodeGenerator::ExtractX1(code), 3u);
 }
 
