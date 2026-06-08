@@ -423,8 +423,8 @@ TEST(ProjectFixturesTest, FixtureProjectsCoverSupportedOutputEncodingFamilies) {
   const std::vector<std::string> fixtures = {"pal_progressive_exr.yaml",
                                              "ntsc_progressive_exr.yaml"};
   const std::vector<std::string> output_presets = {
-      "CVBS_U10_4FSC", "CVBS_U16_4FSC", "CVBS_TPG21_4FSC", "RAW_S16_28M",
-      "RAW_S16_40M"};
+      "CVBS_U10_4FSC", "CVBS_U16_4FSC", "CVBS_TPG21_4FSC",
+      "RAW_S16_28M",   "RAW_S16_40M",   "CVBS_S16_FSC"};
 
   for (const std::string& fixture : fixtures) {
     const ParseResult parsed = parser.ParseFile(FixturePath(fixture));

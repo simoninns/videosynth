@@ -70,7 +70,7 @@ inline bool IsSupportedNtscBlackSetupIre(double setup_ire) {
 
 inline bool Is4fscSampleEncodingPreset(const std::string& preset) {
   return preset == "CVBS_U10_4FSC" || preset == "CVBS_U16_4FSC" ||
-         preset == "CVBS_TPG21_4FSC";
+         preset == "CVBS_TPG21_4FSC" || preset == "CVBS_S16_FSC";
 }
 
 inline bool IsSupportedSampleEncodingPreset(const std::string& preset) {

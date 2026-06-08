@@ -79,9 +79,9 @@ TEST(ProjectValidatorTest, AcceptsTpg21SampleEncodingPreset) {
 }
 
 TEST(ProjectValidatorTest, AcceptsSupportedSampleEncodingPresets) {
-  const std::vector<std::string> presets = {"CVBS_U10_4FSC", "CVBS_U16_4FSC",
-                                            "RAW_S16_28M", "RAW_S16_40M",
-                                            "CVBS_TPG21_4FSC"};
+  const std::vector<std::string> presets = {"CVBS_U10_4FSC",   "CVBS_U16_4FSC",
+                                            "RAW_S16_28M",     "RAW_S16_40M",
+                                            "CVBS_TPG21_4FSC", "CVBS_S16_FSC"};
 
   for (const std::string& preset : presets) {
     Project project = MakeValidProject();

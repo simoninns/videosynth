@@ -206,6 +206,96 @@ TEST(OutputStageTest, WritesCompositeSamplesUsingTpg21EncodingPreset) {
   std::filesystem::remove(metadata_path);
 }
 
+TEST(OutputStageTest, WritesCompositeSamplesUsingS16FscEncodingPresetPal) {
+  OutputStage output;
+  Project project = MakeProject(Standard::kPal);
+  project.cvbs_presets.sample_encoding_preset = "CVBS_S16_FSC";
+  const std::size_t frame_span =
+      static_cast<std::size_t>(SamplesPerFrame4fsc(Standard::kPal));
+
+  std::vector<SampleFixed> y(frame_span, MillivoltsToSampleFixed(0.0));
+  std::vector<SampleFixed> c(frame_span, MillivoltsToSampleFixed(0.0));
+  y[0] = MillivoltsToSampleFixed(0.0);
+  y[1] = MillivoltsToSampleFixed(700.0);
+  y[2] = MillivoltsToSampleFixed(-300.0);
+
+  const std::filesystem::path video_path =
+      std::filesystem::temp_directory_path() /
+      "videosynth_output_stage_s16_fsc_pal.composite";
+  const std::filesystem::path metadata_path =
+      std::filesystem::temp_directory_path() /
+      "videosynth_output_stage_s16_fsc_pal.meta";
+  project.output.video_path = video_path.string();
+  project.output.metadata_path = metadata_path.string();
+  std::filesystem::remove(video_path);
+  std::filesystem::remove(metadata_path);
+
+  std::vector<std::string> errors;
+  ASSERT_TRUE(output.Write(project, y, c, &errors));
+
+  // PAL blanking=256, scale=32: int16 = (code - 256) * 32
+  // 0 mV -> code=256 -> 0; 700 mV -> code=844 -> 18816; -300 mV -> code=4
+  // (clamped) -> -8064
+  const std::vector<std::int16_t> samples = ReadSamples(video_path, 3);
+  ASSERT_EQ(samples.size(), 3U);
+  EXPECT_EQ(samples[0], 0);
+  EXPECT_EQ(samples[1], 18816);
+  EXPECT_EQ(samples[2], -8064);
+
+  CvbsMetadata metadata;
+  ASSERT_TRUE(ReadCvbsMetadata(metadata_path, &metadata));
+  EXPECT_EQ(metadata.sample_encoding_preset, "CVBS_S16_FSC");
+  EXPECT_EQ(metadata.preset, "PAL");
+
+  std::filesystem::remove(video_path);
+  std::filesystem::remove(metadata_path);
+}
+
+TEST(OutputStageTest, WritesCompositeSamplesUsingS16FscEncodingPresetNtsc) {
+  OutputStage output;
+  Project project = MakeProject(Standard::kNtsc);
+  project.cvbs_presets.sample_encoding_preset = "CVBS_S16_FSC";
+  const std::size_t frame_span =
+      static_cast<std::size_t>(SamplesPerFrame4fsc(Standard::kNtsc));
+
+  std::vector<SampleFixed> y(frame_span, MillivoltsToSampleFixed(0.0));
+  std::vector<SampleFixed> c(frame_span, MillivoltsToSampleFixed(0.0));
+  y[0] = MillivoltsToSampleFixed(0.0);
+  y[1] = MillivoltsToSampleFixed(700.0);
+  y[2] = MillivoltsToSampleFixed(-300.0);
+
+  const std::filesystem::path video_path =
+      std::filesystem::temp_directory_path() /
+      "videosynth_output_stage_s16_fsc_ntsc.composite";
+  const std::filesystem::path metadata_path =
+      std::filesystem::temp_directory_path() /
+      "videosynth_output_stage_s16_fsc_ntsc.meta";
+  project.output.video_path = video_path.string();
+  project.output.metadata_path = metadata_path.string();
+  std::filesystem::remove(video_path);
+  std::filesystem::remove(metadata_path);
+
+  std::vector<std::string> errors;
+  ASSERT_TRUE(output.Write(project, y, c, &errors));
+
+  // NTSC blanking=240, scale=32: int16 = (code - 240) * 32
+  // 0 mV -> code=240 -> 0; 700 mV -> code=789 -> 17568; -300 mV -> code=4
+  // (clamped to reserved-low boundary) -> -7552
+  const std::vector<std::int16_t> samples = ReadSamples(video_path, 3);
+  ASSERT_EQ(samples.size(), 3U);
+  EXPECT_EQ(samples[0], 0);
+  EXPECT_EQ(samples[1], 17568);
+  EXPECT_EQ(samples[2], -7552);
+
+  CvbsMetadata metadata;
+  ASSERT_TRUE(ReadCvbsMetadata(metadata_path, &metadata));
+  EXPECT_EQ(metadata.sample_encoding_preset, "CVBS_S16_FSC");
+  EXPECT_EQ(metadata.preset, "NTSC");
+
+  std::filesystem::remove(video_path);
+  std::filesystem::remove(metadata_path);
+}
+
 TEST(OutputStageTest, WritesCompositeSamplesUsingUint16EncodingPreset) {
   OutputStage output;
   Project project = MakeProject(Standard::kPal);

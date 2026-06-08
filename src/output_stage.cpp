@@ -42,6 +42,7 @@ enum class OutputEncoding {
   kCvbsU10,
   kCvbsU16,
   kCvbsTpg21,
+  kCvbsS16Fsc,
   kRawS16,
 };
 
@@ -136,6 +137,11 @@ bool ResolveOutputEncoding(const std::string& preset,
     return true;
   }
 
+  if (preset == "CVBS_S16_FSC") {
+    *output_encoding = OutputEncoding::kCvbsS16Fsc;
+    return true;
+  }
+
   if (preset == "RAW_S16_28M" || preset == "RAW_S16_40M") {
     *output_encoding = OutputEncoding::kRawS16;
     return true;
@@ -202,6 +208,11 @@ std::int16_t EncodeCompositeSample(OutputEncoding encoding,
     return static_cast<std::int16_t>(tpg21_encoded);
   }
 
+  if (encoding == OutputEncoding::kCvbsS16Fsc) {
+    const int s16_fsc_encoded = (quantized_code - profile.blanking_code) * 32;
+    return static_cast<std::int16_t>(s16_fsc_encoded);
+  }
+
   return static_cast<std::int16_t>(quantized_code);
 }
 
@@ -252,7 +263,8 @@ bool WriteMetadataDatabase(const Project& project, std::size_t frame_count,
       "        CHECK (preset IN ('NTSC', 'PAL', 'PAL_M')),"
       "    sample_encoding_preset      TEXT    NOT NULL"
       "        CHECK (sample_encoding_preset IN ('CVBS_U10_4FSC', "
-      "'CVBS_U16_4FSC', 'RAW_S16_28M', 'RAW_S16_40M', 'CVBS_TPG21_4FSC')),"
+      "'CVBS_U16_4FSC', 'RAW_S16_28M', 'RAW_S16_40M', 'CVBS_TPG21_4FSC', "
+      "'CVBS_S16_FSC')),"
       "    signal_state_preset         TEXT    NOT NULL"
       "        CHECK (signal_state_preset IN ("
       "            'STANDARD_TBC_LOCKED',"
