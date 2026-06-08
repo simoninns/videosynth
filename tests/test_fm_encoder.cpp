@@ -203,21 +203,21 @@ TEST(FmEncoderTest, DataNibbleX1EncodedLsbFirst) {
 
 TEST(FmEncoderTest, AllDataNibblesZeroGivesCorrectBitCount) {
   const auto bits = FmEncoder::BuildBitPattern(ZeroData(false));
-  // Count 1s in bits [0-3]=0011, [4]=0, [5-11]=1110010, [12-31]=all 0.
-  // Fixed 1s: bits 2,3,5,6,7,10 = 6 ones.  Bits [0-31] total = 6 (even).
-  // Parity bit [32] must be 1 to make total odd.
+  // bits[12-31] are all 0 → 0 ones (even).
+  // Parity bit [32] must be 1 so that bits[12-32] count is odd.
   EXPECT_TRUE(bits[32]);
 }
 
-TEST(FmEncoderTest, ParityBitZeroWhenBitsAlreadyOdd) {
-  // field_one=true adds bit[4]=1, giving 7 ones in [0-31] (odd).
-  // Parity bit [32] must be 0.
-  const auto bits = FmEncoder::BuildBitPattern(FmData{true, 0, 0, 0, 0, 0});
+TEST(FmEncoderTest, ParityBitZeroWhenDataBitsAlreadyOdd) {
+  // x5=1 → bit[12]=1 (LSB of 0x01).  bits[12-31] has 1 one (odd).
+  // Parity bit [32] must be 0 to keep the bits[12-32] count odd.
+  const auto bits = FmEncoder::BuildBitPattern(FmData{false, 0, 0, 0, 0, 1});
   EXPECT_FALSE(bits[32]);
 }
 
-TEST(FmEncoderTest, ParityIsOddOverBits0To32) {
-  // Verify odd parity property holds for a variety of payloads.
+TEST(FmEncoderTest, ParityIsOddOverDataBitsAndParityBit) {
+  // Parity is odd over the 20 data nibble bits [12-31] plus the parity bit
+  // [32]. The field-indicator bit [4] must not affect the result.
   const std::vector<FmData> payloads = {
       {false, 0x0, 0x0, 0x0, 0x0, 0x0},
       {true, 0x5, 0x3, 0xA, 0x1, 0x7},
@@ -227,7 +227,7 @@ TEST(FmEncoderTest, ParityIsOddOverBits0To32) {
   for (const auto& payload : payloads) {
     const auto bits = FmEncoder::BuildBitPattern(payload);
     int ones = 0;
-    for (int i = 0; i <= 32; ++i) {
+    for (int i = 12; i <= 32; ++i) {
       if (bits[static_cast<std::size_t>(i)]) ++ones;
     }
     EXPECT_EQ(ones % 2, 1) << "Parity failed for payload";
@@ -252,12 +252,17 @@ TEST(FmEncoderTest, BitZeroIsClockSyncZeroStartsAtPeak) {
               1.0);
 }
 
-// Bit [2] = 1 (clock sync '1'): first quarter of bit cell 2 must be at
-// baseline.
-TEST(FmEncoderTest, BitTwoIsClockSyncOneStartsAtBaseline) {
+// Bit [2] = 1 (clock sync '1'): in FM encoding the signal starts HIGH after
+// two '0' bits (0→flip→LOW, 1→flip→HIGH).  Bit [2] therefore starts HIGH.
+// A '1' bit has a pip in the second half, so its last quarter is at baseline.
+TEST(FmEncoderTest, BitTwoIsClockSyncOnePipEndsAtBaseline) {
   const FmEncoder enc(kNtscSampleRate);
   const auto samples = enc.Generate40BitWaveform(ZeroData(), kBaseline, kPeak);
-  EXPECT_NEAR(FirstQuarterLevel(samples, 2, enc.bit_cell_samples()), kBaseline,
+  // First quarter: HIGH (peak) — signal starts at peak for this bit.
+  EXPECT_NEAR(FirstQuarterLevel(samples, 2, enc.bit_cell_samples()), kPeak,
+              1.0);
+  // Last quarter: LOW (baseline) — pip occupies the second half.
+  EXPECT_NEAR(LastQuarterLevel(samples, 2, enc.bit_cell_samples()), kBaseline,
               1.0);
 }
 
@@ -278,12 +283,17 @@ TEST(FmEncoderTest, BitEightIsLeadingRecognitionZeroEndsAtBaseline) {
 }
 
 // Field indicator bit [4] = 1 when field_one=true.
+// After bits 0011, the signal is at peak.  A '1' bit therefore starts HIGH
+// and has a pip (LOW) in the second half.
 TEST(FmEncoderTest, FieldOneTrueMakesBit4AOneCell) {
   const FmEncoder enc(kNtscSampleRate);
   const auto samples =
       enc.Generate40BitWaveform(FmData{true, 0, 0, 0, 0, 0}, kBaseline, kPeak);
-  // A '1' bit: first quarter at baseline.
-  EXPECT_NEAR(FirstQuarterLevel(samples, 4, enc.bit_cell_samples()), kBaseline,
+  // First quarter: peak (signal is HIGH at start of bit [4]).
+  EXPECT_NEAR(FirstQuarterLevel(samples, 4, enc.bit_cell_samples()), kPeak,
+              1.0);
+  // Last quarter: baseline (pip occupies the second half of the cell).
+  EXPECT_NEAR(LastQuarterLevel(samples, 4, enc.bit_cell_samples()), kBaseline,
               1.0);
 }
 
@@ -314,81 +324,106 @@ TEST(FmEncoderTest, TrailingBit35IsZeroCell) {
 }
 
 // Trailing recognition bit [39] = 1 (last bit of pattern).
+// Level trace to bit[39]: bit[38]='0' starts LOW and flips to HIGH.
+// So bit[39]='1' starts HIGH and has pip (LOW) in its second half.
 TEST(FmEncoderTest, TrailingBit39IsOneCell) {
   const FmEncoder enc(kNtscSampleRate);
   const auto samples = enc.Generate40BitWaveform(ZeroData(), kBaseline, kPeak);
-  EXPECT_NEAR(LastQuarterLevel(samples, 39, enc.bit_cell_samples()), kPeak,
+  // First quarter: peak (bit[39] starts HIGH after bit[38] flips LOW→HIGH).
+  EXPECT_NEAR(FirstQuarterLevel(samples, 39, enc.bit_cell_samples()), kPeak,
+              1.0);
+  // Last quarter: baseline (pip occupies the second half).
+  EXPECT_NEAR(LastQuarterLevel(samples, 39, enc.bit_cell_samples()), kBaseline,
               1.0);
 }
 
-// X5 = 0x5 = 0101 → bit[12]=1 (LSB), bit[13]=0, bit[14]=1, bit[15]=0
+// X5 = 0x5 = 0101 → LSB first: bit[12]=1, bit[13]=0, bit[14]=1, bit[15]=0.
+// Level entering bit[12] = HIGH (preamble bits leave the signal at peak).
+// FM level trace: bit[12]='1'→no flip (HIGH); bit[13]='0'→flip (LOW);
+//                 bit[14]='1'→no flip (LOW); bit[15]='0'→flip (HIGH).
 TEST(FmEncoderTest, X5NibbleEncodedCorrectlyInWaveform) {
   const FmEncoder enc(kNtscSampleRate);
   const auto samples = enc.Generate40BitWaveform(
       FmData{false, 0, 0, 0, 0, 0x05}, kBaseline, kPeak);
   const int bcs = enc.bit_cell_samples();
-  // bit[12] = 1 → starts at baseline
-  EXPECT_NEAR(FirstQuarterLevel(samples, 12, bcs), kBaseline, 1.0);
-  // bit[13] = 0 → starts at peak
+  // bit[12]=1: starts HIGH (peak), pip ends at baseline.
+  EXPECT_NEAR(FirstQuarterLevel(samples, 12, bcs), kPeak, 1.0);
+  EXPECT_NEAR(LastQuarterLevel(samples, 12, bcs), kBaseline, 1.0);
+  // bit[13]=0: starts HIGH (no flip from '1'), whole cell at peak.
   EXPECT_NEAR(FirstQuarterLevel(samples, 13, bcs), kPeak, 1.0);
-  // bit[14] = 1 → starts at baseline
+  EXPECT_NEAR(LastQuarterLevel(samples, 13, bcs), kPeak, 1.0);
+  // bit[14]=1: starts LOW (flip from '0'), pip ends at peak.
   EXPECT_NEAR(FirstQuarterLevel(samples, 14, bcs), kBaseline, 1.0);
-  // bit[15] = 0 → starts at peak
-  EXPECT_NEAR(FirstQuarterLevel(samples, 15, bcs), kPeak, 1.0);
+  EXPECT_NEAR(LastQuarterLevel(samples, 14, bcs), kPeak, 1.0);
+  // bit[15]=0: starts LOW (no flip from '1'), whole cell at baseline.
+  EXPECT_NEAR(FirstQuarterLevel(samples, 15, bcs), kBaseline, 1.0);
+  EXPECT_NEAR(LastQuarterLevel(samples, 15, bcs), kBaseline, 1.0);
 }
 
-// X1 = 0x9 = 1001 → bit[28]=1 (LSB), bit[29]=0, bit[30]=0, bit[31]=1
+// X1 = 0x9 = 1001 → LSB first: bit[28]=1, bit[29]=0, bit[30]=0, bit[31]=1.
+// Level entering bit[28] = HIGH (bits[12-27] all '0': 16 flips, even → HIGH).
+// FM level trace: bit[28]='1'→no flip (HIGH); bit[29]='0'→flip (LOW);
+//                 bit[30]='0'→flip (HIGH); bit[31]='1'→no flip (HIGH).
 TEST(FmEncoderTest, X1NibbleEncodedCorrectlyInWaveform) {
   const FmEncoder enc(kNtscSampleRate);
   const auto samples = enc.Generate40BitWaveform(
       FmData{false, 0x09, 0, 0, 0, 0}, kBaseline, kPeak);
   const int bcs = enc.bit_cell_samples();
-  // bit[28] = 1 → starts at baseline
-  EXPECT_NEAR(FirstQuarterLevel(samples, 28, bcs), kBaseline, 1.0);
-  // bit[29] = 0 → starts at peak
+  // bit[28]=1: starts HIGH (peak), pip ends at baseline.
+  EXPECT_NEAR(FirstQuarterLevel(samples, 28, bcs), kPeak, 1.0);
+  EXPECT_NEAR(LastQuarterLevel(samples, 28, bcs), kBaseline, 1.0);
+  // bit[29]=0: starts HIGH (no flip from '1'), whole cell at peak.
   EXPECT_NEAR(FirstQuarterLevel(samples, 29, bcs), kPeak, 1.0);
-  // bit[30] = 0 → starts at peak
-  EXPECT_NEAR(FirstQuarterLevel(samples, 30, bcs), kPeak, 1.0);
-  // bit[31] = 1 → starts at baseline
-  EXPECT_NEAR(FirstQuarterLevel(samples, 31, bcs), kBaseline, 1.0);
+  EXPECT_NEAR(LastQuarterLevel(samples, 29, bcs), kPeak, 1.0);
+  // bit[30]=0: starts LOW (flip from '0'), whole cell at baseline.
+  EXPECT_NEAR(FirstQuarterLevel(samples, 30, bcs), kBaseline, 1.0);
+  EXPECT_NEAR(LastQuarterLevel(samples, 30, bcs), kBaseline, 1.0);
+  // bit[31]=1: starts HIGH (flip from '0'), pip ends at baseline.
+  EXPECT_NEAR(FirstQuarterLevel(samples, 31, bcs), kPeak, 1.0);
+  EXPECT_NEAR(LastQuarterLevel(samples, 31, bcs), kBaseline, 1.0);
 }
 
-// Inter-bit transition: bits [0,1] are both '0' → rising transition at
-// boundary. Before the boundary (end of cell 0): near baseline. After the
-// boundary (start of cell 1): near peak.
-TEST(FmEncoderTest, ConsecutiveZeroBitsHaveRisingInterBitTransition) {
+// FM '0' bit: signal holds current level for the full cell, then flips.
+// Bits [0,1] are both '0'. Bit[0] starts HIGH → at the boundary (sample bcs)
+// the signal transitions HIGH→LOW (falling edge).
+TEST(FmEncoderTest, ConsecutiveZeroBitsHaveFallingTransitionAtBoundary) {
   const FmEncoder enc(kNtscSampleRate);
   const auto samples = enc.Generate40BitWaveform(ZeroData(), kBaseline, kPeak);
   const int bcs = enc.bit_cell_samples();
   const int ramp = enc.ramp_samples();
-  const int boundary = 1 * bcs;
-  // Bits [0,1] are both '0'. Before boundary: baseline. After: peak.
+  const int boundary = 1 * bcs;  // end of bit[0], start of bit[1]
   const int pre_idx = boundary - ramp - 1;
   const int post_idx = boundary + ramp + 1;
+  // Before transition: HIGH (bit[0] held its level until the flip).
   EXPECT_NEAR(
       SampleFixedToMillivolts(samples[static_cast<std::size_t>(pre_idx)]),
-      kBaseline, 1.0);
+      kPeak, 1.0);
+  // After transition: LOW (bit[1] now holds the flipped level).
   EXPECT_NEAR(
       SampleFixedToMillivolts(samples[static_cast<std::size_t>(post_idx)]),
-      kPeak, 1.0);
+      kBaseline, 1.0);
 }
 
-// Bits [2,3] are both '1' → falling inter-bit transition at boundary.
-TEST(FmEncoderTest, ConsecutiveOneBitsHaveFallingInterBitTransition) {
+// FM '1' bit: pip in second half (LOW for a HIGH-starting bit).
+// Bits [2,3] are both '1', each starting HIGH.  At sample 3*bcs the pip of
+// bit[2] ends (rising: LOW→HIGH), then bit[3] starts HIGH.
+TEST(FmEncoderTest, ConsecutiveOneBitsHaveRisingTransitionAtPipEnd) {
   const FmEncoder enc(kNtscSampleRate);
   const auto samples = enc.Generate40BitWaveform(ZeroData(), kBaseline, kPeak);
   const int bcs = enc.bit_cell_samples();
   const int ramp = enc.ramp_samples();
-  // Boundary between bit[2]='1' and bit[3]='1'
-  const int boundary = 3 * bcs;
-  const int pre_idx = boundary - ramp - 1;
-  const int post_idx = boundary + ramp + 1;
+  // Pip-end of bit[2] = cell boundary at sample 3*bcs.
+  const int pip_end = 3 * bcs;
+  const int pre_idx = pip_end - ramp - 1;
+  const int post_idx = pip_end + ramp + 1;
+  // Before pip-end: LOW (inside pip region of bit[2]).
   EXPECT_NEAR(
       SampleFixedToMillivolts(samples[static_cast<std::size_t>(pre_idx)]),
-      kPeak, 1.0);
+      kBaseline, 1.0);
+  // After pip-end: HIGH (bit[3] starts at peak before its own pip).
   EXPECT_NEAR(
       SampleFixedToMillivolts(samples[static_cast<std::size_t>(post_idx)]),
-      kBaseline, 1.0);
+      kPeak, 1.0);
 }
 
 // ---------------------------------------------------------------------------

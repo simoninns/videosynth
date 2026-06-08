@@ -121,12 +121,14 @@ std::array<bool, 40> FmEncoder::BuildBitPattern(const FmData& data) {
   bits[30] = (data.x1 & 0x04u) != 0u;
   bits[31] = (data.x1 & 0x08u) != 0u;
 
-  // Bit [32]: odd parity over bits [0-31]
+  // Bit [32]: odd parity over data nibble bits [12-31] only (IEC 60857 §10.2).
+  // The decoder extracts parity from decodedBytes & 0x80 and validates it
+  // against dataValue = bits[12-31]; sync/recognition bits are excluded.
   int ones = 0;
-  for (int i = 0; i < 32; ++i) {
+  for (int i = 12; i < 32; ++i) {
     if (bits[static_cast<std::size_t>(i)]) ++ones;
   }
-  // Set parity bit so that total count of '1's in bits [0-32] is odd.
+  // Set parity bit so that total count of '1's in bits [12-32] is odd.
   bits[32] = (ones % 2 == 0);
 
   // Bits [33-39]: trailing data recognition bits = 0001101
@@ -141,65 +143,88 @@ std::array<bool, 40> FmEncoder::BuildBitPattern(const FmData& data) {
   return bits;
 }
 
-std::vector<SampleFixed> FmEncoder::GenerateBitsManchester(
+std::vector<SampleFixed> FmEncoder::GenerateBitsFM(
     const std::array<bool, 40>& bits, double baseline_level_mv,
     double peak_level_mv) const {
   constexpr int kNumBits = 40;
   const int total = kNumBits * bit_cell_samples_;
-  std::vector<double> samples(static_cast<std::size_t>(total));
+  const int T1 = bit_cell_samples_ / 2;  // Half-cell for '1'-bit pip
 
-  const int half_cell = bit_cell_samples_ / 2;
-  const int ramp_half = ramp_samples_ / 2;
+  // FM encoding rule (IEC 60857 §10.2, Figure 13):
+  //   Signal starts HIGH (peak). The decoder initialises lastTransitionX at the
+  //   first HIGH sample, so the code must begin at peak.
+  //
+  //   '0' bit: hold current level for the full cell (T0), then flip
+  //   permanently.
+  //            Decoder: long interval (T0 > 0.75 µs threshold) → bit '0'.
+  //
+  //   '1' bit: quick "pip" — hold for T1 = T0/2, flip briefly, return at T0.
+  //            Two transitions per cell; net level unchanged.
+  //            Decoder: short interval (T1 < 0.75 µs) → bit '1', then scans
+  //            past the pip-end transition to re-anchor lastTransitionX.
 
-  // Pass 1: fill constant regions and apply centre transitions for each bit.
+  // Pass 1: fill constant-level regions.
+  std::vector<double> samples(static_cast<std::size_t>(total),
+                              baseline_level_mv);
+  double level = peak_level_mv;  // Start HIGH
+
   for (int bit_idx = 0; bit_idx < kNumBits; ++bit_idx) {
     const bool bit = bits[static_cast<std::size_t>(bit_idx)];
-    const int bit_start = bit_idx * bit_cell_samples_;
-    const int center = bit_start + half_cell;
-    const int post_start = center + (ramp_samples_ - ramp_half);
+    const int cell_start = bit_idx * bit_cell_samples_;
 
-    const double start_level = bit ? baseline_level_mv : peak_level_mv;
-    const double end_level = bit ? peak_level_mv : baseline_level_mv;
-
-    for (int i = bit_start; i < center - ramp_half; ++i) {
-      samples[static_cast<std::size_t>(i)] = start_level;
+    if (!bit) {
+      for (int i = cell_start; i < cell_start + bit_cell_samples_; ++i) {
+        samples[static_cast<std::size_t>(i)] = level;
+      }
+      level = (level == peak_level_mv) ? baseline_level_mv : peak_level_mv;
+    } else {
+      const double pip_level =
+          (level == peak_level_mv) ? baseline_level_mv : peak_level_mv;
+      for (int i = cell_start; i < cell_start + T1; ++i) {
+        samples[static_cast<std::size_t>(i)] = level;
+      }
+      for (int i = cell_start + T1; i < cell_start + bit_cell_samples_; ++i) {
+        samples[static_cast<std::size_t>(i)] = pip_level;
+      }
+      // level unchanged — two flips cancel
     }
-    for (int i = post_start; i < bit_start + bit_cell_samples_; ++i) {
-      samples[static_cast<std::size_t>(i)] = end_level;
-    }
-
-    ApplyStepTransition(samples, center, bit, baseline_level_mv, peak_level_mv);
   }
 
-  // Pass 2: apply inter-bit boundary transitions where consecutive bits match.
-  // Manchester rule: same-value adjacent bits require a level reset at the
-  // boundary so the next bit starts at its correct initial level.
-  //   '1'→'1': ends at peak, must return to baseline → falling boundary.
-  //   '0'→'0': ends at baseline, must return to peak  → rising boundary.
-  for (int bit_idx = 1; bit_idx < kNumBits; ++bit_idx) {
-    const bool prev = bits[static_cast<std::size_t>(bit_idx - 1)];
-    const bool curr = bits[static_cast<std::size_t>(bit_idx)];
+  // Pass 2: apply shaped ramp transitions at every transition point.
+  level = peak_level_mv;
+  for (int bit_idx = 0; bit_idx < kNumBits; ++bit_idx) {
+    const bool bit = bits[static_cast<std::size_t>(bit_idx)];
+    const int cell_start = bit_idx * bit_cell_samples_;
 
-    if (prev == curr) {
-      const int boundary = bit_idx * bit_cell_samples_;
-      const bool rising = !prev;
-      ApplyStepTransition(samples, boundary, rising, baseline_level_mv,
-                          peak_level_mv);
+    if (!bit) {
+      // One permanent-flip transition at end of cell.
+      const bool rising = (level == baseline_level_mv);
+      ApplyStepTransition(samples, cell_start + bit_cell_samples_, rising,
+                          baseline_level_mv, peak_level_mv);
+      level = (level == peak_level_mv) ? baseline_level_mv : peak_level_mv;
+    } else {
+      // Pip start at T1, pip end at T0 (return to original level).
+      const bool pip_rising = (level == baseline_level_mv);
+      ApplyStepTransition(samples, cell_start + T1, pip_rising,
+                          baseline_level_mv, peak_level_mv);
+      ApplyStepTransition(samples, cell_start + bit_cell_samples_, !pip_rising,
+                          baseline_level_mv, peak_level_mv);
+      // level unchanged
     }
   }
 
   std::vector<SampleFixed> result;
   result.reserve(static_cast<std::size_t>(total));
-  for (const double level : samples) {
-    result.push_back(MillivoltsToSampleFixed(level));
+  for (const double lv : samples) {
+    result.push_back(MillivoltsToSampleFixed(lv));
   }
   return result;
 }
 
 std::vector<SampleFixed> FmEncoder::Generate40BitWaveform(
     const FmData& data, double baseline_level_mv, double peak_level_mv) const {
-  return GenerateBitsManchester(BuildBitPattern(data), baseline_level_mv,
-                                peak_level_mv);
+  return GenerateBitsFM(BuildBitPattern(data), baseline_level_mv,
+                        peak_level_mv);
 }
 
 std::vector<SampleFixed> FmEncoder::Generate40BitCode(
@@ -213,8 +238,8 @@ std::vector<SampleFixed> FmEncoder::Generate40BitCode(
                                 MillivoltsToSampleFixed(baseline_level_mv));
 
   // Embed the 40-bit FM waveform starting at sample 0.
-  const auto code_samples = GenerateBitsManchester(
-      BuildBitPattern(data), baseline_level_mv, peak_level_mv);
+  const auto code_samples =
+      GenerateBitsFM(BuildBitPattern(data), baseline_level_mv, peak_level_mv);
   const int copy_count =
       std::min(static_cast<int>(code_samples.size()), line_samples);
   for (int i = 0; i < copy_count; ++i) {

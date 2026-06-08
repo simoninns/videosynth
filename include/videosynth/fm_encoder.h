@@ -50,15 +50,19 @@ struct FmData {
 //   [20-23] Data nibble X3 (LSB first)
 //   [24-27] Data nibble X2 (LSB first)
 //   [28-31] Data nibble X1 (LSB first)
-//   [32]    Parity: odd parity over bits [0-31]
+//   [32]    Parity: odd parity over data bits [12-31] only
 //   [33-39] Trailing recognition:   0001101
 //
-// Encoding rules (same as 24-bit biphase, IEC 60857 §10.2):
-//   - Positive (rising) transition at center of bit cell = logic '1'
-//   - Negative (falling) transition at center of bit cell = logic '0'
-//   - Inter-bit transitions occur between consecutive identical bits
+// Encoding rules (FM modulation, IEC 60857 §10.2, Figure 13):
+//   - Signal starts HIGH (peak). Decoder initialises from the first HIGH
+//   sample.
+//   - '0' bit: hold current level for full cell (T0 ≈ 1.0 µs), then flip.
+//     Decoder sees long inter-transition interval (≥ 0.75 µs) → '0'.
+//   - '1' bit: hold for T1 = T0/2 ≈ 0.5 µs (pip start), flip briefly, return
+//     at T0 (pip end). Net level unchanged. Decoder sees short interval
+//     (< 0.75 µs) → '1', then scans past pip-end to re-anchor.
 //   - Transition time: 135 ns ± 15 ns (10%-90%), S-curve shaped
-//   - Bit cell duration: 2.0 µs ± 0.01 µs
+//   - Bit cell duration: 1.0 µs ± 0.01 µs
 //
 // White flag (IEC 60857 Figure 12):
 //   - 100 IRE pulse, 0.790 H long, with 135 ns ± 15 ns rise/fall transitions
@@ -150,11 +154,11 @@ class FmEncoder {
                            bool rising, double baseline_level_mv,
                            double peak_level_mv) const;
 
-  // Encodes `bits` as a Manchester waveform with IEC-compliant inter-bit
-  // transitions. Returns 40 * bit_cell_samples() samples.
-  std::vector<SampleFixed> GenerateBitsManchester(
-      const std::array<bool, 40>& bits, double baseline_level_mv,
-      double peak_level_mv) const;
+  // Encodes `bits` as an FM waveform (IEC 60857 §10.2 Figure 13).
+  // Returns 40 * bit_cell_samples() samples starting at peak_level_mv.
+  std::vector<SampleFixed> GenerateBitsFM(const std::array<bool, 40>& bits,
+                                          double baseline_level_mv,
+                                          double peak_level_mv) const;
 };
 
 }  // namespace videosynth
