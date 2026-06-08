@@ -36,10 +36,10 @@ namespace {
 
 constexpr double kNtscSampleRate = 14318180.0;
 constexpr double kPalSampleRate = 17734475.0;
-constexpr double kPalBaseline = 0.0;  // blanking level (IEC 60856 Figure 14)
-constexpr double kPalPeak = 700.0;      // 100% white
-constexpr double kNtscBaseline = 0.0;   // 0 IRE
-constexpr double kNtscPeak = 714.3;     // 100 IRE
+constexpr double kPalBaseline = 0.0;   // blanking level (IEC 60856 Figure 14)
+constexpr double kPalPeak = 700.0;     // 100% white
+constexpr double kNtscBaseline = 0.0;  // 0 IRE
+constexpr double kNtscPeak = 714.3;    // 100 IRE
 
 // ---------------------------------------------------------------------------
 // BiphaseSystemTest — reference test vectors (known-good bit patterns)

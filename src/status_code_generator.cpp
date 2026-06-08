@@ -35,7 +35,9 @@ uint32_t ProgrammeStatusCodeBuilder::Build() const {
 //   X₅₁ = d₁ ⊕ d₂ ⊕ d₄
 //   X₅₂ = d₁ ⊕ d₃ ⊕ d₄
 //   X₅₃ = d₂ ⊕ d₃ ⊕ d₄
-//   X₅₄ = d₁ ⊕ d₂ ⊕ d₃ ⊕ d₄  (overall parity)
+//   X₅₄ = d₁ ⊕ d₂ ⊕ d₃  (overall parity; d₄ appears in c₁,c₂,c₃ an even
+//                           number of times and cancels in the expansion of
+//                           a₁⊕a₂⊕a₃⊕a₄⊕c₁⊕c₂⊕c₃)
 // static
 uint8_t ProgrammeStatusCodeBuilder::ComputeHammingCheck(uint8_t x4) {
   const bool d1 = (x4 & 0x08u) != 0u;
@@ -46,7 +48,7 @@ uint8_t ProgrammeStatusCodeBuilder::ComputeHammingCheck(uint8_t x4) {
   const bool p1 = d1 ^ d2 ^ d4;
   const bool p2 = d1 ^ d3 ^ d4;
   const bool p3 = d2 ^ d3 ^ d4;
-  const bool p4 = d1 ^ d2 ^ d3 ^ d4;
+  const bool p4 = d1 ^ d2 ^ d3;
 
   return static_cast<uint8_t>((p1 ? 0x08u : 0u) | (p2 ? 0x04u : 0u) |
                               (p3 ? 0x02u : 0u) | (p4 ? 0x01u : 0u));

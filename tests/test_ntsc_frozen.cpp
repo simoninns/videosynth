@@ -437,8 +437,8 @@ TEST(NtscFrozenValuesTest, HammingCheckIsConsistentWithBuildOutput) {
 
 TEST(NtscFrozenValuesTest, HammingCheckAllOnesX4) {
   // X₄ = 0xF (d1=d2=d3=d4=1):
-  // p1 = 1^1^1 = 1, p2 = 1^1^1 = 1, p3 = 1^1^1 = 1, p4 = 1^1^1^1 = 0.
-  EXPECT_EQ(ProgrammeStatusCodeBuilder::ComputeHammingCheck(0xFu), 0xEu);
+  // p1 = 1^1^1 = 1, p2 = 1^1^1 = 1, p3 = 1^1^1 = 1, p4 = 1^1^1 = 1.
+  EXPECT_EQ(ProgrammeStatusCodeBuilder::ComputeHammingCheck(0xFu), 0xFu);
 }
 
 TEST(NtscFrozenValuesTest, HammingCheckSingleBitD1) {
@@ -450,9 +450,9 @@ TEST(NtscFrozenValuesTest, HammingCheckSingleBitD1) {
 
 TEST(NtscFrozenValuesTest, HammingCheckSingleBitD4) {
   // X₄ = 0x1 (d1=d2=d3=0, d4=1):
-  // p1 = 0^0^1 = 1, p2 = 0^0^1 = 1, p3 = 0^0^1 = 1, p4 = 0^0^0^1 = 1.
-  // X₅ = 1111b = 0xF.
-  EXPECT_EQ(ProgrammeStatusCodeBuilder::ComputeHammingCheck(0x1u), 0xFu);
+  // p1 = 0^0^1 = 1, p2 = 0^0^1 = 1, p3 = 0^0^1 = 1, p4 = 0^0^0 = 0.
+  // X₅ = 1110b = 0xE.
+  EXPECT_EQ(ProgrammeStatusCodeBuilder::ComputeHammingCheck(0x1u), 0xEu);
 }
 
 TEST(NtscFrozenValuesTest, IsDefinedAudioVideoModeAcceptsModes0To3) {

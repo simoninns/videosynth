@@ -49,7 +49,8 @@ enum class AudioVideoMode : uint8_t {
 //     X₅₁ = d₁ ⊕ d₂ ⊕ d₄
 //     X₅₂ = d₁ ⊕ d₃ ⊕ d₄
 //     X₅₃ = d₂ ⊕ d₃ ⊕ d₄
-//     X₅₄ = d₁ ⊕ d₂ ⊕ d₃ ⊕ d₄   (overall parity — SECDED extension)
+//     X₅₄ = d₁ ⊕ d₂ ⊕ d₃         (overall parity — SECDED extension; d₄
+//                                   cancels because it appears in c₁,c₂,c₃)
 //   X₅ = (X₅₁ << 3) | (X₅₂ << 2) | (X₅₃ << 1) | X₅₄
 //
 // Amendment 2 changes (relative to original IEC spec):

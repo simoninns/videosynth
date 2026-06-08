@@ -1016,7 +1016,8 @@ TEST(BiphaseInjectionManagerPalClvTest, TimeCodeIsContinuousAcrossSections) {
                                    frame_lines, aws, awe, &errors));
   EXPECT_TRUE(errors.empty());
 
-  // Also capture a fresh single-frame session starting from zero for comparison.
+  // Also capture a fresh single-frame session starting from zero for
+  // comparison.
   BiphaseInjectionManager fresh_manager;
   auto y_fresh = MakeBlankingBuffer(Standard::kPal);
   ASSERT_TRUE(fresh_manager.ProcessFrame(

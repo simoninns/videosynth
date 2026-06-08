@@ -41,7 +41,7 @@ sections:
             chapter: 0
           - code_type: picture_stop
           - code_type: programme_status
-            programme_status: "0x8DC001"
+            programme_status: "0x8DC000"
 
   - name: PalCavProgrammeChapter1
     type: progressive
@@ -57,7 +57,7 @@ sections:
           - code_type: chapter_number
             chapter: 1
           - code_type: programme_status
-            programme_status: "0x8DC002"
+            programme_status: "0x8DC01E"
 
   - name: PalCavProgrammeChapter2
     type: progressive
@@ -74,7 +74,7 @@ sections:
             chapter: 2
           - code_type: picture_stop
           - code_type: programme_status
-            programme_status: "0x8DC003"
+            programme_status: "0x8DC027"
 
   - name: PalCavProgrammeChapter3
     type: progressive
@@ -90,7 +90,7 @@ sections:
           - code_type: chapter_number
             chapter: 3
           - code_type: programme_status
-            programme_status: "0x8D8001"
+            programme_status: "0x8DC039"
 
   - name: PalCavProgrammeChapter4
     type: progressive
@@ -107,7 +107,7 @@ sections:
             chapter: 4
           - code_type: picture_stop
           - code_type: programme_status
-            programme_status: "0x8D8002"
+            programme_status: "0x8DC08D"
 
   - name: PalCavProgrammeChapter5
     type: progressive
@@ -123,7 +123,7 @@ sections:
           - code_type: chapter_number
             chapter: 5
           - code_type: programme_status
-            programme_status: "0x8D4001"
+            programme_status: "0x8BA000"
 
   - name: PalCavProgrammeChapter6
     type: progressive
@@ -140,7 +140,7 @@ sections:
             chapter: 6
           - code_type: picture_stop
           - code_type: programme_status
-            programme_status: "0x8D4002"
+            programme_status: "0x8DC100"
 
   - name: PalCavProgrammeChapter7
     type: progressive

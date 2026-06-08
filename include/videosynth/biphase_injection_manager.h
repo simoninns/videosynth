@@ -33,8 +33,8 @@ namespace videosynth {
 //
 // The manager maintains stateful code generators across frames and sections.
 // Section transitions are detected automatically by comparing section pointers.
-// Most generators are re-created on each section transition, but the disc-global
-// timekeeping generators (programme_time_code, clv_picture_number,
+// Most generators are re-created on each section transition, but the
+// disc-global timekeeping generators (programme_time_code, clv_picture_number,
 // fm_programme_time, fm_picture_number) persist across sections so that the
 // encoded time and picture values are continuous across chapter boundaries.
 // Call Reset() to restart all generators from their initial values.

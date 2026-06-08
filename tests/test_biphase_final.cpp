@@ -654,7 +654,7 @@ TEST(BiphaseFinalTest, AcceptsPalCavProjectWithProgrammeStatusCode) {
 
   Section::LineInjectionCode ps;
   ps.code_type = "programme_status";
-  ps.programme_status = "0x8DC001";
+  ps.programme_status = "0x8DC000";
   ps.programme_status_specified = true;
   p.sections[1].line_injections[0].codes.push_back(ps);
 
