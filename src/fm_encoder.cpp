@@ -231,8 +231,8 @@ std::vector<SampleFixed> FmEncoder::GenerateWhiteFlag(
   const int line_samples = timing.samples_per_line_4fsc;
 
   // White flag pulse length = 0.790 H per IEC 60857 Figure 12.
-  const int flag_length_samples = static_cast<int>(
-      std::round(kWhiteFlagLengthH * line_samples));
+  const int flag_length_samples =
+      static_cast<int>(std::round(kWhiteFlagLengthH * line_samples));
 
   // Fill full line with baseline; overlay shaped pulse from sample 0.
   std::vector<SampleFixed> line(static_cast<std::size_t>(line_samples),

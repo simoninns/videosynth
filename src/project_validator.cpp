@@ -648,8 +648,7 @@ bool ValidateLaserdiscSectionTypeAndCodes(
           result->errors.push_back(
               "Laserdisc injection validation error: users_code D nibble "
               "(bits 15-12) must be 0xD (IEC §10.1.9); '" +
-              code.users_code + "' has D=0x" +
-              std::to_string(d_nibble) + ".");
+              code.users_code + "' has D=0x" + std::to_string(d_nibble) + ".");
           return false;
         }
       }

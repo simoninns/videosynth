@@ -97,7 +97,8 @@ class BiphaseInjectionManager {
   //   active_window_start_samples: Sample offset of the active-picture window
   //                              start within a line; used as the normal
   //                              biphase horizontal start position.
-  //   active_window_end_samples: Sample offset (exclusive) of the active-picture
+  //   active_window_end_samples: Sample offset (exclusive) of the
+  //   active-picture
   //                              window end within a line; injection is clamped
   //                              to this boundary so signals do not bleed into
   //                              the front porch.

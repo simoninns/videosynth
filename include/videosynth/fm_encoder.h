@@ -124,9 +124,9 @@ class FmEncoder {
   //   standard:           PAL or NTSC (determines line buffer length).
   //   peak_level_mv:      100 IRE level in millivolts (e.g. 714.3 mV for NTSC).
   //   baseline_level_mv:  0 IRE blanking level in millivolts (default 0.0).
-  std::vector<SampleFixed> GenerateWhiteFlag(Standard standard,
-                                             double peak_level_mv,
-                                             double baseline_level_mv = 0.0) const;
+  std::vector<SampleFixed> GenerateWhiteFlag(
+      Standard standard, double peak_level_mv,
+      double baseline_level_mv = 0.0) const;
 
   // Number of samples per bit cell at the configured sample rate.
   int bit_cell_samples() const { return bit_cell_samples_; }

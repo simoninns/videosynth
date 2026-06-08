@@ -26,8 +26,8 @@ namespace {
 // ---------------------------------------------------------------------------
 
 TEST(ValueConstraintsTest, CavPictureNumberPalRangeIsZeroTo99999) {
-  EXPECT_TRUE(CavPictureNumberGenerator::IsValidPictureNumber(0,
-                                                              Standard::kPal));
+  EXPECT_TRUE(
+      CavPictureNumberGenerator::IsValidPictureNumber(0, Standard::kPal));
   EXPECT_TRUE(
       CavPictureNumberGenerator::IsValidPictureNumber(99999, Standard::kPal));
   EXPECT_FALSE(
@@ -38,8 +38,8 @@ TEST(ValueConstraintsTest, CavPictureNumberPalRangeIsZeroTo99999) {
 
 TEST(ValueConstraintsTest, CavPictureNumberNtscRangeIsZeroTo79999) {
   // IEC 60857 §10.1.3: NTSC max picture number is 79,999.
-  EXPECT_TRUE(CavPictureNumberGenerator::IsValidPictureNumber(0,
-                                                              Standard::kNtsc));
+  EXPECT_TRUE(
+      CavPictureNumberGenerator::IsValidPictureNumber(0, Standard::kNtsc));
   EXPECT_TRUE(
       CavPictureNumberGenerator::IsValidPictureNumber(79999, Standard::kNtsc));
   EXPECT_FALSE(
@@ -57,11 +57,10 @@ TEST(ValueConstraintsTest,
     const uint32_t code = CavPictureNumberGenerator::EncodePictureNumber(n);
     // Extract nibbles X₁–X₅ (bits 19-0).
     for (int shift = 0; shift <= 16; shift += 4) {
-      const uint8_t nibble =
-          static_cast<uint8_t>((code >> shift) & 0x0Fu);
-      EXPECT_LE(nibble, 9u) << "Nibble at shift " << shift << " for n=" << n
-                             << " is " << static_cast<int>(nibble)
-                             << " (must be 0-9)";
+      const uint8_t nibble = static_cast<uint8_t>((code >> shift) & 0x0Fu);
+      EXPECT_LE(nibble, 9u)
+          << "Nibble at shift " << shift << " for n=" << n << " is "
+          << static_cast<int>(nibble) << " (must be 0-9)";
     }
   }
 }
@@ -75,8 +74,7 @@ TEST(ValueConstraintsTest, CavPictureNumberNtscMaxConstantIs79999) {
 }
 
 TEST(ValueConstraintsTest, CavPictureNumberMaxPictureNumberHelperPal) {
-  EXPECT_EQ(CavPictureNumberGenerator::MaxPictureNumber(Standard::kPal),
-            99999);
+  EXPECT_EQ(CavPictureNumberGenerator::MaxPictureNumber(Standard::kPal), 99999);
 }
 
 TEST(ValueConstraintsTest, CavPictureNumberMaxPictureNumberHelperNtsc) {
@@ -286,8 +284,7 @@ TEST(ValueConstraintsTest, FmPictureNumberNtscMaxConstantIs79999) {
   EXPECT_EQ(FmPictureNumberGenerator::kNtscMaxValue, 79999);
 }
 
-TEST(ValueConstraintsTest,
-     FmPictureNumberEncodingProducesDecimalDigitNibbles) {
+TEST(ValueConstraintsTest, FmPictureNumberEncodingProducesDecimalDigitNibbles) {
   // FM picture number nibbles x1–x5 must each be a decimal digit (0–9).
   for (int n : {0, 1, 12345, 79999}) {
     uint8_t x1, x2, x3, x4, x5;
@@ -332,8 +329,7 @@ TEST(ValueConstraintsTest, PalFramesPerMinuteIs1500) {
 
 TEST(ValueConstraintsTest, NtscFramesPerMinuteIs1800) {
   // NTSC 30 fps × 60 s = 1800 frames/minute.
-  EXPECT_EQ(ProgrammeTimeCodeGenerator::FramesPerMinute(Standard::kNtsc),
-            1800);
+  EXPECT_EQ(ProgrammeTimeCodeGenerator::FramesPerMinute(Standard::kNtsc), 1800);
 }
 
 TEST(ValueConstraintsTest, PalFramesPerSecondIs25) {

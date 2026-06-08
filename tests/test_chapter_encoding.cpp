@@ -29,8 +29,7 @@ TEST(ChapterEncodingTest, Chapter0StopBitFalseProducesCorrectCode) {
   // Chapter 0, stop-bit 0:
   //   X₁_low = 0/16 = 0, X₂ = 0%16 = 0, stop=0 → X₁ = 0<<3|0 = 0x0
   //   Code = 8 0 0 D D D = 0x800DDD
-  const uint32_t code =
-      ChapterNumberGenerator::EncodeChapterCode(0, false);
+  const uint32_t code = ChapterNumberGenerator::EncodeChapterCode(0, false);
   EXPECT_EQ(code, 0x800DDDu);
 }
 
@@ -38,38 +37,33 @@ TEST(ChapterEncodingTest, Chapter0StopBitTrueProducesCorrectCode) {
   // Chapter 0, stop-bit 1:
   //   X₁ = 1<<3 | 0 = 0x8
   //   Code = 8 8 0 D D D = 0x880DDD
-  const uint32_t code =
-      ChapterNumberGenerator::EncodeChapterCode(0, true);
+  const uint32_t code = ChapterNumberGenerator::EncodeChapterCode(0, true);
   EXPECT_EQ(code, 0x880DDDu);
 }
 
 TEST(ChapterEncodingTest, Chapter1StopBitFalseProducesCorrectCode) {
   // Chapter 1: X₁_low = 0, X₂ = 1 → 8 0 1 D D D = 0x801DDD
-  const uint32_t code =
-      ChapterNumberGenerator::EncodeChapterCode(1, false);
+  const uint32_t code = ChapterNumberGenerator::EncodeChapterCode(1, false);
   EXPECT_EQ(code, 0x801DDDu);
 }
 
 TEST(ChapterEncodingTest, Chapter15StopBitFalseProducesCorrectCode) {
   // Chapter 15: (X₁&7) = 0, X₂ = 0xF → 8 0 F D D D = 0x80FDDDu
-  const uint32_t code =
-      ChapterNumberGenerator::EncodeChapterCode(15, false);
+  const uint32_t code = ChapterNumberGenerator::EncodeChapterCode(15, false);
   EXPECT_EQ(code, 0x80FDDDu);
 }
 
 TEST(ChapterEncodingTest, Chapter16StopBitFalseProducesCorrectCode) {
   // Chapter 16: (X₁&7) = 1, X₂ = 0 → X₁_nibble = 1
   //   8 1 0 D D D = 0x810DDD
-  const uint32_t code =
-      ChapterNumberGenerator::EncodeChapterCode(16, false);
+  const uint32_t code = ChapterNumberGenerator::EncodeChapterCode(16, false);
   EXPECT_EQ(code, 0x810DDDu);
 }
 
 TEST(ChapterEncodingTest, Chapter16StopBitTrueProducesCorrectCode) {
   // Chapter 16: stop-bit 1, X₁_nibble = 8|1 = 9
   //   8 9 0 D D D = 0x890DDD
-  const uint32_t code =
-      ChapterNumberGenerator::EncodeChapterCode(16, true);
+  const uint32_t code = ChapterNumberGenerator::EncodeChapterCode(16, true);
   EXPECT_EQ(code, 0x890DDDu);
 }
 
@@ -77,16 +71,14 @@ TEST(ChapterEncodingTest, Chapter79StopBitFalseProducesCorrectCode) {
   // Chapter 79: 79 = 4×16 + 15 → (X₁&7) = 4, X₂ = 0xF
   //   X₁_nibble = 0<<3 | 4 = 4
   //   8 4 F D D D = 0x84FDDDu
-  const uint32_t code =
-      ChapterNumberGenerator::EncodeChapterCode(79, false);
+  const uint32_t code = ChapterNumberGenerator::EncodeChapterCode(79, false);
   EXPECT_EQ(code, 0x84FDDDu);
 }
 
 TEST(ChapterEncodingTest, Chapter79StopBitTrueProducesCorrectCode) {
   // Chapter 79: stop-bit 1 → X₁_nibble = 8|4 = 0xC
   //   8 C F D D D = 0x8CFDDDu
-  const uint32_t code =
-      ChapterNumberGenerator::EncodeChapterCode(79, true);
+  const uint32_t code = ChapterNumberGenerator::EncodeChapterCode(79, true);
   EXPECT_EQ(code, 0x8CFDDDu);
 }
 
@@ -120,7 +112,8 @@ TEST(ChapterEncodingTest, DecodeChapterNumberFromCode0x84FDDD) {
 }
 
 TEST(ChapterEncodingTest, DecodeChapterNumberFromCode0x8CFDDD) {
-  // 0x8CFDDD → X₁_nibble=C=12, X₂=F=15 → chapter = (12&7)×16 + 15 = 4×16+15 = 79
+  // 0x8CFDDD → X₁_nibble=C=12, X₂=F=15 → chapter = (12&7)×16 + 15 = 4×16+15 =
+  // 79
   EXPECT_EQ(ChapterNumberGenerator::DecodeChapterNumber(0x8CFDDDu), 79);
 }
 
@@ -155,8 +148,7 @@ TEST(ChapterEncodingTest, DecodeStopBitTrueFrom0x8CFDDD) {
 TEST(ChapterEncodingTest, EncodeDecodeRoundTripAllChaptersStopBitFalse) {
   // Every chapter 0–79 must round-trip exactly through encode/decode.
   for (int ch = 0; ch <= 79; ++ch) {
-    const uint32_t code =
-        ChapterNumberGenerator::EncodeChapterCode(ch, false);
+    const uint32_t code = ChapterNumberGenerator::EncodeChapterCode(ch, false);
     EXPECT_EQ(ChapterNumberGenerator::DecodeChapterNumber(code), ch)
         << "Chapter " << ch << " round-trip failed with stop-bit=0";
     EXPECT_FALSE(ChapterNumberGenerator::DecodeStopBit(code))
@@ -167,8 +159,7 @@ TEST(ChapterEncodingTest, EncodeDecodeRoundTripAllChaptersStopBitFalse) {
 TEST(ChapterEncodingTest, EncodeDecodeRoundTripAllChaptersStopBitTrue) {
   // Every chapter 0–79 with stop-bit=1 must round-trip exactly.
   for (int ch = 0; ch <= 79; ++ch) {
-    const uint32_t code =
-        ChapterNumberGenerator::EncodeChapterCode(ch, true);
+    const uint32_t code = ChapterNumberGenerator::EncodeChapterCode(ch, true);
     EXPECT_EQ(ChapterNumberGenerator::DecodeChapterNumber(code), ch)
         << "Chapter " << ch << " round-trip failed with stop-bit=1";
     EXPECT_TRUE(ChapterNumberGenerator::DecodeStopBit(code))

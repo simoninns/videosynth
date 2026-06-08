@@ -437,7 +437,8 @@ TEST(LinePlacementTest, PalClvProgrammeChapterOnLine18WhenNoPtc) {
 }
 
 TEST(LinePlacementTest, PalClvProgrammeChapterBeforeProgrammeTimeCodeOnLine18) {
-  // chapter_number claims line 18 exclusively; programme_time_code is on line 17.
+  // chapter_number claims line 18 exclusively; programme_time_code is on
+  // line 17.
   LinePlacementEngine engine(Standard::kPal, DiscType::kCLV,
                              SectionType::kProgrammeArea,
                              {"programme_time_code", "chapter_number"});
@@ -561,18 +562,20 @@ TEST(LinePlacementTest, NtscCavProgrammeFmPictureNumberOnLines10And273) {
   EXPECT_EQ(a273.code_type, "fm_picture_number");
 }
 
-TEST(LinePlacementTest, NtscCavProgrammeWhiteFlagOnLines11And274) {
+TEST(LinePlacementTest, NtscCavProgrammeWhiteFlagOnLine11OnlyFirstField) {
   LinePlacementEngine engine(
       Standard::kNtsc, DiscType::kCAV, SectionType::kProgrammeArea,
       {"picture_number", "fm_picture_number", "fm_white_flag"});
 
+  // White flag in programme area is first-field only (IEC 60857 §10.2.4).
   auto a11 = engine.GetAssignment(11, true);
   EXPECT_TRUE(a11.assigned);
   EXPECT_TRUE(a11.is_white_flag);
 
+  // Line 274 (field 2) must NOT emit white flag in programme area.
   auto a274 = engine.GetAssignment(274, false);
-  EXPECT_TRUE(a274.assigned);
-  EXPECT_TRUE(a274.is_white_flag);
+  EXPECT_FALSE(a274.assigned)
+      << "White flag must not appear on line 274 in programme area";
 }
 
 TEST(LinePlacementTest, NtscCavProgrammeNoFmWhenNotPresent) {
@@ -696,13 +699,16 @@ TEST(LinePlacementTest, NtscClvProgrammeFmProgrammeTimeOnLines10And273) {
   EXPECT_EQ(a273.code_type, "fm_programme_time");
 }
 
-TEST(LinePlacementTest, NtscClvProgrammeWhiteFlagOnLines11And274) {
+TEST(LinePlacementTest, NtscClvProgrammeWhiteFlagOnLine11OnlyFirstField) {
   LinePlacementEngine engine(Standard::kNtsc, DiscType::kCLV,
                              SectionType::kProgrammeArea,
                              {"fm_programme_time", "fm_white_flag"});
 
+  // White flag in programme area is first-field only (IEC 60857 §10.2.4).
   EXPECT_TRUE(engine.GetAssignment(11, true).is_white_flag);
-  EXPECT_TRUE(engine.GetAssignment(274, false).is_white_flag);
+  // Line 274 (field 2) must NOT emit white flag in programme area.
+  EXPECT_FALSE(engine.GetAssignment(274, false).assigned)
+      << "White flag must not appear on line 274 in programme area";
 }
 
 // ---------------------------------------------------------------------------
@@ -783,7 +789,8 @@ TEST(LinePlacementTest, NtscClvProgrammeChapterOnLine18WhenNoPtc) {
 
 TEST(LinePlacementTest,
      NtscClvProgrammeChapterBeforeProgrammeTimeCodeOnLine18) {
-  // chapter_number claims line 18 exclusively; programme_time_code is on line 17.
+  // chapter_number claims line 18 exclusively; programme_time_code is on
+  // line 17.
   LinePlacementEngine engine(Standard::kNtsc, DiscType::kCLV,
                              SectionType::kProgrammeArea,
                              {"programme_time_code", "chapter_number"});

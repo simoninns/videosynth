@@ -456,8 +456,8 @@ TEST(FmEncoderTest, GenerateWhiteFlagPulseRegionAtPeakAndTailAtBaseline) {
         << "White flag interior sample " << i << " should be at 100 IRE";
   }
   // Tail (after pulse) should be at baseline.
-  for (std::size_t i = static_cast<std::size_t>(flag_length);
-       i < line.size(); ++i) {
+  for (std::size_t i = static_cast<std::size_t>(flag_length); i < line.size();
+       ++i) {
     EXPECT_NEAR(SampleFixedToMillivolts(line[i]), 0.0, 1.0)
         << "White flag tail sample " << i << " should be at baseline";
   }

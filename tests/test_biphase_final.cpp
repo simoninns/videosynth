@@ -217,7 +217,8 @@ TEST(BiphaseFinalTest, AcceptsPalCavProjectWithMaxPictureNumber) {
   Project p = MakeMinimalPalCavProject();
   // Replace picture_number with max PAL value 99999.
   p.sections[1].line_injections[0].codes.clear();
-  p.sections[1].line_injections[0].codes.push_back(MakePictureNumberCode(99999));
+  p.sections[1].line_injections[0].codes.push_back(
+      MakePictureNumberCode(99999));
 
   ProjectValidator v;
   const auto r = v.Validate(p);
@@ -259,8 +260,10 @@ TEST(BiphaseFinalTest, AcceptsNtscCavProjectWithMaxPictureNumber) {
   Project p = MakeMinimalNtscCavProject();
   // Replace picture_number in programme area with max NTSC value 79999.
   p.sections[1].line_injections[0].codes.clear();
-  p.sections[1].line_injections[0].codes.push_back(MakePictureNumberCode(79999));
-  p.sections[1].line_injections[0].codes.push_back(MakeCode("fm_picture_number"));
+  p.sections[1].line_injections[0].codes.push_back(
+      MakePictureNumberCode(79999));
+  p.sections[1].line_injections[0].codes.push_back(
+      MakeCode("fm_picture_number"));
   p.sections[1].line_injections[0].codes.push_back(MakeCode("fm_white_flag"));
 
   ProjectValidator v;
@@ -506,7 +509,8 @@ TEST(BiphaseFinalTest, RejectsLeadOutCodeInProgrammeSection) {
 TEST(BiphaseFinalTest, RejectsPalPictureNumberAbove99999) {
   Project p = MakeMinimalPalCavProject();
   p.sections[1].line_injections[0].codes.clear();
-  p.sections[1].line_injections[0].codes.push_back(MakePictureNumberCode(100000));
+  p.sections[1].line_injections[0].codes.push_back(
+      MakePictureNumberCode(100000));
 
   ProjectValidator v;
   const auto r = v.Validate(p);
@@ -516,8 +520,10 @@ TEST(BiphaseFinalTest, RejectsPalPictureNumberAbove99999) {
 TEST(BiphaseFinalTest, RejectsNtscPictureNumberAbove79999) {
   Project p = MakeMinimalNtscCavProject();
   p.sections[1].line_injections[0].codes.clear();
-  p.sections[1].line_injections[0].codes.push_back(MakePictureNumberCode(80000));
-  p.sections[1].line_injections[0].codes.push_back(MakeCode("fm_picture_number"));
+  p.sections[1].line_injections[0].codes.push_back(
+      MakePictureNumberCode(80000));
+  p.sections[1].line_injections[0].codes.push_back(
+      MakeCode("fm_picture_number"));
   p.sections[1].line_injections[0].codes.push_back(MakeCode("fm_white_flag"));
 
   ProjectValidator v;
@@ -612,7 +618,8 @@ TEST(BiphaseFinalTest, ClvLeadInHasNoDurationConstraint) {
 // ---------------------------------------------------------------------------
 
 TEST(BiphaseFinalTest, ProgrammeAreaAcceptsAnyDuration) {
-  // The IEC standards do not impose a minimum frame count on the programme area.
+  // The IEC standards do not impose a minimum frame count on the programme
+  // area.
   Project p = MakeMinimalPalCavProject();
   p.sections[1].duration_frames = 1;  // single frame programme area
 

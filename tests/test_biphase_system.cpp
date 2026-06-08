@@ -140,14 +140,12 @@ TEST(BiphaseSystemTest, PalLeadInWaveformFirstBitStartsAtBaseline) {
   // Lead-in 0x88FFFF first bit = '1' (MSB of 0x8 = 1).
   // A '1' bit starts at baseline for the first quarter.
   const BiphaseEncoder enc(kPalSampleRate);
-  const auto samples =
-      enc.Generate24BitCode(0x88FFFFu, kPalBaseline, kPalPeak);
+  const auto samples = enc.Generate24BitCode(0x88FFFFu, kPalBaseline, kPalPeak);
 
   const int quarter = enc.bit_cell_samples() / 4;
   for (int i = 0; i < quarter; ++i) {
-    EXPECT_NEAR(
-        SampleFixedToMillivolts(samples[static_cast<std::size_t>(i)]),
-        kPalBaseline, 1.0)
+    EXPECT_NEAR(SampleFixedToMillivolts(samples[static_cast<std::size_t>(i)]),
+                kPalBaseline, 1.0)
         << "PAL lead-in first bit: sample " << i
         << " should be at baseline 210 mV";
   }
@@ -156,17 +154,14 @@ TEST(BiphaseSystemTest, PalLeadInWaveformFirstBitStartsAtBaseline) {
 TEST(BiphaseSystemTest, PalLeadInWaveformFirstBitEndsAtPeak) {
   // The last quarter of the first '1' bit cell must be at peak (700 mV).
   const BiphaseEncoder enc(kPalSampleRate);
-  const auto samples =
-      enc.Generate24BitCode(0x88FFFFu, kPalBaseline, kPalPeak);
+  const auto samples = enc.Generate24BitCode(0x88FFFFu, kPalBaseline, kPalPeak);
 
   const int bcs = enc.bit_cell_samples();
   const int three_q = (3 * bcs) / 4;
   for (int i = three_q; i < bcs; ++i) {
-    EXPECT_NEAR(
-        SampleFixedToMillivolts(samples[static_cast<std::size_t>(i)]),
-        kPalPeak, 1.0)
-        << "PAL lead-in first bit: sample " << i
-        << " should be at peak 700 mV";
+    EXPECT_NEAR(SampleFixedToMillivolts(samples[static_cast<std::size_t>(i)]),
+                kPalPeak, 1.0)
+        << "PAL lead-in first bit: sample " << i << " should be at peak 700 mV";
   }
 }
 
@@ -192,9 +187,8 @@ TEST(BiphaseSystemTest, NtscLeadOutWaveformFirstBitStartsAtBaseline) {
 
   const int quarter = enc.bit_cell_samples() / 4;
   for (int i = 0; i < quarter; ++i) {
-    EXPECT_NEAR(
-        SampleFixedToMillivolts(samples[static_cast<std::size_t>(i)]),
-        kNtscBaseline, 1.0)
+    EXPECT_NEAR(SampleFixedToMillivolts(samples[static_cast<std::size_t>(i)]),
+                kNtscBaseline, 1.0)
         << "NTSC lead-out first bit: sample " << i << " should be at 0 mV";
   }
 }
@@ -297,8 +291,8 @@ TEST(BiphaseSystemTest, FmWaveformIs40BitCells) {
 TEST(BiphaseSystemTest, FmLineBufferHasCorrectLength) {
   const FmEncoder enc(kNtscSampleRate);
   const FmData data{false, 0, 0, 0, 0, 0};
-  const auto line = enc.Generate40BitCode(data, Standard::kNtsc,
-                                          kNtscBaseline, kNtscPeak);
+  const auto line =
+      enc.Generate40BitCode(data, Standard::kNtsc, kNtscBaseline, kNtscPeak);
   EXPECT_EQ(static_cast<int>(line.size()),
             GetTimingConstants(Standard::kNtsc).samples_per_line_4fsc);
 }
@@ -316,8 +310,8 @@ TEST(BiphaseSystemTest, FmWhiteFlagPulseRegionAtPeakAndTailAtBaseline) {
                 kNtscPeak, 1.0)
         << "White flag interior sample " << i << " should be at peak";
   }
-  for (std::size_t i = static_cast<std::size_t>(flag_length);
-       i < line.size(); ++i) {
+  for (std::size_t i = static_cast<std::size_t>(flag_length); i < line.size();
+       ++i) {
     EXPECT_NEAR(SampleFixedToMillivolts(line[i]), 0.0, 1.0)
         << "White flag tail sample " << i << " should be at baseline";
   }
@@ -331,8 +325,7 @@ TEST(BiphaseSystemTest, PalLeadInLineContainsCode88FFFFAtStart) {
   const BiphaseEncoder enc(kPalSampleRate);
   const auto line =
       enc.GenerateLine("88FFFF", Standard::kPal, kPalBaseline, kPalPeak);
-  const auto code =
-      enc.Generate24BitCode(0x88FFFFu, kPalBaseline, kPalPeak);
+  const auto code = enc.Generate24BitCode(0x88FFFFu, kPalBaseline, kPalPeak);
 
   // The first 24 * bit_cell_samples samples must match the code waveform.
   for (std::size_t i = 0; i < code.size(); ++i) {
@@ -358,8 +351,7 @@ TEST(BiphaseSystemTest, NtscLeadOutLineContainsCode80EEEEAtStart) {
   const BiphaseEncoder enc(kNtscSampleRate);
   const auto line =
       enc.GenerateLine("80EEEE", Standard::kNtsc, kNtscBaseline, kNtscPeak);
-  const auto code =
-      enc.Generate24BitCode(0x80EEEEu, kNtscBaseline, kNtscPeak);
+  const auto code = enc.Generate24BitCode(0x80EEEEu, kNtscBaseline, kNtscPeak);
 
   for (std::size_t i = 0; i < code.size(); ++i) {
     EXPECT_EQ(line[i], code[i])
@@ -373,8 +365,7 @@ TEST(BiphaseSystemTest, NtscLeadOutLineContainsCode80EEEEAtStart) {
 
 TEST(BiphaseSystemTest, Pal24BitCodeHas24BitCells) {
   const BiphaseEncoder enc(kPalSampleRate);
-  const auto samples =
-      enc.Generate24BitCode(0x88FFFFu, kPalBaseline, kPalPeak);
+  const auto samples = enc.Generate24BitCode(0x88FFFFu, kPalBaseline, kPalPeak);
   EXPECT_EQ(static_cast<int>(samples.size()), 24 * enc.bit_cell_samples());
   EXPECT_EQ(static_cast<int>(samples.size()), 24 * 35);  // = 840 samples
 }

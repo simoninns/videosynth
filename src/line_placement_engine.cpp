@@ -311,7 +311,8 @@ LineCodeAssignment LinePlacementEngine::GetNtscLeadInOut(int line,
 //
 // FM lines (IEC 60857 §10.2):
 //   Line 10/273:  fm_picture_number (40-bit FM)
-//   Line 11/274:  fm_white_flag (100 IRE)
+//   Line 11:      fm_white_flag (100 IRE, first field only — §10.2.4)
+//   Line 274:     (not used — white flag is first-field only in programme area)
 //
 // 24-bit biphase (field 1 / field 2 mirror):
 //   Line 16/279:  picture_stop > programme_status (0.172H offset)
@@ -326,8 +327,12 @@ LineCodeAssignment LinePlacementEngine::GetNtscCavProgramme(
     if (Has("fm_picture_number")) return Fm("fm_picture_number");
     return None();
   }
-  if (line == 11 || line == 274) {
+  // White flag is first-field only in programme area (IEC 60857 §10.2.4).
+  if (line == 11) {
     if (Has("fm_white_flag")) return WhiteFlag();
+    return None();
+  }
+  if (line == 274) {
     return None();
   }
 
@@ -363,7 +368,8 @@ LineCodeAssignment LinePlacementEngine::GetNtscCavProgramme(
 //
 // FM lines (IEC 60857 §10.2):
 //   Line 10/273:  fm_programme_time (40-bit FM)
-//   Line 11/274:  fm_white_flag (100 IRE)
+//   Line 11:      fm_white_flag (100 IRE, first field only — §10.2.4)
+//   Line 274:     (not used — white flag is first-field only in programme area)
 //
 // 24-bit biphase (field 1 / field 2 mirror):
 //   Line 16/279:  clv_picture_number > programme_status (0.172H offset)
@@ -378,8 +384,12 @@ LineCodeAssignment LinePlacementEngine::GetNtscClvProgramme(
     if (Has("fm_programme_time")) return Fm("fm_programme_time");
     return None();
   }
-  if (line == 11 || line == 274) {
+  // White flag is first-field only in programme area (IEC 60857 §10.2.4).
+  if (line == 11) {
     if (Has("fm_white_flag")) return WhiteFlag();
+    return None();
+  }
+  if (line == 274) {
     return None();
   }
 

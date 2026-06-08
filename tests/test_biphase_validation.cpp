@@ -196,7 +196,8 @@ TEST(BiphaseValidationTest, AcceptsUsersCodeInLeadIn) {
   Section s = MakeSection(SectionType::kLeadIn, 938);
   auto inj = MakeLaserdiscInjection("CAV");
   auto code = MakeCode("users_code");
-  code.users_code = "0x80D234";  // X1=0, D=0xD (canonical format per IEC §10.1.9)
+  code.users_code =
+      "0x80D234";  // X1=0, D=0xD (canonical format per IEC §10.1.9)
   code.users_code_specified = true;
   inj.codes.push_back(code);
   inj.codes.push_back(MakeCode("lead_in"));
@@ -213,7 +214,8 @@ TEST(BiphaseValidationTest, AcceptsUsersCodeInLeadOut) {
   Section s = MakeSection(SectionType::kLeadOut, 1250);
   auto inj = MakeLaserdiscInjection("CAV");
   auto code = MakeCode("users_code");
-  code.users_code = "0x80D234";  // X1=0, D=0xD (canonical format per IEC §10.1.9)
+  code.users_code =
+      "0x80D234";  // X1=0, D=0xD (canonical format per IEC §10.1.9)
   code.users_code_specified = true;
   inj.codes.push_back(code);
   inj.codes.push_back(MakeCode("lead_out"));
@@ -587,7 +589,8 @@ TEST(BiphaseValidationTest, RejectsUsersCodeWithInvalidDNibble) {
 
     ProjectValidator v;
     const auto r = v.Validate(p);
-    EXPECT_FALSE(r.is_valid) << "Expected rejection for D-nibble violation: " << bad_code;
+    EXPECT_FALSE(r.is_valid)
+        << "Expected rejection for D-nibble violation: " << bad_code;
     ASSERT_FALSE(r.errors.empty()) << bad_code;
     EXPECT_NE(r.errors[0].find("D nibble"), std::string::npos) << bad_code;
   }
@@ -675,7 +678,8 @@ TEST(BiphaseValidationTest, AcceptsLeadOutWithExactMinimumFrames) {
 
 TEST(BiphaseValidationTest, WarnsLeadOutBelowMinimumFrames) {
   Project p = MakeBasePalProject();
-  Section s = MakeSection(SectionType::kLeadOut, 1249);  // one below IEC minimum
+  Section s =
+      MakeSection(SectionType::kLeadOut, 1249);  // one below IEC minimum
   auto inj = MakeLaserdiscInjection("CAV");
   inj.codes.push_back(MakeCode("lead_out"));
   s.line_injections.push_back(inj);

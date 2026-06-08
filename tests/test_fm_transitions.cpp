@@ -3,8 +3,8 @@
  * Module:      fm_transitions_tests
  * Purpose:     Tests for 40-bit FM signal transition timing compliance.
  *              IEC 60857 §10.2 specifies 135 ns ± 15 ns (10%-90%) transitions
- *              for the 40-bit FM coded signal; 24-bit biphase uses 225 ns ± 25 ns.
- *              Task 6.13: Tests for 40-bit FM transition times (135 ns).
+ *              for the 40-bit FM coded signal; 24-bit biphase uses 225 ns ± 25
+ * ns. Task 6.13: Tests for 40-bit FM transition times (135 ns).
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Simon Inns
@@ -59,30 +59,30 @@ TEST(FmTransitionTest, NtscFmRampSamplesMatchExpected135NsCalculation) {
   // The FmEncoder default constructor uses 135 ns.  The resulting ramp_samples
   // must equal what TransitionTimeToRampSamples(135e-9, ...) returns.
   const FmEncoder fm_enc(kNtscSampleRate);
-  const int expected = TransitionTimeToRampSamples(135e-9, kNtscSampleRate,
-                                                   0.1, 0.9);
+  const int expected =
+      TransitionTimeToRampSamples(135e-9, kNtscSampleRate, 0.1, 0.9);
   EXPECT_EQ(fm_enc.ramp_samples(), expected);
 }
 
 TEST(FmTransitionTest, PalFmRampSamplesMatchExpected135NsCalculation) {
   const FmEncoder fm_enc(kPalSampleRate);
-  const int expected = TransitionTimeToRampSamples(135e-9, kPalSampleRate,
-                                                   0.1, 0.9);
+  const int expected =
+      TransitionTimeToRampSamples(135e-9, kPalSampleRate, 0.1, 0.9);
   EXPECT_EQ(fm_enc.ramp_samples(), expected);
 }
 
 TEST(FmTransitionTest, NtscBiphaseRampSamplesMatchExpected225NsCalculation) {
   // 24-bit biphase encoder defaults to 225 ns transitions (IEC 60856/60857).
   const BiphaseEncoder bi_enc(kNtscSampleRate);
-  const int expected = TransitionTimeToRampSamples(225e-9, kNtscSampleRate,
-                                                   0.1, 0.9);
+  const int expected =
+      TransitionTimeToRampSamples(225e-9, kNtscSampleRate, 0.1, 0.9);
   EXPECT_EQ(bi_enc.ramp_samples(), expected);
 }
 
 TEST(FmTransitionTest, PalBiphaseRampSamplesMatchExpected225NsCalculation) {
   const BiphaseEncoder bi_enc(kPalSampleRate);
-  const int expected = TransitionTimeToRampSamples(225e-9, kPalSampleRate,
-                                                   0.1, 0.9);
+  const int expected =
+      TransitionTimeToRampSamples(225e-9, kPalSampleRate, 0.1, 0.9);
   EXPECT_EQ(bi_enc.ramp_samples(), expected);
 }
 
@@ -176,7 +176,7 @@ TEST(FmTransitionTest, NtscFmToBiphaseRampRatioApproximates135Over225) {
 TEST(FmTransitionTest, CustomTransitionTimeParameterIsRespected) {
   // Constructing FmEncoder with 150 ns must produce ramp_samples that differ
   // from the 135 ns default at NTSC.
-  const FmEncoder enc_default(kNtscSampleRate);            // 135 ns
+  const FmEncoder enc_default(kNtscSampleRate);             // 135 ns
   const FmEncoder enc_custom(kNtscSampleRate, 2.0, 150.0);  // 150 ns
 
   // A wider transition requires at least as many ramp samples.

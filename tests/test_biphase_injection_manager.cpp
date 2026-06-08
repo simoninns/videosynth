@@ -240,10 +240,10 @@ TEST_F(BiphaseInjectionManagerTest, UnknownDiscTypeReturnsError) {
   BuildLineLayout(Standard::kPal, &offsets, &counts);
   const auto frame_lines = BuildFrameTimingPrimitives(Standard::kPal);
   const TimingConstants timing = GetTimingConstants(Standard::kPal);
-  const bool ok = manager_.ProcessFrame(
-      &y_mv, 0, offsets, counts, section, Standard::kPal,
-      timing.sample_rate_4fsc_hz, frame_lines, 177,
-      ActiveWindowEnd(Standard::kPal), &errors_);
+  const bool ok =
+      manager_.ProcessFrame(&y_mv, 0, offsets, counts, section, Standard::kPal,
+                            timing.sample_rate_4fsc_hz, frame_lines, 177,
+                            ActiveWindowEnd(Standard::kPal), &errors_);
   EXPECT_FALSE(ok);
   EXPECT_FALSE(errors_.empty());
 }

@@ -139,8 +139,7 @@ bool BiphaseInjectionManager::ProcessFrame(
         line_sample_counts[static_cast<std::size_t>(line_index)];
 
     // Cap the active end at the line boundary to prevent out-of-bounds writes.
-    const int active_end =
-        std::min(active_window_end_samples, line_samples);
+    const int active_end = std::min(active_window_end_samples, line_samples);
 
     const int start_sample =
         assignment.is_white_flag
@@ -374,8 +373,8 @@ void BiphaseInjectionManager::InjectWhiteFlag(
   const int flag_end = std::min(start_sample + flag_length_samples, active_end);
   for (int i = start_sample; i < flag_end; ++i) {
     const int rel = i - start_sample;
-    const double level = ShapedPulseLevel(rel, flag_length_samples, ramp,
-                                          baseline_mv, peak_mv);
+    const double level =
+        ShapedPulseLevel(rel, flag_length_samples, ramp, baseline_mv, peak_mv);
     (*out_y_mv)[static_cast<std::size_t>(line_base + i)] =
         MillivoltsToSampleFixed(level);
   }
