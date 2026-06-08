@@ -793,9 +793,10 @@ video_path: "out/pal_test_video.composite" # project-relative output file path
 
 - **Implemented**: `progressive` frame-based sections in Section 8.1.
 - **Implemented**: Section 8.2 parser/validator constraints for VITS line-injection schema, VITS/line-allocation compatibility checks, and generation-stage VITS line application for all supported built-in PAL and NTSC VITS patterns.
-- **Not yet implemented**: runtime synthesis/application for laserdisc, VITC, and custom per-line content.
+- **Implemented**: Full laserdisc biphase injection for PAL and NTSC (CAV and CLV), including 24-bit biphase signal generation, 40-bit FM signal generation (NTSC), all code types (lead_in, lead_out, picture_number, picture_stop, chapter_number, programme_status, users_code, programme_time_code, clv_code, clv_picture_number, fm_picture_number, fm_programme_time, fm_white_flag), field-aware line placement, timecode continuity, chapter stop-bit logic, NTSC frozen values, NTSC CLV colour time error correction, and biphase/VITS line-conflict validation.
+- **Not yet implemented**: runtime synthesis/application for VITC and custom per-line content.
 
-For laserdisc, VITC, and custom per-line content paths, Section 8.2 remains the intended design contract for later implementation work.
+For VITC and custom per-line content paths, Section 8.2 remains the intended design contract for later implementation work.
 
 ---
 
@@ -1431,7 +1432,8 @@ The runtime uses a **central pipeline module** to process sections and combine t
 Current implementation note:
 
 - VITS line injections are applied in the generation-stage runtime path on validated target lines.
-- Runtime synthesis/application for laserdisc, VITC, and custom per-line content remains deferred.
+- Laserdisc biphase injection is applied in the generation-stage runtime path via BiphaseInjectionManager (24-bit biphase and 40-bit FM for NTSC).
+- Runtime synthesis/application for VITC and custom per-line content remains deferred.
 
 #### **3. Output Stage**
 
@@ -1486,10 +1488,11 @@ To simulate **analogue output**, the generator must:
 
 The current validator enforces a narrower subset than the full design intent in this section:
 
-- Implemented today: standard selection, locked `4fsc` preset constraints, output-path requirements, progressive source profile checks, accepted raster checks, NTSC black-setup constraints, and validator-side VITS/line-injection compatibility checks including overlap detection, laserdisc reserved-range conflicts, and VITC/laserdisc incompatibility.
-- Not yet implemented in the validator/runtime pair: the remaining non-VITS line-injection runtime paths.
+- Implemented: standard selection, locked `4fsc` preset constraints, output-path requirements, progressive source profile checks, accepted raster checks, NTSC black-setup constraints, and validator-side VITS/line-injection compatibility checks including overlap detection, laserdisc reserved-range conflicts, and VITC/laserdisc incompatibility.
+- Implemented: full laserdisc biphase validation including section_type/code_type matrix enforcement, IEC value range constraints (picture_number, chapter_number, users_code X₁, CLV picture number digits, programme time code BCD), CAV minimum duration checks (lead-in ≥ 938 frames, lead-out ≥ 1250 frames), minimum chapter length (30 tracks), NTSC VIRS mandatory presence check, and VITS/biphase reserved-range line conflict detection.
+- Not yet implemented in the validator/runtime pair: VITC and custom per-line content runtime paths.
 
-The full rule set below therefore remains the intended validation contract for later implementation work.
+The rule set below remains the intended validation contract for VITC and custom per-line content, which are not yet implemented.
 
 ---
 

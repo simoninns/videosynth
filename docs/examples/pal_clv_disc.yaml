@@ -1,0 +1,111 @@
+# PAL CLV LaserDisc Example
+#
+# A complete PAL CLV disc master with lead-in, two programme chapters,
+# and lead-out. Demonstrates:
+#   - programme_time_code auto-incrementing from 0:00
+#   - clv_code identification marker
+#   - clv_picture_number frame-level addressing
+#   - chapter_number with CLV line placement
+#   - programme_status with audio/video mode
+#
+# IEC 60856 compliance:
+#   - Lead-in >= 938 frames (1.5 mm at 1.6 µm pitch)
+#   - Lead-out >= 1250 frames (2.0 mm at 1.6 µm pitch)
+#
+# On CLV discs, the programme_time_code auto-increments once per minute
+# (every 1500 frames at PAL 25 fps). The clv_picture_number auto-increments
+# every frame and tracks seconds and frames within each second.
+#
+# See docs/user/biphase-design.md for full documentation.
+
+project:
+  name: PalClvExample
+  version: "1.0"
+  description: PAL CLV LaserDisc example — 2 programme chapters
+
+cvbs_presets:
+  video_standard_preset: PAL
+  sample_encoding_preset: CVBS_TPG21_4FSC
+  signal_state_preset: STANDARD_TBC_LOCKED
+
+output:
+  video_path: output/pal_clv_example.composite
+  metadata_path: output/pal_clv_example.meta
+
+sections:
+
+  # ---------------------------------------------------------------------------
+  # Lead-in: minimum 938 frames (>= 1.5 mm)
+  # ---------------------------------------------------------------------------
+  - name: LeadIn
+    type: progressive
+    source: assets/bars_pal.exr
+    duration_frames: 938
+    section_type: lead_in
+    line_injections:
+      - type: laserdisc
+        disc_type: CLV
+        codes:
+          - code_type: lead_in
+          - code_type: users_code
+            users_code: "0x80D000"
+
+  # ---------------------------------------------------------------------------
+  # Programme Chapter 0: 37500 frames (25 minutes at PAL 25 fps)
+  # programme_time_code: starts at 0:00, increments each minute
+  # clv_picture_number: starts at 0 sec/frame 0, increments each frame
+  # ---------------------------------------------------------------------------
+  - name: Chapter0
+    type: progressive
+    source: assets/chapter0_pal.mkv
+    duration_frames: 37500
+    section_type: programme_area
+    line_injections:
+      - type: laserdisc
+        disc_type: CLV
+        codes:
+          - code_type: programme_time_code   # Auto: 0:00 → 24:59 over 37500 frames
+          - code_type: clv_code              # CLV identification marker
+          - code_type: clv_picture_number    # Auto: frame-level addressing
+          - code_type: chapter_number
+            chapter: 0
+          - code_type: programme_status
+            programme_status: "0x8DC000"     # CX on, stereo, copy prohibited
+
+  # ---------------------------------------------------------------------------
+  # Programme Chapter 1: 37500 frames (25 minutes, total 50 minutes)
+  # Note: programme_time_code and clv_picture_number continue automatically
+  # from where chapter 0 ended — no start_value needed for CLV codes.
+  # ---------------------------------------------------------------------------
+  - name: Chapter1
+    type: progressive
+    source: assets/chapter1_pal.mkv
+    duration_frames: 37500
+    section_type: programme_area
+    line_injections:
+      - type: laserdisc
+        disc_type: CLV
+        codes:
+          - code_type: programme_time_code   # Continues from 25:00 automatically
+          - code_type: clv_code
+          - code_type: clv_picture_number    # Continues from chapter 0 automatically
+          - code_type: chapter_number
+            chapter: 1
+          - code_type: programme_status
+            programme_status: "0x8DC000"
+
+  # ---------------------------------------------------------------------------
+  # Lead-out: minimum 1250 frames (>= 2.0 mm)
+  # ---------------------------------------------------------------------------
+  - name: LeadOut
+    type: progressive
+    source: assets/bars_pal.exr
+    duration_frames: 1250
+    section_type: lead_out
+    line_injections:
+      - type: laserdisc
+        disc_type: CLV
+        codes:
+          - code_type: lead_out
+          - code_type: users_code
+            users_code: "0x80D000"

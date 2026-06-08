@@ -1,0 +1,126 @@
+# NTSC CLV LaserDisc Example
+#
+# A complete NTSC CLV disc master. Demonstrates:
+#   - 24-bit biphase CLV codes (programme_time_code, clv_code, clv_picture_number)
+#   - 40-bit FM CLV code (fm_programme_time) — mandatory on NTSC CLV
+#   - fm_white_flag — mandatory on NTSC in all sections
+#   - VIRS signal on lines 19/282 — mandatory per IEC 60857 §9.1.3
+#
+# NTSC CLV colour time error correction (IEC 60857 Amendment 2 §10.1.10):
+# The clv_picture_number seconds count automatically jumps forward at
+# specific accumulated frame counts (N = 8991*L + 899*M) to maintain
+# colour timing accuracy. This is handled transparently.
+#
+# See docs/user/biphase-design.md for full documentation.
+
+project:
+  name: NtscClvExample
+  version: "1.0"
+  description: NTSC CLV LaserDisc example — 2 programme chapters
+
+cvbs_presets:
+  video_standard_preset: NTSC
+  sample_encoding_preset: CVBS_TPG21_4FSC
+  signal_state_preset: STANDARD_TBC_LOCKED
+
+output:
+  video_path: output/ntsc_clv_example.composite
+  metadata_path: output/ntsc_clv_example.meta
+
+sections:
+
+  # ---------------------------------------------------------------------------
+  # Lead-in: minimum 938 frames (>= 1.5 mm)
+  # ---------------------------------------------------------------------------
+  - name: LeadIn
+    type: progressive
+    source: assets/bars_ntsc.exr
+    duration_frames: 938
+    section_type: lead_in
+    line_injections:
+      - type: laserdisc
+        disc_type: CLV
+        codes:
+          - code_type: lead_in
+          - code_type: fm_white_flag         # NTSC: line 11 only during lead-in
+          - code_type: users_code
+            users_code: "0x80D000"
+      - type: vits
+        target_lines: [19, 282]
+        vits_type: virs
+
+  # ---------------------------------------------------------------------------
+  # Programme Chapter 0: 27000 frames (15 minutes at NTSC ~30 fps)
+  # 24-bit biphase: programme_time_code, clv_code, clv_picture_number
+  # 40-bit FM: fm_programme_time (lines 10/273), fm_white_flag (lines 11/274)
+  # ---------------------------------------------------------------------------
+  - name: Chapter0
+    type: progressive
+    source: assets/chapter0_ntsc.mkv
+    duration_frames: 27000
+    section_type: programme_area
+    line_injections:
+      - type: laserdisc
+        disc_type: CLV
+        codes:
+          # 24-bit biphase CLV codes
+          - code_type: programme_time_code   # Auto: 0:00 → 14:59 over 27000 frames
+          - code_type: clv_code              # CLV identification marker
+          - code_type: clv_picture_number    # Auto: frame-level time addressing
+          - code_type: chapter_number
+            chapter: 0
+          - code_type: programme_status
+            programme_status: "0x8DC001"
+          # 40-bit FM CLV codes (NTSC only)
+          - code_type: fm_programme_time     # FM version of programme_time_code
+          - code_type: fm_white_flag
+      - type: vits
+        target_lines: [19, 282]
+        vits_type: virs
+
+  # ---------------------------------------------------------------------------
+  # Programme Chapter 1: 27000 frames (15 minutes, total 30 minutes)
+  # All CLV counters continue automatically from chapter 0.
+  # ---------------------------------------------------------------------------
+  - name: Chapter1
+    type: progressive
+    source: assets/chapter1_ntsc.mkv
+    duration_frames: 27000
+    section_type: programme_area
+    line_injections:
+      - type: laserdisc
+        disc_type: CLV
+        codes:
+          - code_type: programme_time_code   # Continues from 15:00 automatically
+          - code_type: clv_code
+          - code_type: clv_picture_number    # Continues from chapter 0 automatically
+          - code_type: chapter_number
+            chapter: 1
+          - code_type: programme_status
+            programme_status: "0x8DC001"
+          - code_type: fm_programme_time
+          - code_type: fm_white_flag
+      - type: vits
+        target_lines: [19, 282]
+        vits_type: virs
+
+  # ---------------------------------------------------------------------------
+  # Lead-out: minimum 1250 frames (>= 2.0 mm)
+  # fm_white_flag appears on both lines 11 AND 274 during lead-out
+  # ---------------------------------------------------------------------------
+  - name: LeadOut
+    type: progressive
+    source: assets/bars_ntsc.exr
+    duration_frames: 1250
+    section_type: lead_out
+    line_injections:
+      - type: laserdisc
+        disc_type: CLV
+        codes:
+          - code_type: lead_out
+          - code_type: fm_white_flag         # Lines 11 AND 274 during lead-out
+          - code_type: users_code
+            users_code: "0x80D000"
+      - type: vits
+        target_lines: [19, 282]
+        vits_type: virs

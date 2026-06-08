@@ -1,0 +1,152 @@
+# PAL CAV LaserDisc Example
+#
+# A complete PAL CAV disc master with lead-in, four programme chapters,
+# and lead-out. Demonstrates:
+#   - Continuous picture_number across chapter boundaries
+#   - chapter_number with automatic stop-bit management
+#   - picture_stop freeze-frame markers
+#   - programme_status with CX noise reduction and copy permission
+#   - users_code in lead-in and lead-out
+#
+# IEC 60856 compliance:
+#   - Lead-in >= 938 frames (1.5 mm at 1.6 µm pitch)
+#   - Lead-out >= 1250 frames (2.0 mm at 1.6 µm pitch)
+#   - Chapter length >= 30 frames each
+#
+# Minimum durations used here for illustration; production masters
+# should use the full IEC-specified minimum lengths.
+#
+# See docs/user/biphase-design.md for full documentation.
+
+project:
+  name: PalCavExample
+  version: "1.0"
+  description: PAL CAV LaserDisc example — 4 programme chapters
+
+cvbs_presets:
+  video_standard_preset: PAL
+  sample_encoding_preset: CVBS_TPG21_4FSC
+  signal_state_preset: STANDARD_TBC_LOCKED
+
+output:
+  video_path: output/pal_cav_example.composite
+  metadata_path: output/pal_cav_example.meta
+
+sections:
+
+  # ---------------------------------------------------------------------------
+  # Lead-in: minimum 938 frames (>= 1.5 mm)
+  # Contains: lead_in code, users_code with manufacturer data
+  # ---------------------------------------------------------------------------
+  - name: LeadIn
+    type: progressive
+    source: assets/bars_pal.exr
+    duration_frames: 938
+    section_type: lead_in
+    line_injections:
+      - type: laserdisc
+        disc_type: CAV
+        codes:
+          - code_type: lead_in
+          - code_type: users_code
+            users_code: "0x80D000"    # X₁=0 (valid range: 0-7)
+
+  # ---------------------------------------------------------------------------
+  # Chapter 0: pictures 1-500 (500 frames)
+  # First chapter after lead-in: stop-bit is always 1 per IEC §10.1.5
+  # Contains: picture_stop at end of chapter
+  # ---------------------------------------------------------------------------
+  - name: Chapter0
+    type: progressive
+    source: assets/chapter0_pal.mkv
+    duration_frames: 500
+    section_type: programme_area
+    line_injections:
+      - type: laserdisc
+        disc_type: CAV
+        codes:
+          - code_type: picture_number
+            start_value: 1            # First picture number; auto-increments to 500
+          - code_type: chapter_number
+            chapter: 0               # Stop-bit = 1 always (first chapter after lead-in)
+          - code_type: picture_stop  # Freeze-frame at last picture of this chapter
+          - code_type: programme_status
+            programme_status: "0x8DC000"   # CX on, copy prohibited, stereo (Hamming=0)
+
+  # ---------------------------------------------------------------------------
+  # Chapter 1: pictures 501-1000 (500 frames)
+  # Normal chapter: stop-bit = 0 for first 400 tracks, then 1
+  # ---------------------------------------------------------------------------
+  - name: Chapter1
+    type: progressive
+    source: assets/chapter1_pal.mkv
+    duration_frames: 500
+    section_type: programme_area
+    line_injections:
+      - type: laserdisc
+        disc_type: CAV
+        codes:
+          - code_type: picture_number
+            start_value: 501          # Continues from chapter 0 (NOT reset to 1)
+          - code_type: chapter_number
+            chapter: 1
+          - code_type: programme_status
+            programme_status: "0x8DC000"
+
+  # ---------------------------------------------------------------------------
+  # Chapter 2: pictures 1001-1500 (500 frames)
+  # Demonstrates copy permission enabled
+  # ---------------------------------------------------------------------------
+  - name: Chapter2
+    type: progressive
+    source: assets/chapter2_pal.mkv
+    duration_frames: 500
+    section_type: programme_area
+    line_injections:
+      - type: laserdisc
+        disc_type: CAV
+        codes:
+          - code_type: picture_number
+            start_value: 1001
+          - code_type: chapter_number
+            chapter: 2
+          - code_type: picture_stop
+          - code_type: programme_status
+            programme_status: "0x8DC100"   # CX on, copy permitted (X₃ LSB=1)
+
+  # ---------------------------------------------------------------------------
+  # Chapter 3: pictures 1501-2000 (500 frames)
+  # Demonstrates CX noise reduction off
+  # ---------------------------------------------------------------------------
+  - name: Chapter3
+    type: progressive
+    source: assets/chapter3_pal.mkv
+    duration_frames: 500
+    section_type: programme_area
+    line_injections:
+      - type: laserdisc
+        disc_type: CAV
+        codes:
+          - code_type: picture_number
+            start_value: 1501
+          - code_type: chapter_number
+            chapter: 3
+          - code_type: programme_status
+            programme_status: "0x8BA000"   # CX off (BA prefix), copy prohibited
+
+  # ---------------------------------------------------------------------------
+  # Lead-out: minimum 1250 frames (>= 2.0 mm)
+  # Contains: lead_out code, users_code with manufacturer data
+  # ---------------------------------------------------------------------------
+  - name: LeadOut
+    type: progressive
+    source: assets/bars_pal.exr
+    duration_frames: 1250
+    section_type: lead_out
+    line_injections:
+      - type: laserdisc
+        disc_type: CAV
+        codes:
+          - code_type: lead_out
+          - code_type: users_code
+            users_code: "0x80D000"
