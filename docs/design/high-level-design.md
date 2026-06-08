@@ -1343,8 +1343,10 @@ VBI line allocations differ between PAL and NTSC and between Laserdisc and non-L
 
 Current implementation status:
 
-- The baseline runtime currently synthesizes sync, burst, blanking, and active-picture placement only.
-- The laserdisc, VITS, VITC, and other VBI allocation rules in this section remain target design constraints for future line-injection implementation.
+- The runtime synthesizes sync, burst, blanking, and active-picture placement.
+- VITS line injections are fully implemented for all supported PAL and NTSC types.
+- Laserdisc biphase injection is fully implemented for PAL and NTSC (CAV and CLV), including 24-bit biphase and 40-bit FM coded signals, all code types, field-aware line placement, and all associated validation rules.
+- VITC and custom per-line content runtime paths remain deferred; the VBI allocation rules for those injection types in this section are target design constraints for future implementation.
 
 ---
 
