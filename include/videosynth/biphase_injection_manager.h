@@ -31,10 +31,13 @@ namespace videosynth {
 
 // Orchestrates biphase and 40-bit FM VBI injection for LaserDisc authoring.
 //
-// The manager maintains stateful code generators (picture_number,
-// chapter_number, programme_time_code, etc.) across frames within a section.
-// Section transitions are detected automatically by comparing section pointers;
-// generators are re-created whenever the active section changes.
+// The manager maintains stateful code generators across frames and sections.
+// Section transitions are detected automatically by comparing section pointers.
+// Most generators are re-created on each section transition, but the disc-global
+// timekeeping generators (programme_time_code, clv_picture_number,
+// fm_programme_time, fm_picture_number) persist across sections so that the
+// encoded time and picture values are continuous across chapter boundaries.
+// Call Reset() to restart all generators from their initial values.
 //
 // Typical usage inside a frame generation loop:
 //
@@ -51,7 +54,7 @@ namespace videosynth {
 // BuildFrameSchedule) so that generators restart from their initial values.
 //
 // Signal level conventions:
-//   PAL  24-bit biphase: baseline = 210 mV (30% white), peak = 700 mV
+//   PAL  24-bit biphase: baseline = 0 mV (blanking),    peak = 700 mV
 //   NTSC 24-bit biphase: baseline =   0 mV (0 IRE),    peak = 714.3 mV
 //   NTSC 40-bit FM:      baseline =   0 mV,             peak = 714.3 mV
 //   White flag:          100 IRE pulse, 135 ns rise/fall (IEC 60857 Figure 12)

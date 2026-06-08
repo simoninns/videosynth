@@ -30,8 +30,9 @@ namespace videosynth {
 //   - Key nibble (first 4 bits of 24-bit code) always begins with logic '1'
 //
 // Signal levels are caller-supplied in millivolts:
-//   - PAL:  baseline = 210 mV (30% white), peak = 700 mV (100% white)
-//   - NTSC: baseline = 0 mV (0 IRE),      peak = 714.3 mV (100 IRE)
+//   - PAL:  baseline = 0 mV (blanking), peak = 700 mV (100% white; IEC 60856
+//           §10.1 "30%–100%" is the allowed range for the high level)
+//   - NTSC: baseline = 0 mV (0 IRE),    peak = 714.3 mV (100 IRE)
 //
 // Thread-safety: BiphaseEncoder is immutable after construction and may be
 // called concurrently from multiple threads.

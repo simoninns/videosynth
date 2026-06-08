@@ -285,7 +285,9 @@ TEST(BiphaseInjectionManagerPalCavTest, LeadInCodeAppearsOnCorrectLines) {
 }
 
 // ---------------------------------------------------------------------------
-// PAL CAV lead-in: signal levels respect 30%–100% white (210–700 mV).
+// PAL CAV lead-in: signal levels swing blanking (0 mV) to 100% white (700 mV).
+// IEC 60856 Figure 14: zero level is at blanking; §10.1 "30%–100%" is the
+// allowed range for the high level only.
 // ---------------------------------------------------------------------------
 
 TEST(BiphaseInjectionManagerPalCavTest, LeadInSignalLevelsWithinSpec) {
@@ -310,12 +312,11 @@ TEST(BiphaseInjectionManagerPalCavTest, LeadInSignalLevelsWithinSpec) {
   const int aws = 177;
   const int awe = ActiveWindowEnd(Standard::kPal);
 
-  // Baseline (digital low) should be ~210 mV; peak should be ~700 mV.
-  // Check within the active window only (front porch stays at blanking 0 mV).
+  // Baseline (digital low) should be ~0 mV (blanking); peak should be ~700 mV.
   const double min_mv = MinMvOnLine(y_mv, Standard::kPal, 17, aws, awe);
   const double max_mv = MaxMvOnLine(y_mv, Standard::kPal, 17, aws, awe);
 
-  EXPECT_NEAR(min_mv, 210.0, 5.0);
+  EXPECT_NEAR(min_mv, 0.0, 5.0);
   EXPECT_NEAR(max_mv, 700.0, 5.0);
 }
 
@@ -964,6 +965,80 @@ TEST(BiphaseInjectionManagerPalCavTest, ActivePictureLinesUnaffected) {
   const int end = timing.samples_per_line_4fsc;
   // Active picture line 100 is far outside VBI range; must remain at blanking.
   EXPECT_FALSE(LineHasSignal(y_mv, Standard::kPal, 100, aws, end));
+}
+
+// ---------------------------------------------------------------------------
+// PAL CLV: programme_time_code and clv_picture_number are continuous across
+// section (chapter) boundaries — they must NOT reset when a new section starts.
+// ---------------------------------------------------------------------------
+
+TEST(BiphaseInjectionManagerPalClvTest, TimeCodeIsContinuousAcrossSections) {
+  // Section A: 25 PAL frames (exactly 1 second of programme_time_code).
+  std::vector<Section::LineInjectionCode> codes;
+  Section::LineInjectionCode ptc;
+  ptc.code_type = "programme_time_code";
+  codes.push_back(ptc);
+  Section::LineInjectionCode cpn;
+  cpn.code_type = "clv_picture_number";
+  codes.push_back(cpn);
+
+  Section section_a =
+      MakeLaserdiscSection(SectionType::kProgrammeArea, DiscType::kCLV, codes);
+  section_a.duration_frames = 25;
+
+  Section section_b =
+      MakeLaserdiscSection(SectionType::kProgrammeArea, DiscType::kCLV, codes);
+  section_b.name = "SectionB";
+  section_b.duration_frames = 1;
+
+  BiphaseInjectionManager manager;
+  std::vector<int> offsets, counts;
+  BuildLineLayout(Standard::kPal, &offsets, &counts);
+  const auto frame_lines = BuildFrameTimingPrimitives(Standard::kPal);
+  const TimingConstants timing = GetTimingConstants(Standard::kPal);
+  const int aws = 177;
+  const int awe = ActiveWindowEnd(Standard::kPal);
+  std::vector<std::string> errors;
+
+  // Process 25 frames of section_a (1 second).
+  for (int f = 0; f < 25; ++f) {
+    auto y = MakeBlankingBuffer(Standard::kPal);
+    ASSERT_TRUE(manager.ProcessFrame(&y, 0, offsets, counts, section_a,
+                                     Standard::kPal, timing.sample_rate_4fsc_hz,
+                                     frame_lines, aws, awe, &errors))
+        << "section_a frame " << f;
+  }
+
+  // Capture the first frame of section_b.
+  auto y_b = MakeBlankingBuffer(Standard::kPal);
+  ASSERT_TRUE(manager.ProcessFrame(&y_b, 0, offsets, counts, section_b,
+                                   Standard::kPal, timing.sample_rate_4fsc_hz,
+                                   frame_lines, aws, awe, &errors));
+  EXPECT_TRUE(errors.empty());
+
+  // Also capture a fresh single-frame session starting from zero for comparison.
+  BiphaseInjectionManager fresh_manager;
+  auto y_fresh = MakeBlankingBuffer(Standard::kPal);
+  ASSERT_TRUE(fresh_manager.ProcessFrame(
+      &y_fresh, 0, offsets, counts, section_b, Standard::kPal,
+      timing.sample_rate_4fsc_hz, frame_lines, aws, awe, &errors));
+
+  // The clv_picture_number on line 16 must differ: the continuous manager has
+  // advanced 25 frames (1 PAL second) so the encoded second has changed from
+  // 0 to 1, while the fresh manager is still at second 0, frame 0.
+  // (programme_time_code on line 17 would also differ but only after 1500
+  // frames — one full minute — which is too slow for a unit test.)
+  const int spl = timing.samples_per_line_4fsc;
+  const int line16_base = (16 - 1) * spl;
+  bool differs = false;
+  for (int i = aws; i < spl && !differs; ++i) {
+    if (y_b[static_cast<std::size_t>(line16_base + i)] !=
+        y_fresh[static_cast<std::size_t>(line16_base + i)]) {
+      differs = true;
+    }
+  }
+  EXPECT_TRUE(differs) << "clv_picture_number must differ after section "
+                          "transition: picture number should be continuous";
 }
 
 // ---------------------------------------------------------------------------

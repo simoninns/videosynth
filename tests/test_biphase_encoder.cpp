@@ -533,15 +533,16 @@ TEST(BiphaseEncoderTest, GenerateLineThrowsOnShortHexCode) {
 }
 
 // ---------------------------------------------------------------------------
-// BiphaseEncoderTest — PAL level mapping (IEC 60856: 30%-100% white)
+// BiphaseEncoderTest — PAL level mapping (IEC 60856: blanking to 100% white)
 // ---------------------------------------------------------------------------
 
-// For PAL the baseline is 30% of 700 mV = 210 mV, peak = 700 mV.
+// For PAL the baseline is blanking = 0 mV, peak = 700 mV (100% white).
+// IEC 60856 §10.1 "30%–100%" specifies the allowed range of the high level.
 // The first bit of lead-in code 0x88FFFF is '1': the first quarter must be
-// at 210 mV.
+// at blanking (0 mV).
 TEST(BiphaseEncoderTest, PalLeadInCodeFirstBitFirstQuarterAtPalBaseline) {
   constexpr double kPalSampleRate = 17734475.0;
-  constexpr double kPalBaseline = 210.0;
+  constexpr double kPalBaseline = 0.0;
   constexpr double kPalPeak = 700.0;
   const BiphaseEncoder enc(kPalSampleRate);
   const auto samples = enc.Generate24BitCode(0x88FFFFu, kPalBaseline, kPalPeak);

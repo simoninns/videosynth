@@ -25,8 +25,9 @@ namespace videosynth {
 
 namespace {
 
-// PAL biphase: 30% of 700 mV white per IEC 60856.
-constexpr double kPalBiphaseBaselineMv = 210.0;
+// PAL biphase: zero level is at blanking (0 mV) per IEC 60856 Figure 14.
+// The "30%–100%" in §10.1 refers to the allowed range of the high level.
+constexpr double kPalBiphaseBaselineMv = 0.0;
 
 // NTSC biphase: 0 IRE = 0 mV per IEC 60857.
 constexpr double kNtscBiphaseBaselineMv = 0.0;
@@ -168,9 +169,27 @@ bool BiphaseInjectionManager::ProcessFrame(
 bool BiphaseInjectionManager::InitializeSection(
     const Section& section, Standard standard, double sample_rate_hz,
     std::vector<std::string>* errors) {
+  // Preserve disc-global timekeeping generators across section boundaries.
+  // programme_time_code and clv_picture_number accumulate from the start of
+  // the disc and must not reset on chapter/section transitions; only Reset()
+  // starts them over.
+  std::unique_ptr<CodeGenerator> saved_ptc;
+  std::unique_ptr<CodeGenerator> saved_cpn;
+  {
+    auto it = generators_.find("programme_time_code");
+    if (it != generators_.end()) {
+      saved_ptc = std::move(it->second);
+    }
+    it = generators_.find("clv_picture_number");
+    if (it != generators_.end()) {
+      saved_cpn = std::move(it->second);
+    }
+  }
+
   generators_.clear();
-  fm_picture_number_generator_.reset();
-  fm_programme_time_generator_.reset();
+  // fm_picture_number_generator_ and fm_programme_time_generator_ are NOT
+  // reset here — they persist across section boundaries like the biphase
+  // timekeeping generators above.
   white_flag_tracker_.reset();
   placement_engine_.reset();
   biphase_encoder_.reset();
@@ -178,6 +197,13 @@ bool BiphaseInjectionManager::InitializeSection(
   has_laserdisc_ = false;
   disc_type_ = DiscType::kUnknown;
   section_type_ = section.section_type;
+
+  if (saved_ptc) {
+    generators_["programme_time_code"] = std::move(saved_ptc);
+  }
+  if (saved_cpn) {
+    generators_["clv_picture_number"] = std::move(saved_cpn);
+  }
 
   const Section::LineInjection* injection = nullptr;
   for (const Section::LineInjection& inj : section.line_injections) {
@@ -257,21 +283,29 @@ bool BiphaseInjectionManager::InitializeSection(
       generators_["clv_code"] = std::make_unique<ClvCodeGenerator>();
 
     } else if (code.code_type == "programme_time_code") {
-      generators_["programme_time_code"] =
-          std::make_unique<ProgrammeTimeCodeGenerator>(0, 0, standard);
+      if (generators_.find("programme_time_code") == generators_.end()) {
+        generators_["programme_time_code"] =
+            std::make_unique<ProgrammeTimeCodeGenerator>(0, 0, standard);
+      }
 
     } else if (code.code_type == "clv_picture_number") {
-      generators_["clv_picture_number"] =
-          std::make_unique<ClvPictureNumberGenerator>(standard);
+      if (generators_.find("clv_picture_number") == generators_.end()) {
+        generators_["clv_picture_number"] =
+            std::make_unique<ClvPictureNumberGenerator>(standard);
+      }
 
     } else if (code.code_type == "fm_picture_number") {
-      const int start = code.start_value_specified ? code.start_value : 1;
-      fm_picture_number_generator_ =
-          std::make_unique<FmPictureNumberGenerator>(start);
+      if (!fm_picture_number_generator_) {
+        const int start = code.start_value_specified ? code.start_value : 1;
+        fm_picture_number_generator_ =
+            std::make_unique<FmPictureNumberGenerator>(start);
+      }
 
     } else if (code.code_type == "fm_programme_time") {
-      fm_programme_time_generator_ =
-          std::make_unique<FmProgrammeTimeGenerator>();
+      if (!fm_programme_time_generator_) {
+        fm_programme_time_generator_ =
+            std::make_unique<FmProgrammeTimeGenerator>();
+      }
 
     } else if (code.code_type == "fm_white_flag") {
       white_flag_tracker_ = std::make_unique<WhiteFlagTracker>();

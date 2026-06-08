@@ -36,7 +36,7 @@ namespace {
 
 constexpr double kNtscSampleRate = 14318180.0;
 constexpr double kPalSampleRate = 17734475.0;
-constexpr double kPalBaseline = 210.0;  // 30% of 700 mV
+constexpr double kPalBaseline = 0.0;  // blanking level (IEC 60856 Figure 14)
 constexpr double kPalPeak = 700.0;      // 100% white
 constexpr double kNtscBaseline = 0.0;   // 0 IRE
 constexpr double kNtscPeak = 714.3;     // 100 IRE
@@ -147,7 +147,7 @@ TEST(BiphaseSystemTest, PalLeadInWaveformFirstBitStartsAtBaseline) {
     EXPECT_NEAR(SampleFixedToMillivolts(samples[static_cast<std::size_t>(i)]),
                 kPalBaseline, 1.0)
         << "PAL lead-in first bit: sample " << i
-        << " should be at baseline 210 mV";
+        << " should be at baseline (blanking) 0 mV";
   }
 }
 
@@ -165,9 +165,10 @@ TEST(BiphaseSystemTest, PalLeadInWaveformFirstBitEndsAtPeak) {
   }
 }
 
-TEST(BiphaseSystemTest, PalBaselineLevelIs210mV) {
-  // IEC 60856: baseline = 30% of 700 mV = 210 mV.
-  EXPECT_NEAR(kPalBaseline, 700.0 * 0.30, 0.5);
+TEST(BiphaseSystemTest, PalBaselineLevelIsBlankingLevel) {
+  // IEC 60856 Figure 14: zero level is at blanking (0 mV).
+  // The "30%–100%" in §10.1 is the allowed range for the high level only.
+  EXPECT_NEAR(kPalBaseline, 0.0, 0.5);
 }
 
 TEST(BiphaseSystemTest, PalPeakLevelIs700mV) {
