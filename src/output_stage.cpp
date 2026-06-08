@@ -209,8 +209,14 @@ std::int16_t EncodeCompositeSample(OutputEncoding encoding,
   }
 
   if (encoding == OutputEncoding::kCvbsS16Fsc) {
-    const int s16_fsc_encoded = (quantized_code - profile.blanking_code) * 32;
-    return static_cast<std::int16_t>(s16_fsc_encoded);
+    // S16_FSC can represent sub-sync excursions (e.g. pilot burst troughs at
+    // −600 mV) that lie below the 10-bit legal-code floor. Use the unclamped
+    // mapped code and saturate only to prevent int16 overflow.
+    const int s16_fsc_raw = (mapped - profile.blanking_code) * 32;
+    const int s16_fsc_clamped = std::clamp(
+        s16_fsc_raw, static_cast<int>(std::numeric_limits<std::int16_t>::min()),
+        static_cast<int>(std::numeric_limits<std::int16_t>::max()));
+    return static_cast<std::int16_t>(s16_fsc_clamped);
   }
 
   return static_cast<std::int16_t>(quantized_code);

@@ -1,0 +1,45 @@
+project:
+  name: PalLaserdiscPilotBurstFixture
+  version: "1.0"
+  description: PAL Laserdisc pilot burst fixture — exercises the 3.75 MHz sync-pulse burst (IEC 60856 §9.1.2) across a representative set of test patterns
+
+cvbs_presets:
+  video_standard_preset: PAL
+  sample_encoding_preset: CVBS_S16_FSC
+  signal_state_preset: STANDARD_TBC_LOCKED
+  pal_laserdisc_pilot_burst: true
+
+output:
+  video_path: tests/projects/output/videosynth_pal_pilot_burst.composite
+  metadata_path: tests/projects/output/videosynth_pal_pilot_burst.meta
+
+sections:
+  - name: PalPilotBurst100Bars
+    type: progressive
+    source: videosynth-assets/assets/exr/720x576/100_BARS.exr
+    duration_frames: 4
+
+  - name: PalPilotBurst75Bars
+    type: progressive
+    source: videosynth-assets/assets/exr/720x576/75_BARS.exr
+    duration_frames: 4
+
+  - name: PalPilotBurstLumaRamp
+    type: progressive
+    source: videosynth-assets/assets/exr/720x576/LUMA_RAMP.exr
+    duration_frames: 4
+
+  - name: PalPilotBurstChromaRamp
+    type: progressive
+    source: videosynth-assets/assets/exr/720x576/CHROMA_RAMP.exr
+    duration_frames: 4
+
+  - name: PalPilotBurstTestcardF
+    type: progressive
+    source: videosynth-assets/assets/exr/720x576/TESTCARD-F.exr
+    duration_frames: 4
+
+  - name: PalPilotBurstTartan
+    type: progressive
+    source: videosynth-assets/assets/exr/720x576/TARTAN.exr
+    duration_frames: 4

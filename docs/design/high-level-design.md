@@ -660,7 +660,8 @@ The current parser, validator, and runtime implement only a subset of the YAML s
 - The `line_injections` schema is represented in the current parser data model and receives validator-level schema/compatibility checks for injection type, `target_lines`, and standard-dependent VITS constraints.
 - VITS line injections have a generation-stage orchestration path and are applied only on their targeted frame lines within the owning section span.
 - Built-in VITS catalog entries now carry full waveform-definition primitive/composite trees for every supported `vits_type`, so the default runtime path can render all supported PAL and NTSC VITS patterns.
-- Laserdisc-specific CVBS preset flags are parsed and validated for standard compatibility, but their runtime signal behavior remains deferred.
+- `pal_laserdisc_pilot_burst` is parsed, validated, and fully implemented: a 3.75 MHz (240 × f_H) sinusoidal burst at ±300 mV is superimposed on every sync pulse in the Y channel when enabled.
+- `ntsc_laserdisc_vbi_burst` is parsed and validated for standard compatibility, but its runtime signal behavior remains deferred.
 
 The remainder of Section 7 should therefore be read as the intended project-file design rather than the currently implemented parser surface.
 

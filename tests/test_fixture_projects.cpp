@@ -18,11 +18,13 @@
 #include <string>
 #include <vector>
 
+#include "videosynth/fixed_point.h"
 #include "videosynth/generation_stage.h"
 #include "videosynth/output_stage.h"
 #include "videosynth/progressive_frame_source.h"
 #include "videosynth/progressive_frame_source_probe.h"
 #include "videosynth/project_validator.h"
+#include "videosynth/signal_shaping.h"
 #include "videosynth/timing_constants.h"
 #include "videosynth/yaml_project_parser.h"
 
@@ -485,6 +487,118 @@ TEST(ProjectFixturesTest, FixtureProjectsCoverSupportedOutputEncodingFamilies) {
       std::filesystem::remove(metadata_path);
     }
   }
+}
+
+// Return the absolute sample offset for the start of a 1-based PAL line.
+// EBU Tech. 3280-E: lines 313 and 625 each carry 2 extra samples.
+int PalLineSampleOffsetFixture(int line_1based) {
+  if (line_1based <= 312) {
+    return (line_1based - 1) * 1135;
+  }
+  if (line_1based == 313) {
+    return 312 * 1135;
+  }
+  if (line_1based <= 624) {
+    return 312 * 1135 + 1137 + (line_1based - 314) * 1135;
+  }
+  return 312 * 1135 + 1137 + 311 * 1135;
+}
+
+TEST(ProjectFixturesTest, PalPilotBurstFixtureParsesValidatesAndGenerated) {
+  YamlProjectParser parser;
+  ProjectValidator validator;
+  GenerationStage generation;
+
+  const ParseResult parsed =
+      parser.ParseFile(FixturePath("pal_pilot_burst.yaml"));
+  ASSERT_TRUE(parsed.ok);
+
+  Project project = parsed.project;
+  ResolveProgressiveSourcePaths(&project);
+
+  EXPECT_EQ(project.cvbs_presets.video_standard_preset, Standard::kPal);
+  EXPECT_TRUE(project.cvbs_presets.pal_laserdisc_pilot_burst);
+  ASSERT_EQ(project.sections.size(), 6U);
+
+  const ValidationResult validation = validator.Validate(project);
+  ASSERT_TRUE(validation.is_valid)
+      << (!validation.errors.empty() ? validation.errors[0]
+                                     : "unknown validation error");
+
+  std::vector<SampleFixed> y_mv;
+  std::vector<SampleFixed> c_mv;
+  std::vector<std::string> errors;
+  ASSERT_TRUE(generation.Generate(project, &y_mv, &c_mv, &errors));
+  ASSERT_TRUE(errors.empty());
+
+  const TimingConstants timing = GetTimingConstants(Standard::kPal);
+  const std::size_t expected_samples =
+      static_cast<std::size_t>(SamplesPerFrame4fsc(Standard::kPal)) * 24U;
+  EXPECT_EQ(y_mv.size(), expected_samples);
+
+  // Verify the pilot burst is active: flat sync-pulse region on line 10 of
+  // frame 1 must oscillate, not be constant at sync tip.
+  const int line_offset = PalLineSampleOffsetFixture(10);
+  const int pulse_samples =
+      static_cast<int>(std::lround(timing.sample_rate_4fsc_hz * 4.7e-6));
+  const int ramp_samples =
+      RiseTimeToRampSamples(200.0e-9, timing.sample_rate_4fsc_hz);
+  const int flat_start = line_offset + ramp_samples;
+  const int flat_end = line_offset + pulse_samples - ramp_samples;
+  ASSERT_LT(flat_start, flat_end);
+
+  const SampleFixed first = y_mv[static_cast<std::size_t>(flat_start)];
+  bool oscillates = false;
+  for (int i = flat_start + 1; i < flat_end; ++i) {
+    if (y_mv[static_cast<std::size_t>(i)] != first) {
+      oscillates = true;
+      break;
+    }
+  }
+  EXPECT_TRUE(oscillates)
+      << "pal_pilot_burst.yaml: sync pulse must carry the 3.75 MHz pilot burst";
+}
+
+TEST(ProjectFixturesTest,
+     PalPilotBurstFixtureGeneratesCompositeOutputWithCorrectFrameCount) {
+  YamlProjectParser parser;
+  ProjectValidator validator;
+  GenerationStage generation;
+  OutputStage output;
+
+  const ParseResult parsed =
+      parser.ParseFile(FixturePath("pal_pilot_burst.yaml"));
+  ASSERT_TRUE(parsed.ok);
+
+  Project project = parsed.project;
+  project.output.video_path =
+      ResolveFixtureOutputPath(project.output.video_path).string();
+  project.output.metadata_path =
+      ResolveFixtureOutputPath(project.output.metadata_path).string();
+  ResolveProgressiveSourcePaths(&project);
+  ASSERT_TRUE(validator.Validate(project).is_valid);
+
+  std::vector<SampleFixed> y_mv;
+  std::vector<SampleFixed> c_mv;
+  std::vector<std::string> generation_errors;
+  ASSERT_TRUE(generation.Generate(project, &y_mv, &c_mv, &generation_errors));
+
+  const std::filesystem::path output_path = project.output.video_path;
+  const std::filesystem::path metadata_path = project.output.metadata_path;
+  std::filesystem::create_directories(output_path.parent_path());
+  std::filesystem::remove(output_path);
+  std::filesystem::remove(metadata_path);
+
+  std::vector<std::string> output_errors;
+  ASSERT_TRUE(output.Write(project, y_mv, c_mv, &output_errors));
+
+  // 6 sections × 4 frames each = 24 frames total.
+  int64_t frame_count = 0;
+  ASSERT_TRUE(QueryCvbsMetadataFrameCount(metadata_path, &frame_count));
+  EXPECT_EQ(frame_count, 24LL);
+
+  std::filesystem::remove(output_path);
+  std::filesystem::remove(metadata_path);
 }
 
 }  // namespace

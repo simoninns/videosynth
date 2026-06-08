@@ -117,6 +117,7 @@ set(videosynth_functional_test_patterns
     "^FrameSourceTest\\."
     "^ProjectFixturesTest\\."
     "^ComplianceHarnessTest\\."
+    "^GenerationStageTest\\."
     "^GenerationStageTimingTest\\."
     "^GenerationStageChromaTest\\."
     "^GenerationStageProgressiveTest\\."
@@ -207,3 +208,40 @@ file(GENERATE
     CONTENT "${videosynth_test_label_script}")
 set_property(DIRECTORY APPEND PROPERTY TEST_INCLUDE_FILES
     "${CMAKE_CURRENT_BINARY_DIR}/videosynth_test_labels.cmake")
+
+find_program(CLANG_FORMAT_EXE NAMES clang-format)
+
+if(CLANG_FORMAT_EXE)
+    file(GLOB_RECURSE ALL_FORMAT_SOURCES
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/src/*.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/include/*.h"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/*.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/tests/*.h"
+    )
+
+    file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/clang-format-stamps")
+
+    set(FORMAT_STAMPS)
+    foreach(source IN LISTS ALL_FORMAT_SOURCES)
+        file(RELATIVE_PATH rel_source "${CMAKE_CURRENT_SOURCE_DIR}" "${source}")
+        string(REPLACE "/" "_" stamp_name "${rel_source}")
+        string(REPLACE "." "_" stamp_name "${stamp_name}")
+        set(stamp "${CMAKE_CURRENT_BINARY_DIR}/clang-format-stamps/${stamp_name}.stamp")
+        add_custom_command(
+            OUTPUT "${stamp}"
+            COMMAND ${CLANG_FORMAT_EXE} --dry-run --Werror "${source}"
+            COMMAND ${CMAKE_COMMAND} -E touch "${stamp}"
+            DEPENDS "${source}"
+            COMMENT "clang-format: ${rel_source}"
+            VERBATIM
+        )
+        list(APPEND FORMAT_STAMPS "${stamp}")
+    endforeach()
+
+    add_custom_target(clang_format_check ALL DEPENDS ${FORMAT_STAMPS})
+    add_dependencies(videosynth clang_format_check)
+    add_dependencies(videosynth_tests clang_format_check)
+else()
+    message(STATUS "clang-format not found — format checks disabled")
+endif()

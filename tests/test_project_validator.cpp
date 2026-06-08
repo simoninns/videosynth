@@ -183,18 +183,15 @@ TEST(ProjectValidatorTest, RejectsNtscLaserdiscVbiBurstOnPalProject) {
             "enabled for NTSC projects.");
 }
 
-TEST(ProjectValidatorTest, RejectsPalLaserdiscPilotBurstAsDeferredFeature) {
+TEST(ProjectValidatorTest, AcceptsPalLaserdiscPilotBurstOnPalProject) {
   Project project = MakeValidProject();
   project.cvbs_presets.pal_laserdisc_pilot_burst = true;
 
   ProjectValidator validator;
   const ValidationResult result = validator.Validate(project);
 
-  EXPECT_FALSE(result.is_valid);
-  ASSERT_EQ(result.errors.size(), 1U);
-  EXPECT_EQ(result.errors[0],
-            "MVP constraint violation: pal_laserdisc_pilot_burst is parsed but "
-            "not implemented in the current runtime.");
+  EXPECT_TRUE(result.is_valid);
+  EXPECT_TRUE(result.errors.empty());
 }
 
 TEST(ProjectValidatorTest, RejectsNtscLaserdiscVbiBurstAsDeferredFeature) {

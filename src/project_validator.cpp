@@ -365,14 +365,6 @@ void ValidateDeferredLaserdiscPresetFlags(
     return;
   }
 
-  if (project.cvbs_presets.pal_laserdisc_pilot_burst) {
-    result->is_valid = false;
-    result->errors.push_back(
-        "MVP constraint violation: pal_laserdisc_pilot_burst is parsed but not "
-        "implemented in the current runtime.");
-    return;
-  }
-
   if (project.cvbs_presets.ntsc_laserdisc_vbi_burst) {
     result->is_valid = false;
     result->errors.push_back(

@@ -23,6 +23,7 @@
 #include "videosynth/fixed_point.h"
 #include "videosynth/generation_stage.h"
 #include "videosynth/progressive_frame_source.h"
+#include "videosynth/signal_shaping.h"
 #include "videosynth/signal_timing_model.h"
 #include "videosynth/timing_constants.h"
 #include "videosynth/vits_definition_provider.h"
@@ -1107,6 +1108,314 @@ TEST(GenerationStageProgressiveTest, NtscMkvUsesField2DominantRowPairing) {
       SampleFixedToMillivolts(
           y[static_cast<std::size_t>(field2_line_start + sample_offset)]),
       expected_field2, 1.0);
+}
+
+Project MakePalPilotBurstProject() {
+  Project project;
+  project.cvbs_presets.video_standard_preset = Standard::kPal;
+  project.cvbs_presets.sample_encoding_preset = "CVBS_U10_4FSC";
+  project.cvbs_presets.signal_state_preset = "STANDARD_TBC_LOCKED";
+  project.cvbs_presets.pal_laserdisc_pilot_burst = true;
+  project.sections.push_back(
+      Section{.name = "PilotBurst",
+              .type = "progressive",
+              .line_injections = {},
+              .source = DefaultBarsExrPath(Standard::kPal),
+              .duration_frames = 1});
+  return project;
+}
+
+// Return absolute sample offset for the start of a PAL line (1-based).
+// EBU Tech. 3280-E: lines 313 and 625 each carry 2 extra samples.
+int PalLineSampleOffset(int line_1based) {
+  // Lines 1–312: 1135 samples each.
+  if (line_1based <= 312) {
+    return (line_1based - 1) * 1135;
+  }
+  // Line 313: starts right after the 312 × 1135 block.
+  if (line_1based == 313) {
+    return 312 * 1135;
+  }
+  // Lines 314–624: after line 313 (1137 samples).
+  if (line_1based <= 624) {
+    return 312 * 1135 + 1137 + (line_1based - 314) * 1135;
+  }
+  // Line 625: after lines 1–624.
+  return 312 * 1135 + 1137 + 311 * 1135;
+}
+
+// Samples within the flat (non-edge) middle region of the horizontal sync
+// pulse on a PAL line should oscillate when the pilot burst is active.
+TEST(GenerationStageTest, PalLaserdiscPilotBurstSyncSamplesOscillate) {
+  const Project project = MakePalPilotBurstProject();
+  const TimingConstants timing = GetTimingConstants(Standard::kPal);
+
+  GenerationStage stage;
+  std::vector<SampleFixed> y_mv, c_mv;
+  std::vector<std::string> errors;
+  ASSERT_TRUE(stage.Generate(project, &y_mv, &c_mv, &errors));
+  ASSERT_TRUE(errors.empty());
+
+  // Line 10: normal horizontal line well clear of vertical sync.
+  const int line_offset = PalLineSampleOffset(10);
+  const int pulse_samples =
+      static_cast<int>(std::lround(timing.sample_rate_4fsc_hz * 4.7e-6));
+  const int ramp_samples =
+      RiseTimeToRampSamples(200.0e-9, timing.sample_rate_4fsc_hz);
+  const int flat_start = line_offset + ramp_samples;
+  const int flat_end = line_offset + pulse_samples - ramp_samples;
+  ASSERT_LT(flat_start, flat_end);
+
+  const SampleFixed first = y_mv[static_cast<std::size_t>(flat_start)];
+  bool oscillates = false;
+  for (int i = flat_start + 1; i < flat_end; ++i) {
+    if (y_mv[static_cast<std::size_t>(i)] != first) {
+      oscillates = true;
+      break;
+    }
+  }
+  EXPECT_TRUE(oscillates)
+      << "Pilot burst sync samples must oscillate, not be constant";
+}
+
+// The mean value of the flat sync region should be near the PAL sync tip
+// (−300 mV) because the pilot burst is centred there.
+TEST(GenerationStageTest, PalLaserdiscPilotBurstMeanCentredOnSyncTip) {
+  const Project project = MakePalPilotBurstProject();
+  const TimingConstants timing = GetTimingConstants(Standard::kPal);
+  const SignalLevels levels = GetSignalLevels(Standard::kPal);
+
+  GenerationStage stage;
+  std::vector<SampleFixed> y_mv, c_mv;
+  std::vector<std::string> errors;
+  ASSERT_TRUE(stage.Generate(project, &y_mv, &c_mv, &errors));
+  ASSERT_TRUE(errors.empty());
+
+  const int line_offset = PalLineSampleOffset(10);
+  const int pulse_samples =
+      static_cast<int>(std::lround(timing.sample_rate_4fsc_hz * 4.7e-6));
+  const int ramp_samples =
+      RiseTimeToRampSamples(200.0e-9, timing.sample_rate_4fsc_hz);
+  const int flat_start = line_offset + ramp_samples;
+  const int flat_end = line_offset + pulse_samples - ramp_samples;
+  ASSERT_LT(flat_start, flat_end);
+
+  double sum = 0.0;
+  for (int i = flat_start; i < flat_end; ++i) {
+    sum += SampleFixedToMillivolts(y_mv[static_cast<std::size_t>(i)]);
+  }
+  const double mean_mv = sum / static_cast<double>(flat_end - flat_start);
+
+  // Mean should be within 10 mV of sync tip (−300 mV); a pure sine over
+  // multiple complete cycles has zero mean, residual is from the partial
+  // cycle at the window boundary (~5–6 mV worst case at 3.75 MHz/PAL 4fsc).
+  EXPECT_NEAR(mean_mv, levels.sync_tip_mv, 10.0);
+}
+
+// Maximum Y value in the flat sync region should be near 0 mV (blanking),
+// and minimum should be near −600 mV (300 mV below sync tip).
+TEST(GenerationStageTest, PalLaserdiscPilotBurstAmplitudeMatchesSpec) {
+  const Project project = MakePalPilotBurstProject();
+  const TimingConstants timing = GetTimingConstants(Standard::kPal);
+
+  GenerationStage stage;
+  std::vector<SampleFixed> y_mv, c_mv;
+  std::vector<std::string> errors;
+  ASSERT_TRUE(stage.Generate(project, &y_mv, &c_mv, &errors));
+  ASSERT_TRUE(errors.empty());
+
+  const int line_offset = PalLineSampleOffset(10);
+  const int pulse_samples =
+      static_cast<int>(std::lround(timing.sample_rate_4fsc_hz * 4.7e-6));
+  const int ramp_samples =
+      RiseTimeToRampSamples(200.0e-9, timing.sample_rate_4fsc_hz);
+  const int flat_start = line_offset + ramp_samples;
+  const int flat_end = line_offset + pulse_samples - ramp_samples;
+  ASSERT_LT(flat_start, flat_end);
+
+  double max_mv = -1e9;
+  double min_mv = 1e9;
+  for (int i = flat_start; i < flat_end; ++i) {
+    const double v = SampleFixedToMillivolts(y_mv[static_cast<std::size_t>(i)]);
+    max_mv = std::max(max_mv, v);
+    min_mv = std::min(min_mv, v);
+  }
+
+  // Peak ≈ 0 mV (blanking) ±20 mV tolerance for sampling discretisation.
+  EXPECT_NEAR(max_mv, 0.0, 20.0);
+  // Trough ≈ −600 mV ±20 mV.
+  EXPECT_NEAR(min_mv, -600.0, 20.0);
+}
+
+// Active-picture samples (luma) must be unaffected by the pilot burst flag.
+TEST(GenerationStageTest, PalLaserdiscPilotBurstDoesNotAffectActivePicture) {
+  const Project project_burst = MakePalPilotBurstProject();
+  const Project project_plain = MakeProject(Standard::kPal);
+  const TimingConstants timing = GetTimingConstants(Standard::kPal);
+
+  GenerationStage stage_burst;
+  std::vector<SampleFixed> y_burst, c_burst;
+  std::vector<std::string> errors_burst;
+  ASSERT_TRUE(
+      stage_burst.Generate(project_burst, &y_burst, &c_burst, &errors_burst));
+  ASSERT_TRUE(errors_burst.empty());
+
+  GenerationStage stage_plain;
+  std::vector<SampleFixed> y_plain, c_plain;
+  std::vector<std::string> errors_plain;
+  ASSERT_TRUE(
+      stage_plain.Generate(project_plain, &y_plain, &c_plain, &errors_plain));
+  ASSERT_TRUE(errors_plain.empty());
+
+  // Compare active window (177–1085 samples) on a mid-field active line.
+  // Line 100 is well within the active picture region for PAL.
+  const int line_offset = PalLineSampleOffset(100);
+  const int active_start = line_offset + 177;
+  const int active_end =
+      line_offset + 177 +
+      static_cast<int>(std::lround(timing.sample_rate_4fsc_hz * 52.0e-6));
+
+  int differing = 0;
+  for (int i = active_start; i < active_end; ++i) {
+    if (y_burst[static_cast<std::size_t>(i)] !=
+        y_plain[static_cast<std::size_t>(i)]) {
+      ++differing;
+    }
+  }
+  EXPECT_EQ(differing, 0)
+      << "Pilot burst must not affect active-picture luma samples";
+}
+
+// Equalizing pulses (lines 4–6, 311–312, 316–318, 623–625) also receive the
+// pilot burst — verify that their flat regions oscillate.
+TEST(GenerationStageTest, PalLaserdiscPilotBurstAppliedToEqualizingPulses) {
+  const Project project = MakePalPilotBurstProject();
+  const TimingConstants timing = GetTimingConstants(Standard::kPal);
+
+  GenerationStage stage;
+  std::vector<SampleFixed> y_mv, c_mv;
+  std::vector<std::string> errors;
+  ASSERT_TRUE(stage.Generate(project, &y_mv, &c_mv, &errors));
+  ASSERT_TRUE(errors.empty());
+
+  // Line 4 carries two equalizing pulses. Check the first one (offset 0).
+  const int line_offset = PalLineSampleOffset(4);
+  const int eq_samples =
+      static_cast<int>(std::lround(timing.sample_rate_4fsc_hz * 2.3e-6));
+  const int ramp_samples =
+      RiseTimeToRampSamples(200.0e-9, timing.sample_rate_4fsc_hz);
+  const int flat_start = line_offset + ramp_samples;
+  const int flat_end = line_offset + eq_samples - ramp_samples;
+  ASSERT_LT(flat_start, flat_end);
+
+  const SampleFixed first = y_mv[static_cast<std::size_t>(flat_start)];
+  bool oscillates = false;
+  for (int i = flat_start + 1; i < flat_end; ++i) {
+    if (y_mv[static_cast<std::size_t>(i)] != first) {
+      oscillates = true;
+      break;
+    }
+  }
+  EXPECT_TRUE(oscillates)
+      << "Pilot burst must also be applied to equalizing pulses";
+}
+
+// Broad (vertical) sync pulses (lines 1–3, 314–315) must also carry the burst.
+TEST(GenerationStageTest, PalLaserdiscPilotBurstAppliedToBroadSyncPulses) {
+  const Project project = MakePalPilotBurstProject();
+  const TimingConstants timing = GetTimingConstants(Standard::kPal);
+
+  GenerationStage stage;
+  std::vector<SampleFixed> y_mv, c_mv;
+  std::vector<std::string> errors;
+  ASSERT_TRUE(stage.Generate(project, &y_mv, &c_mv, &errors));
+  ASSERT_TRUE(errors.empty());
+
+  // Line 2 carries two broad sync pulses. Check the first one (offset 0).
+  const int line_offset = PalLineSampleOffset(2);
+  const int vsync_samples =
+      static_cast<int>(std::lround(timing.sample_rate_4fsc_hz * 27.3e-6));
+  const int ramp_samples =
+      RiseTimeToRampSamples(200.0e-9, timing.sample_rate_4fsc_hz);
+  const int flat_start = line_offset + ramp_samples;
+  const int flat_end = line_offset + vsync_samples - ramp_samples;
+  ASSERT_LT(flat_start, flat_end);
+
+  const SampleFixed first = y_mv[static_cast<std::size_t>(flat_start)];
+  bool oscillates = false;
+  for (int i = flat_start + 1; i < flat_end; ++i) {
+    if (y_mv[static_cast<std::size_t>(i)] != first) {
+      oscillates = true;
+      break;
+    }
+  }
+  EXPECT_TRUE(oscillates)
+      << "Pilot burst must also be applied to broad vertical sync pulses";
+}
+
+// No sample in the entire sync pulse (including S-curve transitions) may exceed
+// blanking. The positive peak of the burst at sync tip just reaches 0 mV, but
+// the burst must be scaled to zero during rise/fall so it cannot overshoot.
+TEST(GenerationStageTest, PalLaserdiscPilotBurstNeverExceedsBlanking) {
+  const Project project = MakePalPilotBurstProject();
+  const TimingConstants timing = GetTimingConstants(Standard::kPal);
+  const SignalLevels levels = GetSignalLevels(Standard::kPal);
+
+  GenerationStage stage;
+  std::vector<SampleFixed> y_mv, c_mv;
+  std::vector<std::string> errors;
+  ASSERT_TRUE(stage.Generate(project, &y_mv, &c_mv, &errors));
+  ASSERT_TRUE(errors.empty());
+
+  const int line_offset = PalLineSampleOffset(10);
+  const int pulse_samples =
+      static_cast<int>(std::lround(timing.sample_rate_4fsc_hz * 4.7e-6));
+  const SampleFixed blanking_fixed =
+      MillivoltsToSampleFixed(levels.blanking_mv);
+
+  double max_mv = -1e9;
+  for (int i = line_offset; i < line_offset + pulse_samples; ++i) {
+    max_mv = std::max(
+        max_mv, SampleFixedToMillivolts(y_mv[static_cast<std::size_t>(i)]));
+  }
+  // Allow 5 mV margin for fixed-point rounding.
+  EXPECT_LE(max_mv, levels.blanking_mv + 5.0)
+      << "Pilot burst must not exceed blanking anywhere in the sync pulse";
+}
+
+// With the flag disabled (default), flat sync regions must remain constant
+// at sync tip — confirming the existing behaviour is not disturbed.
+TEST(GenerationStageTest, PalSyncSamplesAreConstantWithoutPilotBurst) {
+  const Project project = MakeProject(Standard::kPal);
+  const TimingConstants timing = GetTimingConstants(Standard::kPal);
+  const SignalLevels levels = GetSignalLevels(Standard::kPal);
+
+  GenerationStage stage;
+  std::vector<SampleFixed> y_mv, c_mv;
+  std::vector<std::string> errors;
+  ASSERT_TRUE(stage.Generate(project, &y_mv, &c_mv, &errors));
+  ASSERT_TRUE(errors.empty());
+
+  const int line_offset = PalLineSampleOffset(10);
+  const int pulse_samples =
+      static_cast<int>(std::lround(timing.sample_rate_4fsc_hz * 4.7e-6));
+  const int ramp_samples =
+      RiseTimeToRampSamples(200.0e-9, timing.sample_rate_4fsc_hz);
+  const int flat_start = line_offset + ramp_samples;
+  const int flat_end = line_offset + pulse_samples - ramp_samples;
+  ASSERT_LT(flat_start, flat_end);
+
+  const SampleFixed sync_tip_fixed =
+      MillivoltsToSampleFixed(levels.sync_tip_mv);
+  bool all_at_sync_tip = true;
+  for (int i = flat_start; i < flat_end; ++i) {
+    if (y_mv[static_cast<std::size_t>(i)] != sync_tip_fixed) {
+      all_at_sync_tip = false;
+      break;
+    }
+  }
+  EXPECT_TRUE(all_at_sync_tip)
+      << "Without pilot burst, flat sync region must be constant at sync tip";
 }
 
 }  // namespace

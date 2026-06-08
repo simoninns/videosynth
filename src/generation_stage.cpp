@@ -35,6 +35,12 @@ namespace {
 constexpr double kPi = 3.14159265358979323846;
 constexpr double kQuarterWaveRad = kPi / 2.0;
 
+// IEC 60856 §9.1.2: pilot burst frequency is 240 × fH = 3.75 MHz and
+// amplitude is 6/7 of (white - blanking) = 6/7 × 700 mV = 600 mV p-p,
+// centred on sync tip (−300 mV), giving ±300 mV swing.
+constexpr double kPilotBurstFreqHz = 3.75e6;
+constexpr double kPilotBurstAmplitudeMv = 300.0;
+
 struct ActiveRasterGeometry {
   int first_active_line_field1 = 0;
   int first_active_line_field2 = 0;
@@ -639,6 +645,16 @@ bool GenerationStage::GenerateFrameBatch(
       std::min(synth.active.active_window_end_samples, synth.max_line_samples));
   const int active_window_samples = active_window_end - active_window_start;
 
+  const bool pal_pilot_burst =
+      project.cvbs_presets.pal_laserdisc_pilot_burst &&
+      project.cvbs_presets.video_standard_preset == Standard::kPal;
+  const double pilot_omega =
+      pal_pilot_burst
+          ? (2.0 * kPi * kPilotBurstFreqHz / timing.sample_rate_4fsc_hz)
+          : 0.0;
+  const double pilot_cos_delta = pal_pilot_burst ? std::cos(pilot_omega) : 1.0;
+  const double pilot_sin_delta = pal_pilot_burst ? std::sin(pilot_omega) : 0.0;
+
   const SampleFixed blanking_fixed =
       MillivoltsToSampleFixed(levels.blanking_mv);
 
@@ -755,6 +771,31 @@ bool GenerationStage::GenerateFrameBatch(
               ShapedPulseLevel(relative_index, pulse_width_samples,
                                synth.sync_rise_samples, levels.blanking_mv,
                                levels.sync_tip_mv));
+        }
+
+        if (pal_pilot_burst) {
+          // IEC 60856 §9.1.2 fig 6a: burst is a triangle wave at constant
+          // amplitude, restricted to the flat bottom of the sync pulse so the
+          // positive peak reaches exactly blanking and never exceeds it.
+          const int flat_start = pulse_start + synth.sync_rise_samples;
+          const int flat_end = pulse_end - synth.sync_rise_samples;
+          if (flat_start < flat_end) {
+            const int abs_flat_start =
+                absolute_line_base + (flat_start - local_line_base);
+            const double init_phase =
+                pilot_omega * static_cast<double>(abs_flat_start);
+            double phase = init_phase;
+            for (int i = flat_start; i < flat_end; ++i) {
+              const double phase_frac =
+                  phase / (2.0 * kPi) - std::floor(phase / (2.0 * kPi));
+              const double triangle = (phase_frac < 0.5)
+                                          ? (4.0 * phase_frac - 1.0)
+                                          : (3.0 - 4.0 * phase_frac);
+              (*out_y_mv)[static_cast<std::size_t>(i)] +=
+                  MillivoltsToSampleFixed(kPilotBurstAmplitudeMv * triangle);
+              phase += pilot_omega;
+            }
+          }
         }
       }
 

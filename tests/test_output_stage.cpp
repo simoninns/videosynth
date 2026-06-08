@@ -218,6 +218,7 @@ TEST(OutputStageTest, WritesCompositeSamplesUsingS16FscEncodingPresetPal) {
   y[0] = MillivoltsToSampleFixed(0.0);
   y[1] = MillivoltsToSampleFixed(700.0);
   y[2] = MillivoltsToSampleFixed(-300.0);
+  y[3] = MillivoltsToSampleFixed(-600.0);
 
   const std::filesystem::path video_path =
       std::filesystem::temp_directory_path() /
@@ -234,13 +235,17 @@ TEST(OutputStageTest, WritesCompositeSamplesUsingS16FscEncodingPresetPal) {
   ASSERT_TRUE(output.Write(project, y, c, &errors));
 
   // PAL blanking=256, scale=32: int16 = (code - 256) * 32
-  // 0 mV -> code=256 -> 0; 700 mV -> code=844 -> 18816; -300 mV -> code=4
-  // (clamped) -> -8064
-  const std::vector<std::int16_t> samples = ReadSamples(video_path, 3);
-  ASSERT_EQ(samples.size(), 3U);
+  // 0 mV   -> code=256 -> 0
+  // 700 mV -> code=844 -> 18816
+  // -300 mV -> code=3 (fixed-point rounds to -253) -> -8096
+  // -600 mV -> sub-sync, passes through unclamped (pilot burst trough) ->
+  // -16160
+  const std::vector<std::int16_t> samples = ReadSamples(video_path, 4);
+  ASSERT_EQ(samples.size(), 4U);
   EXPECT_EQ(samples[0], 0);
   EXPECT_EQ(samples[1], 18816);
-  EXPECT_EQ(samples[2], -8064);
+  EXPECT_EQ(samples[2], -8096);
+  EXPECT_EQ(samples[3], -16160);
 
   CvbsMetadata metadata;
   ASSERT_TRUE(ReadCvbsMetadata(metadata_path, &metadata));
