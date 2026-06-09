@@ -7,6 +7,7 @@ cvbs_presets:
   video_standard_preset: PAL
   sample_encoding_preset: CVBS_TPG21_4FSC
   signal_state_preset: STANDARD_TBC_LOCKED
+  pal_laserdisc_pilot_burst: true
 
 output:
   video_path: tests/projects/output/videosynth_pal_biphase_cav.composite

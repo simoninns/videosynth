@@ -350,9 +350,20 @@ void ValidateDeferredLaserdiscPresetFlags(
           videosynth::Standard::kPal) {
     result->is_valid = false;
     result->errors.push_back(
-        "MVP constraint violation: pal_laserdisc_pilot_burst can only be "
+        "Project configuration error: pal_laserdisc_pilot_burst can only be "
         "enabled for PAL projects.");
     return;
+  }
+
+  if (project.cvbs_presets.pal_laserdisc_pilot_burst &&
+      !videosynth::IsSubSyncCapableSampleEncodingPreset(
+          project.cvbs_presets.sample_encoding_preset)) {
+    result->warnings.push_back(
+        "pal_laserdisc_pilot_burst warning: preset '" +
+        project.cvbs_presets.sample_encoding_preset +
+        "' clips sub-sync excursions below -300 mV; the pilot burst trough "
+        "reaches -600 mV. Use CVBS_S16_FSC or RAW_S16_28M/RAW_S16_40M to "
+        "preserve the full burst waveform.");
   }
 
   if (project.cvbs_presets.ntsc_laserdisc_vbi_burst &&
@@ -360,7 +371,7 @@ void ValidateDeferredLaserdiscPresetFlags(
           videosynth::Standard::kNtsc) {
     result->is_valid = false;
     result->errors.push_back(
-        "MVP constraint violation: ntsc_laserdisc_vbi_burst can only be "
+        "Project configuration error: ntsc_laserdisc_vbi_burst can only be "
         "enabled for NTSC projects.");
     return;
   }
@@ -368,7 +379,8 @@ void ValidateDeferredLaserdiscPresetFlags(
   if (project.cvbs_presets.ntsc_laserdisc_vbi_burst) {
     result->is_valid = false;
     result->errors.push_back(
-        "MVP constraint violation: ntsc_laserdisc_vbi_burst is parsed but not "
+        "Project configuration error: ntsc_laserdisc_vbi_burst is parsed but "
+        "not "
         "implemented in the current runtime.");
   }
 }
@@ -387,9 +399,9 @@ void ValidateDeferredLineInjectionSupport(
     }
 
     result->is_valid = false;
-    result->errors.push_back("MVP constraint violation: line injection type '" +
-                             injection.type +
-                             "' is not implemented in the current runtime.");
+    result->errors.push_back(
+        "Project configuration error: line injection type '" + injection.type +
+        "' is not implemented in the current runtime.");
     return;
   }
 }
@@ -832,7 +844,7 @@ ValidationResult ProjectValidator::Validate(const Project& project) {
   if (project.cvbs_presets.video_standard_preset == Standard::kUnknown) {
     result.is_valid = false;
     result.errors.push_back(
-        "MVP constraint violation: video_standard_preset must be 'PAL' or "
+        "Project configuration error: video_standard_preset must be 'PAL' or "
         "'NTSC'.");
   }
 
@@ -840,21 +852,22 @@ ValidationResult ProjectValidator::Validate(const Project& project) {
           project.cvbs_presets.sample_encoding_preset)) {
     result.is_valid = false;
     result.errors.push_back(
-        "MVP constraint violation: sample_encoding_preset must be one of the "
+        "Project configuration error: sample_encoding_preset must be one of "
+        "the "
         "supported CVBS or raw presets.");
   }
 
   if (project.cvbs_presets.signal_state_preset != "STANDARD_TBC_LOCKED") {
     result.is_valid = false;
     result.errors.push_back(
-        "MVP constraint violation: signal_state_preset must be "
+        "Project configuration error: signal_state_preset must be "
         "'STANDARD_TBC_LOCKED'.");
   }
 
   if (!IsLockedSignalStatePreset(project.cvbs_presets.signal_state_preset)) {
     result.is_valid = false;
     result.errors.push_back(
-        "MVP constraint violation: signal_state_preset must indicate locked "
+        "Project configuration error: signal_state_preset must indicate locked "
         "state.");
   }
 
@@ -864,7 +877,8 @@ ValidationResult ProjectValidator::Validate(const Project& project) {
       project.cvbs_presets.ntsc_black_setup_ire_specified) {
     result.is_valid = false;
     result.errors.push_back(
-        "MVP constraint violation: ntsc_black_setup_ire can only be specified "
+        "Project configuration error: ntsc_black_setup_ire can only be "
+        "specified "
         "for NTSC projects.");
   }
 
@@ -873,19 +887,20 @@ ValidationResult ProjectValidator::Validate(const Project& project) {
           project.cvbs_presets.ntsc_black_setup_ire)) {
     result.is_valid = false;
     result.errors.push_back(
-        "MVP constraint violation: ntsc_black_setup_ire must be 7.5 or 0.0.");
+        "Project configuration error: ntsc_black_setup_ire must be 7.5 or "
+        "0.0.");
   }
 
   if (project.output.video_path.empty()) {
     result.is_valid = false;
     result.errors.push_back(
-        "MVP constraint violation: output.video_path must be set.");
+        "Project configuration error: output.video_path must be set.");
   }
 
   if (project.output.metadata_path.empty()) {
     result.is_valid = false;
     result.errors.push_back(
-        "MVP constraint violation: output.metadata_path must be set.");
+        "Project configuration error: output.metadata_path must be set.");
   }
 
   if (!project.output.video_path.empty() &&
@@ -893,7 +908,8 @@ ValidationResult ProjectValidator::Validate(const Project& project) {
       project.output.video_path == project.output.metadata_path) {
     result.is_valid = false;
     result.errors.push_back(
-        "MVP constraint violation: output.video_path and output.metadata_path "
+        "Project configuration error: output.video_path and "
+        "output.metadata_path "
         "must differ.");
   }
 

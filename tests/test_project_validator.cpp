@@ -164,9 +164,10 @@ TEST(ProjectValidatorTest, RejectsPalLaserdiscPilotBurstOnNtscProject) {
 
   EXPECT_FALSE(result.is_valid);
   ASSERT_EQ(result.errors.size(), 1U);
-  EXPECT_EQ(result.errors[0],
-            "MVP constraint violation: pal_laserdisc_pilot_burst can only be "
-            "enabled for PAL projects.");
+  EXPECT_EQ(
+      result.errors[0],
+      "Project configuration error: pal_laserdisc_pilot_burst can only be "
+      "enabled for PAL projects.");
 }
 
 TEST(ProjectValidatorTest, RejectsNtscLaserdiscVbiBurstOnPalProject) {
@@ -179,7 +180,7 @@ TEST(ProjectValidatorTest, RejectsNtscLaserdiscVbiBurstOnPalProject) {
   EXPECT_FALSE(result.is_valid);
   ASSERT_EQ(result.errors.size(), 1U);
   EXPECT_EQ(result.errors[0],
-            "MVP constraint violation: ntsc_laserdisc_vbi_burst can only be "
+            "Project configuration error: ntsc_laserdisc_vbi_burst can only be "
             "enabled for NTSC projects.");
 }
 
@@ -194,6 +195,112 @@ TEST(ProjectValidatorTest, AcceptsPalLaserdiscPilotBurstOnPalProject) {
   EXPECT_TRUE(result.errors.empty());
 }
 
+TEST(ProjectValidatorTest, WarnsPalPilotBurstClippingWithU10Preset) {
+  Project project = MakeValidProject();
+  project.cvbs_presets.pal_laserdisc_pilot_burst = true;
+  project.cvbs_presets.sample_encoding_preset = "CVBS_U10_4FSC";
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_TRUE(result.is_valid);
+  EXPECT_TRUE(result.errors.empty());
+  ASSERT_EQ(result.warnings.size(), 1U);
+  EXPECT_EQ(result.warnings[0],
+            "pal_laserdisc_pilot_burst warning: preset 'CVBS_U10_4FSC' clips "
+            "sub-sync excursions below -300 mV; the pilot burst trough reaches "
+            "-600 mV. Use CVBS_S16_FSC or RAW_S16_28M/RAW_S16_40M to preserve "
+            "the full burst waveform.");
+}
+
+TEST(ProjectValidatorTest, WarnsPalPilotBurstClippingWithU16Preset) {
+  Project project = MakeValidProject();
+  project.cvbs_presets.pal_laserdisc_pilot_burst = true;
+  project.cvbs_presets.sample_encoding_preset = "CVBS_U16_4FSC";
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_TRUE(result.is_valid);
+  EXPECT_TRUE(result.errors.empty());
+  ASSERT_EQ(result.warnings.size(), 1U);
+  EXPECT_EQ(result.warnings[0],
+            "pal_laserdisc_pilot_burst warning: preset 'CVBS_U16_4FSC' clips "
+            "sub-sync excursions below -300 mV; the pilot burst trough reaches "
+            "-600 mV. Use CVBS_S16_FSC or RAW_S16_28M/RAW_S16_40M to preserve "
+            "the full burst waveform.");
+}
+
+TEST(ProjectValidatorTest, WarnsPalPilotBurstClippingWithTpg21Preset) {
+  Project project = MakeValidProject();
+  project.cvbs_presets.pal_laserdisc_pilot_burst = true;
+  project.cvbs_presets.sample_encoding_preset = "CVBS_TPG21_4FSC";
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_TRUE(result.is_valid);
+  EXPECT_TRUE(result.errors.empty());
+  ASSERT_EQ(result.warnings.size(), 1U);
+  EXPECT_EQ(result.warnings[0],
+            "pal_laserdisc_pilot_burst warning: preset 'CVBS_TPG21_4FSC' clips "
+            "sub-sync excursions below -300 mV; the pilot burst trough reaches "
+            "-600 mV. Use CVBS_S16_FSC or RAW_S16_28M/RAW_S16_40M to preserve "
+            "the full burst waveform.");
+}
+
+TEST(ProjectValidatorTest, NoPilotBurstClippingWarningWithS16FscPreset) {
+  Project project = MakeValidProject();
+  project.cvbs_presets.pal_laserdisc_pilot_burst = true;
+  project.cvbs_presets.sample_encoding_preset = "CVBS_S16_FSC";
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_TRUE(result.is_valid);
+  EXPECT_TRUE(result.errors.empty());
+  EXPECT_TRUE(result.warnings.empty());
+}
+
+TEST(ProjectValidatorTest, NoPilotBurstClippingWarningWithRawS16_28MPreset) {
+  Project project = MakeValidProject();
+  project.cvbs_presets.pal_laserdisc_pilot_burst = true;
+  project.cvbs_presets.sample_encoding_preset = "RAW_S16_28M";
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_TRUE(result.is_valid);
+  EXPECT_TRUE(result.errors.empty());
+  EXPECT_TRUE(result.warnings.empty());
+}
+
+TEST(ProjectValidatorTest, NoPilotBurstClippingWarningWithRawS16_40MPreset) {
+  Project project = MakeValidProject();
+  project.cvbs_presets.pal_laserdisc_pilot_burst = true;
+  project.cvbs_presets.sample_encoding_preset = "RAW_S16_40M";
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_TRUE(result.is_valid);
+  EXPECT_TRUE(result.errors.empty());
+  EXPECT_TRUE(result.warnings.empty());
+}
+
+TEST(ProjectValidatorTest, NoPilotBurstClippingWarningWhenBurstDisabled) {
+  Project project = MakeValidProject();
+  project.cvbs_presets.pal_laserdisc_pilot_burst = false;
+  project.cvbs_presets.sample_encoding_preset = "CVBS_U10_4FSC";
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_TRUE(result.is_valid);
+  EXPECT_TRUE(result.errors.empty());
+  EXPECT_TRUE(result.warnings.empty());
+}
+
 TEST(ProjectValidatorTest, RejectsNtscLaserdiscVbiBurstAsDeferredFeature) {
   Project project = MakeValidProject();
   project.cvbs_presets.video_standard_preset = Standard::kNtsc;
@@ -204,9 +311,10 @@ TEST(ProjectValidatorTest, RejectsNtscLaserdiscVbiBurstAsDeferredFeature) {
 
   EXPECT_FALSE(result.is_valid);
   ASSERT_EQ(result.errors.size(), 1U);
-  EXPECT_EQ(result.errors[0],
-            "MVP constraint violation: ntsc_laserdisc_vbi_burst is parsed but "
-            "not implemented in the current runtime.");
+  EXPECT_EQ(
+      result.errors[0],
+      "Project configuration error: ntsc_laserdisc_vbi_burst is parsed but "
+      "not implemented in the current runtime.");
 }
 
 TEST(ProjectValidatorTest, AcceptsVitsLineInjectionsForImplementedRuntimePath) {
