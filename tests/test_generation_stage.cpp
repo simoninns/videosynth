@@ -1320,10 +1320,13 @@ TEST(GenerationStageTest, PalLaserdiscPilotBurstAppliedToEqualizingPulses) {
       << "Pilot burst must also be applied to equalizing pulses";
 }
 
-// Broad (vertical) sync pulses (lines 1–3, 314–315) must also carry the burst.
+// Broad (vertical) sync pulses (lines 1–3, 314–315) must carry the burst for
+// exactly q = 13.5 periods, then remain at constant sync tip (IEC 60856 fig
+// 6iii).
 TEST(GenerationStageTest, PalLaserdiscPilotBurstAppliedToBroadSyncPulses) {
   const Project project = MakePalPilotBurstProject();
   const TimingConstants timing = GetTimingConstants(Standard::kPal);
+  const SignalLevels levels = GetSignalLevels(Standard::kPal);
 
   GenerationStage stage;
   std::vector<SampleFixed> y_mv, c_mv;
@@ -1341,16 +1344,37 @@ TEST(GenerationStageTest, PalLaserdiscPilotBurstAppliedToBroadSyncPulses) {
   const int flat_end = line_offset + vsync_samples - ramp_samples;
   ASSERT_LT(flat_start, flat_end);
 
+  // IEC 60856 §9.1.2 fig 6iii: q = 13.5 periods of 3.75 MHz.
+  const int q_samples =
+      static_cast<int>(std::lround(13.5 * timing.sample_rate_4fsc_hz / 3.75e6));
+  const int burst_end = flat_start + q_samples;
+  ASSERT_LT(burst_end, flat_end)
+      << "Broad pulse must be far longer than 13.5 pilot-burst periods";
+
+  // Burst region must oscillate.
   const SampleFixed first = y_mv[static_cast<std::size_t>(flat_start)];
   bool oscillates = false;
-  for (int i = flat_start + 1; i < flat_end; ++i) {
+  for (int i = flat_start + 1; i < burst_end; ++i) {
     if (y_mv[static_cast<std::size_t>(i)] != first) {
       oscillates = true;
       break;
     }
   }
   EXPECT_TRUE(oscillates)
-      << "Pilot burst must also be applied to broad vertical sync pulses";
+      << "First 13.5 periods of broad sync pulse must carry the pilot burst";
+
+  // After the burst the pulse must stay at constant sync tip.
+  const SampleFixed sync_tip_fixed =
+      MillivoltsToSampleFixed(levels.sync_tip_mv);
+  bool all_at_sync_tip = true;
+  for (int i = burst_end; i < flat_end; ++i) {
+    if (y_mv[static_cast<std::size_t>(i)] != sync_tip_fixed) {
+      all_at_sync_tip = false;
+      break;
+    }
+  }
+  EXPECT_TRUE(all_at_sync_tip)
+      << "Broad sync pulse after the 13.5-period burst must remain at sync tip";
 }
 
 // No sample in the entire sync pulse (including S-curve transitions) may exceed

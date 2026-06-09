@@ -654,6 +654,19 @@ bool GenerationStage::GenerateFrameBatch(
           : 0.0;
   const double pilot_cos_delta = pal_pilot_burst ? std::cos(pilot_omega) : 1.0;
   const double pilot_sin_delta = pal_pilot_burst ? std::sin(pilot_omega) : 0.0;
+  // IEC 60856 §9.1.2 fig 6: q = 13.5 periods for line/field sync pulses,
+  // r = 6 periods for equalizing pulses. Broad field-sync pulses use q here
+  // (not the optional 100-period extension); the rest stays at sync tip.
+  const int pilot_q_samples =
+      pal_pilot_burst
+          ? static_cast<int>(std::lround(13.5 * timing.sample_rate_4fsc_hz /
+                                         kPilotBurstFreqHz))
+          : 0;
+  const int pilot_r_samples =
+      pal_pilot_burst
+          ? static_cast<int>(std::lround(6.0 * timing.sample_rate_4fsc_hz /
+                                         kPilotBurstFreqHz))
+          : 0;
 
   const SampleFixed blanking_fixed =
       MillivoltsToSampleFixed(levels.blanking_mv);
@@ -774,11 +787,15 @@ bool GenerationStage::GenerateFrameBatch(
         }
 
         if (pal_pilot_burst) {
-          // IEC 60856 §9.1.2 fig 6a: burst is a triangle wave at constant
-          // amplitude, restricted to the flat bottom of the sync pulse so the
-          // positive peak reaches exactly blanking and never exceeds it.
+          // IEC 60856 §9.1.2 fig 6: triangle burst capped at q=13.5 periods
+          // (line/field sync) or r=6 periods (equalizing); the rest of any
+          // broad field-sync pulse remains at sync tip with no burst.
+          const int max_burst_samples =
+              (segment.kind == SyncPulseKind::kEqualizing) ? pilot_r_samples
+                                                           : pilot_q_samples;
           const int flat_start = pulse_start + synth.sync_rise_samples;
-          const int flat_end = pulse_end - synth.sync_rise_samples;
+          const int flat_end = std::min(pulse_end - synth.sync_rise_samples,
+                                        flat_start + max_burst_samples);
           if (flat_start < flat_end) {
             const int abs_flat_start =
                 absolute_line_base + (flat_start - local_line_base);
