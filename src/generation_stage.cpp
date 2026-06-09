@@ -972,7 +972,8 @@ bool GenerationStage::GenerateFrameBatch(
         for (int sample_offset = 0; sample_offset < line_samples;
              ++sample_offset) {
           const std::size_t frame_sample_index =
-              static_cast<std::size_t>(local_line_base + sample_offset);
+              static_cast<std::size_t>(local_line_base) +
+              static_cast<std::size_t>(sample_offset);
           (*out_y_mv)[frame_sample_index] +=
               rendered_line
                   .y_samples_mv[static_cast<std::size_t>(sample_offset)];

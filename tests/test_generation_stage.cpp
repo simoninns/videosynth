@@ -399,9 +399,11 @@ TEST(GenerationStageTimingTest,
 
   for (std::size_t i = 0; i < y_float.size(); ++i) {
     const int code_float = QuantizeCompositeCodeForStandard(
-        y_float[i] + c_float[i], Standard::kPal);
+        static_cast<double>(y_float[i]) + static_cast<double>(c_float[i]),
+        Standard::kPal);
     const int code_fixed = QuantizeCompositeCodeForStandard(
-        y_fixed[i] + c_fixed[i], Standard::kPal);
+        static_cast<double>(y_fixed[i]) + static_cast<double>(c_fixed[i]),
+        Standard::kPal);
     const int delta = code_fixed - code_float;
 
     max_abs_code_delta = std::max(max_abs_code_delta, std::abs(delta));
@@ -753,8 +755,10 @@ TEST(GenerationStageTimingTest, PalBurstPhaseFollowsFourFrameSequence) {
     for (int i = start; i < end; ++i) {
       const double wt = 2.0 * kPi * subcarrier_hz *
                         (static_cast<double>(i) / pal.sample_rate_4fsc_hz);
-      sum_sin += c_pal[static_cast<std::size_t>(i)] * std::sin(wt);
-      sum_cos += c_pal[static_cast<std::size_t>(i)] * std::cos(wt);
+      sum_sin += static_cast<double>(c_pal[static_cast<std::size_t>(i)]) *
+                 std::sin(wt);
+      sum_cos += static_cast<double>(c_pal[static_cast<std::size_t>(i)]) *
+                 std::cos(wt);
     }
     return std::atan2(sum_cos, sum_sin);
   };

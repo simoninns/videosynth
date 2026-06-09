@@ -340,10 +340,13 @@ void BiphaseInjectionManager::InjectBiphaseCode(
   // Overwrite the VBI data region with the biphase baseline, then overlay the
   // waveform. Stops at active_end to avoid writing into the front porch.
   for (int i = start_sample; i < active_end; ++i) {
-    (*out_y_mv)[static_cast<std::size_t>(line_base + i)] = baseline_fixed;
+    (*out_y_mv)[static_cast<std::size_t>(line_base) +
+                static_cast<std::size_t>(i)] = baseline_fixed;
   }
   for (int i = 0; i < waveform_count && (start_sample + i) < active_end; ++i) {
-    (*out_y_mv)[static_cast<std::size_t>(line_base + start_sample + i)] =
+    (*out_y_mv)[static_cast<std::size_t>(line_base) +
+                static_cast<std::size_t>(start_sample) +
+                static_cast<std::size_t>(i)] =
         waveform[static_cast<std::size_t>(i)];
   }
 }
@@ -382,10 +385,13 @@ void BiphaseInjectionManager::InjectFmCode(std::vector<SampleFixed>* out_y_mv,
   const SampleFixed baseline_fixed = MillivoltsToSampleFixed(baseline_mv);
 
   for (int i = start_sample; i < active_end; ++i) {
-    (*out_y_mv)[static_cast<std::size_t>(line_base + i)] = baseline_fixed;
+    (*out_y_mv)[static_cast<std::size_t>(line_base) +
+                static_cast<std::size_t>(i)] = baseline_fixed;
   }
   for (int i = 0; i < waveform_count && (start_sample + i) < active_end; ++i) {
-    (*out_y_mv)[static_cast<std::size_t>(line_base + start_sample + i)] =
+    (*out_y_mv)[static_cast<std::size_t>(line_base) +
+                static_cast<std::size_t>(start_sample) +
+                static_cast<std::size_t>(i)] =
         waveform[static_cast<std::size_t>(i)];
   }
 }
@@ -399,7 +405,8 @@ void BiphaseInjectionManager::InjectWhiteFlag(
 
   // Clear the region from start_sample to active_end with blanking.
   for (int i = start_sample; i < active_end; ++i) {
-    (*out_y_mv)[static_cast<std::size_t>(line_base + i)] = baseline_fixed;
+    (*out_y_mv)[static_cast<std::size_t>(line_base) +
+                static_cast<std::size_t>(i)] = baseline_fixed;
   }
 
   // Apply shaped white flag pulse (135 ns rise/fall per IEC 60857 Figure 12).
@@ -409,8 +416,8 @@ void BiphaseInjectionManager::InjectWhiteFlag(
     const int rel = i - start_sample;
     const double level =
         ShapedPulseLevel(rel, flag_length_samples, ramp, baseline_mv, peak_mv);
-    (*out_y_mv)[static_cast<std::size_t>(line_base + i)] =
-        MillivoltsToSampleFixed(level);
+    (*out_y_mv)[static_cast<std::size_t>(line_base) +
+                static_cast<std::size_t>(i)] = MillivoltsToSampleFixed(level);
   }
 }
 

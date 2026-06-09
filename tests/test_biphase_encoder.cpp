@@ -29,25 +29,25 @@ namespace {
 TEST(BiphaseUtilsTest, ParsesValidSixDigitHexCode) {
   const auto result = ParseBiphaseHexCode("88FFFF");
   ASSERT_TRUE(result.has_value());
-  EXPECT_EQ(*result, 0x88FFFFu);
+  EXPECT_EQ(*result, 0x88FFFFu);  // NOLINT(bugprone-unchecked-optional-access)
 }
 
 TEST(BiphaseUtilsTest, ParsesLowerCaseSixDigitHexCode) {
   const auto result = ParseBiphaseHexCode("88ffff");
   ASSERT_TRUE(result.has_value());
-  EXPECT_EQ(*result, 0x88FFFFu);
+  EXPECT_EQ(*result, 0x88FFFFu);  // NOLINT(bugprone-unchecked-optional-access)
 }
 
 TEST(BiphaseUtilsTest, ParsesHexCodeWithOxPrefix) {
   const auto result = ParseBiphaseHexCode("0x88FFFF");
   ASSERT_TRUE(result.has_value());
-  EXPECT_EQ(*result, 0x88FFFFu);
+  EXPECT_EQ(*result, 0x88FFFFu);  // NOLINT(bugprone-unchecked-optional-access)
 }
 
 TEST(BiphaseUtilsTest, ParsesHexCodeWithUppercaseOxPrefix) {
   const auto result = ParseBiphaseHexCode("0X80EEEE");
   ASSERT_TRUE(result.has_value());
-  EXPECT_EQ(*result, 0x80EEEEu);
+  EXPECT_EQ(*result, 0x80EEEEu);  // NOLINT(bugprone-unchecked-optional-access)
 }
 
 TEST(BiphaseUtilsTest, RejectsCodeShorterThanSixDigits) {

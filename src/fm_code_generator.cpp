@@ -160,10 +160,8 @@ int WhiteFlagTracker::GetLine(bool field_one, SectionType section_type) {
       return field_one ? kFieldOneLine : -1;
 
     case SectionType::kProgrammeArea:
-      return field_one ? kFieldOneLine : kFieldTwoLine;
-
     case SectionType::kLeadOut:
-      // Lead-out: both lines throughout the full lead-out duration.
+      // Both programme area and lead-out use both fields.
       return field_one ? kFieldOneLine : kFieldTwoLine;
 
     default:

@@ -245,3 +245,13 @@ if(CLANG_FORMAT_EXE)
 else()
     message(STATUS "clang-format not found — format checks disabled")
 endif()
+
+find_program(CLANG_TIDY_EXE NAMES clang-tidy)
+
+if(CLANG_TIDY_EXE)
+    set_target_properties(videosynth_core videosynth videosynth_tests
+        PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_EXE}"
+    )
+else()
+    message(STATUS "clang-tidy not found — static analysis disabled")
+endif()

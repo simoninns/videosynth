@@ -240,8 +240,9 @@ TEST(BiphaseValidationTest, AcceptsFmWhiteFlagInAllSections) {
     inj.codes.push_back(MakeCode("fm_white_flag"));
     if (st == SectionType::kLeadIn) inj.codes.push_back(MakeCode("lead_in"));
     if (st == SectionType::kLeadOut) inj.codes.push_back(MakeCode("lead_out"));
-    if (st == SectionType::kProgrammeArea)
+    if (st == SectionType::kProgrammeArea) {
       inj.codes.push_back(MakeCode("picture_number"));
+    }
     s.line_injections.push_back(inj);
 
     // Add mandatory NTSC virs.

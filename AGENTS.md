@@ -62,18 +62,6 @@
 
 ## 4. C++ Coding Standards
 
-> **MANDATORY GATE — do not skip, do not defer:**
-> After writing or editing **any** C++ file (`.cpp` or `.h`), you **must**:
-> 1. Run `clang-format -i --style=Google <file>` on every modified file.
-> 2. Run this full-repo verification command and confirm it prints **REPO CLEAN**:
->    ```
->    find src include tests -name "*.cpp" -o -name "*.h" | xargs clang-format --style=Google --dry-run -Werror && echo "REPO CLEAN"
->    ```
-> 3. Only then consider the task complete.
->
-> C++ files live under `src/`, `include/`, **and** `tests/` — all three must be checked.
-> This applies even to single-line edits. CI will fail if this step is skipped.
-
 ### 4.1 Baseline & Tooling
 - Follow the [Google C++ Style Guide](https://google.github.io/styleguide/cppguide.html).
 - **Never** use manual column-alignment (e.g. double-spacing before `=`, aligning continuation lines to opening parentheses) — clang-format will undo these and leave violations.

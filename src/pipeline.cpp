@@ -19,7 +19,7 @@ namespace videosynth {
 namespace {
 
 std::size_t ComputeBatchFrameCount(const Project& project) {
-  constexpr std::size_t kTargetBatchBytes = 64U * 1024U * 1024U;
+  constexpr std::size_t kTargetBatchBytes = 64ULL * 1024ULL * 1024ULL;
   const std::size_t frame_span = static_cast<std::size_t>(
       SamplesPerFrame4fsc(project.cvbs_presets.video_standard_preset));
   if (frame_span == 0U) {

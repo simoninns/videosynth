@@ -650,10 +650,11 @@ bool DecodeMkvFrames(const std::string& source, Standard standard,
   }
 
   const std::size_t frame_count = static_cast<std::size_t>(expected_frames);
-  const std::size_t y_plane_size =
-      static_cast<std::size_t>(decoded_width * source_height);
+  const std::size_t y_plane_size = static_cast<std::size_t>(decoded_width) *
+                                   static_cast<std::size_t>(source_height);
   const std::size_t chroma_plane_size =
-      static_cast<std::size_t>((decoded_width / 2) * source_height);
+      static_cast<std::size_t>(decoded_width / 2) *
+      static_cast<std::size_t>(source_height);
   const std::size_t frame_size =
       (y_plane_size + chroma_plane_size + chroma_plane_size) *
       sizeof(std::uint16_t);
@@ -665,7 +666,8 @@ bool DecodeMkvFrames(const std::string& source, Standard standard,
   for (std::size_t frame_index = 0; frame_index < frame_count; ++frame_index) {
     FrameSourceImage frame;
     SetFrameGeometryForStandard(standard, &frame);
-    frame.pixels.assign(static_cast<std::size_t>(frame.width * frame.height),
+    frame.pixels.assign(static_cast<std::size_t>(frame.width) *
+                            static_cast<std::size_t>(frame.height),
                         MakePixel(64, 512, 512));
 
     const std::size_t frame_offset = frame_index * frame_size;
@@ -679,10 +681,13 @@ bool DecodeMkvFrames(const std::string& source, Standard standard,
       for (int x = 0; x < decoded_width; ++x) {
         const int dst_x = x + source_x_offset;
         const int dst_y = y;
-        const std::size_t index =
-            static_cast<std::size_t>(y * decoded_width + x);
+        const std::size_t index = static_cast<std::size_t>(y) *
+                                      static_cast<std::size_t>(decoded_width) +
+                                  static_cast<std::size_t>(x);
         const std::size_t chroma_index =
-            static_cast<std::size_t>(y * (decoded_width / 2) + (x / 2));
+            static_cast<std::size_t>(y) *
+                static_cast<std::size_t>(decoded_width / 2) +
+            static_cast<std::size_t>(x / 2);
 
         const std::uint16_t y_code =
             static_cast<std::uint16_t>(y_plane[index] & 0x03FFu);
@@ -691,7 +696,9 @@ bool DecodeMkvFrames(const std::string& source, Standard standard,
         const std::uint16_t cr_code =
             static_cast<std::uint16_t>(cr_plane[chroma_index] & 0x03FFu);
 
-        frame.pixels[static_cast<std::size_t>((dst_y * frame.width) + dst_x)] =
+        frame.pixels[static_cast<std::size_t>(dst_y) *
+                         static_cast<std::size_t>(frame.width) +
+                     static_cast<std::size_t>(dst_x)] =
             MakeRawPixel(y_code, cb_code, cr_code);
       }
     }
@@ -937,9 +944,9 @@ bool LoadExrFrame(const std::string& source, Standard standard,
     }
 
     SetFrameGeometryForStandard(standard, out_image);
-    out_image->pixels.assign(
-        static_cast<std::size_t>(out_image->width * out_image->height),
-        MakePixel(64, 512, 512));
+    out_image->pixels.assign(static_cast<std::size_t>(out_image->width) *
+                                 static_cast<std::size_t>(out_image->height),
+                             MakePixel(64, 512, 512));
 
     const int source_x_offset = 0;
     const std::ptrdiff_t pixel_offset =
@@ -948,9 +955,15 @@ bool LoadExrFrame(const std::string& source, Standard standard,
     Imf::FrameBuffer frame_buffer;
 
     if (channel_type == Imf::FLOAT) {
-      std::vector<float> red(static_cast<std::size_t>(width * height), 0.0F);
-      std::vector<float> green(static_cast<std::size_t>(width * height), 0.0F);
-      std::vector<float> blue(static_cast<std::size_t>(width * height), 0.0F);
+      std::vector<float> red(
+          static_cast<std::size_t>(width) * static_cast<std::size_t>(height),
+          0.0F);
+      std::vector<float> green(
+          static_cast<std::size_t>(width) * static_cast<std::size_t>(height),
+          0.0F);
+      std::vector<float> blue(
+          static_cast<std::size_t>(width) * static_cast<std::size_t>(height),
+          0.0F);
 
       frame_buffer.insert(
           "R", Imf::Slice(Imf::FLOAT,
@@ -974,10 +987,12 @@ bool LoadExrFrame(const std::string& source, Standard standard,
       for (int y = 0; y < height; ++y) {
         for (int x = 0; x < width; ++x) {
           const std::size_t source_index =
-              static_cast<std::size_t>(y * width + x);
+              static_cast<std::size_t>(y) * static_cast<std::size_t>(width) +
+              static_cast<std::size_t>(x);
           const int dst_x = x + source_x_offset;
-          out_image->pixels[static_cast<std::size_t>((y * out_image->width) +
-                                                     dst_x)] =
+          out_image->pixels[static_cast<std::size_t>(y) *
+                                static_cast<std::size_t>(out_image->width) +
+                            static_cast<std::size_t>(dst_x)] =
               ConvertRgbFloatToBt601(red[source_index], green[source_index],
                                      blue[source_index]);
         }
@@ -1002,7 +1017,8 @@ bool LoadExrFrame(const std::string& source, Standard standard,
 }  // namespace
 
 const YCbCr444Pixel& FrameSourceImage::PixelAt(int x, int y) const {
-  return pixels[static_cast<std::size_t>((y * width) + x)];
+  return pixels[static_cast<std::size_t>(y) * static_cast<std::size_t>(width) +
+                static_cast<std::size_t>(x)];
 }
 
 bool ProgressiveFrameSource::SupportsSection(const Section& section) const {

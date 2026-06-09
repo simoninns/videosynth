@@ -147,9 +147,9 @@ bool ApplyPrimitive(const VitsPlannedPrimitive& primitive,
         const int clamped_relative =
             std::min(relative_index, width_samples - 1);
         const int step_index = std::min(
-            steps - 1, static_cast<int>(
-                           (static_cast<long long>(clamped_relative) * steps) /
-                           std::max(1, width_samples)));
+            steps - 1,
+            static_cast<int>((static_cast<int64_t>(clamped_relative) * steps) /
+                             std::max(1, width_samples)));
         const double step_level =
             primitive.level_or_amplitude_mv *
             (static_cast<double>(step_index + 1) / static_cast<double>(steps));

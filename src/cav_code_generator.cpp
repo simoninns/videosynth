@@ -118,7 +118,7 @@ uint32_t ChapterNumberGenerator::EncodeChapterCode(int chapter_num,
 int ChapterNumberGenerator::DecodeChapterNumber(uint32_t code_value) {
   const uint8_t x1_nibble = static_cast<uint8_t>((code_value >> 16) & 0x0Fu);
   const uint8_t x2_nibble = static_cast<uint8_t>((code_value >> 12) & 0x0Fu);
-  return (x1_nibble & 0x07u) * 16 + x2_nibble;
+  return static_cast<int>((x1_nibble & 0x07u) * 16u + x2_nibble);
 }
 
 // IEC 60856/60857 §10.1.5 decoding:

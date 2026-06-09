@@ -77,7 +77,7 @@ bool ParseHexValue(const std::string& hex_str, uint32_t* out_value) {
   }
   try {
     std::size_t pos = 0;
-    const unsigned long val = std::stoul(hex_str, &pos, 0);
+    const auto val = std::stoul(hex_str, &pos, 0);
     if (pos != hex_str.size()) {
       return false;
     }

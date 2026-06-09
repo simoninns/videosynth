@@ -341,7 +341,7 @@ TEST(BiphaseSystemTest, PalLeadInLineTailIsAtBaseline) {
       enc.GenerateLine("88FFFF", Standard::kPal, kPalBaseline, kPalPeak);
 
   const std::size_t code_end =
-      static_cast<std::size_t>(24 * enc.bit_cell_samples());
+      std::size_t{24} * static_cast<std::size_t>(enc.bit_cell_samples());
   for (std::size_t i = code_end; i < line.size(); ++i) {
     EXPECT_NEAR(SampleFixedToMillivolts(line[i]), kPalBaseline, 0.01)
         << "PAL lead-in tail sample " << i << " should be at baseline";
@@ -453,7 +453,7 @@ TEST(BiphaseSystemTest, PalFrameRateIs25Hz) {
   EXPECT_NEAR(GetTimingConstants(Standard::kPal).frame_rate_hz, 25.0, 0.001);
 }
 
-TEST(BiphaseSystemTest, NtscFrameRateIsApprox29_97Hz) {
+TEST(BiphaseSystemTest, NtscFrameRateIsApprox2997Hz) {
   EXPECT_NEAR(GetTimingConstants(Standard::kNtsc).frame_rate_hz,
               30000.0 / 1001.0, 0.001);
 }

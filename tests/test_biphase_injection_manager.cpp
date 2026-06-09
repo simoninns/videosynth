@@ -103,8 +103,8 @@ double MeanMvOnLine(const std::vector<SampleFixed>& y_mv, Standard standard,
   int count = 0;
   for (int i = start_sample;
        i < end_sample && (line_base + i) < static_cast<int>(y_mv.size()); ++i) {
-    sum +=
-        SampleFixedToMillivolts(y_mv[static_cast<std::size_t>(line_base + i)]);
+    sum += SampleFixedToMillivolts(y_mv[static_cast<std::size_t>(line_base) +
+                                        static_cast<std::size_t>(i)]);
     ++count;
   }
   return (count > 0) ? (sum / count) : 0.0;
@@ -121,7 +121,8 @@ double MaxMvOnLine(const std::vector<SampleFixed>& y_mv, Standard standard,
   for (int i = start_sample;
        i < end_sample && (line_base + i) < static_cast<int>(y_mv.size()); ++i) {
     const double mv =
-        SampleFixedToMillivolts(y_mv[static_cast<std::size_t>(line_base + i)]);
+        SampleFixedToMillivolts(y_mv[static_cast<std::size_t>(line_base) +
+                                     static_cast<std::size_t>(i)]);
     if (mv > max_mv) {
       max_mv = mv;
     }
@@ -140,7 +141,8 @@ double MinMvOnLine(const std::vector<SampleFixed>& y_mv, Standard standard,
   for (int i = start_sample;
        i < end_sample && (line_base + i) < static_cast<int>(y_mv.size()); ++i) {
     const double mv =
-        SampleFixedToMillivolts(y_mv[static_cast<std::size_t>(line_base + i)]);
+        SampleFixedToMillivolts(y_mv[static_cast<std::size_t>(line_base) +
+                                     static_cast<std::size_t>(i)]);
     if (mv < min_mv) {
       min_mv = mv;
     }
@@ -158,7 +160,8 @@ bool LineHasSignal(const std::vector<SampleFixed>& y_mv, Standard standard,
   const SampleFixed blanking = MillivoltsToSampleFixed(0.0);
   for (int i = start_sample;
        i < end_sample && (line_base + i) < static_cast<int>(y_mv.size()); ++i) {
-    if (y_mv[static_cast<std::size_t>(line_base + i)] != blanking) {
+    if (y_mv[static_cast<std::size_t>(line_base) +
+             static_cast<std::size_t>(i)] != blanking) {
       return true;
     }
   }
@@ -395,8 +398,10 @@ TEST(BiphaseInjectionManagerPalCavTest, PictureNumberIncrementsAcrossFrames) {
   const int line17_base = (17 - 1) * spl;
   bool any_sample_differs = false;
   for (int i = aws; i < spl && !any_sample_differs; ++i) {
-    if (y1[static_cast<std::size_t>(line17_base + i)] !=
-        y2[static_cast<std::size_t>(line17_base + i)]) {
+    if (y1[static_cast<std::size_t>(line17_base) +
+           static_cast<std::size_t>(i)] !=
+        y2[static_cast<std::size_t>(line17_base) +
+           static_cast<std::size_t>(i)]) {
       any_sample_differs = true;
     }
   }
@@ -1033,8 +1038,10 @@ TEST(BiphaseInjectionManagerPalClvTest, TimeCodeIsContinuousAcrossSections) {
   const int line16_base = (16 - 1) * spl;
   bool differs = false;
   for (int i = aws; i < spl && !differs; ++i) {
-    if (y_b[static_cast<std::size_t>(line16_base + i)] !=
-        y_fresh[static_cast<std::size_t>(line16_base + i)]) {
+    if (y_b[static_cast<std::size_t>(line16_base) +
+            static_cast<std::size_t>(i)] !=
+        y_fresh[static_cast<std::size_t>(line16_base) +
+                static_cast<std::size_t>(i)]) {
       differs = true;
     }
   }

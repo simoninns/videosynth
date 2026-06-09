@@ -262,7 +262,7 @@ TEST(ProjectValidatorTest, NoPilotBurstClippingWarningWithS16FscPreset) {
   EXPECT_TRUE(result.warnings.empty());
 }
 
-TEST(ProjectValidatorTest, NoPilotBurstClippingWarningWithRawS16_28MPreset) {
+TEST(ProjectValidatorTest, NoPilotBurstClippingWarningWithRawS1628MPreset) {
   Project project = MakeValidProject();
   project.cvbs_presets.pal_laserdisc_pilot_burst = true;
   project.cvbs_presets.sample_encoding_preset = "RAW_S16_28M";
@@ -275,7 +275,7 @@ TEST(ProjectValidatorTest, NoPilotBurstClippingWarningWithRawS16_28MPreset) {
   EXPECT_TRUE(result.warnings.empty());
 }
 
-TEST(ProjectValidatorTest, NoPilotBurstClippingWarningWithRawS16_40MPreset) {
+TEST(ProjectValidatorTest, NoPilotBurstClippingWarningWithRawS1640MPreset) {
   Project project = MakeValidProject();
   project.cvbs_presets.pal_laserdisc_pilot_burst = true;
   project.cvbs_presets.sample_encoding_preset = "RAW_S16_40M";
