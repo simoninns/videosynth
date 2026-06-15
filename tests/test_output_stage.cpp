@@ -65,6 +65,8 @@ struct CvbsMetadata {
   int32_t black_level = 0;
   bool has_black_level = false;
   bool has_nonstandard_values = false;
+  bool audio_locked_is_null = true;
+  bool audio_locked = false;
 };
 
 bool ReadCvbsMetadata(const std::filesystem::path& path,
@@ -82,7 +84,7 @@ bool ReadCvbsMetadata(const std::filesystem::path& path,
   const char* query_sql =
       "SELECT preset, sample_encoding_preset, signal_state_preset, "
       "signal_type, decoder, number_of_sequential_frames, black_level, "
-      "has_nonstandard_values FROM cvbs_file LIMIT 1;";
+      "has_nonstandard_values, audio_locked FROM cvbs_file LIMIT 1;";
   sqlite3_stmt* stmt = nullptr;
 
   if (sqlite3_prepare_v2(db, query_sql, -1, &stmt, nullptr) != SQLITE_OK) {
@@ -109,6 +111,11 @@ bool ReadCvbsMetadata(const std::filesystem::path& path,
       metadata->black_level = sqlite3_column_int(stmt, 6);
     }
     metadata->has_nonstandard_values = sqlite3_column_int(stmt, 7) != 0;
+    metadata->audio_locked_is_null =
+        sqlite3_column_type(stmt, 8) == SQLITE_NULL;
+    if (!metadata->audio_locked_is_null) {
+      metadata->audio_locked = sqlite3_column_int(stmt, 8) != 0;
+    }
     result = true;
   }
 
@@ -491,6 +498,51 @@ TEST(OutputStageTest, ClampsOutOfRangeValuesToLegalCodeSpace) {
   CvbsMetadata metadata;
   ASSERT_TRUE(ReadCvbsMetadata(metadata_path, &metadata));
   EXPECT_TRUE(metadata.has_nonstandard_values);
+
+  std::filesystem::remove(video_path);
+  std::filesystem::remove(metadata_path);
+}
+
+TEST(OutputStageTest, WritesSchemaVersion8WithNullAudioLocked) {
+  OutputStage output;
+  Project project = MakeProject(Standard::kPal);
+  const std::size_t frame_span =
+      static_cast<std::size_t>(SamplesPerFrame4fsc(Standard::kPal));
+
+  std::vector<SampleFixed> y(frame_span, MillivoltsToSampleFixed(0.0));
+  std::vector<SampleFixed> c(frame_span, MillivoltsToSampleFixed(0.0));
+
+  const std::filesystem::path video_path =
+      std::filesystem::temp_directory_path() /
+      "videosynth_output_stage_schema_v8.composite";
+  const std::filesystem::path metadata_path =
+      std::filesystem::temp_directory_path() /
+      "videosynth_output_stage_schema_v8.meta";
+  project.output.video_path = video_path.string();
+  project.output.metadata_path = metadata_path.string();
+  std::filesystem::remove(video_path);
+  std::filesystem::remove(metadata_path);
+
+  std::vector<std::string> errors;
+  ASSERT_TRUE(output.Write(project, y, c, &errors));
+
+  // Verify PRAGMA user_version = 8 per CVBS specification v8.
+  sqlite3* db = nullptr;
+  ASSERT_EQ(sqlite3_open(metadata_path.c_str(), &db), SQLITE_OK);
+  int user_version = 0;
+  sqlite3_stmt* stmt = nullptr;
+  ASSERT_EQ(sqlite3_prepare_v2(db, "PRAGMA user_version;", -1, &stmt, nullptr),
+            SQLITE_OK);
+  if (sqlite3_step(stmt) == SQLITE_ROW) {
+    user_version = sqlite3_column_int(stmt, 0);
+  }
+  sqlite3_finalize(stmt);
+  sqlite3_close(db);
+  EXPECT_EQ(user_version, 8);
+
+  CvbsMetadata metadata;
+  ASSERT_TRUE(ReadCvbsMetadata(metadata_path, &metadata));
+  EXPECT_TRUE(metadata.audio_locked_is_null);
 
   std::filesystem::remove(video_path);
   std::filesystem::remove(metadata_path);

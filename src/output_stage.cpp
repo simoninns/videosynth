@@ -253,7 +253,7 @@ bool WriteMetadataDatabase(const Project& project, std::size_t frame_count,
   }
 
   char* error_msg = nullptr;
-  if (sqlite3_exec(db, "PRAGMA user_version = 7;", nullptr, nullptr,
+  if (sqlite3_exec(db, "PRAGMA user_version = 8;", nullptr, nullptr,
                    &error_msg) != SQLITE_OK) {
     errors->push_back(std::string("Failed to set PRAGMA user_version: ") +
                       error_msg);
@@ -290,6 +290,7 @@ bool WriteMetadataDatabase(const Project& project, std::size_t frame_count,
       "number_of_sequential_frames >= 1),"
       "    black_level                 INTEGER,"
       "    has_nonstandard_values      BOOLEAN,"
+      "    audio_locked                BOOLEAN,"
       "    capture_notes               TEXT"
       ");";
 
@@ -326,8 +327,9 @@ bool WriteMetadataDatabase(const Project& project, std::size_t frame_count,
       "    number_of_sequential_frames,"
       "    black_level,"
       "    has_nonstandard_values,"
+      "    audio_locked,"
       "    capture_notes"
-      ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
+      ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
 
   if (sqlite3_prepare_v2(db, insert_sql, -1, &insert_stmt, nullptr) !=
       SQLITE_OK) {
@@ -363,7 +365,8 @@ bool WriteMetadataDatabase(const Project& project, std::size_t frame_count,
   }
 
   sqlite3_bind_int(insert_stmt, 10, has_nonstandard ? 1 : 0);
-  sqlite3_bind_null(insert_stmt, 11);
+  sqlite3_bind_null(insert_stmt, 11);  // audio_locked: NULL (no audio tracks)
+  sqlite3_bind_null(insert_stmt, 12);  // capture_notes
 
   if (sqlite3_step(insert_stmt) != SQLITE_DONE) {
     errors->push_back("Failed to insert metadata row");
