@@ -625,7 +625,12 @@ bool GenerationStage::GenerateFrameBatch(
   const SampledSynthesisContext synth =
       BuildSampledSynthesisContext(project.cvbs_presets.video_standard_preset);
   const int frame_samples = synth.frame_samples;
-  const double burst_amplitude_mv = 150.0;
+  // SMPTE 170M-2004 Table 1: NTSC burst amplitude = 40 IRE p-p = 20 IRE peak.
+  // ITU-R BT.1700 Part B Table 2 item 5: PAL burst amplitude = 300 mV p-p.
+  const double burst_amplitude_mv =
+      (project.cvbs_presets.video_standard_preset == Standard::kNtsc)
+          ? (20.0 * 1000.0 / 140.0)
+          : 150.0;
   std::unique_ptr<IChromaEncoder> chroma_encoder = CreateChromaEncoder(
       project.cvbs_presets.video_standard_preset, timing.sample_rate_4fsc_hz);
 

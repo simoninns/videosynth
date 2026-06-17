@@ -21,7 +21,28 @@ namespace videosynth {
 namespace {
 
 constexpr double kPi = 3.14159265358979323846;
-constexpr double kCompositeChromaScaleMillivolts = 350.0;
+// SMPTE 170M-2004 Annex A eqs (4)/(5)/(10): NTSC encodes b-y onto the sin
+// axis and r-y onto the cos axis, each scaled by 0.925 × reduction_factor.
+// BT.601 normalises Cb as (B-Y)/(2*(1-Kb)) and Cr as (R-Y)/(2*(1-Kr)) into
+// ±448 10-bit codes, so cb_norm = (B-Y)/0.886 and cr_norm = (R-Y)/0.701.
+// Applying the NTSC reduction and 1000/140 mV-per-IRE conversion gives
+// separate per-axis peak scales for cb_norm and cr_norm values in [−1, 1].
+//   SMPTE 170M-2004 §A.3: b-y_factor = 0.492111, r-y_factor = 0.877283.
+//   SMPTE 170M-2004 §A.5: overall luma+chroma scale factor = 0.925.
+//   SMPTE 170M-2004 §15.4: 140 IRE ≡ 1 V → 1 IRE = 1000/140 mV.
+constexpr double kNtscCbScaleMv =
+    0.925 * 0.492111 * 0.886 * 100.0 * (1000.0 / 140.0);
+constexpr double kNtscCrScaleMv =
+    0.925 * 0.877283 * 0.701 * 100.0 * (1000.0 / 140.0);
+
+// ITU-R BT.1700 Part B Table 1 items 8/9: PAL encodes E'_U onto the sin axis
+// and E'_V onto the cos axis, where E'_U = 0.493*(B-Y) and E'_V = 0.877*(R-Y).
+// PAL white level is 700 mV, so the peak chroma scale per cb_norm unit is:
+//   U: 0.493 × (1-Kb) × 700 = 0.493 × 0.886 × 700 mV
+//   V: 0.877 × (1-Kr) × 700 = 0.877 × 0.701 × 700 mV
+constexpr double kPalUScaleMv = 0.493 * 0.886 * 700.0;
+constexpr double kPalVScaleMv = 0.877 * 0.701 * 700.0;
+
 constexpr double kPalUvCutoffHz = 1.3e6;
 constexpr double kNtscCbCrCutoffHz = 1.2e6;
 constexpr int kPalFilterTaps = 33;
@@ -143,6 +164,7 @@ void ApplyFirFilterFixed(const std::vector<std::int64_t>& input,
 
 void ModulateQuadratureFromPhaseStart(const std::vector<double>& axis_sin,
                                       const std::vector<double>& axis_cos,
+                                      double sin_scale_mv, double cos_scale_mv,
                                       double carrier_phase_start_rad,
                                       std::vector<SampleFixed>* out_chroma_mv) {
   if (out_chroma_mv == nullptr) {
@@ -157,9 +179,9 @@ void ModulateQuadratureFromPhaseStart(const std::vector<double>& axis_sin,
   double sin_phase = std::sin(carrier_phase_start_rad);
   double cos_phase = std::cos(carrier_phase_start_rad);
   for (std::size_t index = 0; index < axis_sin.size(); ++index) {
-    (*out_chroma_mv)[index] = MillivoltsToSampleFixed(
-        kCompositeChromaScaleMillivolts *
-        ((axis_sin[index] * sin_phase) + (axis_cos[index] * cos_phase)));
+    (*out_chroma_mv)[index] =
+        MillivoltsToSampleFixed((axis_sin[index] * sin_scale_mv * sin_phase) +
+                                (axis_cos[index] * cos_scale_mv * cos_phase));
 
     const double next_sin = cos_phase;
     const double next_cos = -sin_phase;
@@ -210,7 +232,9 @@ void PalChromaEncoder::EncodeLineFromPhaseStart(
                                static_cast<double>(kChromaAxisScale);
   }
 
+  // ITU-R BT.1700 Part B Table 1 item 10d: PAL U on sin, V on cos.
   ModulateQuadratureFromPhaseStart(filtered_u_workspace_, filtered_v_workspace_,
+                                   kPalUScaleMv, kPalVScaleMv,
                                    carrier_phase_start_rad, out_chroma_mv);
 }
 
@@ -254,9 +278,10 @@ void NtscChromaEncoder::EncodeLineFromPhaseStart(
                                 static_cast<double>(kChromaAxisScale);
   }
 
-  ModulateQuadratureFromPhaseStart(filtered_cb_workspace_,
-                                   filtered_cr_workspace_,
-                                   carrier_phase_start_rad, out_chroma_mv);
+  // SMPTE 170M-2004 §A.5 eq (10): NTSC b-y on sin axis, r-y on cos axis.
+  ModulateQuadratureFromPhaseStart(
+      filtered_cb_workspace_, filtered_cr_workspace_, kNtscCbScaleMv,
+      kNtscCrScaleMv, carrier_phase_start_rad, out_chroma_mv);
 }
 
 std::unique_ptr<IChromaEncoder> CreateChromaEncoder(Standard standard,

@@ -87,25 +87,39 @@ TEST(ChromaEncoderTest, NeutralChromaProducesNoSubcarrierEnergy) {
   }
 }
 
-TEST(ChromaEncoderTest,
-     PalAndNtscUseConsistentQuadratureMappingForStaticCbCrInputs) {
-  const std::vector<YCbCr444Pixel> saturated_line(
-      64, YCbCr444Pixel{.y = 512, .cb = 800, .cr = 300});
-  const auto pal = CreateChromaEncoder(
-      Standard::kPal, GetTimingConstants(Standard::kPal).sample_rate_4fsc_hz);
-  const auto ntsc = CreateChromaEncoder(
-      Standard::kNtsc, GetTimingConstants(Standard::kNtsc).sample_rate_4fsc_hz);
-  std::vector<SampleFixed> pal_output;
-  std::vector<SampleFixed> ntsc_output;
-
-  ASSERT_NE(pal, nullptr);
+TEST(ChromaEncoderTest, NtscCrAxisIsScaledLargerThanCbAxisPerSmpte170M) {
+  // SMPTE 170M-2004 Annex A eqs (4)/(5)/(10):
+  //   Cb (b-y) axis peak scale = 0.925 × 0.492111 × 0.886 × 100 × (1000/140)
+  //   Cr (r-y) axis peak scale = 0.925 × 0.877283 × 0.701 × 100 × (1000/140)
+  // Cr/Cb ratio ≈ 1.411 at equal cb_norm / cr_norm input magnitudes.
+  const TimingConstants ntsc_timing = GetTimingConstants(Standard::kNtsc);
+  const auto ntsc =
+      CreateChromaEncoder(Standard::kNtsc, ntsc_timing.sample_rate_4fsc_hz);
   ASSERT_NE(ntsc, nullptr);
 
-  pal->EncodeLineFromPhaseStart(saturated_line, 0.75, &pal_output);
-  ntsc->EncodeLineFromPhaseStart(saturated_line, 0.75, &ntsc_output);
+  // Full positive excursion on each axis in isolation (phase chosen to land
+  // the axis squarely on the carrier at sample 0).
+  const std::vector<YCbCr444Pixel> max_cb_line(
+      64, YCbCr444Pixel{.y = 512, .cb = 960, .cr = 512});
+  const std::vector<YCbCr444Pixel> max_cr_line(
+      64, YCbCr444Pixel{.y = 512, .cb = 512, .cr = 960});
 
-  EXPECT_NEAR(SampleFixedToMillivolts(pal_output[32]),
-              SampleFixedToMillivolts(ntsc_output[32]), 1e-9);
+  std::vector<SampleFixed> cb_output;
+  std::vector<SampleFixed> cr_output;
+  ntsc->EncodeLineFromPhaseStart(max_cb_line, M_PI / 2.0, &cb_output);
+  ntsc->EncodeLineFromPhaseStart(max_cr_line, 0.0, &cr_output);
+
+  const double cb_peak = SampleFixedToMillivolts(cb_output[0]);
+  const double cr_peak = SampleFixedToMillivolts(cr_output[0]);
+
+  // Both axes must have non-trivial amplitude.
+  EXPECT_GT(std::abs(cb_peak), 100.0);
+  EXPECT_GT(std::abs(cr_peak), 100.0);
+
+  // Cr peak must be ~41 % larger than Cb peak (ratio ≈ 1.411, ±5 %).
+  const double expected_ratio = (0.877283 * 0.701) / (0.492111 * 0.886);
+  EXPECT_NEAR(std::abs(cr_peak) / std::abs(cb_peak), expected_ratio,
+              expected_ratio * 0.05);
 }
 
 TEST(ChromaEncoderTest,
@@ -129,6 +143,11 @@ TEST(ChromaEncoderTest,
 }
 
 TEST(ChromaEncoderTest, NtscCbAndCrAxesUseSymmetricBandwidth) {
+  // Both NTSC axes share the same low-pass filter (kNtscCbCrCutoffHz), so a
+  // sinusoid of the same normalised frequency and amplitude should be
+  // attenuated identically on each axis. The output RMS ratio must therefore
+  // equal the per-axis voltage scale ratio (Cr/Cb ≈ 1.411) within ±10 %.
+  // SMPTE 170M-2004 Annex A eqs (4)/(5)/(10).
   const TimingConstants ntsc_timing = GetTimingConstants(Standard::kNtsc);
   const auto ntsc =
       CreateChromaEncoder(Standard::kNtsc, ntsc_timing.sample_rate_4fsc_hz);
@@ -147,7 +166,9 @@ TEST(ChromaEncoderTest, NtscCbAndCrAxesUseSymmetricBandwidth) {
   const double cr_rms = RootMeanSquare(cr_output);
   EXPECT_GT(cb_rms, 1.0);
   EXPECT_GT(cr_rms, 1.0);
-  EXPECT_NEAR(cb_rms, cr_rms, std::max(cb_rms, cr_rms) * 0.1);
+
+  const double expected_ratio = (0.877283 * 0.701) / (0.492111 * 0.886);
+  EXPECT_NEAR(cr_rms / cb_rms, expected_ratio, expected_ratio * 0.1);
 }
 
 TEST(ChromaEncoderTest, PhaseStartEncodingIsDeterministic) {

@@ -911,8 +911,11 @@ TEST(GenerationStageChromaTest,
       BuildLineTimingPrimitive(Standard::kNtsc, line_1based);
   const double burst_t =
       static_cast<double>(burst_mid) / ntsc.sample_rate_4fsc_hz;
+  // SMPTE 170M-2004 Table 1: burst amplitude = 40 IRE p-p = 20 IRE peak.
+  // 1 IRE = 1000/140 mV → peak burst = 20 × 1000/140 ≈ 142.857 mV.
+  constexpr double kNtscBurstPeakMv = 20.0 * 1000.0 / 140.0;
   const double expected_burst =
-      150.0 *
+      kNtscBurstPeakMv *
       std::sin((2.0 * M_PI * subcarrier_hz * burst_t) + line.burst_phase_rad);
   EXPECT_NEAR(SampleFixedToMillivolts(c[burst_mid]), expected_burst, 1e-6);
 
