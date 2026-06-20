@@ -251,11 +251,16 @@ bool DropoutInjectionStage::Begin(const Project& project,
     return false;
   }
 
-  // Set schema version and create schema.
+  // Set schema version and recreate schema from scratch so that repeated
+  // pipeline runs on the same output path never accumulate stale rows from a
+  // previous invocation.  The video file is overwritten each run; the sidecar
+  // must match it exactly.
   const std::string schema =
       "PRAGMA user_version = " + std::to_string(kSidecarSchemaVersion) +
       ";"
-      "CREATE TABLE IF NOT EXISTS dropout_run ("
+      "DROP TABLE IF EXISTS dropout_run;"
+      "DROP INDEX IF EXISTS idx_dropout_run_frame;"
+      "CREATE TABLE dropout_run ("
       "  cvbs_file_id  INTEGER NOT NULL,"
       "  frame_id      INTEGER NOT NULL CHECK (frame_id >= 0),"
       "  sample_start  INTEGER NOT NULL CHECK (sample_start >= 0),"
@@ -264,7 +269,7 @@ bool DropoutInjectionStage::Begin(const Project& project,
       "100),"
       "  PRIMARY KEY (cvbs_file_id, frame_id, sample_start)"
       ");"
-      "CREATE INDEX IF NOT EXISTS idx_dropout_run_frame"
+      "CREATE INDEX idx_dropout_run_frame"
       "  ON dropout_run (cvbs_file_id, frame_id);"
       "BEGIN;";
 
