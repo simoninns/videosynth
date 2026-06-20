@@ -120,6 +120,25 @@ struct NoiseParameters {
   bool noise_seed_specified = false;
 };
 
+struct RandomDropoutParameters {
+  bool enabled = false;
+  int scale = 0;  // 1–20; maps to frequency and max_duration via scale mapping
+  bool seed_specified = false;
+  int64_t seed = 0;
+};
+
+struct ScratchDropoutParameters {
+  bool enabled = false;
+  int scale = 0;  // 1–20; maps to count, max_duration_frames, max_width_samples
+  bool seed_specified = false;
+  int64_t seed = 0;
+};
+
+struct DropoutParameters {
+  RandomDropoutParameters random = {};
+  ScratchDropoutParameters scratch = {};
+};
+
 struct Section {
   struct LineInjectionCode {
     std::string code_type;
@@ -150,6 +169,7 @@ struct Section {
   int duration_frames = 0;
   int start_frame = 0;
   NoiseParameters noise = {};
+  DropoutParameters dropouts = {};
 };
 
 struct OutputTargets {

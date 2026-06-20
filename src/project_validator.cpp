@@ -17,6 +17,7 @@
 #include <string>
 
 #include "videosynth/biphase_types.h"
+#include "videosynth/dropout_scale.h"
 #include "videosynth/vits_definition_provider.h"
 
 namespace {
@@ -906,6 +907,78 @@ void ValidateNoiseParameters(const videosynth::Section& section,
   }
 }
 
+// Valid scale range for both random and scratch dropout.
+constexpr int kDropoutScaleMin = 0;
+constexpr int kDropoutScaleMax = 20;
+
+void ValidateDropoutParameters(const videosynth::Section& section,
+                               videosynth::ValidationResult* result) {
+  if (result == nullptr) {
+    return;
+  }
+
+  const videosynth::DropoutParameters& dp = section.dropouts;
+  const bool random_active =
+      dp.random.enabled && dp.random.scale > kDropoutScaleMin;
+  const bool scratch_active =
+      dp.scratch.enabled && dp.scratch.scale > kDropoutScaleMin;
+
+  // If neither sub-key is present (both at default/zero) there is nothing to
+  // validate; the stage will be a no-op for this section.
+  if (!random_active && !scratch_active && dp.random.scale == 0 &&
+      dp.scratch.scale == 0) {
+    return;
+  }
+
+  if (dp.random.scale < kDropoutScaleMin ||
+      dp.random.scale > kDropoutScaleMax) {
+    result->is_valid = false;
+    result->errors.push_back("Dropout validation error in section '" +
+                             section.name +
+                             "': random.scale must be in [0, 20]; got " +
+                             std::to_string(dp.random.scale) + ".");
+    return;
+  }
+
+  if (dp.scratch.scale < kDropoutScaleMin ||
+      dp.scratch.scale > kDropoutScaleMax) {
+    result->is_valid = false;
+    result->errors.push_back("Dropout validation error in section '" +
+                             section.name +
+                             "': scratch.scale must be in [0, 20]; got " +
+                             std::to_string(dp.scratch.scale) + ".");
+    return;
+  }
+
+  // A dropouts: block with all-zero scales has no effect — report as a
+  // configuration mistake so the user knows the block is inert.
+  if (!random_active && !scratch_active) {
+    result->is_valid = false;
+    result->errors.push_back(
+        "Dropout validation error in section '" + section.name +
+        "': dropouts block has no active type (both random.scale and "
+        "scratch.scale are 0). Remove the dropouts block or set at least one "
+        "scale to 1–20.");
+    return;
+  }
+
+  // Warn when the derived scratch lifespan exceeds the section length.
+  if (scratch_active && !section.duration_frames_all) {
+    const videosynth::ScratchDropoutDerivedParams sp =
+        videosynth::DeriveScratchDropoutParams(dp.scratch.scale);
+    if (sp.max_dur_frames > section.duration_frames) {
+      result->warnings.push_back(
+          "Dropout warning in section '" + section.name +
+          "': scratch lifespan derived from scale " +
+          std::to_string(dp.scratch.scale) + " (" +
+          std::to_string(sp.max_dur_frames) +
+          " frames) exceeds section duration (" +
+          std::to_string(section.duration_frames) +
+          " frames). The envelope will be truncated asymmetrically.");
+    }
+  }
+}
+
 }  // namespace
 
 namespace videosynth {
@@ -1030,6 +1103,11 @@ ValidationResult ProjectValidator::Validate(const Project& project) {
 
       ValidateNoiseParameters(
           section, project.cvbs_presets.video_standard_preset, &result);
+      if (!result.is_valid) {
+        break;
+      }
+
+      ValidateDropoutParameters(section, &result);
       if (!result.is_valid) {
         break;
       }

@@ -10,6 +10,7 @@
 #include <iostream>
 #include <string>
 
+#include "videosynth/dropout_injection_stage.h"
 #include "videosynth/generation_stage.h"
 #include "videosynth/logger.h"
 #include "videosynth/noise_injection_stage.h"
@@ -94,9 +95,11 @@ int main(int argc, char** argv) {
                                          &logger);
   videosynth::GenerationStage generation(&logger);
   videosynth::NoiseInjectionStage noise_injection(&logger);
+  videosynth::DropoutInjectionStage dropout_injection(&logger);
   videosynth::OutputStage output(&logger);
 
   videosynth::VideoSynthPipeline pipeline(&parser, &validator, &generation,
-                                          &noise_injection, &output, &logger);
+                                          &noise_injection, &dropout_injection,
+                                          &output, &logger);
   return pipeline.Run(options) ? 0 : 1;
 }

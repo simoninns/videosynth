@@ -9,6 +9,7 @@
 
 #pragma once
 
+#include "videosynth/dropout_injection_stage.h"
 #include "videosynth/interfaces.h"
 #include "videosynth/noise_injection_stage.h"
 
@@ -21,11 +22,12 @@ class VideoSynthPipeline {
  public:
   VideoSynthPipeline(IProjectParser* parser, IProjectValidator* validator,
                      IGenerationStage* generation,
-                     NoiseInjectionStage* noise_injection, IOutputStage* output,
-                     ILogger* logger);
+                     NoiseInjectionStage* noise_injection,
+                     DropoutInjectionStage* dropout_injection,
+                     IOutputStage* output, ILogger* logger);
 
-  // Orchestrates the full pipeline: parse -> validate -> generate -> noise ->
-  // output.
+  // Orchestrates the full pipeline:
+  //   parse -> validate -> generate -> noise -> dropout -> output.
   //
   // Args:
   //   options: Contains project path and runtime configuration.
@@ -42,6 +44,7 @@ class VideoSynthPipeline {
   IProjectValidator* validator_;
   IGenerationStage* generation_;
   NoiseInjectionStage* noise_injection_;
+  DropoutInjectionStage* dropout_injection_;
   IOutputStage* output_;
   ILogger* logger_;
 };

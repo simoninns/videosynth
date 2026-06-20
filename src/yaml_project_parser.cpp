@@ -302,7 +302,8 @@ ParseResult ParseYamlNode(const YAML::Node& root, ILogger* logger) {
                                                   "line_injections",
                                                   "source",
                                                   "start_frame",
-                                                  "noise"};
+                                                  "noise",
+                                                  "dropouts"};
       ValidateAllowedKeys(section_node, section_keys, "section",
                           &result.errors);
       if (!result.errors.empty()) {
@@ -363,6 +364,67 @@ ParseResult ParseYamlNode(const YAML::Node& root, ILogger* logger) {
         if (noise_node["noise_seed"]) {
           section.noise.noise_seed = noise_node["noise_seed"].as<int64_t>();
           section.noise.noise_seed_specified = true;
+        }
+      }
+
+      if (section_node["dropouts"]) {
+        const YAML::Node dropouts_node = section_node["dropouts"];
+        if (!dropouts_node.IsMap()) {
+          result.errors.push_back(
+              "section field 'dropouts' must be a map/object.");
+          return result;
+        }
+        const std::set<std::string> dropout_keys = {"random", "scratch"};
+        ValidateAllowedKeys(dropouts_node, dropout_keys, "section.dropouts",
+                            &result.errors);
+        if (!result.errors.empty()) {
+          return result;
+        }
+
+        if (dropouts_node["random"]) {
+          const YAML::Node rnd = dropouts_node["random"];
+          if (!rnd.IsMap()) {
+            result.errors.push_back(
+                "section.dropouts.random must be a map/object.");
+            return result;
+          }
+          const std::set<std::string> rnd_keys = {"scale", "seed"};
+          ValidateAllowedKeys(rnd, rnd_keys, "section.dropouts.random",
+                              &result.errors);
+          if (!result.errors.empty()) {
+            return result;
+          }
+          section.dropouts.random.scale = rnd["scale"].as<int>(0);
+          if (section.dropouts.random.scale > 0) {
+            section.dropouts.random.enabled = true;
+          }
+          if (rnd["seed"]) {
+            section.dropouts.random.seed = rnd["seed"].as<int64_t>();
+            section.dropouts.random.seed_specified = true;
+          }
+        }
+
+        if (dropouts_node["scratch"]) {
+          const YAML::Node scr = dropouts_node["scratch"];
+          if (!scr.IsMap()) {
+            result.errors.push_back(
+                "section.dropouts.scratch must be a map/object.");
+            return result;
+          }
+          const std::set<std::string> scr_keys = {"scale", "seed"};
+          ValidateAllowedKeys(scr, scr_keys, "section.dropouts.scratch",
+                              &result.errors);
+          if (!result.errors.empty()) {
+            return result;
+          }
+          section.dropouts.scratch.scale = scr["scale"].as<int>(0);
+          if (section.dropouts.scratch.scale > 0) {
+            section.dropouts.scratch.enabled = true;
+          }
+          if (scr["seed"]) {
+            section.dropouts.scratch.seed = scr["seed"].as<int64_t>();
+            section.dropouts.scratch.seed_specified = true;
+          }
         }
       }
 

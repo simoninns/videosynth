@@ -11,6 +11,7 @@
 
 #include <algorithm>
 
+#include "videosynth/dropout_injection_stage.h"
 #include "videosynth/fixed_point.h"
 #include "videosynth/noise_injection_stage.h"
 #include "videosynth/timing_constants.h"
@@ -53,11 +54,13 @@ VideoSynthPipeline::VideoSynthPipeline(IProjectParser* parser,
                                        IProjectValidator* validator,
                                        IGenerationStage* generation,
                                        NoiseInjectionStage* noise_injection,
+                                       DropoutInjectionStage* dropout_injection,
                                        IOutputStage* output, ILogger* logger)
     : parser_(parser),
       validator_(validator),
       generation_(generation),
       noise_injection_(noise_injection),
+      dropout_injection_(dropout_injection),
       output_(output),
       logger_(logger) {}
 
@@ -113,6 +116,18 @@ bool VideoSynthPipeline::Run(const RunOptions& options) {
     return false;
   }
 
+  if (dropout_injection_ != nullptr) {
+    std::vector<std::string> dropout_errors;
+    if (!dropout_injection_->Begin(parse_result.project, &dropout_errors)) {
+      for (const std::string& error : dropout_errors) {
+        logger_->Error(error);
+      }
+      std::vector<std::string> cleanup_errors;
+      output_->FinalizeWrite(&cleanup_errors);
+      return false;
+    }
+  }
+
   logger_->Info("Generating and writing " + std::to_string(total_frames) +
                 " frame(s) in batches of " + std::to_string(batch_frame_count) +
                 ".");
@@ -148,6 +163,12 @@ bool VideoSynthPipeline::Run(const RunOptions& options) {
                                     &c_mv);
     }
 
+    if (dropout_injection_ != nullptr) {
+      dropout_injection_->InjectDropouts(parse_result.project, schedule,
+                                         processed_frames, frames_this_batch,
+                                         &y_mv, &c_mv);
+    }
+
     output_errors.clear();
     if (!output_->AppendSamples(y_mv, c_mv, &output_errors)) {
       CloseOutputSessionOnFailure();
@@ -172,6 +193,16 @@ bool VideoSynthPipeline::Run(const RunOptions& options) {
       logger_->Error(error);
     }
     return false;
+  }
+
+  if (dropout_injection_ != nullptr) {
+    std::vector<std::string> dropout_errors;
+    if (!dropout_injection_->Finalize(&dropout_errors)) {
+      for (const std::string& error : dropout_errors) {
+        logger_->Error(error);
+      }
+      return false;
+    }
   }
 
   logger_->Info("Generation completed successfully.");

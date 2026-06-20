@@ -59,6 +59,7 @@
   - **Laserdisc biphase encoding** (IEC 60856/60857).
   - **VITC** (Vertical Interval Timecode, SMPTE 12M).
 - **Per-section noise injection**: two-component Gaussian noise model (floor + proportional) targeting orc-gui Black PSNR and White SNR metrics.
+- **Per-section dropout injection**: physical-tape and optical-disc dropout simulation (random surface dropouts and persistent scratch dropouts) with automatic sidecar generation conformant to the [Dropout Extension Format](../cvbs-file-format-specification/docs/extensions/dropout-extension-format.md) (schema version 5).
 
 ### **Target Users**
 
@@ -159,11 +160,12 @@ At `4fsc`, NTSC frame cadence is orthogonal (`910 x 525 = 477,750` samples/frame
 - The current implementation uses a sampled-domain split: frame-scoped CVBS-domain Y/C synthesis directly on the `4fsc` lattice, followed by composite quantisation and file output. This remains consistent with composite-signal decomposition in [SMPTE 170M-2004](../analogue-video-specifications/docs/video_formats/SMPTE-170M-2004/SMPTE-170M-2004.md) §3, §7-§10 and [ITU-R BT.1700](../analogue-video-specifications/docs/video_formats/BT-1700-E/BT-1700-E.md) Part A/Part B, but it is not a continuous-time then sampled split.
 - Independent luma/chroma generation with later composition maps to luminance/chrominance model definitions in [SMPTE 170M-2004](../analogue-video-specifications/docs/video_formats/SMPTE-170M-2004/SMPTE-170M-2004.md) §6-§10 and [ITU-R BT.470-6](../analogue-video-specifications/docs/video_formats/BT-470-6-1998/BT-470-6-1998.md), Table 2 item 2.5.
 
-VideoSynth currently follows a **three-stage sampled-domain architecture**:
+VideoSynth currently follows a **four-stage sampled-domain architecture**:
 
 1. **[Generation Stage](#generation-stage)**: Synthesizes **4fsc-discrete fixed-point mV representations** of **luma (Y)** and **chroma (C)** for complete frame batches.
 2. **Noise Injection Stage** (`NoiseInjectionStage`): Applies optional per-section two-component Gaussian noise to the fixed-point mV Y/C buffers before quantisation, targeting orc-gui Black PSNR and White SNR metrics.
-3. **[Output Stage](#output-stage)**: Validates frame-span alignment, combines Y and C, quantises to the active digital interface code space, and formats the final CVBS output files.
+3. **Dropout Injection Stage** (`DropoutInjectionStage`): Applies optional per-section random and scratch dropout events to the fixed-point mV Y/C buffers after noise, and writes a conformant SQLite dropout sidecar (`<basename>.dropouts.meta`).
+4. **[Output Stage](#output-stage)**: Validates frame-span alignment, combines Y and C, quantises to the active digital interface code space, and formats the final CVBS output files.
 
 ### **Key Principles**
 
@@ -737,6 +739,59 @@ Rules:
 **Lower bound (20.0 dB)**: at 20 dB, σ_noise ≈ 10 IRE ≈ 70 mV (PAL). Approaching the sync pulse amplitude; sync separator reliability degrades below this threshold.
 
 **Upper bound (61.0 dB)**: above 61 dB, injected noise would be smaller than the 10-bit quantisation noise floor (~0.085 IRE) and would have no measurable effect in orc-gui.
+
+#### **`dropouts:` Sub-Key (Optional, Per-Section)**
+
+The `dropouts:` block enables per-section dropout simulation. Two independent dropout types are supported: `random` (surface/media degradation modelled as a Poisson process) and `scratch` (radial physical defect with a triangular amplitude envelope that spans multiple frames).
+
+**`random:` block** — Poisson random dropouts:
+
+| Key | Type | Required | Range | Description |
+|-----|------|----------|-------|-------------|
+| `scale` | int | Yes | [1, 20] | Severity scale. `0` disables random dropouts (equivalent to omitting the block). |
+| `seed` | int | No | any int64 | Fixed RNG seed for reproducible output. If absent, a run-specific seed is used. |
+
+**`scratch:` block** — persistent radial scratch defects:
+
+| Key | Type | Required | Range | Description |
+|-----|------|----------|-------|-------------|
+| `scale` | int | Yes | [1, 20] | Severity scale. `0` disables scratch dropouts (equivalent to omitting the block). |
+| `seed` | int | No | any int64 | Fixed RNG seed for reproducible output. If absent, a run-specific seed is used. |
+
+**Scale mapping (exponential)**:
+
+| Parameter | Scale 1 | Scale 10 | Scale 20 |
+|-----------|---------|----------|---------|
+| Random frequency (events/frame) | 0.05 | ~2.8 | 100 |
+| Random max duration (samples) | 5 | ~282 | 2000 |
+| Scratch count | 1 | 8 | 15 |
+| Scratch max lifespan (frames) | 2 | ~113 | 500 |
+| Scratch max peak width (samples) | 5 | ~282 | 2000 |
+
+Rules:
+- A `dropouts:` block with both `random.scale = 0` and `scratch.scale = 0` (or neither sub-block present) is a validation error — omit the `dropouts:` block entirely to disable.
+- `scale` outside `[1, 20]` is a validation error.
+- If `scratch.scale > 0` and the derived maximum scratch lifespan exceeds `section.duration_frames`, a **warning** is emitted (scratch events may never reach their peak amplitude within the section).
+
+**Sidecar output**: when any section has dropout injection enabled, the pipeline creates a companion SQLite file at `<metadata_path_stem>.dropouts.meta` (schema version 5) with a single table `dropout_run(cvbs_file_id, frame_id, sample_start, sample_count, severity)`. Severity is `25` for non-visible VBI runs and `75` for runs intersecting the active picture.
+
+Example YAML:
+
+```yaml
+sections:
+  - name: "GoodLaserdisc"
+    type: progressive
+    source: "assets/clip.mkv"
+    duration_frames: 50
+    noise:
+      noise_db: 50.0
+    dropouts:
+      random:
+        scale: 5
+        seed: 42
+      scratch:
+        scale: 3
+```
 
 ---
 
@@ -1429,7 +1484,7 @@ The runtime uses a **central pipeline module** to process sections and combine t
 ### **Pipeline Overview**
 
 ```
-[YAML Project File] → [Validation] → [Pipeline Controller (schedule + progress)] → [Generation Stage (batched frames)] → [Noise Injection Stage (per-section)] → [Output Stage (append + finalize)] → [CVBS File (Video + Metadata)]
+[YAML Project File] → [Validation] → [Pipeline Controller (schedule + progress)] → [Generation Stage (batched frames)] → [Noise Injection Stage (per-section)] → [Dropout Injection Stage (per-section)] → [Output Stage (append + finalize)] → [CVBS File (Video + Metadata) + Dropout Sidecar (.dropouts.meta)]
 ```
 
 ---
@@ -1476,7 +1531,22 @@ Current implementation note:
      - For each sample position: draw a single noise value and add it to both Y and C buffers (correlated noise). The noise standard deviation at each sample is `sqrt(σ_f² + (k × Y_mV)²)`.
   4. Clamp all output samples to the legal fixed-point mV range for the standard.
 
-#### **4. Output Stage**
+#### **4. Dropout Injection Stage**
+
+- **Input**: In-place fixed-point Y/C mV batches (after noise); project dropout parameters per section.
+- **Output**: In-place modified Y/C mV buffers with random and/or scratch dropouts applied; `<basename>.dropouts.meta` SQLite sidecar populated.
+- **Steps**:
+  1. On first call (`Begin`), open the sidecar SQLite file at the path derived from `output.metadata_path` (`.meta` → `.dropouts.meta`). Create the `dropout_run` table (schema version 5) and begin a single transaction.
+  2. For each frame in the batch:
+     - Determine owning section; skip if no dropout type is active.
+     - **Scratch pass**: for each pre-computed scratch event, apply the triangular amplitude/width envelope at the current frame index; record covered intervals.
+     - **Random pass**: draw `N ~ Poisson(frequency)` random events; clip each event against scratch-covered intervals; merge adjacent residuals; apply signal push.
+     - For each surviving run: split at active-picture boundaries; apply `lerp(original_mV, target_mV, push_fraction)` to both Y and C; write `dropout_run` row with `severity = 75` (visible) or `25` (non-visible).
+  3. Clamp all modified samples to the legal fixed-point mV range.
+  4. On `Finalize`, commit the transaction and close the database handle.
+  5. If no section has dropout injection enabled, the sidecar is not created.
+
+#### **5. Output Stage**
 
 - **Input**: `4fsc`-discrete Y and C signal batches from the generation stage.
 - **Output**: CVBS file (video + metadata).
@@ -1575,6 +1645,11 @@ The rule set below remains the intended validation contract for VITC and custom 
   - `noise_db − noise_spread_db` must be **≥ 20.0** (White SNR floor limit; error if violated).
   - `noise_spread_db` present without `noise_db` is a validation error.
   - If `noise_spread_db > 0` and no VITS injection targets the orc-gui White SNR measurement line (PAL: frame line 19; NTSC: frame line 20), a **warning** is emitted that the White SNR target will not be verifiable in orc-gui without a suitable VITS white-flag injection.
+5. **Dropout Parameters** (per-section `dropouts:` block):
+  - `random.scale` must be in **[0, 20]** (error if outside this range; `0` means disabled).
+  - `scratch.scale` must be in **[0, 20]** (error if outside this range; `0` means disabled).
+  - A `dropouts:` block where both `random.scale` and `scratch.scale` are `0` (or both sub-blocks are absent) is a **validation error** — omit the `dropouts:` key entirely to disable.
+  - If `scratch.scale > 0` and the derived maximum scratch lifespan (from `DeriveScratchDropoutParams(scale).max_dur_frames`) exceeds `section.duration_frames`, a **warning** is emitted indicating the scratch event will not complete its full triangle envelope within the section.
 
 ---
 
