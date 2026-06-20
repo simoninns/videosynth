@@ -25,6 +25,7 @@ add_library(videosynth_core
     src/progressive_frame_source.cpp
     src/generation_stage.cpp
     src/logger.cpp
+    src/noise_injection_stage.cpp
     src/output_stage.cpp
     src/pipeline.cpp
     src/progressive_frame_source_probe.cpp
@@ -96,6 +97,7 @@ add_executable(videosynth_tests
     tests/test_chapter_encoding.cpp
     tests/test_biphase_system.cpp
     tests/test_biphase_final.cpp
+    tests/test_noise_injection.cpp
 )
 
 target_compile_definitions(videosynth_tests
@@ -153,6 +155,7 @@ set(videosynth_unit_test_patterns
     "^ChapterEncodingTest\\."
     "^BiphaseSystemTest\\."
     "^BiphaseFinalTest\\."
+    "^NoiseInjectionTest\\."
     "^SignalShapingTest\\."
     "^SignalTimingModelTest\\."
     "^TimingConstantsTest\\."

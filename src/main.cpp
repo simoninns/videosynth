@@ -12,6 +12,7 @@
 
 #include "videosynth/generation_stage.h"
 #include "videosynth/logger.h"
+#include "videosynth/noise_injection_stage.h"
 #include "videosynth/output_stage.h"
 #include "videosynth/pipeline.h"
 #include "videosynth/progressive_frame_source_probe.h"
@@ -92,9 +93,10 @@ int main(int argc, char** argv) {
   videosynth::ProjectValidator validator(&progressive_frame_source_probe,
                                          &logger);
   videosynth::GenerationStage generation(&logger);
+  videosynth::NoiseInjectionStage noise_injection(&logger);
   videosynth::OutputStage output(&logger);
 
   videosynth::VideoSynthPipeline pipeline(&parser, &validator, &generation,
-                                          &output, &logger);
+                                          &noise_injection, &output, &logger);
   return pipeline.Run(options) ? 0 : 1;
 }

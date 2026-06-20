@@ -58,6 +58,7 @@
   - **VITS** (Vertical Interval Test Signals).
   - **Laserdisc biphase encoding** (IEC 60856/60857).
   - **VITC** (Vertical Interval Timecode, SMPTE 12M).
+- **Per-section noise injection**: two-component Gaussian noise model (floor + proportional) targeting orc-gui Black PSNR and White SNR metrics.
 
 ### **Target Users**
 
@@ -158,10 +159,11 @@ At `4fsc`, NTSC frame cadence is orthogonal (`910 x 525 = 477,750` samples/frame
 - The current implementation uses a sampled-domain split: frame-scoped CVBS-domain Y/C synthesis directly on the `4fsc` lattice, followed by composite quantisation and file output. This remains consistent with composite-signal decomposition in [SMPTE 170M-2004](../analogue-video-specifications/docs/video_formats/SMPTE-170M-2004/SMPTE-170M-2004.md) §3, §7-§10 and [ITU-R BT.1700](../analogue-video-specifications/docs/video_formats/BT-1700-E/BT-1700-E.md) Part A/Part B, but it is not a continuous-time then sampled split.
 - Independent luma/chroma generation with later composition maps to luminance/chrominance model definitions in [SMPTE 170M-2004](../analogue-video-specifications/docs/video_formats/SMPTE-170M-2004/SMPTE-170M-2004.md) §6-§10 and [ITU-R BT.470-6](../analogue-video-specifications/docs/video_formats/BT-470-6-1998/BT-470-6-1998.md), Table 2 item 2.5.
 
-VideoSynth currently follows a **two-stage sampled-domain architecture**:
+VideoSynth currently follows a **three-stage sampled-domain architecture**:
 
 1. **[Generation Stage](#generation-stage)**: Synthesizes **4fsc-discrete fixed-point mV representations** of **luma (Y)** and **chroma (C)** for complete frame batches.
-2. **[Output Stage](#output-stage)**: Validates frame-span alignment, combines Y and C, quantises to the active digital interface code space, and formats the final CVBS output files.
+2. **Noise Injection Stage** (`NoiseInjectionStage`): Applies optional per-section two-component Gaussian noise to the fixed-point mV Y/C buffers before quantisation, targeting orc-gui Black PSNR and White SNR metrics.
+3. **[Output Stage](#output-stage)**: Validates frame-span alignment, combines Y and C, quantises to the active digital interface code space, and formats the final CVBS output files.
 
 ### **Key Principles**
 
@@ -169,6 +171,7 @@ VideoSynth currently follows a **two-stage sampled-domain architecture**:
 - **Sampled-Domain Generation**: Signals are synthesized directly on the locked `4fsc` sample lattice using analogue-derived timing and level parameters.
 - **Analogue Parameterization in the Digital Domain**: Pulse widths, burst placement, signal levels, and active-picture apertures are derived from PAL/NTSC analogue specifications but realized directly as digital sample sequences.
 - **Analogue Compliance**: Strict adherence to PAL/NTSC standards for timing, sync pulses, and colour encoding.
+- **Noise After Generation**: Noise is injected after the generation stage and before quantisation, so all synthesised regions (VBI lines, active picture, blanking) receive noise and it is preserved in the final 10-bit output codes.
 
 ---
 
@@ -349,7 +352,7 @@ Source-range capability note:
 
 ### **Outputs**
 
-- `4fsc`-discrete **luma (Y)** and **chroma (C)** sample buffers as **high-resolution fixed-point mV values**, emitted as whole-frame batches (typically small bounded groups of frames) for immediate downstream writing. Values are relative to blanking and are stored internally as signed integers scaled by $2^{20}$ before final quantisation.
+- `4fsc`-discrete **luma (Y)** and **chroma (C)** sample buffers as **high-resolution fixed-point mV values**, emitted as whole-frame batches (typically small bounded groups of frames) for handoff to the Noise Injection Stage and then to the Output Stage. Values are relative to blanking and are stored internally as signed integers scaled by $2^{20}$ before final quantisation.
 - Metadata (field order, dominance, timing).
 
 ---
@@ -696,6 +699,9 @@ sections:
     type: progressive
     source: "assets/test.mkv"
     duration_frames: 10
+    noise:                     # Optional noise injection for this section
+      noise_db: 48.0           # Floor noise level; sets Black PSNR target [20.0–61.0 dB]
+      noise_spread_db: 4.0     # White is 4 dB noisier than black; White SNR = noise_db - noise_spread_db
     line_injections:           # Line-based injections for this section
       - type: vits
         target_lines: [10, 11, 12]
@@ -712,6 +718,25 @@ sections:
           - code_type: programme_status
             programme_status: "0x8F0000"
 ```
+
+#### **`noise:` Sub-Key (Optional, Per-Section)**
+
+The `noise:` block enables per-section additive Gaussian noise injection targeting orc-gui Black PSNR and White SNR metrics.
+
+| Key | Type | Required | Range | Description |
+|-----|------|----------|-------|-------------|
+| `noise_db` | float | Conditional | [20.0, 61.0] | Noise floor in dB; sets Black PSNR target. Required if `noise_spread_db` is present. |
+| `noise_spread_db` | float | No | [0.0, `noise_db`−20.0] | White is this many dB noisier than black; White SNR target = `noise_db` − `noise_spread_db`. Defaults to 0.0. |
+
+Rules:
+- Neither key present → no noise injection (pass-through).
+- Only `noise_db` present → floor-only noise; White SNR = Black PSNR = `noise_db`.
+- Both present → two-component model; `noise_db − noise_spread_db ≥ 20.0` is enforced.
+- `noise_spread_db` without `noise_db` → validation error.
+
+**Lower bound (20.0 dB)**: at 20 dB, σ_noise ≈ 10 IRE ≈ 70 mV (PAL). Approaching the sync pulse amplitude; sync separator reliability degrades below this threshold.
+
+**Upper bound (61.0 dB)**: above 61 dB, injected noise would be smaller than the 10-bit quantisation noise floor (~0.085 IRE) and would have no measurable effect in orc-gui.
 
 ---
 
@@ -1404,7 +1429,7 @@ The runtime uses a **central pipeline module** to process sections and combine t
 ### **Pipeline Overview**
 
 ```
-[YAML Project File] → [Validation] → [Pipeline Controller (schedule + progress)] → [Generation Stage (batched frames)] → [Output Stage (append + finalize)] → [CVBS File (Video + Metadata)]
+[YAML Project File] → [Validation] → [Pipeline Controller (schedule + progress)] → [Generation Stage (batched frames)] → [Noise Injection Stage (per-section)] → [Output Stage (append + finalize)] → [CVBS File (Video + Metadata)]
 ```
 
 ---
@@ -1430,7 +1455,7 @@ The runtime uses a **central pipeline module** to process sections and combine t
     - For each frame in the section:
       - Insert **sync pulses** and **colour burst** (see [ITU-R BT.470-6](../analogue-video-specifications/docs/video_formats/BT-470-6-1998/BT-470-6-1998.md), [ITU-R BT.1700](../analogue-video-specifications/docs/video_formats/BT-1700-E/BT-1700-E.md)).
       - Apply **ramping and transition smoothing** to simulate analogue behavior (see [ITU-R BT.470-6](../analogue-video-specifications/docs/video_formats/BT-470-6-1998/BT-470-6-1998.md) for ramping requirements).
-    - Emit bounded batches of `4fsc` Y and C sample buffers in fixed-point mV units, ready for immediate handoff to output.
+    - Emit bounded batches of `4fsc` Y and C sample buffers in fixed-point mV units, ready for handoff to the Noise Injection Stage.
 
 Current implementation note:
 
@@ -1438,7 +1463,20 @@ Current implementation note:
 - Laserdisc biphase injection is applied in the generation-stage runtime path via BiphaseInjectionManager (24-bit biphase and 40-bit FM for NTSC).
 - Runtime synthesis/application for VITC and custom per-line content remains deferred.
 
-#### **3. Output Stage**
+#### **3. Noise Injection Stage**
+
+- **Input**: `4fsc`-discrete fixed-point Y/C mV batches from the generation stage; project noise parameters per section.
+- **Output**: In-place modified Y/C mV buffers with additive Gaussian noise applied to sections that have `noise.enabled == true`.
+- **Steps**:
+  1. For each frame in the batch, look up the owning section from the frame schedule.
+  2. Skip frames whose section has no noise configured.
+  3. For each enabled frame:
+     - Derive floor sigma (`σ_f_mV`) and proportional coefficient (`k`) from `noise_db` and `noise_spread_db`.
+     - Seed `std::mt19937_64` from a hash of `(section_index, global_frame_index)` for reproducible, batch-size-independent output.
+     - For each sample position: draw a single noise value and add it to both Y and C buffers (correlated noise). The noise standard deviation at each sample is `sqrt(σ_f² + (k × Y_mV)²)`.
+  4. Clamp all output samples to the legal fixed-point mV range for the standard.
+
+#### **4. Output Stage**
 
 - **Input**: `4fsc`-discrete Y and C signal batches from the generation stage.
 - **Output**: CVBS file (video + metadata).
@@ -1493,6 +1531,7 @@ The current validator enforces a narrower subset than the full design intent in 
 
 - Implemented: standard selection, locked `4fsc` preset constraints, output-path requirements, progressive source profile checks, accepted raster checks, NTSC black-setup constraints, and validator-side VITS/line-injection compatibility checks including overlap detection, laserdisc reserved-range conflicts, and VITC/laserdisc incompatibility.
 - Implemented: full laserdisc biphase validation including section_type/code_type matrix enforcement, IEC value range constraints (picture_number, chapter_number, users_code X₁, CLV picture number digits, programme time code BCD), CAV minimum duration checks (lead-in ≥ 938 frames, lead-out ≥ 1250 frames), minimum chapter length (30 tracks), NTSC VIRS mandatory presence check, and VITS/biphase reserved-range line conflict detection.
+- Implemented: per-section noise parameter validation (range, spread floor, mutual dependency).
 - Not yet implemented in the validator/runtime pair: VITC and custom per-line content runtime paths.
 
 The rule set below remains the intended validation contract for VITC and custom per-line content, which are not yet implemented.
@@ -1530,6 +1569,12 @@ The rule set below remains the intended validation contract for VITC and custom 
   - **If injected lines overlap within a section, the YAML must fail validation.**
   - **When a `laserdisc` injection is active in a section, no other injection type may target lines within the laserdisc reserved ranges** (PAL: Field 1 lines 6–18, Field 2 lines 319–331; NTSC: Field 1 lines 10–18, Field 2 lines 273–281).
   - **A `vitc` injection and a `laserdisc` injection must not appear in the same section.** Laserdisc does not use VITC.
+4. **Noise Parameters** (per-section `noise:` block):
+  - `noise_db` must be in **[20.0, 61.0] dB** (error if outside this range).
+  - `noise_spread_db` must be **≥ 0.0** (error if negative).
+  - `noise_db − noise_spread_db` must be **≥ 20.0** (White SNR floor limit; error if violated).
+  - `noise_spread_db` present without `noise_db` is a validation error.
+  - If `noise_spread_db > 0` and no VITS injection targets the orc-gui White SNR measurement line (PAL: frame line 19; NTSC: frame line 20), a **warning** is emitted that the White SNR target will not be verifiable in orc-gui without a suitable VITS white-flag injection.
 
 ---
 

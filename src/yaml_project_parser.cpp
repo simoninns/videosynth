@@ -301,7 +301,8 @@ ParseResult ParseYamlNode(const YAML::Node& root, ILogger* logger) {
                                                   "duration_frames",
                                                   "line_injections",
                                                   "source",
-                                                  "start_frame"};
+                                                  "start_frame",
+                                                  "noise"};
       ValidateAllowedKeys(section_node, section_keys, "section",
                           &result.errors);
       if (!result.errors.empty()) {
@@ -332,6 +333,39 @@ ParseResult ParseYamlNode(const YAML::Node& root, ILogger* logger) {
       if (!ParseDurationFrames(section_node, &section, &result.errors)) {
         return result;
       }
+
+      if (section_node["noise"]) {
+        const YAML::Node noise_node = section_node["noise"];
+        if (!noise_node.IsMap()) {
+          result.errors.push_back(
+              "section field 'noise' must be a map/object.");
+          return result;
+        }
+        const std::set<std::string> noise_keys = {"noise_db", "noise_spread_db",
+                                                  "noise_seed"};
+        ValidateAllowedKeys(noise_node, noise_keys, "section.noise",
+                            &result.errors);
+        if (!result.errors.empty()) {
+          return result;
+        }
+        if (!noise_node["noise_db"] && noise_node["noise_spread_db"]) {
+          result.errors.push_back(
+              "section noise validation error: noise_spread_db requires "
+              "noise_db to be specified.");
+          return result;
+        }
+        if (noise_node["noise_db"]) {
+          section.noise.enabled = true;
+          section.noise.noise_db = noise_node["noise_db"].as<double>();
+          section.noise.noise_spread_db =
+              noise_node["noise_spread_db"].as<double>(0.0);
+        }
+        if (noise_node["noise_seed"]) {
+          section.noise.noise_seed = noise_node["noise_seed"].as<int64_t>();
+          section.noise.noise_seed_specified = true;
+        }
+      }
+
       result.project.sections.push_back(section);
     }
 

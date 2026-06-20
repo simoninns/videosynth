@@ -10,20 +10,22 @@
 #pragma once
 
 #include "videosynth/interfaces.h"
+#include "videosynth/noise_injection_stage.h"
 
 namespace videosynth {
 
 // Thread-safety: VideoSynthPipeline is NOT thread-safe. The Run method must
 // not be called concurrently from multiple threads. All component pointers
-// (parser_, validator_, generation_, output_, logger_) are accessed without
-// synchronization.
+// are accessed without synchronization.
 class VideoSynthPipeline {
  public:
   VideoSynthPipeline(IProjectParser* parser, IProjectValidator* validator,
-                     IGenerationStage* generation, IOutputStage* output,
+                     IGenerationStage* generation,
+                     NoiseInjectionStage* noise_injection, IOutputStage* output,
                      ILogger* logger);
 
-  // Orchestrates the full pipeline: parse -> validate -> generate -> output.
+  // Orchestrates the full pipeline: parse -> validate -> generate -> noise ->
+  // output.
   //
   // Args:
   //   options: Contains project path and runtime configuration.
@@ -39,6 +41,7 @@ class VideoSynthPipeline {
   IProjectParser* parser_;
   IProjectValidator* validator_;
   IGenerationStage* generation_;
+  NoiseInjectionStage* noise_injection_;
   IOutputStage* output_;
   ILogger* logger_;
 };

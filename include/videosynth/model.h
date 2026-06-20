@@ -10,6 +10,7 @@
 #pragma once
 
 #include <cmath>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -104,6 +105,21 @@ inline bool IsLockedSignalStatePreset(const std::string& preset) {
   return preset == "STANDARD_TBC_LOCKED";
 }
 
+struct NoiseParameters {
+  bool enabled = false;
+  // Noise floor level in dB. Sets Black PSNR target. Valid range: [20.0, 61.0].
+  double noise_db = 61.0;
+  // White is this many dB noisier than black. Valid range: [0.0,
+  // noise_db-20.0].
+  double noise_spread_db = 0.0;
+  // When noise_seed_specified is true, this seed is mixed into the per-frame
+  // RNG seed to produce deterministic output across runs. When false, a
+  // random base seed captured at pipeline construction time is used instead,
+  // so every run produces different noise.
+  int64_t noise_seed = 0;
+  bool noise_seed_specified = false;
+};
+
 struct Section {
   struct LineInjectionCode {
     std::string code_type;
@@ -133,6 +149,7 @@ struct Section {
   bool duration_frames_all = false;
   int duration_frames = 0;
   int start_frame = 0;
+  NoiseParameters noise = {};
 };
 
 struct OutputTargets {

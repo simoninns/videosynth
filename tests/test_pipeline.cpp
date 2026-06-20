@@ -149,8 +149,8 @@ TEST(PipelineTest, ValidateOnlyStopsBeforeGeneration) {
   MockOutput output;
   MockLogger logger;
 
-  VideoSynthPipeline pipeline(&parser, &validator, &generation, &output,
-                              &logger);
+  VideoSynthPipeline pipeline(&parser, &validator, &generation, nullptr,
+                              &output, &logger);
 
   RunOptions options;
   options.project_path = "project.yaml";
@@ -174,8 +174,8 @@ TEST(PipelineTest, FullRunCallsGenerationAndOutput) {
   MockOutput output;
   MockLogger logger;
 
-  VideoSynthPipeline pipeline(&parser, &validator, &generation, &output,
-                              &logger);
+  VideoSynthPipeline pipeline(&parser, &validator, &generation, nullptr,
+                              &output, &logger);
 
   RunOptions options;
   options.project_path = "project.yaml";
@@ -198,8 +198,8 @@ TEST(PipelineTest, ValidationFailureStopsPipeline) {
   MockOutput output;
   MockLogger logger;
 
-  VideoSynthPipeline pipeline(&parser, &validator, &generation, &output,
-                              &logger);
+  VideoSynthPipeline pipeline(&parser, &validator, &generation, nullptr,
+                              &output, &logger);
 
   RunOptions options;
   options.project_path = "project.yaml";

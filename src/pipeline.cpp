@@ -12,6 +12,7 @@
 #include <algorithm>
 
 #include "videosynth/fixed_point.h"
+#include "videosynth/noise_injection_stage.h"
 #include "videosynth/timing_constants.h"
 
 namespace videosynth {
@@ -51,10 +52,12 @@ std::size_t ComputeProgressInterval(std::size_t total_frames) {
 VideoSynthPipeline::VideoSynthPipeline(IProjectParser* parser,
                                        IProjectValidator* validator,
                                        IGenerationStage* generation,
+                                       NoiseInjectionStage* noise_injection,
                                        IOutputStage* output, ILogger* logger)
     : parser_(parser),
       validator_(validator),
       generation_(generation),
+      noise_injection_(noise_injection),
       output_(output),
       logger_(logger) {}
 
@@ -137,6 +140,12 @@ bool VideoSynthPipeline::Run(const RunOptions& options) {
         logger_->Error(error);
       }
       return false;
+    }
+
+    if (noise_injection_ != nullptr) {
+      noise_injection_->InjectNoise(parse_result.project, schedule,
+                                    processed_frames, frames_this_batch, &y_mv,
+                                    &c_mv);
     }
 
     output_errors.clear();

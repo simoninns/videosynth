@@ -21,6 +21,13 @@
 
 namespace {
 
+// Noise parameter bounds from noise-injection-design.md.
+// Lower: 20 dB — noise amplitude approaches sync pulse depth; sync separators
+// fail. Upper: 61 dB — injected noise smaller than 10-bit quantisation floor
+// (~0.085 IRE).
+constexpr double kNoiseDbMin = 20.0;
+constexpr double kNoiseDbMax = 61.0;
+
 // Minimum CAV laserdisc section durations derived from IEC track-pitch limits.
 // IEC 60856/60857: lead-in ≥ 1.5 mm, lead-out ≥ 2 mm at nominal 1.6 µm pitch.
 constexpr int kLaserdiscLeadInMinFrames = 938;    // ceil(1500 µm / 1.6 µm)
@@ -822,6 +829,83 @@ bool ValidateLineInjectionsForSection(const videosynth::Section& section,
   return true;
 }
 
+// PAL/NTSC frame lines that orc-gui inspects for White SNR measurement.
+// PAL: field-relative line 19. NTSC: field-relative line 20.
+// Source: noise-injection-design.md §orc-gui Measurement Analysis.
+constexpr int kOrcGuiWhiteSNRLinePal = 19;
+constexpr int kOrcGuiWhiteSNRLineNtsc = 20;
+
+void ValidateNoiseParameters(const videosynth::Section& section,
+                             videosynth::Standard standard,
+                             videosynth::ValidationResult* result) {
+  if (result == nullptr || !section.noise.enabled) {
+    return;
+  }
+
+  if (section.noise.noise_db < kNoiseDbMin ||
+      section.noise.noise_db > kNoiseDbMax) {
+    result->is_valid = false;
+    result->errors.push_back(
+        "Noise validation error in section '" + section.name +
+        "': noise_db must be in the range [20.0, 61.0]; got " +
+        std::to_string(section.noise.noise_db) + ".");
+    return;
+  }
+
+  if (section.noise.noise_spread_db < 0.0) {
+    result->is_valid = false;
+    result->errors.push_back(
+        "Noise validation error in section '" + section.name +
+        "': noise_spread_db must be >= 0.0; got " +
+        std::to_string(section.noise.noise_spread_db) + ".");
+    return;
+  }
+
+  const double white_snr =
+      section.noise.noise_db - section.noise.noise_spread_db;
+  if (white_snr < kNoiseDbMin) {
+    result->is_valid = false;
+    result->errors.push_back("Noise validation error in section '" +
+                             section.name +
+                             "': noise_db - noise_spread_db must be >= 20.0 "
+                             "(White SNR floor); got " +
+                             std::to_string(white_snr) + ".");
+    return;
+  }
+
+  // Warn if the noise spread target is non-zero but no suitable VITS white-flag
+  // injection is present on the line orc-gui inspects for White SNR.
+  if (section.noise.noise_spread_db > 0.0) {
+    const int expected_line = (standard == videosynth::Standard::kPal)
+                                  ? kOrcGuiWhiteSNRLinePal
+                                  : kOrcGuiWhiteSNRLineNtsc;
+    bool has_white_flag_vits = false;
+    for (const videosynth::Section::LineInjection& injection :
+         section.line_injections) {
+      if (Lowercase(injection.type) == "vits") {
+        for (int line : injection.target_lines) {
+          if (line == expected_line) {
+            has_white_flag_vits = true;
+            break;
+          }
+        }
+      }
+      if (has_white_flag_vits) {
+        break;
+      }
+    }
+    if (!has_white_flag_vits) {
+      result->warnings.push_back(
+          "Noise warning in section '" + section.name +
+          "': noise_spread_db is set, but no VITS injection targets line " +
+          std::to_string(expected_line) +
+          " — the White SNR target cannot be verified in orc-gui without a "
+          "suitable VITS white flag on that line (" +
+          videosynth::StandardToString(standard) + ").");
+    }
+  }
+}
+
 }  // namespace
 
 namespace videosynth {
@@ -940,6 +1024,12 @@ ValidationResult ProjectValidator::Validate(const Project& project) {
       }
 
       ValidateDeferredLineInjectionSupport(section, &result);
+      if (!result.is_valid) {
+        break;
+      }
+
+      ValidateNoiseParameters(
+          section, project.cvbs_presets.video_standard_preset, &result);
       if (!result.is_valid) {
         break;
       }
