@@ -1,21 +1,22 @@
 project:
-  name: NtscBiphaseCavFixture
+  name: PalBiphaseCavFixture
   version: "1.0"
-  description: NTSC CAV laserdisc biphase fixture — 8 programme chapters with varied content and programme_status; VIRS on lines 19/282 per IEC 60857 §9.1.3
+  description: PAL CAV laserdisc biphase fixture — 8 programme chapters with varied content and programme_status
 
 cvbs_presets:
-  video_standard_preset: NTSC
+  video_standard_preset: PAL
   sample_encoding_preset: CVBS_TPG21_4FSC
   signal_state_preset: STANDARD_TBC_LOCKED
+  pal_laserdisc_pilot_burst: true
 
 output:
-  video_path: tests/projects/output/videosynth_ntsc_biphase_cav.composite
-  metadata_path: tests/projects/output/videosynth_ntsc_biphase_cav.meta
+  video_path: tests/projects/output-general/videosynth_pal_biphase_cav.composite
+  metadata_path: tests/projects/output-general/videosynth_pal_biphase_cav.meta
 
 sections:
-  - name: NtscCavLeadIn
+  - name: PalCavLeadIn
     type: progressive
-    source: videosynth-assets/assets/exr/720x486/75_BARS.exr
+    source: videosynth-assets/assets/exr/720x576/75_BARS.exr
     duration_frames: 8
     section_type: lead_in
     line_injections:
@@ -23,16 +24,12 @@ sections:
         disc_type: CAV
         codes:
           - code_type: lead_in
-          - code_type: fm_white_flag
           - code_type: users_code
             users_code: "0x80D234"
-      - type: vits
-        target_lines: [19, 282]
-        vits_type: virs
 
-  - name: NtscCavProgrammeChapter0
+  - name: PalCavProgrammeChapter0
     type: progressive
-    source: videosynth-assets/assets/exr/720x486/75_BARS.exr
+    source: videosynth-assets/assets/exr/720x576/75_BARS.exr
     duration_frames: 8
     section_type: programme_area
     line_injections:
@@ -45,16 +42,11 @@ sections:
             chapter: 0
           - code_type: picture_stop
           - code_type: programme_status
-            programme_status: "0x8DC001"
-          - code_type: fm_picture_number
-          - code_type: fm_white_flag
-      - type: vits
-        target_lines: [19, 282]
-        vits_type: virs
+            programme_status: "0x8DC000"
 
-  - name: NtscCavProgrammeChapter1
+  - name: PalCavProgrammeChapter1
     type: progressive
-    source: videosynth-assets/assets/exr/720x486/75_BARS_RED.exr
+    source: videosynth-assets/assets/exr/720x576/75_BARS_RED.exr
     duration_frames: 8
     section_type: programme_area
     line_injections:
@@ -66,16 +58,11 @@ sections:
           - code_type: chapter_number
             chapter: 1
           - code_type: programme_status
-            programme_status: "0x8DC002"
-          - code_type: fm_picture_number
-          - code_type: fm_white_flag
-      - type: vits
-        target_lines: [19, 282]
-        vits_type: virs
+            programme_status: "0x8DC01E"
 
-  - name: NtscCavProgrammeChapter2
+  - name: PalCavProgrammeChapter2
     type: progressive
-    source: videosynth-assets/assets/exr/720x486/CHROMA_RAMP.exr
+    source: videosynth-assets/assets/exr/720x576/CHROMA_RAMP.exr
     duration_frames: 8
     section_type: programme_area
     line_injections:
@@ -88,16 +75,11 @@ sections:
             chapter: 2
           - code_type: picture_stop
           - code_type: programme_status
-            programme_status: "0x8DC003"
-          - code_type: fm_picture_number
-          - code_type: fm_white_flag
-      - type: vits
-        target_lines: [19, 282]
-        vits_type: virs
+            programme_status: "0x8DC027"
 
-  - name: NtscCavProgrammeChapter3
+  - name: PalCavProgrammeChapter3
     type: progressive
-    source: videosynth-assets/assets/exr/720x486/LUMA_RAMP.exr
+    source: videosynth-assets/assets/exr/720x576/LUMA_RAMP.exr
     duration_frames: 8
     section_type: programme_area
     line_injections:
@@ -109,16 +91,11 @@ sections:
           - code_type: chapter_number
             chapter: 3
           - code_type: programme_status
-            programme_status: "0x8D8001"
-          - code_type: fm_picture_number
-          - code_type: fm_white_flag
-      - type: vits
-        target_lines: [19, 282]
-        vits_type: virs
+            programme_status: "0x8DC039"
 
-  - name: NtscCavProgrammeChapter4
+  - name: PalCavProgrammeChapter4
     type: progressive
-    source: videosynth-assets/assets/exr/720x486/TARTAN.exr
+    source: videosynth-assets/assets/exr/720x576/TARTAN.exr
     duration_frames: 8
     section_type: programme_area
     line_injections:
@@ -131,16 +108,11 @@ sections:
             chapter: 4
           - code_type: picture_stop
           - code_type: programme_status
-            programme_status: "0x8D8002"
-          - code_type: fm_picture_number
-          - code_type: fm_white_flag
-      - type: vits
-        target_lines: [19, 282]
-        vits_type: virs
+            programme_status: "0x8DC08D"
 
-  - name: NtscCavProgrammeChapter5
+  - name: PalCavProgrammeChapter5
     type: progressive
-    source: videosynth-assets/assets/exr/720x486/PLUGE.exr
+    source: videosynth-assets/assets/exr/720x576/PLUGE.exr
     duration_frames: 8
     section_type: programme_area
     line_injections:
@@ -152,16 +124,11 @@ sections:
           - code_type: chapter_number
             chapter: 5
           - code_type: programme_status
-            programme_status: "0x8D4001"
-          - code_type: fm_picture_number
-          - code_type: fm_white_flag
-      - type: vits
-        target_lines: [19, 282]
-        vits_type: virs
+            programme_status: "0x8BA000"
 
-  - name: NtscCavProgrammeChapter6
+  - name: PalCavProgrammeChapter6
     type: progressive
-    source: videosynth-assets/assets/exr/720x486/MULTIBURST.exr
+    source: videosynth-assets/assets/exr/720x576/MULTIBURST.exr
     duration_frames: 8
     section_type: programme_area
     line_injections:
@@ -174,16 +141,11 @@ sections:
             chapter: 6
           - code_type: picture_stop
           - code_type: programme_status
-            programme_status: "0x8D4002"
-          - code_type: fm_picture_number
-          - code_type: fm_white_flag
-      - type: vits
-        target_lines: [19, 282]
-        vits_type: virs
+            programme_status: "0x8DC100"
 
-  - name: NtscCavProgrammeChapter7
+  - name: PalCavProgrammeChapter7
     type: progressive
-    source: videosynth-assets/assets/exr/720x486/Y_CB_CR_RAMPS.exr
+    source: videosynth-assets/assets/exr/720x576/Y_CB_CR_RAMPS.exr
     duration_frames: 8
     section_type: programme_area
     line_injections:
@@ -196,15 +158,10 @@ sections:
             chapter: 7
           - code_type: programme_status
             programme_status: "0x8DC000"
-          - code_type: fm_picture_number
-          - code_type: fm_white_flag
-      - type: vits
-        target_lines: [19, 282]
-        vits_type: virs
 
-  - name: NtscCavLeadOut
+  - name: PalCavLeadOut
     type: progressive
-    source: videosynth-assets/assets/exr/720x486/75_BARS.exr
+    source: videosynth-assets/assets/exr/720x576/75_BARS.exr
     duration_frames: 8
     section_type: lead_out
     line_injections:
@@ -212,9 +169,5 @@ sections:
         disc_type: CAV
         codes:
           - code_type: lead_out
-          - code_type: fm_white_flag
           - code_type: users_code
             users_code: "0x87D000"
-      - type: vits
-        target_lines: [19, 282]
-        vits_type: virs

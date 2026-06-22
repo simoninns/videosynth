@@ -1,22 +1,17 @@
-# NTSC Scratch Dropout Ramp
+# NTSC Random Dropout Ramp
 #
-# 21 sections × 8 frames; scratch dropout scale steps from 0 (none) through
-# 20 (maximum). Random dropouts absent — isolates the triangular-envelope
-# scratch model.
+# 21 sections × 8 frames; random dropout scale steps from 0 (none) through
+# 20 (maximum). Scratch dropouts absent — isolates the Poisson random model.
 #
 # Scale mapping (see dropout-injection-design.md §Scale Mapping):
-#   Scale  1 → 1 scratch event,  max lifespan 2 frames,  max peak width 5 samples
-#   Scale 10 → 8 scratch events, max lifespan ~113 frames, max peak width 282 samples
-#   Scale 20 → 15 scratch events, max lifespan 500 frames, max peak width 2000 samples
-#
-# Note: at low section durations (8 frames) and high scales, scratch events will
-# not complete their full triangle envelope — the validator emits a warning for
-# scales where max_dur_frames > 8.
+#   Scale  1 → ~0.05 events/frame, max run 5 samples
+#   Scale 10 → ~2.8 events/frame,  max run 282 samples
+#   Scale 20 → 100 events/frame,   max run 2000 samples
 
 project:
-  name: NtscDropoutScratchRamp
+  name: NtscDropoutRandomRamp
   version: "1.0"
-  description: NTSC scratch dropout ramp — scale 0 through 20 (scratch only)
+  description: NTSC random dropout ramp — scale 0 through 20 (random only)
 
 cvbs_presets:
   video_standard_preset: NTSC
@@ -24,8 +19,8 @@ cvbs_presets:
   signal_state_preset: STANDARD_TBC_LOCKED
 
 output:
-  video_path: tests/projects/output/videosynth_ntsc_dropout_scratch_ramp.composite
-  metadata_path: tests/projects/output/videosynth_ntsc_dropout_scratch_ramp.meta
+  video_path: tests/projects/output-general/videosynth_ntsc_dropout_random_ramp.composite
+  metadata_path: tests/projects/output-general/videosynth_ntsc_dropout_random_ramp.meta
 
 sections:
 
@@ -39,7 +34,7 @@ sections:
     source: videosynth-assets/assets/exr/720x486/75_BARS.exr
     duration_frames: 8
     dropouts:
-      scratch:
+      random:
         scale: 1
 
   - name: Scale02
@@ -47,7 +42,7 @@ sections:
     source: videosynth-assets/assets/exr/720x486/75_BARS.exr
     duration_frames: 8
     dropouts:
-      scratch:
+      random:
         scale: 2
 
   - name: Scale03
@@ -55,7 +50,7 @@ sections:
     source: videosynth-assets/assets/exr/720x486/75_BARS.exr
     duration_frames: 8
     dropouts:
-      scratch:
+      random:
         scale: 3
 
   - name: Scale04
@@ -63,7 +58,7 @@ sections:
     source: videosynth-assets/assets/exr/720x486/75_BARS.exr
     duration_frames: 8
     dropouts:
-      scratch:
+      random:
         scale: 4
 
   - name: Scale05
@@ -71,7 +66,7 @@ sections:
     source: videosynth-assets/assets/exr/720x486/75_BARS.exr
     duration_frames: 8
     dropouts:
-      scratch:
+      random:
         scale: 5
 
   - name: Scale06
@@ -79,7 +74,7 @@ sections:
     source: videosynth-assets/assets/exr/720x486/75_BARS.exr
     duration_frames: 8
     dropouts:
-      scratch:
+      random:
         scale: 6
 
   - name: Scale07
@@ -87,7 +82,7 @@ sections:
     source: videosynth-assets/assets/exr/720x486/75_BARS.exr
     duration_frames: 8
     dropouts:
-      scratch:
+      random:
         scale: 7
 
   - name: Scale08
@@ -95,7 +90,7 @@ sections:
     source: videosynth-assets/assets/exr/720x486/75_BARS.exr
     duration_frames: 8
     dropouts:
-      scratch:
+      random:
         scale: 8
 
   - name: Scale09
@@ -103,7 +98,7 @@ sections:
     source: videosynth-assets/assets/exr/720x486/75_BARS.exr
     duration_frames: 8
     dropouts:
-      scratch:
+      random:
         scale: 9
 
   - name: Scale10
@@ -111,7 +106,7 @@ sections:
     source: videosynth-assets/assets/exr/720x486/75_BARS.exr
     duration_frames: 8
     dropouts:
-      scratch:
+      random:
         scale: 10
 
   - name: Scale11
@@ -119,7 +114,7 @@ sections:
     source: videosynth-assets/assets/exr/720x486/75_BARS.exr
     duration_frames: 8
     dropouts:
-      scratch:
+      random:
         scale: 11
 
   - name: Scale12
@@ -127,7 +122,7 @@ sections:
     source: videosynth-assets/assets/exr/720x486/75_BARS.exr
     duration_frames: 8
     dropouts:
-      scratch:
+      random:
         scale: 12
 
   - name: Scale13
@@ -135,7 +130,7 @@ sections:
     source: videosynth-assets/assets/exr/720x486/75_BARS.exr
     duration_frames: 8
     dropouts:
-      scratch:
+      random:
         scale: 13
 
   - name: Scale14
@@ -143,7 +138,7 @@ sections:
     source: videosynth-assets/assets/exr/720x486/75_BARS.exr
     duration_frames: 8
     dropouts:
-      scratch:
+      random:
         scale: 14
 
   - name: Scale15
@@ -151,7 +146,7 @@ sections:
     source: videosynth-assets/assets/exr/720x486/75_BARS.exr
     duration_frames: 8
     dropouts:
-      scratch:
+      random:
         scale: 15
 
   - name: Scale16
@@ -159,7 +154,7 @@ sections:
     source: videosynth-assets/assets/exr/720x486/75_BARS.exr
     duration_frames: 8
     dropouts:
-      scratch:
+      random:
         scale: 16
 
   - name: Scale17
@@ -167,7 +162,7 @@ sections:
     source: videosynth-assets/assets/exr/720x486/75_BARS.exr
     duration_frames: 8
     dropouts:
-      scratch:
+      random:
         scale: 17
 
   - name: Scale18
@@ -175,7 +170,7 @@ sections:
     source: videosynth-assets/assets/exr/720x486/75_BARS.exr
     duration_frames: 8
     dropouts:
-      scratch:
+      random:
         scale: 18
 
   - name: Scale19
@@ -183,7 +178,7 @@ sections:
     source: videosynth-assets/assets/exr/720x486/75_BARS.exr
     duration_frames: 8
     dropouts:
-      scratch:
+      random:
         scale: 19
 
   - name: Scale20
@@ -191,5 +186,5 @@ sections:
     source: videosynth-assets/assets/exr/720x486/75_BARS.exr
     duration_frames: 8
     dropouts:
-      scratch:
+      random:
         scale: 20

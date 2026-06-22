@@ -121,3 +121,7 @@ result-*
 # Ignore any composite video output files and associated metadata
 *.composite
 *.meta
+
+# Project test output directories
+tests/projects/output-general/
+tests/projects/output-stacking/

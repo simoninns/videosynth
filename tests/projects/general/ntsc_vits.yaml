@@ -9,8 +9,8 @@ cvbs_presets:
   signal_state_preset: STANDARD_TBC_LOCKED
 
 output:
-  video_path: tests/projects/output/videosynth_ntsc_vits.composite
-  metadata_path: tests/projects/output/videosynth_ntsc_vits.meta
+  video_path: tests/projects/output-general/videosynth_ntsc_vits.composite
+  metadata_path: tests/projects/output-general/videosynth_ntsc_vits.meta
 
 sections:
   - name: NtscVits

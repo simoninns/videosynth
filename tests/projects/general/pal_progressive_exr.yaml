@@ -9,8 +9,8 @@ cvbs_presets:
   signal_state_preset: STANDARD_TBC_LOCKED
 
 output:
-  video_path: tests/projects/output/videosynth_pal_progressive_exr.composite
-  metadata_path: tests/projects/output/videosynth_pal_progressive_exr.meta
+  video_path: tests/projects/output-general/videosynth_pal_progressive_exr.composite
+  metadata_path: tests/projects/output-general/videosynth_pal_progressive_exr.meta
 
 sections:
   - name: PalExr100Bars

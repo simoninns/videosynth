@@ -9,8 +9,8 @@ cvbs_presets:
   signal_state_preset: STANDARD_TBC_LOCKED
 
 output:
-  video_path: tests/projects/output/videosynth_pal_vits.composite
-  metadata_path: tests/projects/output/videosynth_pal_vits.meta
+  video_path: tests/projects/output-general/videosynth_pal_vits.composite
+  metadata_path: tests/projects/output-general/videosynth_pal_vits.meta
 
 sections:
   - name: PalVits

@@ -2,12 +2,12 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-projects_dir="$repo_root/tests/projects"
-output_dir="$projects_dir/output"
+projects_dir="$repo_root/tests/projects/general"
+output_dir="$repo_root/tests/projects/output-general"
 binary="$repo_root/build/videosynth"
 
 if [[ -z "${IN_NIX_SHELL:-}" ]] || ! command -v ffprobe >/dev/null 2>&1; then
-  exec nix develop "path:$repo_root" --command "$repo_root/run-projects.sh" "$@"
+  exec nix develop "path:$repo_root" --command "$repo_root/run-projects-general.sh" "$@"
 fi
 
 if [[ ! -x "$binary" ]]; then
@@ -45,4 +45,4 @@ if (( failures > 0 )); then
   exit 1
 fi
 
-echo "All project fixtures ran successfully. Outputs are in tests/projects/output/."
+echo "All project fixtures ran successfully. Outputs are in tests/projects/output-general/."

@@ -1,21 +1,22 @@
 project:
-  name: NtscBiphaseClvFixture
+  name: PalBiphaseClvFixture
   version: "1.0"
-  description: NTSC CLV laserdisc biphase fixture — 8 programme chapters with varied content and programme_status; VIRS on lines 19/282 per IEC 60857 §9.1.3
+  description: PAL CLV laserdisc biphase fixture — 8 programme chapters with varied content and programme_status
 
 cvbs_presets:
-  video_standard_preset: NTSC
+  video_standard_preset: PAL
   sample_encoding_preset: CVBS_TPG21_4FSC
   signal_state_preset: STANDARD_TBC_LOCKED
+  pal_laserdisc_pilot_burst: false
 
 output:
-  video_path: tests/projects/output/videosynth_ntsc_biphase_clv.composite
-  metadata_path: tests/projects/output/videosynth_ntsc_biphase_clv.meta
+  video_path: tests/projects/output-general/videosynth_pal_biphase_clv.composite
+  metadata_path: tests/projects/output-general/videosynth_pal_biphase_clv.meta
 
 sections:
-  - name: NtscClvLeadIn
+  - name: PalClvLeadIn
     type: progressive
-    source: videosynth-assets/assets/exr/720x486/75_BARS.exr
+    source: videosynth-assets/assets/exr/720x576/75_BARS.exr
     duration_frames: 8
     section_type: lead_in
     line_injections:
@@ -23,16 +24,12 @@ sections:
         disc_type: CLV
         codes:
           - code_type: lead_in
-          - code_type: fm_white_flag
           - code_type: users_code
             users_code: "0x80D234"
-      - type: vits
-        target_lines: [19, 282]
-        vits_type: virs
 
-  - name: NtscClvProgrammeChapter0
+  - name: PalClvProgrammeChapter0
     type: progressive
-    source: videosynth-assets/assets/exr/720x486/75_BARS.exr
+    source: videosynth-assets/assets/exr/720x576/75_BARS.exr
     duration_frames: 8
     section_type: programme_area
     line_injections:
@@ -46,15 +43,10 @@ sections:
             chapter: 0
           - code_type: programme_status
             programme_status: "0x8DC001"
-          - code_type: fm_programme_time
-          - code_type: fm_white_flag
-      - type: vits
-        target_lines: [19, 282]
-        vits_type: virs
 
-  - name: NtscClvProgrammeChapter1
+  - name: PalClvProgrammeChapter1
     type: progressive
-    source: videosynth-assets/assets/exr/720x486/75_BARS_RED.exr
+    source: videosynth-assets/assets/exr/720x576/75_BARS_RED.exr
     duration_frames: 8
     section_type: programme_area
     line_injections:
@@ -68,15 +60,10 @@ sections:
             chapter: 1
           - code_type: programme_status
             programme_status: "0x8DC002"
-          - code_type: fm_programme_time
-          - code_type: fm_white_flag
-      - type: vits
-        target_lines: [19, 282]
-        vits_type: virs
 
-  - name: NtscClvProgrammeChapter2
+  - name: PalClvProgrammeChapter2
     type: progressive
-    source: videosynth-assets/assets/exr/720x486/CHROMA_RAMP.exr
+    source: videosynth-assets/assets/exr/720x576/CHROMA_RAMP.exr
     duration_frames: 8
     section_type: programme_area
     line_injections:
@@ -90,15 +77,10 @@ sections:
             chapter: 2
           - code_type: programme_status
             programme_status: "0x8DC003"
-          - code_type: fm_programme_time
-          - code_type: fm_white_flag
-      - type: vits
-        target_lines: [19, 282]
-        vits_type: virs
 
-  - name: NtscClvProgrammeChapter3
+  - name: PalClvProgrammeChapter3
     type: progressive
-    source: videosynth-assets/assets/exr/720x486/LUMA_RAMP.exr
+    source: videosynth-assets/assets/exr/720x576/LUMA_RAMP.exr
     duration_frames: 8
     section_type: programme_area
     line_injections:
@@ -112,15 +94,10 @@ sections:
             chapter: 3
           - code_type: programme_status
             programme_status: "0x8D8001"
-          - code_type: fm_programme_time
-          - code_type: fm_white_flag
-      - type: vits
-        target_lines: [19, 282]
-        vits_type: virs
 
-  - name: NtscClvProgrammeChapter4
+  - name: PalClvProgrammeChapter4
     type: progressive
-    source: videosynth-assets/assets/exr/720x486/TARTAN.exr
+    source: videosynth-assets/assets/exr/720x576/TARTAN.exr
     duration_frames: 8
     section_type: programme_area
     line_injections:
@@ -134,15 +111,10 @@ sections:
             chapter: 4
           - code_type: programme_status
             programme_status: "0x8D8002"
-          - code_type: fm_programme_time
-          - code_type: fm_white_flag
-      - type: vits
-        target_lines: [19, 282]
-        vits_type: virs
 
-  - name: NtscClvProgrammeChapter5
+  - name: PalClvProgrammeChapter5
     type: progressive
-    source: videosynth-assets/assets/exr/720x486/PLUGE.exr
+    source: videosynth-assets/assets/exr/720x576/PLUGE.exr
     duration_frames: 8
     section_type: programme_area
     line_injections:
@@ -156,15 +128,10 @@ sections:
             chapter: 5
           - code_type: programme_status
             programme_status: "0x8D4001"
-          - code_type: fm_programme_time
-          - code_type: fm_white_flag
-      - type: vits
-        target_lines: [19, 282]
-        vits_type: virs
 
-  - name: NtscClvProgrammeChapter6
+  - name: PalClvProgrammeChapter6
     type: progressive
-    source: videosynth-assets/assets/exr/720x486/MULTIBURST.exr
+    source: videosynth-assets/assets/exr/720x576/MULTIBURST.exr
     duration_frames: 8
     section_type: programme_area
     line_injections:
@@ -178,15 +145,10 @@ sections:
             chapter: 6
           - code_type: programme_status
             programme_status: "0x8D4002"
-          - code_type: fm_programme_time
-          - code_type: fm_white_flag
-      - type: vits
-        target_lines: [19, 282]
-        vits_type: virs
 
-  - name: NtscClvProgrammeChapter7
+  - name: PalClvProgrammeChapter7
     type: progressive
-    source: videosynth-assets/assets/exr/720x486/Y_CB_CR_RAMPS.exr
+    source: videosynth-assets/assets/exr/720x576/Y_CB_CR_RAMPS.exr
     duration_frames: 8
     section_type: programme_area
     line_injections:
@@ -200,15 +162,10 @@ sections:
             chapter: 7
           - code_type: programme_status
             programme_status: "0x8DC000"
-          - code_type: fm_programme_time
-          - code_type: fm_white_flag
-      - type: vits
-        target_lines: [19, 282]
-        vits_type: virs
 
-  - name: NtscClvLeadOut
+  - name: PalClvLeadOut
     type: progressive
-    source: videosynth-assets/assets/exr/720x486/75_BARS.exr
+    source: videosynth-assets/assets/exr/720x576/75_BARS.exr
     duration_frames: 8
     section_type: lead_out
     line_injections:
@@ -216,9 +173,5 @@ sections:
         disc_type: CLV
         codes:
           - code_type: lead_out
-          - code_type: fm_white_flag
           - code_type: users_code
             users_code: "0x87D000"
-      - type: vits
-        target_lines: [19, 282]
-        vits_type: virs
