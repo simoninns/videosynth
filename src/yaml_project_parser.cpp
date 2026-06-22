@@ -303,7 +303,8 @@ ParseResult ParseYamlNode(const YAML::Node& root, ILogger* logger) {
                                                   "source",
                                                   "start_frame",
                                                   "noise",
-                                                  "dropouts"};
+                                                  "dropouts",
+                                                  "osd"};
       ValidateAllowedKeys(section_node, section_keys, "section",
                           &result.errors);
       if (!result.errors.empty()) {
@@ -424,6 +425,50 @@ ParseResult ParseYamlNode(const YAML::Node& root, ILogger* logger) {
           if (scr["seed"]) {
             section.dropouts.scratch.seed = scr["seed"].as<int64_t>();
             section.dropouts.scratch.seed_specified = true;
+          }
+        }
+      }
+
+      if (section_node["osd"]) {
+        const YAML::Node osd_node = section_node["osd"];
+        if (!osd_node.IsMap()) {
+          result.errors.push_back("section field 'osd' must be a map/object.");
+          return result;
+        }
+        const std::set<std::string> osd_keys = {"overlays"};
+        ValidateAllowedKeys(osd_node, osd_keys, "section.osd", &result.errors);
+        if (!result.errors.empty()) {
+          return result;
+        }
+
+        if (osd_node["overlays"]) {
+          const YAML::Node overlays = osd_node["overlays"];
+          if (!overlays.IsSequence()) {
+            result.errors.push_back(
+                "section.osd.overlays must be a sequence/list.");
+            return result;
+          }
+          for (const YAML::Node& ov_node : overlays) {
+            if (!ov_node.IsMap()) {
+              result.errors.push_back(
+                  "Each section.osd.overlays entry must be a map/object.");
+              return result;
+            }
+            const std::set<std::string> ov_keys = {
+                "text", "x", "y", "scale", "fg_luma", "bg_luma"};
+            ValidateAllowedKeys(ov_node, ov_keys, "section.osd.overlays[]",
+                                &result.errors);
+            if (!result.errors.empty()) {
+              return result;
+            }
+            OsdOverlay overlay;
+            overlay.text = ov_node["text"].as<std::string>("");
+            overlay.x = ov_node["x"].as<int>(0);
+            overlay.y = ov_node["y"].as<int>(0);
+            overlay.scale = ov_node["scale"].as<int>(1);
+            overlay.fg_luma = ov_node["fg_luma"].as<double>(1.0);
+            overlay.bg_luma = ov_node["bg_luma"].as<double>(-1.0);
+            section.osd.overlays.push_back(overlay);
           }
         }
       }

@@ -213,8 +213,8 @@ TEST(ProjectFixturesTest, ProgressiveExrFixturesParseAndValidate) {
   ProgressiveFrameSourceProbe progressive_frame_source_probe;
   ProjectValidator validator(&progressive_frame_source_probe);
 
-  const std::vector<std::string> fixtures = {"pal_progressive_exr.yaml",
-                                             "ntsc_progressive_exr.yaml"};
+  const std::vector<std::string> fixtures = {
+      "general/pal_progressive_exr.yaml", "general/ntsc_progressive_exr.yaml"};
 
   for (const std::string& fixture : fixtures) {
     const ParseResult parsed = parser.ParseFile(FixturePath(fixture));
@@ -242,8 +242,8 @@ TEST(ProjectFixturesTest, ProgressiveMkvFixturesParseAndValidate) {
   ProgressiveFrameSourceProbe progressive_frame_source_probe;
   ProjectValidator validator(&progressive_frame_source_probe);
 
-  const std::vector<std::string> fixtures = {"pal_progressive_mkv.yaml",
-                                             "ntsc_progressive_mkv.yaml"};
+  const std::vector<std::string> fixtures = {
+      "general/pal_progressive_mkv.yaml", "general/ntsc_progressive_mkv.yaml"};
 
   for (const std::string& fixture : fixtures) {
     const ParseResult parsed = parser.ParseFile(FixturePath(fixture));
@@ -270,8 +270,8 @@ TEST(ProjectFixturesTest,
   GenerationStage generation;
   OutputStage output;
 
-  const std::vector<std::string> fixtures = {"pal_progressive_exr.yaml",
-                                             "ntsc_progressive_exr.yaml"};
+  const std::vector<std::string> fixtures = {
+      "general/pal_progressive_exr.yaml", "general/ntsc_progressive_exr.yaml"};
 
   for (const std::string& fixture : fixtures) {
     const ParseResult parsed = parser.ParseFile(FixturePath(fixture));
@@ -328,8 +328,8 @@ TEST(ProjectFixturesTest,
   OutputStage output;
   ProgressiveFrameSource progressive_source;
 
-  const std::vector<std::string> fixtures = {"pal_progressive_mkv.yaml",
-                                             "ntsc_progressive_mkv.yaml"};
+  const std::vector<std::string> fixtures = {
+      "general/pal_progressive_mkv.yaml", "general/ntsc_progressive_mkv.yaml"};
 
   for (const std::string& fixture : fixtures) {
     const ParseResult parsed = parser.ParseFile(FixturePath(fixture));
@@ -389,7 +389,7 @@ TEST(ProjectFixturesTest,
 
 TEST(ProjectFixturesTest, VitsFixtureProjectsParseValidateAndGenerate) {
   ExpectVitsFixtureProject(ExpectedVitsFixture{
-      .fixture_name = "pal_vits.yaml",
+      .fixture_name = "general/pal_vits.yaml",
       .standard = Standard::kPal,
       .injections =
           {
@@ -403,7 +403,7 @@ TEST(ProjectFixturesTest, VitsFixtureProjectsParseValidateAndGenerate) {
   });
 
   ExpectVitsFixtureProject(ExpectedVitsFixture{
-      .fixture_name = "ntsc_vits.yaml",
+      .fixture_name = "general/ntsc_vits.yaml",
       .standard = Standard::kNtsc,
       .injections =
           {
@@ -422,8 +422,8 @@ TEST(ProjectFixturesTest, FixtureProjectsCoverSupportedOutputEncodingFamilies) {
   GenerationStage generation;
   OutputStage output;
 
-  const std::vector<std::string> fixtures = {"pal_progressive_exr.yaml",
-                                             "ntsc_progressive_exr.yaml"};
+  const std::vector<std::string> fixtures = {
+      "general/pal_progressive_exr.yaml", "general/ntsc_progressive_exr.yaml"};
   const std::vector<std::string> output_presets = {
       "CVBS_U10_4FSC", "CVBS_U16_4FSC", "CVBS_TPG21_4FSC",
       "RAW_S16_28M",   "RAW_S16_40M",   "CVBS_S16_FSC"};
@@ -449,12 +449,15 @@ TEST(ProjectFixturesTest, FixtureProjectsCoverSupportedOutputEncodingFamilies) {
           static_cast<int64_t>(ExpectedProgressiveExrFrameCount(
               project.cvbs_presets.video_standard_preset));
 
+      const std::string fixture_stem =
+          std::filesystem::path(fixture).stem().string();
       const std::filesystem::path output_path =
           std::filesystem::temp_directory_path() /
-          ("videosynth_stage4_" + fixture + "_" + output_preset + ".composite");
+          ("videosynth_stage4_" + fixture_stem + "_" + output_preset +
+           ".composite");
       const std::filesystem::path metadata_path =
           std::filesystem::temp_directory_path() /
-          ("videosynth_stage4_" + fixture + "_" + output_preset + ".meta");
+          ("videosynth_stage4_" + fixture_stem + "_" + output_preset + ".meta");
       project.output.video_path = output_path.string();
       project.output.metadata_path = metadata_path.string();
 
@@ -510,7 +513,7 @@ TEST(ProjectFixturesTest, PalPilotBurstFixtureParsesValidatesAndGenerated) {
   GenerationStage generation;
 
   const ParseResult parsed =
-      parser.ParseFile(FixturePath("pal_pilot_burst.yaml"));
+      parser.ParseFile(FixturePath("general/pal_pilot_burst.yaml"));
   ASSERT_TRUE(parsed.ok);
 
   Project project = parsed.project;
@@ -567,7 +570,7 @@ TEST(ProjectFixturesTest,
   OutputStage output;
 
   const ParseResult parsed =
-      parser.ParseFile(FixturePath("pal_pilot_burst.yaml"));
+      parser.ParseFile(FixturePath("general/pal_pilot_burst.yaml"));
   ASSERT_TRUE(parsed.ok);
 
   Project project = parsed.project;

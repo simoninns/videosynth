@@ -139,6 +139,28 @@ struct DropoutParameters {
   ScratchDropoutParameters scratch = {};
 };
 
+// Thread-safety: OsdOverlay and OsdConfig are plain data containers with no
+// mutable state. They may be read concurrently from multiple threads.
+struct OsdOverlay {
+  // Literal text or template containing {picture_number}, {biphase_hex},
+  // {phase_id}, or {section_name} tokens (resolved per-frame at render time).
+  std::string text;
+  // Active-area x offset in pixels (0 = left edge of active area).
+  int x = 0;
+  // Active-area y offset in lines (0 = first active line of frame).
+  int y = 0;
+  // Glyph scale factor: 1 = 8×8 px per glyph, 2 = 16×16 px. Range [1, 4].
+  int scale = 1;
+  // Foreground luma E_Y' in [0.0, 1.0].
+  double fg_luma = 1.0;
+  // Background luma E_Y' in [0.0, 1.0], or -1.0 for transparent (no write).
+  double bg_luma = -1.0;
+};
+
+struct OsdConfig {
+  std::vector<OsdOverlay> overlays;
+};
+
 struct Section {
   struct LineInjectionCode {
     std::string code_type;
@@ -170,6 +192,7 @@ struct Section {
   int start_frame = 0;
   NoiseParameters noise = {};
   DropoutParameters dropouts = {};
+  OsdConfig osd = {};
 };
 
 struct OutputTargets {

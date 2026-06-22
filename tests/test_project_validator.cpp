@@ -935,5 +935,133 @@ TEST(ProjectValidatorTest, RejectsLaserdiscInjectionWithUnknownCodeType) {
   EXPECT_NE(result.errors[0].find("unknown_code"), std::string::npos);
 }
 
+// ---------------------------------------------------------------------------
+// OSD validation tests
+// ---------------------------------------------------------------------------
+
+TEST(ProjectValidatorTest, AcceptsValidOsdOverlay) {
+  Project project = MakeValidProject();
+  OsdOverlay overlay;
+  overlay.text = "PN:{picture_number}";
+  overlay.x = 0;
+  overlay.y = 0;
+  overlay.scale = 2;
+  overlay.fg_luma = 1.0;
+  overlay.bg_luma = 0.0;
+  project.sections[0].osd.overlays.push_back(overlay);
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+  EXPECT_TRUE(result.is_valid);
+}
+
+TEST(ProjectValidatorTest, RejectsOsdOverlayScaleTooLow) {
+  Project project = MakeValidProject();
+  OsdOverlay overlay;
+  overlay.text = "LABEL";
+  overlay.scale = 0;
+  overlay.fg_luma = 1.0;
+  overlay.bg_luma = -1.0;
+  project.sections[0].osd.overlays.push_back(overlay);
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+  EXPECT_FALSE(result.is_valid);
+  ASSERT_FALSE(result.errors.empty());
+  EXPECT_NE(result.errors[0].find("scale"), std::string::npos);
+}
+
+TEST(ProjectValidatorTest, RejectsOsdOverlayScaleTooHigh) {
+  Project project = MakeValidProject();
+  OsdOverlay overlay;
+  overlay.text = "LABEL";
+  overlay.scale = 5;
+  overlay.fg_luma = 1.0;
+  overlay.bg_luma = -1.0;
+  project.sections[0].osd.overlays.push_back(overlay);
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+  EXPECT_FALSE(result.is_valid);
+  ASSERT_FALSE(result.errors.empty());
+  EXPECT_NE(result.errors[0].find("scale"), std::string::npos);
+}
+
+TEST(ProjectValidatorTest, RejectsOsdOverlayFgLumaOutOfRange) {
+  Project project = MakeValidProject();
+  OsdOverlay overlay;
+  overlay.text = "LABEL";
+  overlay.scale = 1;
+  overlay.fg_luma = 1.5;
+  overlay.bg_luma = -1.0;
+  project.sections[0].osd.overlays.push_back(overlay);
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+  EXPECT_FALSE(result.is_valid);
+  ASSERT_FALSE(result.errors.empty());
+  EXPECT_NE(result.errors[0].find("fg_luma"), std::string::npos);
+}
+
+TEST(ProjectValidatorTest, RejectsOsdOverlayBgLumaInvalidNegative) {
+  Project project = MakeValidProject();
+  OsdOverlay overlay;
+  overlay.text = "LABEL";
+  overlay.scale = 1;
+  overlay.fg_luma = 1.0;
+  overlay.bg_luma = -0.5;
+  project.sections[0].osd.overlays.push_back(overlay);
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+  EXPECT_FALSE(result.is_valid);
+  ASSERT_FALSE(result.errors.empty());
+  EXPECT_NE(result.errors[0].find("bg_luma"), std::string::npos);
+}
+
+TEST(ProjectValidatorTest, AcceptsOsdOverlayTransparentBackground) {
+  Project project = MakeValidProject();
+  OsdOverlay overlay;
+  overlay.text = "LABEL";
+  overlay.scale = 1;
+  overlay.fg_luma = 1.0;
+  overlay.bg_luma = -1.0;
+  project.sections[0].osd.overlays.push_back(overlay);
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+  EXPECT_TRUE(result.is_valid);
+}
+
+TEST(ProjectValidatorTest, RejectsOsdOverlayWithUnknownToken) {
+  Project project = MakeValidProject();
+  OsdOverlay overlay;
+  overlay.text = "VALUE:{unknown_token}";
+  overlay.scale = 1;
+  overlay.fg_luma = 1.0;
+  overlay.bg_luma = -1.0;
+  project.sections[0].osd.overlays.push_back(overlay);
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+  EXPECT_FALSE(result.is_valid);
+  ASSERT_FALSE(result.errors.empty());
+  EXPECT_NE(result.errors[0].find("unknown_token"), std::string::npos);
+}
+
+TEST(ProjectValidatorTest, AcceptsAllFourSupportedTokens) {
+  Project project = MakeValidProject();
+  OsdOverlay overlay;
+  overlay.text = "{picture_number} {biphase_hex} {phase_id} {section_name}";
+  overlay.scale = 1;
+  overlay.fg_luma = 1.0;
+  overlay.bg_luma = -1.0;
+  project.sections[0].osd.overlays.push_back(overlay);
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+  EXPECT_TRUE(result.is_valid);
+}
+
 }  // namespace
 }  // namespace videosynth

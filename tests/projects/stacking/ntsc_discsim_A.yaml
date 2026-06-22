@@ -1,0 +1,315 @@
+# NTSC Disc Simulation — Source A (seed 1001)
+#
+# Simulates a capture of a 40-frame CAV laserdisc (PNs 1–40) starting at PN 1.
+# Includes a backward skip: after PN 20 the player rewinds and replays PNs 17–24.
+# No forward skip.  44 frames total (40 unique + 4 backward-skip duplicates).
+#
+# Content layout (matches all four sources):
+#   PNs  1–8:  100_BARS.exr
+#   PNs  9–16: SMPTE_BARS_001.exr
+#   PNs 17–24: MULTIBURST.exr
+#   PNs 25–32: TARTAN.exr
+#   PNs 33–40: Y_CB_CR_RAMPS.exr
+#
+# Noise/dropout: moderate — noise_db 43.0, scale 8, seed 1001.
+# Backward skip: MultiBurst_PreSkip_A (17–20) → MultiBurst_Replay_A (17–24).
+#   Replay uses a different noise seed (9901) to simulate fresh electronic noise;
+#   the dropout seed is unchanged because disc surface defects are repeatable.
+
+project:
+  name: NtscDiscSimA
+  version: "1.0"
+  description: NTSC disc simulation source A — seed 1001, backward skip at PN 20
+
+cvbs_presets:
+  video_standard_preset: NTSC
+  sample_encoding_preset: CVBS_U10_4FSC
+  signal_state_preset: STANDARD_TBC_LOCKED
+
+output:
+  video_path: tests/projects/output-stacking/videosynth_ntsc_discsim_A.composite
+  metadata_path: tests/projects/output-stacking/videosynth_ntsc_discsim_A.meta
+
+sections:
+
+  # ---------------------------------------------------------------------------
+  # PNs 1–8: 100% colour bars
+  # ---------------------------------------------------------------------------
+  - name: Bars_A
+    type: progressive
+    source: videosynth-assets/assets/exr/720x486/100_BARS.exr
+    duration_frames: 8
+    section_type: programme_area
+    noise:
+      noise_db: 43.0
+      noise_spread_db: 4.0
+      noise_seed: 1001
+    dropouts:
+      random:
+        scale: 8
+        seed: 1001
+      scratch:
+        scale: 8
+        seed: 1001
+    line_injections:
+      - type: laserdisc
+        disc_type: CAV
+        codes:
+          - code_type: picture_number
+            start_value: 1
+          - code_type: programme_status
+            programme_status: "0x8DC001"
+          - code_type: fm_picture_number
+          - code_type: fm_white_flag
+      - type: vits
+        vits_type: virs
+        target_lines: [19, 282]
+    osd:
+      overlays:
+        - text: "SOURCE A  SEED 1001"
+          x: 8
+          y: 8
+          scale: 2
+          fg_luma: 1.0
+          bg_luma: 0.0
+        - text: "PN:{picture_number} HEX:{biphase_hex} PHASE:{phase_id}"
+          x: 8
+          y: 32
+          scale: 1
+          fg_luma: 1.0
+          bg_luma: 0.0
+
+  # ---------------------------------------------------------------------------
+  # PNs 9–16: UK test card F
+  # ---------------------------------------------------------------------------
+  - name: Testcard_A
+    type: progressive
+    source: videosynth-assets/assets/exr/720x486/SMPTE_BARS_001.exr
+    duration_frames: 8
+    section_type: programme_area
+    noise:
+      noise_db: 43.0
+      noise_spread_db: 4.0
+      noise_seed: 1001
+    dropouts:
+      random:
+        scale: 8
+        seed: 1001
+      scratch:
+        scale: 8
+        seed: 1001
+    line_injections:
+      - type: laserdisc
+        disc_type: CAV
+        codes:
+          - code_type: picture_number
+            start_value: 9
+          - code_type: programme_status
+            programme_status: "0x8DC001"
+          - code_type: fm_picture_number
+          - code_type: fm_white_flag
+      - type: vits
+        vits_type: virs
+        target_lines: [19, 282]
+    osd:
+      overlays:
+        - text: "SOURCE A  SEED 1001"
+          x: 8
+          y: 8
+          scale: 2
+          fg_luma: 1.0
+          bg_luma: 0.0
+        - text: "PN:{picture_number} HEX:{biphase_hex} PHASE:{phase_id}"
+          x: 8
+          y: 32
+          scale: 1
+          fg_luma: 1.0
+          bg_luma: 0.0
+
+  # ---------------------------------------------------------------------------
+  # PNs 17–20: multi-burst (first play, player rewinds after PN 20)
+  # ---------------------------------------------------------------------------
+  - name: MultiBurst_PreSkip_A
+    type: progressive
+    source: videosynth-assets/assets/exr/720x486/MULTIBURST.exr
+    duration_frames: 4
+    section_type: programme_area
+    noise:
+      noise_db: 43.0
+      noise_spread_db: 4.0
+      noise_seed: 1001
+    dropouts:
+      random:
+        scale: 8
+        seed: 1001
+      scratch:
+        scale: 8
+        seed: 1001
+    line_injections:
+      - type: laserdisc
+        disc_type: CAV
+        codes:
+          - code_type: picture_number
+            start_value: 17
+          - code_type: programme_status
+            programme_status: "0x8DC001"
+          - code_type: fm_picture_number
+          - code_type: fm_white_flag
+      - type: vits
+        vits_type: virs
+        target_lines: [19, 282]
+    osd:
+      overlays:
+        - text: "SOURCE A  SEED 1001"
+          x: 8
+          y: 8
+          scale: 2
+          fg_luma: 1.0
+          bg_luma: 0.0
+        - text: "PN:{picture_number} HEX:{biphase_hex} PHASE:{phase_id}"
+          x: 8
+          y: 32
+          scale: 1
+          fg_luma: 1.0
+          bg_luma: 0.0
+
+  # ---------------------------------------------------------------------------
+  # PNs 17–24: multi-burst replay (backward skip — same start_value, fresh noise)
+  # ---------------------------------------------------------------------------
+  - name: MultiBurst_Replay_A
+    type: progressive
+    source: videosynth-assets/assets/exr/720x486/MULTIBURST.exr
+    duration_frames: 8
+    section_type: programme_area
+    noise:
+      noise_db: 43.0
+      noise_spread_db: 4.0
+      noise_seed: 9901
+    dropouts:
+      random:
+        scale: 8
+        seed: 1001
+      scratch:
+        scale: 8
+        seed: 1001
+    line_injections:
+      - type: laserdisc
+        disc_type: CAV
+        codes:
+          - code_type: picture_number
+            start_value: 17
+          - code_type: programme_status
+            programme_status: "0x8DC001"
+          - code_type: fm_picture_number
+          - code_type: fm_white_flag
+      - type: vits
+        vits_type: virs
+        target_lines: [19, 282]
+    osd:
+      overlays:
+        - text: "SOURCE A  SEED 1001 REPLAY"
+          x: 8
+          y: 8
+          scale: 2
+          fg_luma: 1.0
+          bg_luma: 0.0
+        - text: "PN:{picture_number} HEX:{biphase_hex} PHASE:{phase_id}"
+          x: 8
+          y: 32
+          scale: 1
+          fg_luma: 1.0
+          bg_luma: 0.0
+
+  # ---------------------------------------------------------------------------
+  # PNs 25–32: tartan
+  # ---------------------------------------------------------------------------
+  - name: Tartan_A
+    type: progressive
+    source: videosynth-assets/assets/exr/720x486/TARTAN.exr
+    duration_frames: 8
+    section_type: programme_area
+    noise:
+      noise_db: 43.0
+      noise_spread_db: 4.0
+      noise_seed: 1001
+    dropouts:
+      random:
+        scale: 8
+        seed: 1001
+      scratch:
+        scale: 8
+        seed: 1001
+    line_injections:
+      - type: laserdisc
+        disc_type: CAV
+        codes:
+          - code_type: picture_number
+            start_value: 25
+          - code_type: programme_status
+            programme_status: "0x8DC001"
+          - code_type: fm_picture_number
+          - code_type: fm_white_flag
+      - type: vits
+        vits_type: virs
+        target_lines: [19, 282]
+    osd:
+      overlays:
+        - text: "SOURCE A  SEED 1001"
+          x: 8
+          y: 8
+          scale: 2
+          fg_luma: 1.0
+          bg_luma: 0.0
+        - text: "PN:{picture_number} HEX:{biphase_hex} PHASE:{phase_id}"
+          x: 8
+          y: 32
+          scale: 1
+          fg_luma: 1.0
+          bg_luma: 0.0
+
+  # ---------------------------------------------------------------------------
+  # PNs 33–40: YCbCr ramps
+  # ---------------------------------------------------------------------------
+  - name: Ramps_A
+    type: progressive
+    source: videosynth-assets/assets/exr/720x486/Y_CB_CR_RAMPS.exr
+    duration_frames: 8
+    section_type: programme_area
+    noise:
+      noise_db: 43.0
+      noise_spread_db: 4.0
+      noise_seed: 1001
+    dropouts:
+      random:
+        scale: 8
+        seed: 1001
+      scratch:
+        scale: 8
+        seed: 1001
+    line_injections:
+      - type: laserdisc
+        disc_type: CAV
+        codes:
+          - code_type: picture_number
+            start_value: 33
+          - code_type: programme_status
+            programme_status: "0x8DC001"
+          - code_type: fm_picture_number
+          - code_type: fm_white_flag
+      - type: vits
+        vits_type: virs
+        target_lines: [19, 282]
+    osd:
+      overlays:
+        - text: "SOURCE A  SEED 1001"
+          x: 8
+          y: 8
+          scale: 2
+          fg_luma: 1.0
+          bg_luma: 0.0
+        - text: "PN:{picture_number} HEX:{biphase_hex} PHASE:{phase_id}"
+          x: 8
+          y: 32
+          scale: 1
+          fg_luma: 1.0
+          bg_luma: 0.0

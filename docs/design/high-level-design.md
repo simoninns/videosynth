@@ -344,6 +344,49 @@ Source-range capability note:
 | **NTSC Laserdisc VBI Burst**    | Insert colour burst on equalizing and broad sync pulses when enabled (NTSC only).        | IEC 60857 §9.1.2                |
 | **Line Injections**             | Inject VITS, Laserdisc biphase, VITC, or custom line content into VBI.                  | IEC 60856, IEC 60857, SMPTE 12M |
 | **Ramping and Smoothing**       | Apply ramping to transitions to simulate analogue behavior.                              | ITU-R BT.470-6, ITU-R BT.1700   |
+| **OSD Overlay**                 | Render monochrome bitmap-font text into the active-picture luma channel, after biphase injection. | — |
+
+
+### **OSD (On-Screen Display) Sub-system**
+
+The `OsdRenderer` class writes monochrome bitmap-font text overlays into the luma sample buffer of an active video frame.  It is invoked as the final step of per-frame generation, after active video content and biphase injection, so that burn-in tokens have access to the current-frame biphase context.
+
+**Data model** (defined in `model.h`):
+
+- `OsdOverlay` — one text string (literal or token template), active-area pixel position (`x`, `y`), glyph scale factor (`scale` in [1, 4]), foreground luma (`fg_luma`, E_Y' ∈ [0.0, 1.0]), and optional background luma (`bg_luma`; -1.0 = transparent).
+- `OsdConfig` — a list of zero or more `OsdOverlay` objects per section.  Stored as `Section::osd`.
+
+**Rendering** (`OsdRenderer`, `src/osd_renderer.cpp`):
+
+- Uses a static 96-glyph 8×8 pixel bitmap font (`src/osd_font.h`) covering printable ASCII 0x20–0x7F, derived from the IBM PC BIOS 8×8 VGA font.
+- Each glyph pixel is rendered as a `scale` × `scale` output block.
+- Only the luma channel is written; the chroma channel is unchanged (monochrome overlay).
+- Pixels outside `[active_sample_start, active_sample_end)` or `[active_line_start, active_line_end)` are silently clipped.
+- Token resolution is done by `OsdTokenResolver` (`include/videosynth/osd_token_resolver.h`) before passing `resolved_texts` to `Render()`.
+
+**Token resolution** (`OsdTokenResolver`, `src/osd_token_resolver.cpp`):
+
+- `{picture_number}` — zero-padded 5-digit CAV picture number from `PerFrameContext`; `"-----"` when 0.
+- `{biphase_hex}` — space-separated 6-digit uppercase hex biphase code words; `"--------"` when empty.
+- `{phase_id}` — colour-frame sequence index (0–3 PAL, 0–1 NTSC).
+- `{section_name}` — the section `name:` field verbatim.
+- Unknown token names are rejected at project-validation time by `HasOnlyKnownTokens()`; static text with no tokens passes through unchanged.
+
+**Per-frame VBI context** (`PerFrameContext`, `include/videosynth/biphase_injection_manager.h`):
+
+- Captured by `BiphaseInjectionManager::ProcessFrame()` before advancing generators.
+- Exposed via `GetLastFrameContext()` for use by token resolver immediately after injection.
+- Reset to defaults by `Reset()`.
+
+**Pipeline wiring** (`GenerationStage`, `src/generation_stage.cpp`):
+
+- OSD rendering executes after `biphase_manager_.ProcessFrame()` for each frame.
+- Tokens are resolved from `biphase_manager_.GetLastFrameContext()`.
+- `Render()` is called twice per frame — once for field 1 and once for field 2 — so overlays appear in both fields at the same y-offset within each field's active picture area.
+
+**YAML** (`src/yaml_project_parser.cpp`): sections may include an `osd:` block with an `overlays:` list; each overlay supports `text`, `x`, `y`, `scale`, `fg_luma`, and `bg_luma`.
+
+**Validation** (`src/project_validator.cpp`): `scale` ∈ [1, 4]; `fg_luma` ∈ [0.0, 1.0]; `bg_luma` = -1.0 or ∈ [0.0, 1.0]; token names must be one of the four above.
 
 
 ### **Inputs**

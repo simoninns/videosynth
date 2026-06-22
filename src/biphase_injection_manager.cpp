@@ -72,6 +72,12 @@ void BiphaseInjectionManager::Reset() {
   has_laserdisc_ = false;
   disc_type_ = DiscType::kUnknown;
   section_type_ = SectionType::kUnknown;
+  last_context_ = {};
+  frame_count_ = 0;
+}
+
+const PerFrameContext& BiphaseInjectionManager::GetLastFrameContext() const {
+  return last_context_;
 }
 
 bool BiphaseInjectionManager::ProcessFrame(
@@ -85,6 +91,16 @@ bool BiphaseInjectionManager::ProcessFrame(
   if (out_y_mv == nullptr || errors == nullptr) {
     return false;
   }
+
+  // Always update the colour-frame index so {phase_id} is correct even for
+  // sections that have no laserdisc injection.
+  constexpr int kPalColourPeriod = 4;
+  constexpr int kNtscColourPeriod = 2;
+  const int colour_period =
+      (standard == Standard::kPal) ? kPalColourPeriod : kNtscColourPeriod;
+  last_context_ = {};
+  last_context_.colour_frame_index = frame_count_ % colour_period;
+  ++frame_count_;
 
   if (&section != current_section_) {
     if (!InitializeSection(section, standard, sample_rate_hz, errors)) {
@@ -160,6 +176,19 @@ bool BiphaseInjectionManager::ProcessFrame(
       InjectBiphaseCode(out_y_mv, line_base, active_end, assignment.code_type,
                         standard, levels, start_sample);
     }
+  }
+
+  // Capture current code values before advancing so OSD token resolver can
+  // read the biphase words and picture number that were written this frame.
+  if (const CodeGenerator* pn_gen = GetGenerator("picture_number")) {
+    const uint32_t code = pn_gen->CurrentCode();
+    last_context_.picture_number = static_cast<int>(
+        ((code >> 16U) & 0xFU) * 10000U + ((code >> 12U) & 0xFU) * 1000U +
+        ((code >> 8U) & 0xFU) * 100U + ((code >> 4U) & 0xFU) * 10U +
+        (code & 0xFU));
+  }
+  for (const auto& [ct, gen] : generators_) {
+    last_context_.biphase_words.push_back(gen->CurrentCode());
   }
 
   AdvanceGenerators();

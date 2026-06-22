@@ -1081,5 +1081,89 @@ TEST(BiphaseInjectionManagerPalCavTest, MultipleFramesSameSection) {
   EXPECT_TRUE(errors.empty());
 }
 
+// ---------------------------------------------------------------------------
+// PerFrameContext — GetLastFrameContext() captures VBI state per frame.
+// ---------------------------------------------------------------------------
+
+TEST_F(BiphaseInjectionManagerTest, DefaultContextBeforeFirstFrame) {
+  const PerFrameContext& ctx = manager_.GetLastFrameContext();
+  EXPECT_EQ(ctx.picture_number, 0);
+  EXPECT_TRUE(ctx.biphase_words.empty());
+  EXPECT_EQ(ctx.colour_frame_index, 0);
+}
+
+TEST_F(BiphaseInjectionManagerTest, PictureNumberCapturedAfterProcessFrame) {
+  Section::LineInjectionCode pn_code;
+  pn_code.code_type = "picture_number";
+  pn_code.start_value = 17;
+  pn_code.start_value_specified = true;
+
+  Section::LineInjectionCode ps_code;
+  ps_code.code_type = "programme_status";
+  ps_code.programme_status = "0x8DC000";
+  ps_code.programme_status_specified = true;
+
+  auto section = MakeLaserdiscSection(SectionType::kProgrammeArea,
+                                      DiscType::kCAV, {pn_code, ps_code});
+
+  EXPECT_TRUE(RunProcessFrame(Standard::kPal, section));
+  EXPECT_EQ(manager_.GetLastFrameContext().picture_number, 17);
+}
+
+TEST_F(BiphaseInjectionManagerTest, ColourFrameIndexAdvancesEachFrame) {
+  Section section;
+  section.name = "Plain";
+  section.type = "progressive";
+  section.section_type = SectionType::kProgrammeArea;
+  section.duration_frames = 1;
+
+  // PAL: colour period is 4.
+  for (int i = 0; i < 4; ++i) {
+    EXPECT_TRUE(RunProcessFrame(Standard::kPal, section));
+    EXPECT_EQ(manager_.GetLastFrameContext().colour_frame_index, i);
+  }
+  // Wraps back to 0 on the fifth frame.
+  EXPECT_TRUE(RunProcessFrame(Standard::kPal, section));
+  EXPECT_EQ(manager_.GetLastFrameContext().colour_frame_index, 0);
+}
+
+TEST_F(BiphaseInjectionManagerTest, ResetClearsLastFrameContext) {
+  Section::LineInjectionCode pn_code;
+  pn_code.code_type = "picture_number";
+  pn_code.start_value = 5;
+  pn_code.start_value_specified = true;
+  Section::LineInjectionCode ps_code;
+  ps_code.code_type = "programme_status";
+  ps_code.programme_status = "0x8DC000";
+  ps_code.programme_status_specified = true;
+  auto section = MakeLaserdiscSection(SectionType::kProgrammeArea,
+                                      DiscType::kCAV, {pn_code, ps_code});
+
+  EXPECT_TRUE(RunProcessFrame(Standard::kPal, section));
+  EXPECT_GT(manager_.GetLastFrameContext().picture_number, 0);
+
+  manager_.Reset();
+  EXPECT_EQ(manager_.GetLastFrameContext().picture_number, 0);
+  EXPECT_TRUE(manager_.GetLastFrameContext().biphase_words.empty());
+  EXPECT_EQ(manager_.GetLastFrameContext().colour_frame_index, 0);
+}
+
+TEST_F(BiphaseInjectionManagerTest, BiphaseWordsPopulatedForLaserdiscSection) {
+  Section::LineInjectionCode pn_code;
+  pn_code.code_type = "picture_number";
+  pn_code.start_value = 1;
+  pn_code.start_value_specified = true;
+  Section::LineInjectionCode ps_code;
+  ps_code.code_type = "programme_status";
+  ps_code.programme_status = "0x8DC000";
+  ps_code.programme_status_specified = true;
+  auto section = MakeLaserdiscSection(SectionType::kProgrammeArea,
+                                      DiscType::kCAV, {pn_code, ps_code});
+
+  EXPECT_TRUE(RunProcessFrame(Standard::kPal, section));
+  // Two generators active (picture_number + programme_status), so two words.
+  EXPECT_EQ(manager_.GetLastFrameContext().biphase_words.size(), 2U);
+}
+
 }  // namespace
 }  // namespace videosynth

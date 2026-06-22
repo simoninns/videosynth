@@ -367,5 +367,150 @@ TEST(YamlProjectParserTest, RejectsUnrecognisedSectionTypeValue) {
   EXPECT_NE(result.errors[0].find("programme"), std::string::npos);
 }
 
+TEST(YamlProjectParserTest, ParsesOsdOverlayBlock) {
+  const std::string yaml =
+      "project:\n"
+      "  name: OsdTest\n"
+      "  version: \"1.0\"\n"
+      "cvbs_presets:\n"
+      "  video_standard_preset: PAL\n"
+      "  sample_encoding_preset: CVBS_U10_4FSC\n"
+      "  signal_state_preset: STANDARD_TBC_LOCKED\n"
+      "output:\n"
+      "  video_path: out.composite\n"
+      "  metadata_path: out.meta\n"
+      "sections:\n"
+      "  - name: OsdSection\n"
+      "    type: progressive\n"
+      "    source: fixture.exr\n"
+      "    duration_frames: 4\n"
+      "    osd:\n"
+      "      overlays:\n"
+      "        - text: \"LABEL\"\n"
+      "          x: 10\n"
+      "          y: 5\n"
+      "          scale: 2\n"
+      "          fg_luma: 1.0\n"
+      "          bg_luma: 0.0\n"
+      "        - text: \"PN:{picture_number}\"\n"
+      "          x: 0\n"
+      "          y: 20\n"
+      "          scale: 1\n"
+      "          fg_luma: 0.8\n"
+      "          bg_luma: -1.0\n";
+
+  YamlProjectParser parser;
+  const ParseResult result = parser.ParseString(yaml);
+
+  ASSERT_TRUE(result.ok);
+  ASSERT_EQ(result.project.sections.size(), 1U);
+  const OsdConfig& osd = result.project.sections[0].osd;
+  ASSERT_EQ(osd.overlays.size(), 2U);
+
+  EXPECT_EQ(osd.overlays[0].text, "LABEL");
+  EXPECT_EQ(osd.overlays[0].x, 10);
+  EXPECT_EQ(osd.overlays[0].y, 5);
+  EXPECT_EQ(osd.overlays[0].scale, 2);
+  EXPECT_DOUBLE_EQ(osd.overlays[0].fg_luma, 1.0);
+  EXPECT_DOUBLE_EQ(osd.overlays[0].bg_luma, 0.0);
+
+  EXPECT_EQ(osd.overlays[1].text, "PN:{picture_number}");
+  EXPECT_EQ(osd.overlays[1].x, 0);
+  EXPECT_EQ(osd.overlays[1].y, 20);
+  EXPECT_EQ(osd.overlays[1].scale, 1);
+  EXPECT_DOUBLE_EQ(osd.overlays[1].fg_luma, 0.8);
+  EXPECT_DOUBLE_EQ(osd.overlays[1].bg_luma, -1.0);
+}
+
+TEST(YamlProjectParserTest, OsdOverlayDefaultsApplied) {
+  const std::string yaml =
+      "project:\n"
+      "  name: OsdDefaults\n"
+      "  version: \"1.0\"\n"
+      "cvbs_presets:\n"
+      "  video_standard_preset: PAL\n"
+      "  sample_encoding_preset: CVBS_U10_4FSC\n"
+      "  signal_state_preset: STANDARD_TBC_LOCKED\n"
+      "output:\n"
+      "  video_path: out.composite\n"
+      "  metadata_path: out.meta\n"
+      "sections:\n"
+      "  - name: OsdSection\n"
+      "    type: progressive\n"
+      "    source: fixture.exr\n"
+      "    duration_frames: 4\n"
+      "    osd:\n"
+      "      overlays:\n"
+      "        - text: \"ONLY TEXT\"\n";
+
+  YamlProjectParser parser;
+  const ParseResult result = parser.ParseString(yaml);
+
+  ASSERT_TRUE(result.ok);
+  ASSERT_EQ(result.project.sections.size(), 1U);
+  const OsdConfig& osd = result.project.sections[0].osd;
+  ASSERT_EQ(osd.overlays.size(), 1U);
+  EXPECT_EQ(osd.overlays[0].x, 0);
+  EXPECT_EQ(osd.overlays[0].y, 0);
+  EXPECT_EQ(osd.overlays[0].scale, 1);
+  EXPECT_DOUBLE_EQ(osd.overlays[0].fg_luma, 1.0);
+  EXPECT_DOUBLE_EQ(osd.overlays[0].bg_luma, -1.0);
+}
+
+TEST(YamlProjectParserTest, OsdBlockNotAMapReturnsError) {
+  const std::string yaml =
+      "project:\n"
+      "  name: OsdBad\n"
+      "  version: \"1.0\"\n"
+      "cvbs_presets:\n"
+      "  video_standard_preset: PAL\n"
+      "  sample_encoding_preset: CVBS_U10_4FSC\n"
+      "  signal_state_preset: STANDARD_TBC_LOCKED\n"
+      "output:\n"
+      "  video_path: out.composite\n"
+      "  metadata_path: out.meta\n"
+      "sections:\n"
+      "  - name: OsdSection\n"
+      "    type: progressive\n"
+      "    source: fixture.exr\n"
+      "    duration_frames: 4\n"
+      "    osd: \"not a map\"\n";
+
+  YamlProjectParser parser;
+  const ParseResult result = parser.ParseString(yaml);
+
+  EXPECT_FALSE(result.ok);
+  ASSERT_FALSE(result.errors.empty());
+  EXPECT_NE(result.errors[0].find("osd"), std::string::npos);
+}
+
+TEST(YamlProjectParserTest, OsdOverlaysNotAListReturnsError) {
+  const std::string yaml =
+      "project:\n"
+      "  name: OsdBad\n"
+      "  version: \"1.0\"\n"
+      "cvbs_presets:\n"
+      "  video_standard_preset: PAL\n"
+      "  sample_encoding_preset: CVBS_U10_4FSC\n"
+      "  signal_state_preset: STANDARD_TBC_LOCKED\n"
+      "output:\n"
+      "  video_path: out.composite\n"
+      "  metadata_path: out.meta\n"
+      "sections:\n"
+      "  - name: OsdSection\n"
+      "    type: progressive\n"
+      "    source: fixture.exr\n"
+      "    duration_frames: 4\n"
+      "    osd:\n"
+      "      overlays: scalar\n";
+
+  YamlProjectParser parser;
+  const ParseResult result = parser.ParseString(yaml);
+
+  EXPECT_FALSE(result.ok);
+  ASSERT_FALSE(result.errors.empty());
+  EXPECT_NE(result.errors[0].find("overlays"), std::string::npos);
+}
+
 }  // namespace
 }  // namespace videosynth

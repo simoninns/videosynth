@@ -35,11 +35,15 @@ add_library(videosynth_core
     src/vits_definition_provider.cpp
     src/vits_generator.cpp
     src/yaml_project_parser.cpp
+    src/osd_renderer.cpp
+    src/osd_token_resolver.cpp
 )
 
 target_include_directories(videosynth_core
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/include
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
 target_link_libraries(videosynth_core
@@ -100,6 +104,8 @@ add_executable(videosynth_tests
     tests/test_biphase_final.cpp
     tests/test_noise_injection.cpp
     tests/test_dropout_injection.cpp
+    tests/test_osd_renderer.cpp
+    tests/test_osd_token_resolver.cpp
 )
 
 target_compile_definitions(videosynth_tests
@@ -159,6 +165,8 @@ set(videosynth_unit_test_patterns
     "^BiphaseFinalTest\\."
     "^NoiseInjectionTest\\."
     "^DropoutInjectionTest\\."
+    "^OsdRendererTest\\."
+    "^OsdTokenResolverTest\\."
     "^SignalShapingTest\\."
     "^SignalTimingModelTest\\."
     "^TimingConstantsTest\\."

@@ -11,6 +11,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -28,6 +29,18 @@
 #include "videosynth/timing_constants.h"
 
 namespace videosynth {
+
+// Per-frame snapshot captured after injection and before generator advance.
+// Available via GetLastFrameContext() for token-based OSD rendering.
+struct PerFrameContext {
+  // Decoded CAV picture number for this frame (0 if no picture_number
+  // generator is active).
+  int picture_number = 0;
+  // Raw 24-bit biphase code values produced by all active generators.
+  std::vector<uint32_t> biphase_words;
+  // Colour-frame sequence index: 0–3 for PAL (V-axis cycle), 0–1 for NTSC.
+  int colour_frame_index = 0;
+};
 
 // Orchestrates biphase and 40-bit FM VBI injection for LaserDisc authoring.
 //
@@ -119,6 +132,11 @@ class BiphaseInjectionManager {
                     int active_window_end_samples,
                     std::vector<std::string>* errors);
 
+  // Returns the context snapshot captured during the most recent ProcessFrame()
+  // call.  The snapshot reflects the biphase codes and colour-frame index that
+  // were active for that frame; it is reset to defaults by Reset().
+  const PerFrameContext& GetLastFrameContext() const;
+
  private:
   // The section being processed; null = no section yet / reset.
   const Section* current_section_ = nullptr;
@@ -138,6 +156,12 @@ class BiphaseInjectionManager {
   DiscType disc_type_ = DiscType::kUnknown;
   SectionType section_type_ = SectionType::kUnknown;
   bool has_laserdisc_ = false;
+
+  // Snapshot populated at the end of each ProcessFrame() call.
+  PerFrameContext last_context_ = {};
+  // Monotone frame counter; resets to 0 on Reset(). Used to derive
+  // colour_frame_index without needing access to the timing model here.
+  int frame_count_ = 0;
 
   // (Re)initialises all generators for a new section.
   bool InitializeSection(const Section& section, Standard standard,

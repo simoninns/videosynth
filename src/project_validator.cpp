@@ -18,6 +18,7 @@
 
 #include "videosynth/biphase_types.h"
 #include "videosynth/dropout_scale.h"
+#include "videosynth/osd_token_resolver.h"
 #include "videosynth/vits_definition_provider.h"
 
 namespace {
@@ -979,6 +980,59 @@ void ValidateDropoutParameters(const videosynth::Section& section,
   }
 }
 
+// Valid OSD scale range: 1 pixel-per-glyph-pixel (8×8) to 4 (32×32).
+constexpr int kOsdScaleMin = 1;
+constexpr int kOsdScaleMax = 4;
+
+void ValidateOsdConfig(const videosynth::Section& section,
+                       videosynth::ValidationResult* result) {
+  if (result == nullptr) {
+    return;
+  }
+
+  for (const videosynth::OsdOverlay& ov : section.osd.overlays) {
+    if (ov.scale < kOsdScaleMin || ov.scale > kOsdScaleMax) {
+      result->is_valid = false;
+      result->errors.push_back("OSD validation error in section '" +
+                               section.name +
+                               "': overlay scale must be in [1, 4]; got " +
+                               std::to_string(ov.scale) + ".");
+      return;
+    }
+
+    if (ov.fg_luma < 0.0 || ov.fg_luma > 1.0) {
+      result->is_valid = false;
+      result->errors.push_back(
+          "OSD validation error in section '" + section.name +
+          "': overlay fg_luma must be in [0.0, 1.0]; got " +
+          std::to_string(ov.fg_luma) + ".");
+      return;
+    }
+
+    if (ov.bg_luma != -1.0 && (ov.bg_luma < 0.0 || ov.bg_luma > 1.0)) {
+      result->is_valid = false;
+      result->errors.push_back(
+          "OSD validation error in section '" + section.name +
+          "': overlay bg_luma must be -1.0 (transparent) or in [0.0, 1.0]; "
+          "got " +
+          std::to_string(ov.bg_luma) + ".");
+      return;
+    }
+
+    std::string unknown_token;
+    if (!videosynth::OsdTokenResolver::HasOnlyKnownTokens(ov.text,
+                                                          &unknown_token)) {
+      result->is_valid = false;
+      result->errors.push_back(
+          "OSD validation error in section '" + section.name +
+          "': overlay text contains unknown token '{" + unknown_token +
+          "}'. Supported tokens: {picture_number}, {biphase_hex}, {phase_id}, "
+          "{section_name}.");
+      return;
+    }
+  }
+}
+
 }  // namespace
 
 namespace videosynth {
@@ -1108,6 +1162,11 @@ ValidationResult ProjectValidator::Validate(const Project& project) {
       }
 
       ValidateDropoutParameters(section, &result);
+      if (!result.is_valid) {
+        break;
+      }
+
+      ValidateOsdConfig(section, &result);
       if (!result.is_valid) {
         break;
       }

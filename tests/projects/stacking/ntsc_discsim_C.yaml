@@ -1,23 +1,26 @@
-# NTSC Stacking Test — Seed 3003
+# NTSC Disc Simulation — Source C (seed 3003)
 #
-# 10 sections × 8 frames of tartan, progressing from clean (no degradation)
-# to maximum noise and dropout. Designed for stacking algorithm validation.
+# Simulates a capture starting at PN 3 (PNs 1–2 not captured).
+# Includes a backward skip: after PN 12 the player rewinds and replays PNs 9–16.
+# Includes a forward skip: after PN 28 the player jumps to PN 31.
+# PNs 29 and 30 are absent; Frame Map must detect the gap and pad.
+# 40 frames total (4 backward-skip duplicates, 2-frame forward gap).
 #
-# Noise ramp (noise_db): none → 58 → 53 → 48 → 43 → 38 → 33 → 28 → 24 → 20
-# Dropout ramp (scale):  none →  2 →  4 →  6 →  8 → 10 → 12 → 14 → 17 → 20
-# Picture numbers:          1 →  9 → 17 → 25 → 33 → 41 → 49 → 57 → 65 → 73
+# Content layout (matches all four sources):
+#   PNs  1–8:  100_BARS.exr   (source C starts at PN 3 → 6 frames)
+#   PNs  9–16: SMPTE_BARS_001.exr (backward skip: 9–12 first play, 9–16 replay)
+#   PNs 17–24: MULTIBURST.exr
+#   PNs 25–32: TARTAN.exr     (forward skip: 25–28 played, gap 29–30, resume 31–32)
+#   PNs 33–40: Y_CB_CR_RAMPS.exr
 #
-# All noise and dropout sections use seed 3003 as the deterministic base.
-# Combine with ntsc_stacking_2002, ntsc_stacking_3003, ntsc_stacking_4004 to
-# produce four independent captures with different degradation patterns.
-#
-# VITS: VIRS on lines 19 and 282 (IEC 60857 §9.1.3).
-# FM codes: fm_picture_number and fm_white_flag per IEC 60857 §10.1.
+# Noise/dropout: light — noise_db 48.0, scale 6, seed 3003.
+# Backward skip: Testcard_PreSkip_C → Testcard_Replay_C (noise_seed 9903).
+# Forward skip: Tartan_PreGap_C (25–28) → Tartan_PostGap_C (start_value 31).
 
 project:
-  name: NtscStacking3003
+  name: NtscDiscSimC
   version: "1.0"
-  description: NTSC stacking test — clean to max noise+dropout, seed 3003
+  description: NTSC disc simulation source C — seed 3003, start PN 3, backward + forward skips
 
 cvbs_presets:
   video_standard_preset: NTSC
@@ -25,25 +28,36 @@ cvbs_presets:
   signal_state_preset: STANDARD_TBC_LOCKED
 
 output:
-  video_path: tests/projects/output-stacking/videosynth_ntsc_stacking_3003.composite
-  metadata_path: tests/projects/output-stacking/videosynth_ntsc_stacking_3003.meta
+  video_path: tests/projects/output-stacking/videosynth_ntsc_discsim_C.composite
+  metadata_path: tests/projects/output-stacking/videosynth_ntsc_discsim_C.meta
 
 sections:
 
   # ---------------------------------------------------------------------------
-  # Section 1: clean reference — no noise, no dropout
+  # PNs 3–8: 100% colour bars (source starts at PN 3; PNs 1–2 absent)
   # ---------------------------------------------------------------------------
-  - name: CleanSource
+  - name: Bars_C
     type: progressive
-    source: videosynth-assets/assets/exr/720x486/TARTAN.exr
-    duration_frames: 8
+    source: videosynth-assets/assets/exr/720x486/100_BARS.exr
+    duration_frames: 6
     section_type: programme_area
+    noise:
+      noise_db: 48.0
+      noise_spread_db: 4.0
+      noise_seed: 3003
+    dropouts:
+      random:
+        scale: 6
+        seed: 3003
+      scratch:
+        scale: 6
+        seed: 3003
     line_injections:
       - type: laserdisc
         disc_type: CAV
         codes:
           - code_type: picture_number
-            start_value: 1
+            start_value: 3
           - code_type: programme_status
             programme_status: "0x8DC001"
           - code_type: fm_picture_number
@@ -51,25 +65,39 @@ sections:
       - type: vits
         vits_type: virs
         target_lines: [19, 282]
+    osd:
+      overlays:
+        - text: "SOURCE C  SEED 3003"
+          x: 8
+          y: 8
+          scale: 2
+          fg_luma: 1.0
+          bg_luma: 0.0
+        - text: "PN:{picture_number} HEX:{biphase_hex} PHASE:{phase_id}"
+          x: 8
+          y: 32
+          scale: 1
+          fg_luma: 1.0
+          bg_luma: 0.0
 
   # ---------------------------------------------------------------------------
-  # Section 2: near-quantisation noise, minimal dropout
+  # PNs 9–12: UK test card F (first play; player rewinds after PN 12)
   # ---------------------------------------------------------------------------
-  - name: NearQuantisation
+  - name: Testcard_PreSkip_C
     type: progressive
-    source: videosynth-assets/assets/exr/720x486/TARTAN.exr
-    duration_frames: 8
+    source: videosynth-assets/assets/exr/720x486/SMPTE_BARS_001.exr
+    duration_frames: 4
     section_type: programme_area
     noise:
-      noise_db: 58.0
+      noise_db: 48.0
       noise_spread_db: 4.0
       noise_seed: 3003
     dropouts:
       random:
-        scale: 2
+        scale: 6
         seed: 3003
       scratch:
-        scale: 2
+        scale: 6
         seed: 3003
     line_injections:
       - type: laserdisc
@@ -84,25 +112,86 @@ sections:
       - type: vits
         vits_type: virs
         target_lines: [19, 282]
+    osd:
+      overlays:
+        - text: "SOURCE C  SEED 3003"
+          x: 8
+          y: 8
+          scale: 2
+          fg_luma: 1.0
+          bg_luma: 0.0
+        - text: "PN:{picture_number} HEX:{biphase_hex} PHASE:{phase_id}"
+          x: 8
+          y: 32
+          scale: 1
+          fg_luma: 1.0
+          bg_luma: 0.0
 
   # ---------------------------------------------------------------------------
-  # Section 3: excellent source quality
+  # PNs 9–16: UK test card F replay (backward skip — same start_value, fresh noise)
   # ---------------------------------------------------------------------------
-  - name: ExcellentSource
+  - name: Testcard_Replay_C
     type: progressive
-    source: videosynth-assets/assets/exr/720x486/TARTAN.exr
+    source: videosynth-assets/assets/exr/720x486/SMPTE_BARS_001.exr
     duration_frames: 8
     section_type: programme_area
     noise:
-      noise_db: 53.0
+      noise_db: 48.0
+      noise_spread_db: 4.0
+      noise_seed: 9903
+    dropouts:
+      random:
+        scale: 6
+        seed: 3003
+      scratch:
+        scale: 6
+        seed: 3003
+    line_injections:
+      - type: laserdisc
+        disc_type: CAV
+        codes:
+          - code_type: picture_number
+            start_value: 9
+          - code_type: programme_status
+            programme_status: "0x8DC001"
+          - code_type: fm_picture_number
+          - code_type: fm_white_flag
+      - type: vits
+        vits_type: virs
+        target_lines: [19, 282]
+    osd:
+      overlays:
+        - text: "SOURCE C  SEED 3003 REPLAY"
+          x: 8
+          y: 8
+          scale: 2
+          fg_luma: 1.0
+          bg_luma: 0.0
+        - text: "PN:{picture_number} HEX:{biphase_hex} PHASE:{phase_id}"
+          x: 8
+          y: 32
+          scale: 1
+          fg_luma: 1.0
+          bg_luma: 0.0
+
+  # ---------------------------------------------------------------------------
+  # PNs 17–24: multi-burst
+  # ---------------------------------------------------------------------------
+  - name: MultiBurst_C
+    type: progressive
+    source: videosynth-assets/assets/exr/720x486/MULTIBURST.exr
+    duration_frames: 8
+    section_type: programme_area
+    noise:
+      noise_db: 48.0
       noise_spread_db: 4.0
       noise_seed: 3003
     dropouts:
       random:
-        scale: 4
+        scale: 6
         seed: 3003
       scratch:
-        scale: 4
+        scale: 6
         seed: 3003
     line_injections:
       - type: laserdisc
@@ -117,14 +206,28 @@ sections:
       - type: vits
         vits_type: virs
         target_lines: [19, 282]
+    osd:
+      overlays:
+        - text: "SOURCE C  SEED 3003"
+          x: 8
+          y: 8
+          scale: 2
+          fg_luma: 1.0
+          bg_luma: 0.0
+        - text: "PN:{picture_number} HEX:{biphase_hex} PHASE:{phase_id}"
+          x: 8
+          y: 32
+          scale: 1
+          fg_luma: 1.0
+          bg_luma: 0.0
 
   # ---------------------------------------------------------------------------
-  # Section 4: good source quality
+  # PNs 25–28: tartan (player skips forward after PN 28)
   # ---------------------------------------------------------------------------
-  - name: GoodSource
+  - name: Tartan_PreGap_C
     type: progressive
     source: videosynth-assets/assets/exr/720x486/TARTAN.exr
-    duration_frames: 8
+    duration_frames: 4
     section_type: programme_area
     noise:
       noise_db: 48.0
@@ -150,25 +253,86 @@ sections:
       - type: vits
         vits_type: virs
         target_lines: [19, 282]
+    osd:
+      overlays:
+        - text: "SOURCE C  SEED 3003"
+          x: 8
+          y: 8
+          scale: 2
+          fg_luma: 1.0
+          bg_luma: 0.0
+        - text: "PN:{picture_number} HEX:{biphase_hex} PHASE:{phase_id}"
+          x: 8
+          y: 32
+          scale: 1
+          fg_luma: 1.0
+          bg_luma: 0.0
 
   # ---------------------------------------------------------------------------
-  # Section 5: fair source quality
+  # PNs 31–32: tartan resumed after forward skip (gap of 2: PNs 29–30 absent)
   # ---------------------------------------------------------------------------
-  - name: FairSource
+  - name: Tartan_PostGap_C
     type: progressive
     source: videosynth-assets/assets/exr/720x486/TARTAN.exr
-    duration_frames: 8
+    duration_frames: 2
     section_type: programme_area
     noise:
-      noise_db: 43.0
+      noise_db: 48.0
       noise_spread_db: 4.0
       noise_seed: 3003
     dropouts:
       random:
-        scale: 8
+        scale: 6
         seed: 3003
       scratch:
-        scale: 8
+        scale: 6
+        seed: 3003
+    line_injections:
+      - type: laserdisc
+        disc_type: CAV
+        codes:
+          - code_type: picture_number
+            start_value: 31
+          - code_type: programme_status
+            programme_status: "0x8DC001"
+          - code_type: fm_picture_number
+          - code_type: fm_white_flag
+      - type: vits
+        vits_type: virs
+        target_lines: [19, 282]
+    osd:
+      overlays:
+        - text: "SOURCE C  SEED 3003"
+          x: 8
+          y: 8
+          scale: 2
+          fg_luma: 1.0
+          bg_luma: 0.0
+        - text: "PN:{picture_number} HEX:{biphase_hex} PHASE:{phase_id}"
+          x: 8
+          y: 32
+          scale: 1
+          fg_luma: 1.0
+          bg_luma: 0.0
+
+  # ---------------------------------------------------------------------------
+  # PNs 33–40: YCbCr ramps
+  # ---------------------------------------------------------------------------
+  - name: Ramps_C
+    type: progressive
+    source: videosynth-assets/assets/exr/720x486/Y_CB_CR_RAMPS.exr
+    duration_frames: 8
+    section_type: programme_area
+    noise:
+      noise_db: 48.0
+      noise_spread_db: 4.0
+      noise_seed: 3003
+    dropouts:
+      random:
+        scale: 6
+        seed: 3003
+      scratch:
+        scale: 6
         seed: 3003
     line_injections:
       - type: laserdisc
@@ -183,168 +347,17 @@ sections:
       - type: vits
         vits_type: virs
         target_lines: [19, 282]
-
-  # ---------------------------------------------------------------------------
-  # Section 6: typical VHS quality
-  # ---------------------------------------------------------------------------
-  - name: TypicalVhs
-    type: progressive
-    source: videosynth-assets/assets/exr/720x486/TARTAN.exr
-    duration_frames: 8
-    section_type: programme_area
-    noise:
-      noise_db: 38.0
-      noise_spread_db: 4.0
-      noise_seed: 3003
-    dropouts:
-      random:
-        scale: 10
-        seed: 3003
-      scratch:
-        scale: 10
-        seed: 3003
-    line_injections:
-      - type: laserdisc
-        disc_type: CAV
-        codes:
-          - code_type: picture_number
-            start_value: 41
-          - code_type: programme_status
-            programme_status: "0x8DC001"
-          - code_type: fm_picture_number
-          - code_type: fm_white_flag
-      - type: vits
-        vits_type: virs
-        target_lines: [19, 282]
-
-  # ---------------------------------------------------------------------------
-  # Section 7: poor tape
-  # ---------------------------------------------------------------------------
-  - name: PoorTape
-    type: progressive
-    source: videosynth-assets/assets/exr/720x486/TARTAN.exr
-    duration_frames: 8
-    section_type: programme_area
-    noise:
-      noise_db: 33.0
-      noise_spread_db: 4.0
-      noise_seed: 3003
-    dropouts:
-      random:
-        scale: 12
-        seed: 3003
-      scratch:
-        scale: 12
-        seed: 3003
-    line_injections:
-      - type: laserdisc
-        disc_type: CAV
-        codes:
-          - code_type: picture_number
-            start_value: 49
-          - code_type: programme_status
-            programme_status: "0x8DC001"
-          - code_type: fm_picture_number
-          - code_type: fm_white_flag
-      - type: vits
-        vits_type: virs
-        target_lines: [19, 282]
-
-  # ---------------------------------------------------------------------------
-  # Section 8: very poor tape
-  # ---------------------------------------------------------------------------
-  - name: VeryPoor
-    type: progressive
-    source: videosynth-assets/assets/exr/720x486/TARTAN.exr
-    duration_frames: 8
-    section_type: programme_area
-    noise:
-      noise_db: 28.0
-      noise_spread_db: 4.0
-      noise_seed: 3003
-    dropouts:
-      random:
-        scale: 14
-        seed: 3003
-      scratch:
-        scale: 14
-        seed: 3003
-    line_injections:
-      - type: laserdisc
-        disc_type: CAV
-        codes:
-          - code_type: picture_number
-            start_value: 57
-          - code_type: programme_status
-            programme_status: "0x8DC001"
-          - code_type: fm_picture_number
-          - code_type: fm_white_flag
-      - type: vits
-        vits_type: virs
-        target_lines: [19, 282]
-
-  # ---------------------------------------------------------------------------
-  # Section 9: barely watchable
-  # ---------------------------------------------------------------------------
-  - name: BarelyWatchable
-    type: progressive
-    source: videosynth-assets/assets/exr/720x486/TARTAN.exr
-    duration_frames: 8
-    section_type: programme_area
-    noise:
-      noise_db: 24.0
-      noise_spread_db: 4.0
-      noise_seed: 3003
-    dropouts:
-      random:
-        scale: 17
-        seed: 3003
-      scratch:
-        scale: 17
-        seed: 3003
-    line_injections:
-      - type: laserdisc
-        disc_type: CAV
-        codes:
-          - code_type: picture_number
-            start_value: 65
-          - code_type: programme_status
-            programme_status: "0x8DC001"
-          - code_type: fm_picture_number
-          - code_type: fm_white_flag
-      - type: vits
-        vits_type: virs
-        target_lines: [19, 282]
-
-  # ---------------------------------------------------------------------------
-  # Section 10: sync-borderline — maximum noise and dropout
-  # ---------------------------------------------------------------------------
-  - name: SyncBorderline
-    type: progressive
-    source: videosynth-assets/assets/exr/720x486/TARTAN.exr
-    duration_frames: 8
-    section_type: programme_area
-    noise:
-      noise_db: 20.0
-      noise_spread_db: 0.0
-      noise_seed: 3003
-    dropouts:
-      random:
-        scale: 20
-        seed: 3003
-      scratch:
-        scale: 20
-        seed: 3003
-    line_injections:
-      - type: laserdisc
-        disc_type: CAV
-        codes:
-          - code_type: picture_number
-            start_value: 73
-          - code_type: programme_status
-            programme_status: "0x8DC001"
-          - code_type: fm_picture_number
-          - code_type: fm_white_flag
-      - type: vits
-        vits_type: virs
-        target_lines: [19, 282]
+    osd:
+      overlays:
+        - text: "SOURCE C  SEED 3003"
+          x: 8
+          y: 8
+          scale: 2
+          fg_luma: 1.0
+          bg_luma: 0.0
+        - text: "PN:{picture_number} HEX:{biphase_hex} PHASE:{phase_id}"
+          x: 8
+          y: 32
+          scale: 1
+          fg_luma: 1.0
+          bg_luma: 0.0

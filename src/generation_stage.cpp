@@ -23,6 +23,8 @@
 #include "videosynth/biphase_injection_manager.h"
 #include "videosynth/chroma_encoder.h"
 #include "videosynth/fixed_point.h"
+#include "videosynth/osd_renderer.h"
+#include "videosynth/osd_token_resolver.h"
 #include "videosynth/progressive_frame_source.h"
 #include "videosynth/signal_shaping.h"
 #include "videosynth/signal_timing_model.h"
@@ -996,6 +998,30 @@ bool GenerationStage::GenerateFrameBatch(
             timing.sample_rate_4fsc_hz, synth.frame_lines, active_window_start,
             active_window_end, errors)) {
       return false;
+    }
+
+    if (!section->osd.overlays.empty()) {
+      const PerFrameContext& ctx = biphase_manager_.GetLastFrameContext();
+      std::vector<std::string> resolved_texts;
+      resolved_texts.reserve(section->osd.overlays.size());
+      for (const OsdOverlay& ov : section->osd.overlays) {
+        resolved_texts.push_back(
+            osd_token_resolver_.Resolve(ov.text, ctx, section->name));
+      }
+      const SignalLevels osd_levels =
+          GetSignalLevels(project.cvbs_presets.video_standard_preset);
+      const int field1_start = synth.active.first_active_line_field1 - 1;
+      const int field1_end = field1_start + synth.active.active_lines_per_field;
+      osd_renderer_.Render(section->osd, resolved_texts, out_y_mv, out_c_mv,
+                           local_frame_base, synth.line_sample_offsets,
+                           field1_start, field1_end, active_window_start,
+                           active_window_end, osd_levels);
+      const int field2_start = synth.active.first_active_line_field2 - 1;
+      const int field2_end = field2_start + synth.active.active_lines_per_field;
+      osd_renderer_.Render(section->osd, resolved_texts, out_y_mv, out_c_mv,
+                           local_frame_base, synth.line_sample_offsets,
+                           field2_start, field2_end, active_window_start,
+                           active_window_end, osd_levels);
     }
   }
 

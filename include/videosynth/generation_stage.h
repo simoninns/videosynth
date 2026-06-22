@@ -12,6 +12,8 @@
 
 #include "videosynth/biphase_injection_manager.h"
 #include "videosynth/interfaces.h"
+#include "videosynth/osd_renderer.h"
+#include "videosynth/osd_token_resolver.h"
 #include "videosynth/progressive_frame_source.h"
 #include "videosynth/vits_definition_provider.h"
 #include "videosynth/vits_generator.h"
@@ -83,6 +85,8 @@ class GenerationStage final : public IGenerationStage {
   const IVitsDefinitionProvider* vits_definition_provider_;
   const IVitsGenerator* vits_generator_;
   BiphaseInjectionManager biphase_manager_;
+  OsdRenderer osd_renderer_;
+  OsdTokenResolver osd_token_resolver_;
 };
 
 }  // namespace videosynth
