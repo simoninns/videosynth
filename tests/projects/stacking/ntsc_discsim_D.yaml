@@ -68,12 +68,6 @@ sections:
         target_lines: [19, 282]
     osd:
       overlays:
-        - text: "SOURCE D  SEED 4004"
-          x: 8
-          y: 8
-          scale: 2
-          fg_luma: 1.0
-          bg_luma: 0.0
         - text: "PN:{picture_number} HEX:{biphase_hex} PHASE:{phase_id}"
           x: 8
           y: 32
@@ -115,12 +109,6 @@ sections:
         target_lines: [19, 282]
     osd:
       overlays:
-        - text: "SOURCE D  SEED 4004"
-          x: 8
-          y: 8
-          scale: 2
-          fg_luma: 1.0
-          bg_luma: 0.0
         - text: "PN:{picture_number} HEX:{biphase_hex} PHASE:{phase_id}"
           x: 8
           y: 32
@@ -162,12 +150,6 @@ sections:
         target_lines: [19, 282]
     osd:
       overlays:
-        - text: "SOURCE D  SEED 4004"
-          x: 8
-          y: 8
-          scale: 2
-          fg_luma: 1.0
-          bg_luma: 0.0
         - text: "PN:{picture_number} HEX:{biphase_hex} PHASE:{phase_id}"
           x: 8
           y: 32
@@ -209,12 +191,6 @@ sections:
         target_lines: [19, 282]
     osd:
       overlays:
-        - text: "SOURCE D  SEED 4004"
-          x: 8
-          y: 8
-          scale: 2
-          fg_luma: 1.0
-          bg_luma: 0.0
         - text: "PN:{picture_number} HEX:{biphase_hex} PHASE:{phase_id}"
           x: 8
           y: 32
@@ -256,12 +232,6 @@ sections:
         target_lines: [19, 282]
     osd:
       overlays:
-        - text: "SOURCE D  SEED 4004 REPLAY"
-          x: 8
-          y: 8
-          scale: 2
-          fg_luma: 1.0
-          bg_luma: 0.0
         - text: "PN:{picture_number} HEX:{biphase_hex} PHASE:{phase_id}"
           x: 8
           y: 32
@@ -303,12 +273,6 @@ sections:
         target_lines: [19, 282]
     osd:
       overlays:
-        - text: "SOURCE D  SEED 4004"
-          x: 8
-          y: 8
-          scale: 2
-          fg_luma: 1.0
-          bg_luma: 0.0
         - text: "PN:{picture_number} HEX:{biphase_hex} PHASE:{phase_id}"
           x: 8
           y: 32
@@ -350,12 +314,6 @@ sections:
         target_lines: [19, 282]
     osd:
       overlays:
-        - text: "SOURCE D  SEED 4004"
-          x: 8
-          y: 8
-          scale: 2
-          fg_luma: 1.0
-          bg_luma: 0.0
         - text: "PN:{picture_number} HEX:{biphase_hex} PHASE:{phase_id}"
           x: 8
           y: 32

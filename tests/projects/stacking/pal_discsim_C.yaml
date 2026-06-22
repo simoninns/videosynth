@@ -66,12 +66,6 @@ sections:
         target_lines: [19]
     osd:
       overlays:
-        - text: "SOURCE C  SEED 3003"
-          x: 8
-          y: 8
-          scale: 2
-          fg_luma: 1.0
-          bg_luma: 0.0
         - text: "PN:{picture_number} HEX:{biphase_hex} PHASE:{phase_id}"
           x: 8
           y: 32
@@ -111,12 +105,6 @@ sections:
         target_lines: [19]
     osd:
       overlays:
-        - text: "SOURCE C  SEED 3003"
-          x: 8
-          y: 8
-          scale: 2
-          fg_luma: 1.0
-          bg_luma: 0.0
         - text: "PN:{picture_number} HEX:{biphase_hex} PHASE:{phase_id}"
           x: 8
           y: 32
@@ -156,12 +144,6 @@ sections:
         target_lines: [19]
     osd:
       overlays:
-        - text: "SOURCE C  SEED 3003 REPLAY"
-          x: 8
-          y: 8
-          scale: 2
-          fg_luma: 1.0
-          bg_luma: 0.0
         - text: "PN:{picture_number} HEX:{biphase_hex} PHASE:{phase_id}"
           x: 8
           y: 32
@@ -201,12 +183,6 @@ sections:
         target_lines: [19]
     osd:
       overlays:
-        - text: "SOURCE C  SEED 3003"
-          x: 8
-          y: 8
-          scale: 2
-          fg_luma: 1.0
-          bg_luma: 0.0
         - text: "PN:{picture_number} HEX:{biphase_hex} PHASE:{phase_id}"
           x: 8
           y: 32
@@ -246,12 +222,6 @@ sections:
         target_lines: [19]
     osd:
       overlays:
-        - text: "SOURCE C  SEED 3003"
-          x: 8
-          y: 8
-          scale: 2
-          fg_luma: 1.0
-          bg_luma: 0.0
         - text: "PN:{picture_number} HEX:{biphase_hex} PHASE:{phase_id}"
           x: 8
           y: 32
@@ -291,12 +261,6 @@ sections:
         target_lines: [19]
     osd:
       overlays:
-        - text: "SOURCE C  SEED 3003"
-          x: 8
-          y: 8
-          scale: 2
-          fg_luma: 1.0
-          bg_luma: 0.0
         - text: "PN:{picture_number} HEX:{biphase_hex} PHASE:{phase_id}"
           x: 8
           y: 32
@@ -336,12 +300,6 @@ sections:
         target_lines: [19]
     osd:
       overlays:
-        - text: "SOURCE C  SEED 3003"
-          x: 8
-          y: 8
-          scale: 2
-          fg_luma: 1.0
-          bg_luma: 0.0
         - text: "PN:{picture_number} HEX:{biphase_hex} PHASE:{phase_id}"
           x: 8
           y: 32
