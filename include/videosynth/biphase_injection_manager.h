@@ -93,6 +93,13 @@ class BiphaseInjectionManager {
   // restart from their configured initial values.
   void Reset();
 
+  // Sets the initial frame count used to derive colour_frame_index.
+  // Call this after Reset() with (first_picture_number - 1) so that
+  // colour_frame_index == (PN - 1) % colour_period for every frame,
+  // matching the disc-accurate colour phase for a CAV disc.
+  // Has no effect if called before Reset() (Reset() overwrites frame_count_).
+  void SetInitialFrameCount(int initial_count);
+
   // Processes biphase VBI injection for one frame.
   //
   // Must be called for every frame in the schedule in order; the manager

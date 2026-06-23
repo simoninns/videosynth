@@ -76,6 +76,10 @@ void BiphaseInjectionManager::Reset() {
   frame_count_ = 0;
 }
 
+void BiphaseInjectionManager::SetInitialFrameCount(int initial_count) {
+  frame_count_ = initial_count;
+}
+
 const PerFrameContext& BiphaseInjectionManager::GetLastFrameContext() const {
   return last_context_;
 }
@@ -92,22 +96,37 @@ bool BiphaseInjectionManager::ProcessFrame(
     return false;
   }
 
-  // Always update the colour-frame index so {phase_id} is correct even for
-  // sections that have no laserdisc injection.
-  constexpr int kPalColourPeriod = 4;
-  constexpr int kNtscColourPeriod = 2;
-  const int colour_period =
-      (standard == Standard::kPal) ? kPalColourPeriod : kNtscColourPeriod;
-  last_context_ = {};
-  last_context_.colour_frame_index = frame_count_ % colour_period;
-  ++frame_count_;
-
+  // Initialize section generators first so the picture_number generator already
+  // reflects the new section's start_value when deriving colour_frame_index.
   if (&section != current_section_) {
     if (!InitializeSection(section, standard, sample_rate_hz, errors)) {
       return false;
     }
     current_section_ = &section;
   }
+
+  // Derive colour_frame_index from the disc picture number when a CAV
+  // picture_number generator is active. This produces disc-accurate phase
+  // even after section transitions with non-contiguous picture numbers
+  // (backward-skip replay sections or post-gap forward-skip sections).
+  // Fall back to the monotonic frame_count_ for sections without a PN
+  // generator (lead-in, lead-out, or sections with no laserdisc injection).
+  constexpr int kPalColourPeriod = 4;
+  constexpr int kNtscColourPeriod = 2;
+  const int colour_period =
+      (standard == Standard::kPal) ? kPalColourPeriod : kNtscColourPeriod;
+  last_context_ = {};
+  if (const CodeGenerator* pn_gen = GetGenerator("picture_number")) {
+    const uint32_t code = pn_gen->CurrentCode();
+    const int pn = static_cast<int>(
+        ((code >> 16U) & 0xFU) * 10000U + ((code >> 12U) & 0xFU) * 1000U +
+        ((code >> 8U) & 0xFU) * 100U + ((code >> 4U) & 0xFU) * 10U +
+        (code & 0xFU));
+    last_context_.colour_frame_index = (pn - 1) % colour_period;
+  } else {
+    last_context_.colour_frame_index = frame_count_ % colour_period;
+  }
+  ++frame_count_;
 
   if (!has_laserdisc_) {
     return true;

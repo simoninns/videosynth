@@ -200,12 +200,38 @@ struct OutputTargets {
   std::string metadata_path;
 };
 
+enum class DiscSkipDirection {
+  kForward,
+  kBackward,
+};
+
+// Describes a single skip event in the disc output stream.
+//
+// Forward skip: disc frames [at_frame .. at_frame+count-1] (1-based) are
+// generated to maintain burst-phase continuity but withheld from the output.
+// The capture therefore has a gap at that position.
+//
+// Backward skip: after disc frame at_frame (1-based) has been written,
+// disc frames [at_frame-count+1 .. at_frame] are re-emitted as bit-identical
+// copies, simulating the player rewinding and replaying the same grooves.
+struct DiscSkip {
+  // 1-based disc frame number at which the skip event starts (forward) or
+  // after which replay begins (backward).
+  int at_frame = 0;
+  DiscSkipDirection direction = DiscSkipDirection::kForward;
+  // Frames to discard (forward) or replay (backward). Must be >= 1.
+  int count = 0;
+};
+
 struct Project {
   std::string name;
   std::string version;
   CvbsPresets cvbs_presets;
   OutputTargets output;
   std::vector<Section> sections;
+  // Optional list of disc skip events applied after generation. Empty = no
+  // skips; the pipeline uses the standard batch loop.
+  std::vector<DiscSkip> disc_skips;
 };
 
 }  // namespace videosynth

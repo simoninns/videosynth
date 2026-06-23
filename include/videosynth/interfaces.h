@@ -113,6 +113,11 @@ class IGenerationStage {
   struct FrameScheduleItem {
     const Section* section = nullptr;
     int source_frame_index = 0;
+    // CAV picture number for this frame (> 0 when a picture_number injection
+    // code is present); 0 for sections without a picture_number code.
+    // Used to derive disc-accurate colour-subcarrier phase independent of file
+    // position.
+    int disc_picture_number = 0;
   };
 
   // Ownership: out_schedule and errors are output parameters. The caller owns

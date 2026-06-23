@@ -60,6 +60,7 @@
   - **VITC** (Vertical Interval Timecode, SMPTE 12M).
 - **Per-section noise injection**: two-component Gaussian noise model (floor + proportional) targeting orc-gui Black PSNR and White SNR metrics.
 - **Per-section dropout injection**: physical-tape and optical-disc dropout simulation (random surface dropouts and persistent scratch dropouts) with automatic sidecar generation conformant to the [Dropout Extension Format](../cvbs-file-format-specification/docs/extensions/dropout-extension-format.md) (schema version 5).
+- **Disc skip simulation**: Frame-accurate simulation of laserdisc player tracking failures. Forward skips discard disc frames from output; backward skips repeat frames as bit-identical copies (noise and dropout included), ensuring burst phase and colour-frame index remain consistent across all capture sources regardless of skip pattern.
 
 ### **Target Users**
 
@@ -762,6 +763,14 @@ sections:
             chapter: 5
           - code_type: programme_status
             programme_status: "0x8F0000"
+
+disc_skips:                       # Optional; simulates disc player tracking failures
+  - at_frame: 5                   # 1-based disc frame; forward skip withholds frames 5–6
+    direction: forward
+    count: 2
+  - at_frame: 20                  # backward skip replays frames 17–20 after frame 20
+    direction: backward
+    count: 4
 ```
 
 #### **`noise:` Sub-Key (Optional, Per-Section)**
@@ -834,6 +843,38 @@ sections:
         seed: 42
       scratch:
         scale: 3
+```
+
+---
+
+#### **`disc_skips:` Top-Level Key (Optional)**
+
+The `disc_skips:` block simulates laserdisc player tracking failures in the generated output. Each entry describes a single skip event in terms of a disc frame position, direction, and frame count.
+
+`disc_skips` operates on the ordered sequence of all disc frames across all sections. The pipeline processes every disc frame in sequence — including forward-skipped ones — so that `BiphaseInjectionManager.frame_count_` advances identically in all sources and `colour_frame_index`/burst phase remain consistent for a given picture number regardless of which capture sources are stacked.
+
+| Key | Type | Required | Range | Description |
+|-----|------|----------|-------|-------------|
+| `at_frame` | int | Yes | [1, total_disc_frames] | 1-based disc frame number at which the skip occurs. |
+| `direction` | string | Yes | `"forward"` or `"backward"` | Skip direction. |
+| `count` | int | Yes | ≥ 1 | Number of frames to skip (forward) or replay (backward). |
+
+**Forward skip** (`direction: forward`): Disc frames at 1-based positions `[at_frame, at_frame + count − 1]` are generated (advancing burst-phase state) but withheld from the output stream. The total output frame count is reduced by `count`.
+
+**Backward skip** (`direction: backward`): After disc frame `at_frame` is written to output, the `count` frames ending at `at_frame` (i.e. 1-based `[at_frame − count + 1, at_frame]`) are re-emitted as bit-identical copies in the same order. Copies are pulled from a pipeline frame cache of fully-processed (generate + noise + dropout) samples, so noise pattern, dropout events, and all signal content are identical to the originals. The total output frame count is increased by `count`.
+
+**Phase-correctness invariant**: any two projects that share the same disc master will produce frames with identical burst phase and colour-frame index for a given picture number, even if each project has a different `disc_skips` pattern. This is the requirement for correct multi-source disc stacking in `decode-orc`.
+
+Example:
+
+```yaml
+disc_skips:
+  - at_frame: 5        # 1-based disc frame
+    direction: forward
+    count: 2           # frames 5 and 6 withheld from output (output starts at frame 7)
+  - at_frame: 20
+    direction: backward
+    count: 4           # replay frames 17–20 as bit-identical copies after frame 20
 ```
 
 ---
@@ -1560,6 +1601,7 @@ Current implementation note:
 - VITS line injections are applied in the generation-stage runtime path on validated target lines.
 - Laserdisc biphase injection is applied in the generation-stage runtime path via BiphaseInjectionManager (24-bit biphase and 40-bit FM for NTSC).
 - Runtime synthesis/application for VITC and custom per-line content remains deferred.
+- When `disc_skips` is non-empty the pipeline switches to a **skip-aware per-frame loop** (batch size 1) instead of the normal batched loop. A `ComputeDiscSkipPlan` pre-pass builds one `DiscFrameAction` per disc frame from the skip declarations; the action records whether the frame should be written to output, whether its samples should be cached for backward-skip replay, and the list of cached disc frames to re-emit after it. Forward-skipped frames are still generated (so `BiphaseInjectionManager.frame_count_` advances), but `AppendSamples` is not called for them. Backward-skip copies are emitted from a frame cache of fully-processed (generate + noise + dropout) sample buffers, guaranteeing bit-identical copies. `BeginWrite` receives the actual output frame count (which may differ from `total_disc_frames`).
 
 #### **3. Noise Injection Stage**
 
@@ -1693,6 +1735,12 @@ The rule set below remains the intended validation contract for VITC and custom 
   - `scratch.scale` must be in **[0, 20]** (error if outside this range; `0` means disabled).
   - A `dropouts:` block where both `random.scale` and `scratch.scale` are `0` (or both sub-blocks are absent) is a **validation error** — omit the `dropouts:` key entirely to disable.
   - If `scratch.scale > 0` and the derived maximum scratch lifespan (from `DeriveScratchDropoutParams(scale).max_dur_frames`) exceeds `section.duration_frames`, a **warning** is emitted indicating the scratch event will not complete its full triangle envelope within the section.
+6. **Disc Skip Parameters** (`disc_skips:` top-level list):
+  - Each entry's `at_frame` must be in **[1, total_disc_frames]** where `total_disc_frames` = sum of all section `duration_frames`.
+  - Each entry's `count` must be **≥ 1**.
+  - For `direction: forward`: `at_frame + count − 1` must be **≤ total_disc_frames** (the skip range must not extend beyond the last disc frame).
+  - For `direction: backward`: `at_frame − count + 1` must be **≥ 1** (the replay range must not extend before the first disc frame).
+  - `direction` must be one of `"forward"` or `"backward"`; any other value is a validation error.
 
 ---
 

@@ -87,6 +87,10 @@ class GenerationStage final : public IGenerationStage {
   BiphaseInjectionManager biphase_manager_;
   OsdRenderer osd_renderer_;
   OsdTokenResolver osd_token_resolver_;
+  // Fallback disc frame offset: (first_PN - 1). Used for sections that have no
+  // picture_number injection code (lead-in, lead-out, plain sections). When
+  // disc_picture_number is populated in FrameScheduleItem it takes precedence.
+  std::size_t initial_frame_offset_ = 0;
 };
 
 }  // namespace videosynth

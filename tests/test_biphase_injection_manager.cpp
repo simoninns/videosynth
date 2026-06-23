@@ -1165,5 +1165,177 @@ TEST_F(BiphaseInjectionManagerTest, BiphaseWordsPopulatedForLaserdiscSection) {
   EXPECT_EQ(manager_.GetLastFrameContext().biphase_words.size(), 2U);
 }
 
+// ---------------------------------------------------------------------------
+// CLV sections: colour_frame_index is driven by the monotonic frame_count_
+// counter (absolute disc position from Reset()), NOT by the CLV timecode
+// generators (which count from programme start and do not include lead-in).
+//
+// This is verified by interleaving a non-multiple-of-period lead-in with a
+// CLV programme section: if colour_frame_index were derived from
+// clv_picture_number.total_frames_ it would snap to 0 at programme start;
+// the correct behaviour is to continue the monotonic sequence.
+// ---------------------------------------------------------------------------
+
+TEST_F(BiphaseInjectionManagerTest,
+       ClvColourFrameIndexContinuesFromFrameCountAcrossSections) {
+  // Lead-in section: 3 frames with no laserdisc injection (plain section).
+  // PAL colour period = 4; 3 is not a multiple of 4.
+  Section lead_in;
+  lead_in.name = "LeadIn";
+  lead_in.type = "progressive";
+  lead_in.section_type = SectionType::kLeadIn;
+  lead_in.duration_frames = 3;
+
+  // CLV programme section: has clv_picture_number whose internal total_frames_
+  // counter resets to 0 at creation. If colour phase mistakenly used that
+  // counter, it would give 0 at the start of this section instead of 3.
+  Section::LineInjectionCode ptc;
+  ptc.code_type = "programme_time_code";
+  Section::LineInjectionCode cpn;
+  cpn.code_type = "clv_picture_number";
+  auto clv_section = MakeLaserdiscSection(SectionType::kProgrammeArea,
+                                          DiscType::kCLV, {ptc, cpn});
+
+  // Three lead-in frames: colour phase advances 0, 1, 2 via frame_count_.
+  EXPECT_TRUE(RunProcessFrame(Standard::kPal, lead_in));
+  EXPECT_EQ(manager_.GetLastFrameContext().colour_frame_index, 0);
+  EXPECT_TRUE(RunProcessFrame(Standard::kPal, lead_in));
+  EXPECT_EQ(manager_.GetLastFrameContext().colour_frame_index, 1);
+  EXPECT_TRUE(RunProcessFrame(Standard::kPal, lead_in));
+  EXPECT_EQ(manager_.GetLastFrameContext().colour_frame_index, 2);
+
+  // First CLV programme frame: frame_count_ = 3 → correct index is 3.
+  // If clv_picture_number.total_frames_ (= 0 at creation) were used instead,
+  // the index would incorrectly snap back to 0.
+  EXPECT_TRUE(RunProcessFrame(Standard::kPal, clv_section));
+  EXPECT_EQ(manager_.GetLastFrameContext().colour_frame_index, 3);
+
+  // Subsequent CLV frames continue wrapping normally.
+  EXPECT_TRUE(RunProcessFrame(Standard::kPal, clv_section));
+  EXPECT_EQ(manager_.GetLastFrameContext().colour_frame_index, 0);  // 4%4
+  EXPECT_TRUE(RunProcessFrame(Standard::kPal, clv_section));
+  EXPECT_EQ(manager_.GetLastFrameContext().colour_frame_index, 1);
+  EXPECT_TRUE(RunProcessFrame(Standard::kPal, clv_section));
+  EXPECT_EQ(manager_.GetLastFrameContext().colour_frame_index, 2);
+}
+
+// CLV colour phase is continuous across CLV section (chapter) boundaries.
+// The clv_picture_number generator persists across sections; frame_count_
+// also persists, so the phase never resets on a chapter transition.
+TEST_F(BiphaseInjectionManagerTest,
+       ClvColourFrameIndexContinuesAcrossChapterBoundary) {
+  Section::LineInjectionCode ptc;
+  ptc.code_type = "programme_time_code";
+  Section::LineInjectionCode cpn;
+  cpn.code_type = "clv_picture_number";
+
+  auto chapter_a = MakeLaserdiscSection(SectionType::kProgrammeArea,
+                                        DiscType::kCLV, {ptc, cpn});
+  auto chapter_b = MakeLaserdiscSection(SectionType::kProgrammeArea,
+                                        DiscType::kCLV, {ptc, cpn});
+  chapter_b.name = "ChapterB";
+
+  // Five frames of chapter_a: colour indices 0, 1, 2, 3, 0.
+  for (int i = 0; i < 4; ++i) {
+    EXPECT_TRUE(RunProcessFrame(Standard::kPal, chapter_a));
+    EXPECT_EQ(manager_.GetLastFrameContext().colour_frame_index, i);
+  }
+  EXPECT_TRUE(RunProcessFrame(Standard::kPal, chapter_a));
+  EXPECT_EQ(manager_.GetLastFrameContext().colour_frame_index, 0);
+
+  // Chapter boundary: phase must continue from 1, not reset.
+  EXPECT_TRUE(RunProcessFrame(Standard::kPal, chapter_b));
+  EXPECT_EQ(manager_.GetLastFrameContext().colour_frame_index, 1);
+  EXPECT_TRUE(RunProcessFrame(Standard::kPal, chapter_b));
+  EXPECT_EQ(manager_.GetLastFrameContext().colour_frame_index, 2);
+}
+
+// ---------------------------------------------------------------------------
+// colour_frame_index derived from disc picture number on section transitions.
+// Verifies that backward-skip and forward-skip sections produce PN-accurate
+// phase rather than the file-position-based monotonic counter.
+// ---------------------------------------------------------------------------
+
+// Simulates a backward-skip: section A encodes PN 1–3, then section B
+// restarts at PN 25 (replay). PAL colour period = 4.
+// Without the fix, frame_count_ after 3 frames of A would be 3 → cfi = 3;
+// with the fix, PN 25 → (25-1)%4 = 0.
+TEST_F(BiphaseInjectionManagerTest, ColourFrameIndexCorrectedOnBackwardSkip) {
+  Section::LineInjectionCode pn_a;
+  pn_a.code_type = "picture_number";
+  pn_a.start_value = 1;
+  pn_a.start_value_specified = true;
+  auto section_a =
+      MakeLaserdiscSection(SectionType::kProgrammeArea, DiscType::kCAV, {pn_a});
+
+  // Three frames of section A: PN 1 → cfi 0, PN 2 → cfi 1, PN 3 → cfi 2.
+  EXPECT_TRUE(RunProcessFrame(Standard::kPal, section_a));
+  EXPECT_EQ(manager_.GetLastFrameContext().colour_frame_index, 0);
+  EXPECT_TRUE(RunProcessFrame(Standard::kPal, section_a));
+  EXPECT_EQ(manager_.GetLastFrameContext().colour_frame_index, 1);
+  EXPECT_TRUE(RunProcessFrame(Standard::kPal, section_a));
+  EXPECT_EQ(manager_.GetLastFrameContext().colour_frame_index, 2);
+
+  // Section B: backward skip, replay starts at PN 25.
+  // (25-1) % 4 = 0; without the fix the monotonic counter gives 3.
+  Section::LineInjectionCode pn_b;
+  pn_b.code_type = "picture_number";
+  pn_b.start_value = 25;
+  pn_b.start_value_specified = true;
+  auto section_b =
+      MakeLaserdiscSection(SectionType::kProgrammeArea, DiscType::kCAV, {pn_b});
+
+  EXPECT_TRUE(RunProcessFrame(Standard::kPal, section_b));
+  EXPECT_EQ(manager_.GetLastFrameContext().colour_frame_index, 0);  // (25-1)%4
+  EXPECT_EQ(manager_.GetLastFrameContext().picture_number, 25);
+
+  // PN advances normally within section B.
+  EXPECT_TRUE(RunProcessFrame(Standard::kPal, section_b));
+  EXPECT_EQ(manager_.GetLastFrameContext().colour_frame_index, 1);  // (26-1)%4
+  EXPECT_TRUE(RunProcessFrame(Standard::kPal, section_b));
+  EXPECT_EQ(manager_.GetLastFrameContext().colour_frame_index, 2);  // (27-1)%4
+  EXPECT_TRUE(RunProcessFrame(Standard::kPal, section_b));
+  EXPECT_EQ(manager_.GetLastFrameContext().colour_frame_index, 3);  // (28-1)%4
+}
+
+// Simulates a forward-skip: section A encodes PN 17–20, then section B
+// resumes at PN 23 (gap of 2). PAL colour period = 4.
+// Without the fix, frame_count_ after 4 frames of A = 4 → cfi = 0;
+// with the fix, PN 23 → (23-1)%4 = 2.
+TEST_F(BiphaseInjectionManagerTest, ColourFrameIndexCorrectedOnForwardSkip) {
+  Section::LineInjectionCode pn_a;
+  pn_a.code_type = "picture_number";
+  pn_a.start_value = 17;
+  pn_a.start_value_specified = true;
+  auto section_a =
+      MakeLaserdiscSection(SectionType::kProgrammeArea, DiscType::kCAV, {pn_a});
+
+  // Four frames of section A: PN 17→cfi 0, 18→1, 19→2, 20→3.
+  EXPECT_TRUE(RunProcessFrame(Standard::kPal, section_a));
+  EXPECT_EQ(manager_.GetLastFrameContext().colour_frame_index, 0);  // (17-1)%4
+  EXPECT_TRUE(RunProcessFrame(Standard::kPal, section_a));
+  EXPECT_EQ(manager_.GetLastFrameContext().colour_frame_index, 1);  // (18-1)%4
+  EXPECT_TRUE(RunProcessFrame(Standard::kPal, section_a));
+  EXPECT_EQ(manager_.GetLastFrameContext().colour_frame_index, 2);  // (19-1)%4
+  EXPECT_TRUE(RunProcessFrame(Standard::kPal, section_a));
+  EXPECT_EQ(manager_.GetLastFrameContext().colour_frame_index, 3);  // (20-1)%4
+
+  // Section B: forward skip, resumes at PN 23 (PNs 21–22 absent).
+  // (23-1) % 4 = 2; without the fix the monotonic counter gives 0.
+  Section::LineInjectionCode pn_b;
+  pn_b.code_type = "picture_number";
+  pn_b.start_value = 23;
+  pn_b.start_value_specified = true;
+  auto section_b =
+      MakeLaserdiscSection(SectionType::kProgrammeArea, DiscType::kCAV, {pn_b});
+
+  EXPECT_TRUE(RunProcessFrame(Standard::kPal, section_b));
+  EXPECT_EQ(manager_.GetLastFrameContext().colour_frame_index, 2);  // (23-1)%4
+  EXPECT_EQ(manager_.GetLastFrameContext().picture_number, 23);
+
+  EXPECT_TRUE(RunProcessFrame(Standard::kPal, section_b));
+  EXPECT_EQ(manager_.GetLastFrameContext().colour_frame_index, 3);  // (24-1)%4
+}
+
 }  // namespace
 }  // namespace videosynth

@@ -1,0 +1,148 @@
+# PAL Disc Simulation — Source B (seed 2002)
+#
+# Simulates a capture starting at PN 5 (PNs 1–4 not captured).
+# Includes a forward skip: after PN 20 the player jumps to PN 23.
+# PNs 21 and 22 are absent; Frame Map must detect the gap and pad.
+# No backward skip.  34 frames total.
+#
+# Content layout (matches all four sources):
+#   PNs  1–8:  100_BARS.exr   (source B starts at PN 5 → 4 frames)
+#   PNs  9–16: TESTCARD-F.exr
+#   PNs 17–24: MULTIBURST.exr (gap at 21–22; resumes at PN 23)
+#   PNs 25–32: TARTAN.exr
+#   PNs 33–40: Y_CB_CR_RAMPS.exr
+#
+# Noise/dropout: moderate — noise_db 43.0, scale 8, seed 2002.
+# Forward skip: MultiBurst_PreGap_B (17–20) → MultiBurst_PostGap_B (start_value 23).
+
+project:
+  name: PalDiscSimB
+  version: "1.0"
+  description: PAL disc simulation source B — seed 2002, start PN 5, forward skip at PN 20
+
+cvbs_presets:
+  video_standard_preset: PAL
+  sample_encoding_preset: CVBS_U10_4FSC
+  signal_state_preset: STANDARD_TBC_LOCKED
+  pal_laserdisc_pilot_burst: true
+
+output:
+  video_path: tests/projects/output-stacking/videosynth_pal_discsim_B_clean.composite
+  metadata_path: tests/projects/output-stacking/videosynth_pal_discsim_B_clean.meta
+
+sections:
+
+  # ---------------------------------------------------------------------------
+  # PNs 5–8: 100% colour bars (source starts at PN 5; PNs 1–4 absent)
+  # ---------------------------------------------------------------------------
+  - name: Bars_B
+    type: progressive
+    source: videosynth-assets/assets/exr/720x576/100_BARS.exr
+    duration_frames: 4
+    section_type: programme_area
+    line_injections:
+      - type: laserdisc
+        disc_type: CAV
+        codes:
+          - code_type: picture_number
+            start_value: 5
+          - code_type: programme_status
+            programme_status: "0x8DC000"
+      - type: vits
+        vits_type: uk-national
+        target_lines: [19]
+  # ---------------------------------------------------------------------------
+  # PNs 9–16: UK test card F
+  # ---------------------------------------------------------------------------
+  - name: Testcard_B
+    type: progressive
+    source: videosynth-assets/assets/exr/720x576/TESTCARD-F.exr
+    duration_frames: 8
+    section_type: programme_area
+    line_injections:
+      - type: laserdisc
+        disc_type: CAV
+        codes:
+          - code_type: picture_number
+            start_value: 9
+          - code_type: programme_status
+            programme_status: "0x8DC000"
+      - type: vits
+        vits_type: uk-national
+        target_lines: [19]
+  # ---------------------------------------------------------------------------
+  # PNs 17–20: multi-burst (player skips forward after PN 20)
+  # ---------------------------------------------------------------------------
+  - name: MultiBurst_PreGap_B
+    type: progressive
+    source: videosynth-assets/assets/exr/720x576/MULTIBURST.exr
+    duration_frames: 4
+    section_type: programme_area
+    line_injections:
+      - type: laserdisc
+        disc_type: CAV
+        codes:
+          - code_type: picture_number
+            start_value: 17
+          - code_type: programme_status
+            programme_status: "0x8DC000"
+      - type: vits
+        vits_type: uk-national
+        target_lines: [19]
+  # ---------------------------------------------------------------------------
+  # PNs 23–24: multi-burst resumed after forward skip (gap of 2: PNs 21–22 absent)
+  # ---------------------------------------------------------------------------
+  - name: MultiBurst_PostGap_B
+    type: progressive
+    source: videosynth-assets/assets/exr/720x576/MULTIBURST.exr
+    duration_frames: 2
+    section_type: programme_area
+    line_injections:
+      - type: laserdisc
+        disc_type: CAV
+        codes:
+          - code_type: picture_number
+            start_value: 23
+          - code_type: programme_status
+            programme_status: "0x8DC000"
+      - type: vits
+        vits_type: uk-national
+        target_lines: [19]
+  # ---------------------------------------------------------------------------
+  # PNs 25–32: tartan
+  # ---------------------------------------------------------------------------
+  - name: Tartan_B
+    type: progressive
+    source: videosynth-assets/assets/exr/720x576/TARTAN.exr
+    duration_frames: 8
+    section_type: programme_area
+    line_injections:
+      - type: laserdisc
+        disc_type: CAV
+        codes:
+          - code_type: picture_number
+            start_value: 25
+          - code_type: programme_status
+            programme_status: "0x8DC000"
+      - type: vits
+        vits_type: uk-national
+        target_lines: [19]
+  # ---------------------------------------------------------------------------
+  # PNs 33–40: YCbCr ramps
+  # ---------------------------------------------------------------------------
+  - name: Ramps_B
+    type: progressive
+    source: videosynth-assets/assets/exr/720x576/Y_CB_CR_RAMPS.exr
+    duration_frames: 8
+    section_type: programme_area
+    line_injections:
+      - type: laserdisc
+        disc_type: CAV
+        codes:
+          - code_type: picture_number
+            start_value: 33
+          - code_type: programme_status
+            programme_status: "0x8DC000"
+      - type: vits
+        vits_type: uk-national
+        target_lines: [19]

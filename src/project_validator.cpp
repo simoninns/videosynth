@@ -1248,6 +1248,57 @@ ValidationResult ProjectValidator::Validate(const Project& project) {
     break;
   }
 
+  // Validate disc_skips (only when sections validated successfully).
+  if (result.is_valid && !project.disc_skips.empty()) {
+    // Compute total disc frames from sections.
+    int total_disc_frames = 0;
+    for (const Section& s : project.sections) {
+      total_disc_frames += s.duration_frames;
+    }
+
+    for (std::size_t si = 0; si < project.disc_skips.size(); ++si) {
+      const DiscSkip& skip = project.disc_skips[si];
+      const std::string ctx = "disc_skips[" + std::to_string(si) + "]: ";
+
+      if (skip.at_frame < 1 || skip.at_frame > total_disc_frames) {
+        result.is_valid = false;
+        result.errors.push_back(
+            ctx + "at_frame " + std::to_string(skip.at_frame) +
+            " is out of range [1, " + std::to_string(total_disc_frames) + "].");
+      }
+
+      if (skip.count < 1) {
+        result.is_valid = false;
+        result.errors.push_back(ctx + "count must be >= 1 (got " +
+                                std::to_string(skip.count) + ").");
+      }
+
+      if (skip.direction == DiscSkipDirection::kForward) {
+        // Forward: frames at_frame .. at_frame+count-1 must exist.
+        const int last = skip.at_frame + skip.count - 1;
+        if (last > total_disc_frames) {
+          result.is_valid = false;
+          result.errors.push_back(ctx + "forward skip extends to frame " +
+                                  std::to_string(last) +
+                                  " which is beyond total disc frames (" +
+                                  std::to_string(total_disc_frames) + ").");
+        }
+      } else {
+        // Backward: replay frames at_frame-count+1 .. at_frame; must not
+        // go before frame 1.
+        const int first_replay = skip.at_frame - skip.count + 1;
+        if (first_replay < 1) {
+          result.is_valid = false;
+          result.errors.push_back(
+              ctx + "backward skip of count " + std::to_string(skip.count) +
+              " at frame " + std::to_string(skip.at_frame) +
+              " would replay before frame 1 (first replay frame: " +
+              std::to_string(first_replay) + ").");
+        }
+      }
+    }
+  }
+
   if (logger_ != nullptr && result.is_valid) {
     logger_->Debug("Project validation completed successfully.");
   }

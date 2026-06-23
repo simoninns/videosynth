@@ -178,6 +178,22 @@ SampledSynthesisContext BuildSampledSynthesisContext(Standard standard) {
   return context;
 }
 
+// Returns the picture_number start_value from a section's laserdisc injection,
+// or 0 if the section has no picture_number code.
+int FindSectionPictureNumberStart(const Section& section) {
+  for (const Section::LineInjection& inj : section.line_injections) {
+    if (Lowercase(inj.type) != "laserdisc") {
+      continue;
+    }
+    for (const Section::LineInjectionCode& code : inj.codes) {
+      if (code.code_type == "picture_number" && code.start_value_specified) {
+        return code.start_value;
+      }
+    }
+  }
+  return 0;
+}
+
 bool BuildFramePatternSchedule(
     const Project& project, const ProgressiveFrameSource& progressive_source,
     Standard standard,
@@ -573,6 +589,34 @@ bool GenerationStage::BuildFrameSchedule(
   out_schedule->clear();
   progressive_source_.ClearCache();
   biphase_manager_.Reset();
+
+  // Compute disc_frame_offset = (first_PN - 1) from the first CAV
+  // picture_number code. This offset is added to global_frame_index when
+  // computing the colour-subcarrier phase so that sources not starting at PN 1
+  // still produce disc-accurate colour sequences ((PN-1) % colour_period).
+  initial_frame_offset_ = 0;
+  for (const Section& sec : project.sections) {
+    bool found = false;
+    for (const Section::LineInjection& inj : sec.line_injections) {
+      if (Lowercase(inj.type) != "laserdisc") {
+        continue;
+      }
+      for (const Section::LineInjectionCode& code : inj.codes) {
+        if (code.code_type == "picture_number" && code.start_value_specified &&
+            code.start_value > 1) {
+          initial_frame_offset_ =
+              static_cast<std::size_t>(code.start_value - 1);
+          found = true;
+          break;
+        }
+      }
+      if (found) break;
+    }
+    if (found) break;
+  }
+  biphase_manager_.SetInitialFrameCount(
+      static_cast<int>(initial_frame_offset_));
+
   std::vector<std::pair<const Section*, int>> frame_sections;
   std::string schedule_error;
   if (!BuildFramePatternSchedule(project, progressive_source_,
@@ -584,12 +628,29 @@ bool GenerationStage::BuildFrameSchedule(
     return false;
   }
 
+  // Build the output schedule, computing the per-frame disc picture number so
+  // that colour-subcarrier phase is derived from disc position (PN - 1) rather
+  // than file position even when sections have non-contiguous start_values
+  // (backward-skip replay or post-gap forward-skip sections).
   out_schedule->reserve(frame_sections.size());
+  const Section* prev_schedule_section = nullptr;
+  int section_pn_start = 0;
+  int section_frame_offset = 0;
   for (const std::pair<const Section*, int>& frame_section : frame_sections) {
+    const Section* sec = frame_section.first;
+    if (sec != prev_schedule_section) {
+      section_pn_start = FindSectionPictureNumberStart(*sec);
+      section_frame_offset = 0;
+      prev_schedule_section = sec;
+    }
+    const int disc_pn =
+        (section_pn_start > 0) ? (section_pn_start + section_frame_offset) : 0;
     out_schedule->push_back(FrameScheduleItem{
-        .section = frame_section.first,
+        .section = sec,
         .source_frame_index = frame_section.second,
+        .disc_picture_number = disc_pn,
     });
+    ++section_frame_offset;
   }
 
   if (logger_ != nullptr) {
@@ -740,8 +801,17 @@ bool GenerationStage::GenerateFrameBatch(
 
     const int local_frame_base = static_cast<int>(
         local_frame_index * static_cast<std::size_t>(frame_samples));
+    // disc_frame_index represents (PN - 1) for the current frame, anchoring
+    // colour-subcarrier phase and pilot-burst phase to the disc picture number.
+    // When disc_picture_number is populated (CAV sections with picture_number
+    // codes), use it directly; fall back to the global file index plus the
+    // first-section offset for sections without a picture_number code.
+    const std::size_t disc_frame_index =
+        (frame_item.disc_picture_number > 0)
+            ? static_cast<std::size_t>(frame_item.disc_picture_number - 1)
+            : (global_frame_index + initial_frame_offset_);
     const int absolute_frame_base = static_cast<int>(
-        global_frame_index * static_cast<std::size_t>(frame_samples));
+        disc_frame_index * static_cast<std::size_t>(frame_samples));
     SectionVitsLineMap section_vits_lines;
     SectionVitsPlanMap section_vits_plans;
     std::string vits_state_error;
@@ -826,10 +896,10 @@ bool GenerationStage::GenerateFrameBatch(
       const bool is_pal =
           project.cvbs_presets.video_standard_preset == Standard::kPal;
       const bool burst_enabled =
-          is_pal ? PalBurstEnabledForLine(global_frame_index, line)
+          is_pal ? PalBurstEnabledForLine(disc_frame_index, line)
                  : line.burst_enabled;
       const double burst_phase_rad =
-          is_pal ? PalBurstPhaseRadForLine(global_frame_index, line)
+          is_pal ? PalBurstPhaseRadForLine(disc_frame_index, line)
                  : line.burst_phase_rad;
 
       if (burst_enabled) {
@@ -877,7 +947,7 @@ bool GenerationStage::GenerateFrameBatch(
                     local_line_base);
 
           const bool invert_pal_v_axis =
-              is_pal && PalInvertVAxisForLine(global_frame_index, line);
+              is_pal && PalInvertVAxisForLine(disc_frame_index, line);
           const int active_window_line_start_absolute =
               absolute_line_base + active_window_start;
           // SMPTE 170M-2004 Section 10: defines active chroma with burst+180
