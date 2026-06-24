@@ -35,8 +35,8 @@ cvbs_presets:
   signal_state_preset: STANDARD_TBC_LOCKED
 
 output:
-  video_path: tests/projects/output-general/videosynth_pal_noise_ramp.composite
-  metadata_path: tests/projects/output-general/videosynth_pal_noise_ramp.meta
+  video_path: tests/projects/output-general/composite/videosynth_pal_noise_ramp.composite
+  metadata_path: tests/projects/output-general/composite/videosynth_pal_noise_ramp.meta
 
 sections:
 

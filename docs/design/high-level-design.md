@@ -420,7 +420,7 @@ The `OsdRenderer` class writes monochrome bitmap-font text overlays into the lum
 | ----------------------- | ----------------------------------------------------------------------- | --------------------------------- |
 | **Batch Validation**    | Validate that incoming Y and C buffers match whole-frame `4fsc` timing for the selected standard. | CVBS File Format Specification    |
 | **mV to Integer Conversion** | Quantise fixed-point mV values to 10-bit integers per EBU 3280 (PAL) or SMPTE 244M (NTSC). | EBU Tech. 3280-E, SMPTE 244M-2003 |
-| **Combining Y and C**   | Combine quantised luma and chroma into composite signal (CVBS).         | CVBS File Format Specification    |
+| **Combining Y and C**   | Combine quantised luma and chroma into composite signal (CVBS), or write them to separate `.y`/`.c` files in Y/C mode. | CVBS File Format Specification    |
 | **Output Formatting**   | Format the quantised composite signal into the output files (video and metadata).   | CVBS File Format Specification    |
 | **Locked 4fsc Enforcement**  | Enforce the current runtime requirement that output remains locked `4fsc` only. | SMPTE 244M-2003, EBU Tech. 3280-E |
 | **Metadata Generation** | Generate CVBS file metadata (magic number, version, sample rate, etc.). | CVBS File Format Specification    |
@@ -428,10 +428,18 @@ The `OsdRenderer` class writes monochrome bitmap-font text overlays into the lum
 
 ### **CVBS File Output**
 
-The output stage generates **two files** as per the [CVBS File Format Specification](../cvbs-file-format-specification/docs/index.md):
+The output stage generates files as per the [CVBS File Format Specification](../cvbs-file-format-specification/docs/index.md). The output mode is controlled by `output.signal_type` in the project YAML:
 
-1. **Video File**: Raw samples of the composite signal (Y + C + sync).
-2. **Metadata File**: Header metadata (magic number, version, video standard preset, sample encoding preset, signal state preset, resolution, etc.).
+**Composite output** (`signal_type: composite`, default):
+1. **Video File** (`.composite`): Raw samples of the composite signal (Y + C + sync).
+2. **Metadata File** (`.meta`): Header metadata (magic number, version, video standard preset, sample encoding preset, signal state preset, resolution, etc.).
+
+**Dual-file Y/C output** (`signal_type: yc`):
+1. **Luma File** (`.y`): Raw luma samples (Y + sync) encoded identically to composite luma.
+2. **Chroma File** (`.c`): Raw chroma samples, centred at code 512 in the 10-bit domain as defined by the [CVBS File Format Specification — Sample Encoding Presets](../cvbs-file-format-specification/docs/sample-encoding-presets.md).
+3. **Metadata File** (`.meta`): Header metadata, identical structure to composite output with `signal_type` set to `'yc'`.
+
+For Y/C output, `output.video_path` must end in `.y`; the chroma path is derived by replacing the `.y` suffix with `.c`.
 
 ### **Inputs**
 
@@ -704,7 +712,7 @@ For **NTSC (525-line system)**, the vertical blanking interval (VBI) is defined 
 
 The current parser, validator, and runtime implement only a subset of the YAML surface described in this section:
 
-- Implemented top-level presets: `video_standard_preset`, `sample_encoding_preset`, `signal_state_preset`, `ntsc_black_setup_ire`, `output.video_path`, and `output.metadata_path`.
+- Implemented top-level presets: `video_standard_preset`, `sample_encoding_preset`, `signal_state_preset`, `ntsc_black_setup_ire`, `output.video_path`, `output.metadata_path`, and `output.signal_type` (`"composite"` or `"yc"`; defaults to `"composite"`).
 - Implemented section fields: `name`, `type`, `source`, `start_frame`, and `duration_frames`.
 - The `line_injections` schema is represented in the current parser data model and receives validator-level schema/compatibility checks for injection type, `target_lines`, and standard-dependent VITS constraints.
 - VITS line injections have a generation-stage orchestration path and are applied only on their targeted frame lines within the owning section span.
@@ -739,6 +747,7 @@ cvbs_presets:
 output:
   video_path: "out/pal_test_video.composite"
   metadata_path: "out/pal_test_metadata.meta"
+  signal_type: composite      # "composite" (default) or "yc"; for "yc", video_path must end in ".y"
 
 sections:
   - name: "Progressive Source with VITS and Laserdisc"
@@ -909,6 +918,10 @@ video_path: "out/pal_test_video.composite" # project-relative output file path
   - Only one `signal_state_preset` per project.
   - `output.video_path` and `output.metadata_path` are required in the project YAML.
   - `output.video_path` and `output.metadata_path` must resolve to different paths.
+  - `output.signal_type` must be `"composite"` or `"yc"` (default: `"composite"`).
+  - When `output.signal_type` is `"yc"`, `output.video_path` must end in `".y"`.
+  - `output.signal_type` must be `"composite"` or `"yc"` (default: `"composite"`).
+  - When `output.signal_type` is `"yc"`, `output.video_path` must end in `".y"`; the chroma path is derived automatically by replacing the suffix with `".c"`.
   - Output resolution is fixed by the standard (720x576 for PAL, 720x486 for NTSC) and must not be specified in the project file.
   - 4fsc generation requires a 4fsc `sample_encoding_preset` and a locked `signal_state_preset`.
   - `pal_laserdisc_pilot_burst` can **only be enabled for PAL projects**. If enabled for NTSC, the YAML is considered **invalid**.
@@ -1638,9 +1651,10 @@ Current implementation note:
 - **Steps**:
   1. **Generate Metadata**:
     - Create the CVBS file header with all required metadata (see [CVBS File Format Specification](../cvbs-file-format-specification/docs/index.md)).
-  2. **Composite Formation and Quantisation**:
-    - Combine the fixed-point luma and chroma sample buffers into a composite sample stream.
-    - Map each fixed-point mV composite sample to a 10-bit integer using the normative linear mapping for the active standard (EBU Tech. 3280-E for PAL, SMPTE 244M-2003 for NTSC). See [§6.1](#61-signal-levels) for the formulae.
+  2. **Composite Formation and Quantisation** (composite mode) / **Y/C Quantisation** (Y/C mode):
+    - **Composite** (`signal_type: composite`): Combine the fixed-point luma and chroma sample buffers into a composite sample stream; encode to the active output preset representation.
+    - **Y/C** (`signal_type: yc`): Encode luma samples identically to composite luma; encode chroma samples centred at code 512 per the CVBS File Format Specification (§ Sample Encoding Presets); write to separate `.y` and `.c` files.
+    - In both modes, map fixed-point mV samples to 10-bit integers using the normative linear mapping for the active standard (EBU Tech. 3280-E for PAL, SMPTE 244M-2003 for NTSC). See [§6.1](#61-signal-levels) for the formulae.
     - Clamp to the legal code range; excluded values (codes 0–3 and 1020–1023) must not appear in output.
   3. **mV to Integer Conversion**:
     - Encode the quantised composite code stream into the active output preset representation.
@@ -1684,7 +1698,7 @@ To simulate **analogue output**, the generator must:
 
 The current validator enforces a narrower subset than the full design intent in this section:
 
-- Implemented: standard selection, locked `4fsc` preset constraints, output-path requirements, progressive source profile checks, accepted raster checks, NTSC black-setup constraints, and validator-side VITS/line-injection compatibility checks including overlap detection, laserdisc reserved-range conflicts, and VITC/laserdisc incompatibility.
+- Implemented: standard selection, locked `4fsc` preset constraints, output-path requirements (including `signal_type` validation and `.y`-suffix enforcement for Y/C mode), progressive source profile checks, accepted raster checks, NTSC black-setup constraints, and validator-side VITS/line-injection compatibility checks including overlap detection, laserdisc reserved-range conflicts, and VITC/laserdisc incompatibility.
 - Implemented: full laserdisc biphase validation including section_type/code_type matrix enforcement, IEC value range constraints (picture_number, chapter_number, users_code X₁, CLV picture number digits, programme time code BCD), CAV minimum duration checks (lead-in ≥ 938 frames, lead-out ≥ 1250 frames), minimum chapter length (30 tracks), NTSC VIRS mandatory presence check, and VITS/biphase reserved-range line conflict detection.
 - Implemented: per-section noise parameter validation (range, spread floor, mutual dependency).
 - Not yet implemented in the validator/runtime pair: VITC and custom per-line content runtime paths.

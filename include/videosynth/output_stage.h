@@ -79,6 +79,7 @@ class OutputStage final : public IOutputStage {
   bool write_session_open_ = false;
   Project current_project_;
   std::ofstream video_stream_;
+  std::ofstream chroma_stream_;
   std::size_t expected_frame_count_ = 0;
   std::size_t written_samples_ = 0;
   std::size_t input_frame_span_ = 0;

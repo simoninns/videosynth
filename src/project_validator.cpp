@@ -1124,6 +1124,23 @@ ValidationResult ProjectValidator::Validate(const Project& project) {
         "must differ.");
   }
 
+  const std::string& sig_type = project.output.signal_type;
+  if (sig_type != "composite" && sig_type != "yc") {
+    result.is_valid = false;
+    result.errors.push_back(
+        "Project configuration error: output.signal_type must be 'composite' "
+        "or 'yc'.");
+  }
+  if (sig_type == "yc" && !project.output.video_path.empty()) {
+    const std::string& vp = project.output.video_path;
+    if (vp.size() < 2 || vp.compare(vp.size() - 2, 2, ".y") != 0) {
+      result.is_valid = false;
+      result.errors.push_back(
+          "Project configuration error: output.video_path must end in '.y' "
+          "when signal_type is 'yc'.");
+    }
+  }
+
   if (project.sections.empty()) {
     result.is_valid = false;
     result.errors.push_back("Project must contain at least one section.");

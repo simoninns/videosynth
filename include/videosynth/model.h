@@ -198,6 +198,8 @@ struct Section {
 struct OutputTargets {
   std::string video_path;
   std::string metadata_path;
+  // "composite" (default) or "yc" (dual-file luma+chroma).
+  std::string signal_type = "composite";
 };
 
 enum class DiscSkipDirection {

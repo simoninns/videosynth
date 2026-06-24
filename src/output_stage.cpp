@@ -15,6 +15,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
+#include <filesystem>
 #include <fstream>
 #include <limits>
 #include <string>
@@ -228,6 +229,66 @@ bool IsNonstandardMappedCode(int mapped_code,
          mapped_code > (profile.maximum_legal_code + 1);
 }
 
+// Maps a chroma sample (oscillates around 0 mV) to a 10-bit code centred at
+// 512, as required by the CVBS spec for dual-file YC output.
+// CVBS file format spec §3.2: chroma zero is at 512 in the 0-1023 domain.
+int MapChromaFixedToCode(SampleFixed chroma_mv_fixed,
+                         const QuantizationProfile& profile) {
+  constexpr int kChromaCentreCode = 512;
+  constexpr int kReciprocalFractionBits = 30;
+  const std::int64_t product = chroma_mv_fixed * profile.reciprocal_q30;
+  const std::int64_t mapped_delta = RoundShiftRightSigned(
+      product, kReciprocalFractionBits + kSampleFractionBits);
+  return static_cast<int>(mapped_delta) + kChromaCentreCode;
+}
+
+std::int16_t EncodeChromaSample(OutputEncoding encoding,
+                                SampleFixed chroma_mv_fixed,
+                                const QuantizationProfile& profile) {
+  if (encoding == OutputEncoding::kRawS16) {
+    const int raw_mv =
+        static_cast<int>(std::lround(SampleFixedToMillivolts(chroma_mv_fixed)));
+    const int clamped_raw_mv = std::clamp(
+        raw_mv, static_cast<int>(std::numeric_limits<std::int16_t>::min()),
+        static_cast<int>(std::numeric_limits<std::int16_t>::max()));
+    return static_cast<std::int16_t>(clamped_raw_mv);
+  }
+
+  const int chroma_code = MapChromaFixedToCode(chroma_mv_fixed, profile);
+  const int quantized_code = ClampToLegalCodeRange(chroma_code, profile);
+
+  if (encoding == OutputEncoding::kCvbsTpg21) {
+    const int tpg21_encoded = (quantized_code - 508) * 64;
+    return static_cast<std::int16_t>(tpg21_encoded);
+  }
+
+  if (encoding == OutputEncoding::kCvbsS16Fsc) {
+    const int s16_fsc_raw = (chroma_code - profile.blanking_code) * 32;
+    const int s16_fsc_clamped = std::clamp(
+        s16_fsc_raw, static_cast<int>(std::numeric_limits<std::int16_t>::min()),
+        static_cast<int>(std::numeric_limits<std::int16_t>::max()));
+    return static_cast<std::int16_t>(s16_fsc_clamped);
+  }
+
+  return static_cast<std::int16_t>(quantized_code);
+}
+
+// Derives the chroma file path from the luma path by replacing the ".y"
+// suffix with ".c". Returns empty string if video_path does not end in ".y".
+std::string DeriveChromaPath(const std::string& luma_path) {
+  constexpr std::string_view kLumaSuffix = ".y";
+  constexpr std::string_view kChromaSuffix = ".c";
+  if (luma_path.size() < kLumaSuffix.size()) {
+    return {};
+  }
+  if (luma_path.compare(luma_path.size() - kLumaSuffix.size(),
+                        kLumaSuffix.size(), kLumaSuffix) != 0) {
+    return {};
+  }
+  return luma_path.substr(0, luma_path.size() - kLumaSuffix.size()) +
+         std::string(kChromaSuffix);
+}
+
 bool WriteMetadataDatabase(const Project& project, std::size_t frame_count,
                            const QuantizationProfile& quantization,
                            bool has_nonstandard,
@@ -345,7 +406,8 @@ bool WriteMetadataDatabase(const Project& project, std::size_t frame_count,
   sqlite3_bind_text(insert_stmt, 3,
                     project.cvbs_presets.signal_state_preset.c_str(), -1,
                     SQLITE_STATIC);
-  sqlite3_bind_text(insert_stmt, 4, "composite", -1, SQLITE_STATIC);
+  sqlite3_bind_text(insert_stmt, 4, project.output.signal_type.c_str(), -1,
+                    SQLITE_TRANSIENT);
   sqlite3_bind_text(insert_stmt, 5, "videosynth", -1, SQLITE_STATIC);
   sqlite3_bind_null(insert_stmt, 6);
   sqlite3_bind_null(insert_stmt, 7);
@@ -438,24 +500,67 @@ bool OutputStage::BeginWrite(const Project& project,
     return false;
   }
 
-  std::ofstream stream(output_path, std::ios::binary);
-  if (!stream) {
-    errors->push_back("Failed to open output video file: " + output_path);
+  // Create parent directories so callers don't need to pre-create them.
+  std::error_code ec;
+  std::filesystem::create_directories(
+      std::filesystem::path(output_path).parent_path(), ec);
+  if (ec) {
+    errors->push_back("Failed to create output directory for: " + output_path +
+                      " (" + ec.message() + ")");
+    return false;
+  }
+  std::filesystem::create_directories(
+      std::filesystem::path(metadata_path).parent_path(), ec);
+  if (ec) {
+    errors->push_back("Failed to create output directory for: " +
+                      metadata_path + " (" + ec.message() + ")");
     return false;
   }
 
-  current_project_ = project;
-  video_stream_ = std::move(stream);
+  const bool is_yc = (project.output.signal_type == "yc");
+  if (is_yc) {
+    const std::string chroma_path = DeriveChromaPath(output_path);
+    if (chroma_path.empty()) {
+      errors->push_back("Y/C output requires video_path to end in '.y': " +
+                        output_path);
+      return false;
+    }
+    std::ofstream ystream(output_path, std::ios::binary);
+    if (!ystream) {
+      errors->push_back("Failed to open luma output file: " + output_path);
+      return false;
+    }
+    std::ofstream cstream(chroma_path, std::ios::binary);
+    if (!cstream) {
+      errors->push_back("Failed to open chroma output file: " + chroma_path);
+      return false;
+    }
+    current_project_ = project;
+    video_stream_ = std::move(ystream);
+    chroma_stream_ = std::move(cstream);
+    if (logger_ != nullptr) {
+      logger_->Trace("Opened Y/C output files for writing: luma=" +
+                     output_path + ", chroma=" + chroma_path);
+    }
+  } else {
+    std::ofstream stream(output_path, std::ios::binary);
+    if (!stream) {
+      errors->push_back("Failed to open output video file: " + output_path);
+      return false;
+    }
+    current_project_ = project;
+    video_stream_ = std::move(stream);
+    if (logger_ != nullptr) {
+      logger_->Trace("Opened output video file for writing: " + output_path);
+    }
+  }
+
   expected_frame_count_ = expected_frame_count;
   written_samples_ = 0U;
   input_frame_span_ = input_frame_span;
   output_frame_span_ = output_frame_span;
   has_nonstandard_ = false;
   write_session_open_ = true;
-
-  if (logger_ != nullptr) {
-    logger_->Trace("Opened output video file for writing: " + output_path);
-  }
 
   return true;
 }
@@ -500,31 +605,62 @@ bool OutputStage::AppendSamples(const std::vector<SampleFixed>& y_mv,
     return false;
   }
 
+  const bool is_yc = (current_project_.output.signal_type == "yc");
+
   for (std::size_t frame_start = 0U; frame_start < y_mv.size();
        frame_start += input_frame_span_) {
-    std::vector<SampleFixed> composite_frame;
-    composite_frame.reserve(input_frame_span_);
-    for (std::size_t i = 0; i < input_frame_span_; ++i) {
-      composite_frame.push_back(y_mv[frame_start + i] + c_mv[frame_start + i]);
-    }
-
-    if (output_frame_span_ != input_frame_span_) {
-      composite_frame = ResampleFrame(composite_frame, output_frame_span_);
-    }
-
-    for (const SampleFixed composite_mv_fixed : composite_frame) {
-      if (output_encoding != OutputEncoding::kRawS16) {
-        const int mapped =
-            MapCompositeFixedToCode(composite_mv_fixed, quantization);
-        if (IsNonstandardMappedCode(mapped, quantization)) {
-          has_nonstandard_ = true;
-        }
+    if (is_yc) {
+      std::vector<SampleFixed> y_frame;
+      std::vector<SampleFixed> c_frame;
+      y_frame.reserve(input_frame_span_);
+      c_frame.reserve(input_frame_span_);
+      for (std::size_t i = 0; i < input_frame_span_; ++i) {
+        y_frame.push_back(y_mv[frame_start + i]);
+        c_frame.push_back(c_mv[frame_start + i]);
       }
-
-      const std::int16_t encoded_sample = EncodeCompositeSample(
-          output_encoding, composite_mv_fixed, quantization);
-      video_stream_.write(reinterpret_cast<const char*>(&encoded_sample),
-                          sizeof(encoded_sample));
+      if (output_frame_span_ != input_frame_span_) {
+        y_frame = ResampleFrame(y_frame, output_frame_span_);
+        c_frame = ResampleFrame(c_frame, output_frame_span_);
+      }
+      for (std::size_t i = 0; i < output_frame_span_; ++i) {
+        if (output_encoding != OutputEncoding::kRawS16) {
+          const int mapped = MapCompositeFixedToCode(y_frame[i], quantization);
+          if (IsNonstandardMappedCode(mapped, quantization)) {
+            has_nonstandard_ = true;
+          }
+        }
+        const std::int16_t y_sample =
+            EncodeCompositeSample(output_encoding, y_frame[i], quantization);
+        video_stream_.write(reinterpret_cast<const char*>(&y_sample),
+                            sizeof(y_sample));
+        const std::int16_t c_sample =
+            EncodeChromaSample(output_encoding, c_frame[i], quantization);
+        chroma_stream_.write(reinterpret_cast<const char*>(&c_sample),
+                             sizeof(c_sample));
+      }
+    } else {
+      std::vector<SampleFixed> composite_frame;
+      composite_frame.reserve(input_frame_span_);
+      for (std::size_t i = 0; i < input_frame_span_; ++i) {
+        composite_frame.push_back(y_mv[frame_start + i] +
+                                  c_mv[frame_start + i]);
+      }
+      if (output_frame_span_ != input_frame_span_) {
+        composite_frame = ResampleFrame(composite_frame, output_frame_span_);
+      }
+      for (const SampleFixed composite_mv_fixed : composite_frame) {
+        if (output_encoding != OutputEncoding::kRawS16) {
+          const int mapped =
+              MapCompositeFixedToCode(composite_mv_fixed, quantization);
+          if (IsNonstandardMappedCode(mapped, quantization)) {
+            has_nonstandard_ = true;
+          }
+        }
+        const std::int16_t encoded_sample = EncodeCompositeSample(
+            output_encoding, composite_mv_fixed, quantization);
+        video_stream_.write(reinterpret_cast<const char*>(&encoded_sample),
+                            sizeof(encoded_sample));
+      }
     }
   }
 
@@ -553,11 +689,17 @@ bool OutputStage::FinalizeWrite(std::vector<std::string>* errors) {
     errors->push_back(
         "Output session sample count mismatch before finalization.");
     video_stream_.close();
+    if (chroma_stream_.is_open()) {
+      chroma_stream_.close();
+    }
     write_session_open_ = false;
     return false;
   }
 
   video_stream_.close();
+  if (chroma_stream_.is_open()) {
+    chroma_stream_.close();
+  }
 
   QuantizationProfile quantization;
   if (!BuildQuantizationProfile(
@@ -612,6 +754,9 @@ bool OutputStage::Write(const Project& project,
   if (!AppendSamples(y_mv, c_mv, errors)) {
     write_session_open_ = false;
     video_stream_.close();
+    if (chroma_stream_.is_open()) {
+      chroma_stream_.close();
+    }
     return false;
   }
   return FinalizeWrite(errors);

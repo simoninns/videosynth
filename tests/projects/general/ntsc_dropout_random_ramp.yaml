@@ -19,8 +19,8 @@ cvbs_presets:
   signal_state_preset: STANDARD_TBC_LOCKED
 
 output:
-  video_path: tests/projects/output-general/videosynth_ntsc_dropout_random_ramp.composite
-  metadata_path: tests/projects/output-general/videosynth_ntsc_dropout_random_ramp.meta
+  video_path: tests/projects/output-general/composite/videosynth_ntsc_dropout_random_ramp.composite
+  metadata_path: tests/projects/output-general/composite/videosynth_ntsc_dropout_random_ramp.meta
 
 sections:
 

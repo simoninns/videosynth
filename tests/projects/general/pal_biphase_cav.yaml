@@ -10,8 +10,8 @@ cvbs_presets:
   pal_laserdisc_pilot_burst: true
 
 output:
-  video_path: tests/projects/output-general/videosynth_pal_biphase_cav.composite
-  metadata_path: tests/projects/output-general/videosynth_pal_biphase_cav.meta
+  video_path: tests/projects/output-general/composite/videosynth_pal_biphase_cav.composite
+  metadata_path: tests/projects/output-general/composite/videosynth_pal_biphase_cav.meta
 
 sections:
   - name: PalCavLeadIn

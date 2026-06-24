@@ -279,7 +279,8 @@ ParseResult ParseYamlNode(const YAML::Node& root, ILogger* logger) {
     }
 
     const YAML::Node output = root["output"];
-    const std::set<std::string> output_keys = {"video_path", "metadata_path"};
+    const std::set<std::string> output_keys = {"video_path", "metadata_path",
+                                               "signal_type"};
     ValidateAllowedKeys(output, output_keys, "output", &result.errors);
     if (!result.errors.empty()) {
       return result;
@@ -288,6 +289,8 @@ ParseResult ParseYamlNode(const YAML::Node& root, ILogger* logger) {
     result.project.output.video_path = output["video_path"].as<std::string>("");
     result.project.output.metadata_path =
         output["metadata_path"].as<std::string>("");
+    result.project.output.signal_type =
+        output["signal_type"].as<std::string>("composite");
 
     for (const YAML::Node& section_node : root["sections"]) {
       if (!section_node.IsMap()) {

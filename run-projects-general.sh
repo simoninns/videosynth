@@ -2,7 +2,6 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-projects_dir="$repo_root/tests/projects/general"
 output_dir="$repo_root/tests/projects/output-general"
 binary="$repo_root/build/videosynth"
 
@@ -20,11 +19,14 @@ cd "$repo_root"
 mkdir -p "$output_dir"
 
 shopt -s nullglob
-projects=("$projects_dir"/*.yaml)
+projects=(
+  "$repo_root/tests/projects/general"/*.yaml
+  "$repo_root/tests/projects/general-yc"/*.yaml
+)
 shopt -u nullglob
 
 if (( ${#projects[@]} == 0 )); then
-  echo "No project fixtures found in $projects_dir" >&2
+  echo "No project fixtures found in tests/projects/general or tests/projects/general-yc" >&2
   exit 1
 fi
 
