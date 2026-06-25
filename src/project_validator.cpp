@@ -130,7 +130,8 @@ bool FrameRateMatchesStandard(double frame_rate_hz,
   if (standard == videosynth::Standard::kPal) {
     return std::abs(frame_rate_hz - 25.0) <= 1.0e-3;
   }
-  if (standard == videosynth::Standard::kNtsc) {
+  if (standard == videosynth::Standard::kNtsc ||
+      standard == videosynth::Standard::kPalM) {
     const double ntsc_rate = 30000.0 / 1001.0;
     return std::abs(frame_rate_hz - ntsc_rate) <= 1.0e-3;
   }
@@ -146,7 +147,8 @@ bool RasterMatchesStandard(int width, int height,
   if (standard == videosynth::Standard::kPal) {
     return width == 720 && height == 576;
   }
-  if (standard == videosynth::Standard::kNtsc) {
+  if (standard == videosynth::Standard::kNtsc ||
+      standard == videosynth::Standard::kPalM) {
     return width == 720 && height == 486;
   }
   return false;
@@ -182,7 +184,8 @@ bool SampleAspectMatchesStandard(double sample_aspect_ratio,
   if (standard == videosynth::Standard::kPal) {
     return std::abs(sample_aspect_ratio - (128.0 / 117.0)) <= 2.0e-3;
   }
-  if (standard == videosynth::Standard::kNtsc) {
+  if (standard == videosynth::Standard::kNtsc ||
+      standard == videosynth::Standard::kPalM) {
     return std::abs(sample_aspect_ratio - (108.0 / 119.0)) <= 2.0e-3;
   }
   return false;
@@ -313,6 +316,34 @@ bool ValidateProfileBySourceFamily(
         }
         return false;
       }
+    } else if (standard == videosynth::Standard::kPalM) {
+      if (profile.field_order != "bt") {
+        if (error != nullptr) {
+          *error =
+              "Progressive PAL-M MKV sections require bottom-field-first field "
+              "order metadata (bt).";
+        }
+        return false;
+      }
+      if (profile.color_primaries != "bt470bg" &&
+          profile.color_primaries != "smpte170m") {
+        if (error != nullptr) {
+          *error =
+              "Progressive PAL-M MKV sections require bt470bg or smpte170m "
+              "color primaries metadata.";
+        }
+        return false;
+      }
+      if (!(profile.color_transfer == "bt709" ||
+            profile.color_transfer == "bt470bg" ||
+            profile.color_transfer == "smpte170m")) {
+        if (error != nullptr) {
+          *error =
+              "Progressive PAL-M MKV sections require bt709, bt470bg, or "
+              "smpte170m transfer metadata.";
+        }
+        return false;
+      }
     }
 
     if (!profile.color_range.empty() && profile.color_range != "tv") {
@@ -425,7 +456,8 @@ bool IsValidFrameLineForStandard(int line_1based,
   if (standard == videosynth::Standard::kPal) {
     return line_1based >= 1 && line_1based <= 625;
   }
-  if (standard == videosynth::Standard::kNtsc) {
+  if (standard == videosynth::Standard::kNtsc ||
+      standard == videosynth::Standard::kPalM) {
     return line_1based >= 1 && line_1based <= 525;
   }
   return false;
@@ -436,7 +468,8 @@ bool IsLaserdiscReservedLine(int line_1based, videosynth::Standard standard) {
     return (line_1based >= 6 && line_1based <= 18) ||
            (line_1based >= 319 && line_1based <= 331);
   }
-  if (standard == videosynth::Standard::kNtsc) {
+  if (standard == videosynth::Standard::kNtsc ||
+      standard == videosynth::Standard::kPalM) {
     return (line_1based >= 10 && line_1based <= 18) ||
            (line_1based >= 273 && line_1based <= 281);
   }
@@ -575,19 +608,21 @@ bool ValidateLaserdiscSectionTypeAndCodes(
         return false;
       }
 
-      // Standard restriction: FM codes require NTSC.
+      // Standard restriction: FM codes require System M (NTSC or PAL-M).
       if (IsNtscOnlyCodeType(code.code_type) &&
-          standard != videosynth::Standard::kNtsc) {
+          standard != videosynth::Standard::kNtsc &&
+          standard != videosynth::Standard::kPalM) {
         result->is_valid = false;
         result->errors.push_back(
             "Laserdisc injection validation error: code_type '" +
-            code.code_type + "' is only valid for NTSC projects.");
+            code.code_type + "' is only valid for NTSC or PAL-M projects.");
         return false;
       }
 
       // 5.5: picture_number value range (IEC 60856/60857).
       if (code.code_type == "picture_number" && code.start_value_specified) {
-        const int max_pn = (standard == videosynth::Standard::kNtsc)
+        const int max_pn = (standard == videosynth::Standard::kNtsc ||
+                            standard == videosynth::Standard::kPalM)
                                ? kNtscMaxPictureNumber
                                : kPalMaxPictureNumber;
         if (code.start_value < 0 || code.start_value > max_pn) {
@@ -806,9 +841,10 @@ bool ValidateLineInjectionsForSection(const videosynth::Section& section,
       }
     }
 
-    // 5.13: NTSC laserdisc sections require a virs VITS injection for colour
-    // (IEC 60857 §9.1.3).
-    if (standard == videosynth::Standard::kNtsc) {
+    // 5.13: NTSC and PAL-M laserdisc sections require a virs VITS injection
+    // for colour (IEC 60857 §9.1.3).
+    if (standard == videosynth::Standard::kNtsc ||
+        standard == videosynth::Standard::kPalM) {
       bool has_virs = false;
       for (const videosynth::Section::LineInjection& injection :
            section.line_injections) {
@@ -821,8 +857,9 @@ bool ValidateLineInjectionsForSection(const videosynth::Section& section,
       if (!has_virs) {
         result->is_valid = false;
         result->errors.push_back(
-            "Line injection validation error: NTSC laserdisc sections require "
-            "a virs VITS injection for colour (IEC 60857 §9.1.3).");
+            "Line injection validation error: NTSC and PAL-M laserdisc "
+            "sections require a virs VITS injection for colour "
+            "(IEC 60857 §9.1.3).");
         return false;
       }
     }
@@ -1055,8 +1092,8 @@ ValidationResult ProjectValidator::Validate(const Project& project) {
   if (project.cvbs_presets.video_standard_preset == Standard::kUnknown) {
     result.is_valid = false;
     result.errors.push_back(
-        "Project configuration error: video_standard_preset must be 'PAL' or "
-        "'NTSC'.");
+        "Project configuration error: video_standard_preset must be 'PAL', "
+        "'NTSC', or 'PAL_M'.");
   }
 
   if (!IsSupportedSampleEncodingPreset(
@@ -1085,15 +1122,17 @@ ValidationResult ProjectValidator::Validate(const Project& project) {
   ValidateDeferredLaserdiscPresetFlags(project, &result);
 
   if (project.cvbs_presets.video_standard_preset != Standard::kNtsc &&
+      project.cvbs_presets.video_standard_preset != Standard::kPalM &&
       project.cvbs_presets.ntsc_black_setup_ire_specified) {
     result.is_valid = false;
     result.errors.push_back(
         "Project configuration error: ntsc_black_setup_ire can only be "
         "specified "
-        "for NTSC projects.");
+        "for NTSC or PAL-M projects.");
   }
 
-  if (project.cvbs_presets.video_standard_preset == Standard::kNtsc &&
+  if ((project.cvbs_presets.video_standard_preset == Standard::kNtsc ||
+       project.cvbs_presets.video_standard_preset == Standard::kPalM) &&
       !IsSupportedNtscBlackSetupIre(
           project.cvbs_presets.ntsc_black_setup_ire)) {
     result.is_valid = false;
@@ -1229,7 +1268,7 @@ ValidationResult ProjectValidator::Validate(const Project& project) {
           result.is_valid = false;
           result.errors.push_back(
               "Progressive section validation error: source raster must be "
-              "720x576 for PAL and 720x486 for NTSC.");
+              "720x576 for PAL and 720x486 for NTSC or PAL-M.");
           break;
         }
 

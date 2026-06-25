@@ -1,0 +1,175 @@
+# PAL-M Noise Ramp Example
+#
+# 10 sections × 8 frames each, progressing from clean to near-sync-limit.
+# Demonstrates the two-component Gaussian noise model:
+#   - noise_db sets the Black PSNR target (floor noise)
+#   - noise_spread_db makes white 4 dB noisier than black (White SNR = noise_db - 4)
+#
+# All sections include ntc7-composite on frame line 17 and virs on frame line 21
+# per the NTSC VITS convention, enabling orc-gui to measure both Black PSNR
+# (VBI blanking window, field-relative line 1) and White SNR (white-flag window,
+# field-relative line 20) for every section.
+
+project:
+  name: PalMNoiseRamp
+  version: "1.0"
+  description: PAL-M noise ramp — clean to sync-borderline in 10 sections
+
+cvbs_presets:
+  video_standard_preset: PAL_M
+  sample_encoding_preset: CVBS_U10_4FSC
+  signal_state_preset: STANDARD_TBC_LOCKED
+
+output:
+  video_path: tests/projects/output-general/yc/videosynth_pal_m_noise_ramp.y
+  metadata_path: tests/projects/output-general/yc/videosynth_pal_m_noise_ramp.meta
+  signal_type: yc
+
+sections:
+
+  - name: CleanReference
+    type: progressive
+    source: videosynth-assets/assets/exr/720x486/75_BARS.exr
+    duration_frames: 8
+    line_injections:
+      - type: vits
+        vits_type: ntc7-composite
+        target_lines: [17]
+      - type: vits
+        vits_type: virs
+        target_lines: [21]
+
+  - name: NearQuantisation
+    type: progressive
+    source: videosynth-assets/assets/exr/720x486/75_BARS.exr
+    duration_frames: 8
+    noise:
+      noise_db: 58.0
+      noise_spread_db: 4.0
+    line_injections:
+      - type: vits
+        vits_type: ntc7-composite
+        target_lines: [17]
+      - type: vits
+        vits_type: virs
+        target_lines: [21]
+
+  - name: ExcellentSource
+    type: progressive
+    source: videosynth-assets/assets/exr/720x486/75_BARS.exr
+    duration_frames: 8
+    noise:
+      noise_db: 53.0
+      noise_spread_db: 4.0
+    line_injections:
+      - type: vits
+        vits_type: ntc7-composite
+        target_lines: [17]
+      - type: vits
+        vits_type: virs
+        target_lines: [21]
+
+  - name: GoodSource
+    type: progressive
+    source: videosynth-assets/assets/exr/720x486/75_BARS.exr
+    duration_frames: 8
+    noise:
+      noise_db: 48.0
+      noise_spread_db: 4.0
+    line_injections:
+      - type: vits
+        vits_type: ntc7-composite
+        target_lines: [17]
+      - type: vits
+        vits_type: virs
+        target_lines: [21]
+
+  - name: FairSource
+    type: progressive
+    source: videosynth-assets/assets/exr/720x486/75_BARS.exr
+    duration_frames: 8
+    noise:
+      noise_db: 43.0
+      noise_spread_db: 4.0
+    line_injections:
+      - type: vits
+        vits_type: ntc7-composite
+        target_lines: [17]
+      - type: vits
+        vits_type: virs
+        target_lines: [21]
+
+  - name: TypicalVhs
+    type: progressive
+    source: videosynth-assets/assets/exr/720x486/75_BARS.exr
+    duration_frames: 8
+    noise:
+      noise_db: 38.0
+      noise_spread_db: 4.0
+    line_injections:
+      - type: vits
+        vits_type: ntc7-composite
+        target_lines: [17]
+      - type: vits
+        vits_type: virs
+        target_lines: [21]
+
+  - name: PoorTape
+    type: progressive
+    source: videosynth-assets/assets/exr/720x486/75_BARS.exr
+    duration_frames: 8
+    noise:
+      noise_db: 33.0
+      noise_spread_db: 4.0
+    line_injections:
+      - type: vits
+        vits_type: ntc7-composite
+        target_lines: [17]
+      - type: vits
+        vits_type: virs
+        target_lines: [21]
+
+  - name: VeryPoor
+    type: progressive
+    source: videosynth-assets/assets/exr/720x486/75_BARS.exr
+    duration_frames: 8
+    noise:
+      noise_db: 28.0
+      noise_spread_db: 4.0
+    line_injections:
+      - type: vits
+        vits_type: ntc7-composite
+        target_lines: [17]
+      - type: vits
+        vits_type: virs
+        target_lines: [21]
+
+  - name: BarelyWatchable
+    type: progressive
+    source: videosynth-assets/assets/exr/720x486/75_BARS.exr
+    duration_frames: 8
+    noise:
+      noise_db: 24.0
+      noise_spread_db: 4.0
+    line_injections:
+      - type: vits
+        vits_type: ntc7-composite
+        target_lines: [17]
+      - type: vits
+        vits_type: virs
+        target_lines: [21]
+
+  - name: SyncBorderline
+    type: progressive
+    source: videosynth-assets/assets/exr/720x486/75_BARS.exr
+    duration_frames: 8
+    noise:
+      noise_db: 20.0
+      noise_spread_db: 0.0
+    line_injections:
+      - type: vits
+        vits_type: ntc7-composite
+        target_lines: [17]
+      - type: vits
+        vits_type: virs
+        target_lines: [21]

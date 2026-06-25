@@ -114,7 +114,9 @@ bool BiphaseInjectionManager::ProcessFrame(
   constexpr int kPalColourPeriod = 4;
   constexpr int kNtscColourPeriod = 2;
   const int colour_period =
-      (standard == Standard::kPal) ? kPalColourPeriod : kNtscColourPeriod;
+      (standard == Standard::kPal || standard == Standard::kPalM)
+          ? kPalColourPeriod
+          : kNtscColourPeriod;
   last_context_ = {};
   if (const CodeGenerator* pn_gen = GetGenerator("picture_number")) {
     const uint32_t code = pn_gen->CurrentCode();

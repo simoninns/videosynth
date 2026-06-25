@@ -1,0 +1,190 @@
+# PAL-M Random Dropout Ramp
+#
+# 21 sections × 8 frames; random dropout scale steps from 0 (none) through
+# 20 (maximum). Scratch dropouts absent — isolates the Poisson random model.
+#
+# Scale mapping (see dropout-injection-design.md §Scale Mapping):
+#   Scale  1 → ~0.05 events/frame, max run 5 samples
+#   Scale 10 → ~2.8 events/frame,  max run 282 samples
+#   Scale 20 → 100 events/frame,   max run 2000 samples
+
+project:
+  name: PalMDropoutRandomRamp
+  version: "1.0"
+  description: PAL-M random dropout ramp — scale 0 through 20 (random only)
+
+cvbs_presets:
+  video_standard_preset: PAL_M
+  sample_encoding_preset: CVBS_U10_4FSC
+  signal_state_preset: STANDARD_TBC_LOCKED
+
+output:
+  video_path: tests/projects/output-general/composite/videosynth_pal_m_dropout_random_ramp.composite
+  metadata_path: tests/projects/output-general/composite/videosynth_pal_m_dropout_random_ramp.meta
+
+sections:
+
+  - name: Scale00
+    type: progressive
+    source: videosynth-assets/assets/exr/720x486/75_BARS.exr
+    duration_frames: 8
+
+  - name: Scale01
+    type: progressive
+    source: videosynth-assets/assets/exr/720x486/75_BARS.exr
+    duration_frames: 8
+    dropouts:
+      random:
+        scale: 1
+
+  - name: Scale02
+    type: progressive
+    source: videosynth-assets/assets/exr/720x486/75_BARS.exr
+    duration_frames: 8
+    dropouts:
+      random:
+        scale: 2
+
+  - name: Scale03
+    type: progressive
+    source: videosynth-assets/assets/exr/720x486/75_BARS.exr
+    duration_frames: 8
+    dropouts:
+      random:
+        scale: 3
+
+  - name: Scale04
+    type: progressive
+    source: videosynth-assets/assets/exr/720x486/75_BARS.exr
+    duration_frames: 8
+    dropouts:
+      random:
+        scale: 4
+
+  - name: Scale05
+    type: progressive
+    source: videosynth-assets/assets/exr/720x486/75_BARS.exr
+    duration_frames: 8
+    dropouts:
+      random:
+        scale: 5
+
+  - name: Scale06
+    type: progressive
+    source: videosynth-assets/assets/exr/720x486/75_BARS.exr
+    duration_frames: 8
+    dropouts:
+      random:
+        scale: 6
+
+  - name: Scale07
+    type: progressive
+    source: videosynth-assets/assets/exr/720x486/75_BARS.exr
+    duration_frames: 8
+    dropouts:
+      random:
+        scale: 7
+
+  - name: Scale08
+    type: progressive
+    source: videosynth-assets/assets/exr/720x486/75_BARS.exr
+    duration_frames: 8
+    dropouts:
+      random:
+        scale: 8
+
+  - name: Scale09
+    type: progressive
+    source: videosynth-assets/assets/exr/720x486/75_BARS.exr
+    duration_frames: 8
+    dropouts:
+      random:
+        scale: 9
+
+  - name: Scale10
+    type: progressive
+    source: videosynth-assets/assets/exr/720x486/75_BARS.exr
+    duration_frames: 8
+    dropouts:
+      random:
+        scale: 10
+
+  - name: Scale11
+    type: progressive
+    source: videosynth-assets/assets/exr/720x486/75_BARS.exr
+    duration_frames: 8
+    dropouts:
+      random:
+        scale: 11
+
+  - name: Scale12
+    type: progressive
+    source: videosynth-assets/assets/exr/720x486/75_BARS.exr
+    duration_frames: 8
+    dropouts:
+      random:
+        scale: 12
+
+  - name: Scale13
+    type: progressive
+    source: videosynth-assets/assets/exr/720x486/75_BARS.exr
+    duration_frames: 8
+    dropouts:
+      random:
+        scale: 13
+
+  - name: Scale14
+    type: progressive
+    source: videosynth-assets/assets/exr/720x486/75_BARS.exr
+    duration_frames: 8
+    dropouts:
+      random:
+        scale: 14
+
+  - name: Scale15
+    type: progressive
+    source: videosynth-assets/assets/exr/720x486/75_BARS.exr
+    duration_frames: 8
+    dropouts:
+      random:
+        scale: 15
+
+  - name: Scale16
+    type: progressive
+    source: videosynth-assets/assets/exr/720x486/75_BARS.exr
+    duration_frames: 8
+    dropouts:
+      random:
+        scale: 16
+
+  - name: Scale17
+    type: progressive
+    source: videosynth-assets/assets/exr/720x486/75_BARS.exr
+    duration_frames: 8
+    dropouts:
+      random:
+        scale: 17
+
+  - name: Scale18
+    type: progressive
+    source: videosynth-assets/assets/exr/720x486/75_BARS.exr
+    duration_frames: 8
+    dropouts:
+      random:
+        scale: 18
+
+  - name: Scale19
+    type: progressive
+    source: videosynth-assets/assets/exr/720x486/75_BARS.exr
+    duration_frames: 8
+    dropouts:
+      random:
+        scale: 19
+
+  - name: Scale20
+    type: progressive
+    source: videosynth-assets/assets/exr/720x486/75_BARS.exr
+    duration_frames: 8
+    dropouts:
+      random:
+        scale: 20

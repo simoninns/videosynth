@@ -60,7 +60,9 @@ bool BuildQuantizationProfile(Standard standard, QuantizationProfile* profile) {
         .maximum_legal_code = 1019,
         .reciprocal_q30 = 0,
     };
-  } else if (standard == Standard::kNtsc) {
+  } else if (standard == Standard::kNtsc || standard == Standard::kPalM) {
+    // PAL-M uses System M signal levels identical to M/NTSC, so the same
+    // quantization profile applies. ITU-R BT.470-6 Table 1 item 4.
     *profile = QuantizationProfile{
         .millivolts_per_code = 1.2755,
         .blanking_code = 240,
@@ -364,12 +366,9 @@ bool WriteMetadataDatabase(const Project& project, std::size_t frame_count,
     return false;
   }
 
-  std::string preset_str;
-  if (project.cvbs_presets.video_standard_preset == Standard::kPal) {
-    preset_str = "PAL";
-  } else if (project.cvbs_presets.video_standard_preset == Standard::kNtsc) {
-    preset_str = "NTSC";
-  } else {
+  const std::string preset_str =
+      StandardToString(project.cvbs_presets.video_standard_preset);
+  if (project.cvbs_presets.video_standard_preset == Standard::kUnknown) {
     errors->push_back("Unknown video standard preset");
     sqlite3_close(db);
     return false;

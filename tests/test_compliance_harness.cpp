@@ -54,8 +54,18 @@ int BurstStartSamples(double sample_rate_hz) {
   return static_cast<int>(std::lround(sample_rate_hz * 5.6e-6));
 }
 
+int BurstStartSamples(Standard standard, double sample_rate_hz) {
+  double us = (standard == Standard::kNtsc) ? 5.3e-6 : 5.6e-6;
+  return static_cast<int>(std::lround(sample_rate_hz * us));
+}
+
 int BurstEndSamples(double sample_rate_hz) {
   return static_cast<int>(std::lround(sample_rate_hz * 8.0e-6));
+}
+
+int BurstEndSamples(Standard standard, double sample_rate_hz) {
+  double us = (standard == Standard::kNtsc) ? 7.97e-6 : 8.0e-6;
+  return static_cast<int>(std::lround(sample_rate_hz * us));
 }
 
 int PulseWidthSamples(SyncPulseKind kind, Standard standard,
@@ -266,8 +276,9 @@ TEST(ComplianceHarnessTest, NtscPulseAndEdgeTimingRemainWithinTolerance) {
 
   const int line_start = (20 - 1) * ntsc.samples_per_line_4fsc;
   const int burst_start =
-      line_start + BurstStartSamples(ntsc.sample_rate_4fsc_hz);
-  const int burst_end = line_start + BurstEndSamples(ntsc.sample_rate_4fsc_hz);
+      line_start + BurstStartSamples(Standard::kNtsc, ntsc.sample_rate_4fsc_hz);
+  const int burst_end =
+      line_start + BurstEndSamples(Standard::kNtsc, ntsc.sample_rate_4fsc_hz);
   EXPECT_EQ(c_mv[static_cast<std::size_t>(burst_start)], 0);
   EXPECT_EQ(c_mv[static_cast<std::size_t>(burst_end - 1)], 0);
   EXPECT_GT(std::abs(SampleFixedToMillivolts(

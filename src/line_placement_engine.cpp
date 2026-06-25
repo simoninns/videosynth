@@ -36,14 +36,14 @@ bool LinePlacementEngine::IsInBiphaseReservedRange(Standard standard,
     return (line_number >= 6 && line_number <= 18) ||
            (line_number >= 319 && line_number <= 331);
   }
-  // NTSC: IEC 60857 §10 — lines 10–18 (field 1), 273–281 (field 2).
+  // NTSC / PAL-M: IEC 60857 §10 — lines 10–18 (field 1), 273–281 (field 2).
   return (line_number >= 10 && line_number <= 18) ||
          (line_number >= 273 && line_number <= 281);
 }
 
 bool LinePlacementEngine::IsFieldOne(Standard standard, int line_number) {
   // PAL: 625-line frame; field 1 = lines 1–312 (ITU-R BT.1700).
-  // NTSC: 525-line frame; field 1 = lines 1–262 (SMPTE 170M-2004).
+  // NTSC / PAL-M: 525-line frame; field 1 = lines 1–262 (SMPTE 170M-2004).
   if (standard == Standard::kPal) {
     return line_number <= 312;
   }

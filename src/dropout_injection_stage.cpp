@@ -51,6 +51,13 @@ constexpr int kPalActivePictureEnd = 622 * 1135 + 1134;  // 706404
 constexpr int kNtscActivePictureStart = 21 * 910;       // 19110
 constexpr int kNtscActivePictureEnd = 520 * 910 + 909;  // 474109
 
+// PAL-M: same line range as NTSC (System M 525-line frame) with 909 spl at
+// 4fsc.
+//   First active sample: line 21 * 909 = 19089. (0-based)
+//   Last  active sample: end of line 520 = line 520 * 909 + 908 = 472988.
+constexpr int kPalMActivePictureStart = 21 * 909;       // 19089
+constexpr int kPalMActivePictureEnd = 520 * 909 + 908;  // 472988
+
 // Clamping bounds matching those used by NoiseInjectionStage.
 constexpr double kPalClampMinMv = -300.006;
 constexpr double kPalClampMaxMv = 908.452;
@@ -505,11 +512,14 @@ void DropoutInjectionStage::ProcessScratchDropouts(
     return;
   }
 
-  const int active_picture_start = (samples_per_line == 1135)
-                                       ? kPalActivePictureStart
-                                       : kNtscActivePictureStart;
+  const int active_picture_start =
+      (samples_per_line == 1135)  ? kPalActivePictureStart
+      : (samples_per_line == 909) ? kPalMActivePictureStart
+                                  : kNtscActivePictureStart;
   const int active_picture_end =
-      (samples_per_line == 1135) ? kPalActivePictureEnd : kNtscActivePictureEnd;
+      (samples_per_line == 1135)  ? kPalActivePictureEnd
+      : (samples_per_line == 909) ? kPalMActivePictureEnd
+                                  : kNtscActivePictureEnd;
 
   for (const ScratchEvent& ev : scratch_events_) {
     const int max_frame = ev.duration_frames - 1;
@@ -573,11 +583,14 @@ void DropoutInjectionStage::ProcessRandomDropouts(
   std::bernoulli_distribution up_dist(0.2);  // 20% up, 80% down
   std::uniform_real_distribution<double> push_dist(0.5, 1.0);
 
-  const int active_picture_start = (samples_per_line == 1135)
-                                       ? kPalActivePictureStart
-                                       : kNtscActivePictureStart;
+  const int active_picture_start =
+      (samples_per_line == 1135)  ? kPalActivePictureStart
+      : (samples_per_line == 909) ? kPalMActivePictureStart
+                                  : kNtscActivePictureStart;
   const int active_picture_end =
-      (samples_per_line == 1135) ? kPalActivePictureEnd : kNtscActivePictureEnd;
+      (samples_per_line == 1135)  ? kPalActivePictureEnd
+      : (samples_per_line == 909) ? kPalMActivePictureEnd
+                                  : kNtscActivePictureEnd;
 
   std::vector<RandomEvent> raw_events;
   raw_events.reserve(static_cast<std::size_t>(n));

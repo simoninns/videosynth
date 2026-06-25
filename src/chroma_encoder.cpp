@@ -43,6 +43,14 @@ constexpr double kNtscCrScaleMv =
 constexpr double kPalUScaleMv = 0.493 * 0.886 * 700.0;
 constexpr double kPalVScaleMv = 0.877 * 0.701 * 700.0;
 
+// ITU-R BT.470-6 Table 2 (M/PAL): PAL-M uses the same PAL colour-difference
+// equations (E'_U = 0.493*(B-Y), E'_V = 0.877*(R-Y)) but System M white level
+// of 714.3 mV (100 IRE; 140 IRE = 1 V).
+//   U: 0.493 × (1-Kb) × 714.3 = 0.493 × 0.886 × 714.3 mV
+//   V: 0.877 × (1-Kr) × 714.3 = 0.877 × 0.701 × 714.3 mV
+constexpr double kPalMUScaleMv = 0.493 * 0.886 * 714.3;
+constexpr double kPalMVScaleMv = 0.877 * 0.701 * 714.3;
+
 constexpr double kPalUvCutoffHz = 1.3e6;
 constexpr double kNtscCbCrCutoffHz = 1.2e6;
 constexpr int kPalFilterTaps = 33;
@@ -284,6 +292,53 @@ void NtscChromaEncoder::EncodeLineFromPhaseStart(
       kNtscCrScaleMv, carrier_phase_start_rad, out_chroma_mv);
 }
 
+PalMChromaEncoder::PalMChromaEncoder(double sample_rate_hz)
+    : u_filter_taps_(
+          DesignLowPassKernel(kPalUvCutoffHz, sample_rate_hz, kPalFilterTaps)),
+      v_filter_taps_(DesignLowPassKernel(kPalUvCutoffHz, sample_rate_hz,
+                                         kPalFilterTaps)) {}
+
+void PalMChromaEncoder::EncodeLineFromPhaseStart(
+    const std::vector<YCbCr444Pixel>& source_samples,
+    double carrier_phase_start_rad,
+    std::vector<SampleFixed>* out_chroma_mv) const {
+  if (out_chroma_mv == nullptr) {
+    throw std::invalid_argument("Output chroma line pointer must not be null");
+  }
+
+  std::vector<std::int64_t> cb_axis_fixed;
+  std::vector<std::int64_t> cr_axis_fixed;
+  std::vector<std::int64_t> filtered_u_fixed;
+  std::vector<std::int64_t> filtered_v_fixed;
+  std::vector<std::int64_t> fir_pad_fixed;
+  const std::vector<std::int64_t> u_taps_fixed =
+      QuantizeKernelToFixed(u_filter_taps_);
+  const std::vector<std::int64_t> v_taps_fixed =
+      QuantizeKernelToFixed(v_filter_taps_);
+
+  ExtractCbAxisFixed(source_samples, &cb_axis_fixed);
+  ExtractCrAxisFixed(source_samples, &cr_axis_fixed);
+  ApplyFirFilterFixed(cb_axis_fixed, u_taps_fixed, &filtered_u_fixed,
+                      &fir_pad_fixed);
+  ApplyFirFilterFixed(cr_axis_fixed, v_taps_fixed, &filtered_v_fixed,
+                      &fir_pad_fixed);
+
+  filtered_u_workspace_.resize(filtered_u_fixed.size());
+  filtered_v_workspace_.resize(filtered_v_fixed.size());
+  for (std::size_t i = 0; i < filtered_u_fixed.size(); ++i) {
+    filtered_u_workspace_[i] = static_cast<double>(filtered_u_fixed[i]) /
+                               static_cast<double>(kChromaAxisScale);
+    filtered_v_workspace_[i] = static_cast<double>(filtered_v_fixed[i]) /
+                               static_cast<double>(kChromaAxisScale);
+  }
+
+  // ITU-R BT.470-6 Table 2 (M/PAL): same as 625-line PAL — U on sin, V on
+  // cos — but scaled to System M white level (714.3 mV) per kPalMUScaleMv.
+  ModulateQuadratureFromPhaseStart(filtered_u_workspace_, filtered_v_workspace_,
+                                   kPalMUScaleMv, kPalMVScaleMv,
+                                   carrier_phase_start_rad, out_chroma_mv);
+}
+
 std::unique_ptr<IChromaEncoder> CreateChromaEncoder(Standard standard,
                                                     double sample_rate_hz) {
   if (standard == Standard::kPal) {
@@ -291,6 +346,9 @@ std::unique_ptr<IChromaEncoder> CreateChromaEncoder(Standard standard,
   }
   if (standard == Standard::kNtsc) {
     return std::make_unique<NtscChromaEncoder>(sample_rate_hz);
+  }
+  if (standard == Standard::kPalM) {
+    return std::make_unique<PalMChromaEncoder>(sample_rate_hz);
   }
   return nullptr;
 }

@@ -779,7 +779,7 @@ TEST(ProjectValidatorTest,
   ASSERT_FALSE(result.errors.empty());
   EXPECT_EQ(result.errors[0],
             "Progressive section validation error: source raster must be "
-            "720x576 for PAL and 720x486 for NTSC.");
+            "720x576 for PAL and 720x486 for NTSC or PAL-M.");
 }
 
 TEST(ProjectValidatorTest,

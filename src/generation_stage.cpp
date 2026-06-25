@@ -72,8 +72,8 @@ struct SampledSynthesisContext {
   ActiveRasterGeometry active;
 };
 
-int BurstStartSamples(double sample_rate_hz);
-int BurstEndSamples(double sample_rate_hz);
+int BurstStartSamples(Standard standard, double sample_rate_hz);
+int BurstEndSamples(Standard standard, double sample_rate_hz);
 double SyncEdgeRiseTimeSeconds(Standard standard);
 double BurstEnvelopeRiseTimeSeconds(Standard standard);
 
@@ -168,8 +168,9 @@ SampledSynthesisContext BuildSampledSynthesisContext(Standard standard) {
       BuildLineSampleOffsets(context.line_sample_counts);
   context.max_line_samples = MaxLineSamples(context.line_sample_counts);
   context.frame_lines = BuildFrameTimingPrimitives(standard);
-  context.burst_start_samples = BurstStartSamples(context.sample_rate_hz);
-  context.burst_end_samples = BurstEndSamples(context.sample_rate_hz);
+  context.burst_start_samples =
+      BurstStartSamples(standard, context.sample_rate_hz);
+  context.burst_end_samples = BurstEndSamples(standard, context.sample_rate_hz);
   context.sync_rise_samples = RiseTimeToRampSamples(
       SyncEdgeRiseTimeSeconds(standard), context.sample_rate_hz);
   context.burst_rise_samples = RiseTimeToRampSamples(
@@ -298,9 +299,9 @@ double PulseWidthSeconds(SyncPulseKind kind, Standard standard) {
   if (kind == SyncPulseKind::kEqualizing) {
     return 2.3e-6;
   }
-  if (standard == Standard::kNtsc) {
-    // SMPTE 170M-2004: broad pulses are shorter than a half-line, leaving the
-    // equalizing interval inside each half-line during the 3H sync block.
+  if (standard == Standard::kNtsc || standard == Standard::kPalM) {
+    // SMPTE 170M-2004 Table 1-2 item q: broad pulses 27.1 µs for System M.
+    // PAL-M uses the same System M sync structure as M/NTSC.
     return 27.1e-6;
   }
   return 27.3e-6;
@@ -313,12 +314,29 @@ int PulseWidthSamples(SyncPulseKind kind, Standard standard,
       1, static_cast<int>(std::lround(sample_rate_hz * pulse_seconds)));
 }
 
-int BurstStartSamples(double sample_rate_hz) {
-  return std::max(0, static_cast<int>(std::lround(sample_rate_hz * 5.6e-6)));
+int BurstStartSamples(Standard standard, double sample_rate_hz) {
+  // ITU-R BT.470-6 Table 2 item 2.14g: burst gate start after epoch O_H.
+  // M/NTSC: 5.3 µs nominal; B,G,H,I/PAL: 5.6 µs; M/PAL: 5.8 µs.
+  double start_us = 5.6e-6;
+  if (standard == Standard::kNtsc) {
+    start_us = 5.3e-6;
+  } else if (standard == Standard::kPalM) {
+    start_us = 5.8e-6;
+  }
+  return std::max(0, static_cast<int>(std::lround(sample_rate_hz * start_us)));
 }
 
-int BurstEndSamples(double sample_rate_hz) {
-  return std::max(0, static_cast<int>(std::lround(sample_rate_hz * 8.0e-6)));
+int BurstEndSamples(Standard standard, double sample_rate_hz) {
+  // ITU-R BT.470-6 Table 2 item 2.14g/h: burst gate end = start + duration.
+  // M/NTSC: 5.3+2.67=7.97 µs; B,G,H,I/PAL: 5.6+2.25=7.85 µs (use 8.0 µs);
+  // M/PAL: 5.8+2.52=8.32 µs.
+  double end_us = 8.0e-6;
+  if (standard == Standard::kNtsc) {
+    end_us = 7.97e-6;
+  } else if (standard == Standard::kPalM) {
+    end_us = 8.32e-6;
+  }
+  return std::max(0, static_cast<int>(std::lround(sample_rate_hz * end_us)));
 }
 
 std::vector<LinePulseSegment> BuildLinePulseSchedule(
@@ -370,7 +388,10 @@ std::vector<LinePulseSegment> BuildLinePulseSchedule(
     }
   }
 
-  if (standard == Standard::kNtsc && line.line_number_1based == 263) {
+  if ((standard == Standard::kNtsc || standard == Standard::kPalM) &&
+      line.line_number_1based == 263) {
+    // SMPTE 170M-2004 / ITU-R BT.470-6 System M: line 263 is the field-2
+    // transition half-line in System M (NTSC and PAL-M share this structure).
     return {
         LinePulseSegment{.offset_samples = 0,
                          .kind = SyncPulseKind::kHorizontal},
@@ -390,10 +411,11 @@ std::vector<LinePulseSegment> BuildLinePulseSchedule(
   schedule.push_back(LinePulseSegment{.offset_samples = half_line_samples,
                                       .kind = line.sync_pulse_kind});
 
-  if (standard == Standard::kNtsc) {
+  if (standard == Standard::kNtsc || standard == Standard::kPalM) {
     // Align the line-granular model with the SMPTE 170M field-2 transition
     // shape seen in 4fsc reference material, where mixed half-line pulse kinds
-    // occur around frame lines 263/266/269/272.
+    // occur around frame lines 263/266/269/272. PAL-M uses the same System M
+    // sync structure as M/NTSC.
     if (line.line_number_1based == 266) {
       schedule = {
           LinePulseSegment{.offset_samples = 0,
@@ -420,9 +442,9 @@ std::vector<LinePulseSegment> BuildLinePulseSchedule(
 }
 
 double SyncEdgeRiseTimeSeconds(Standard standard) {
-  if (standard == Standard::kNtsc) {
+  if (standard == Standard::kNtsc || standard == Standard::kPalM) {
     // SMPTE 170M-2004 Table 2 plus Note 1: sync pulse rise/fall 140 ns ± 20 ns
-    // measured 10%-90%.
+    // for System M. PAL-M uses System M sync structure.
     return 140.0e-9;
   }
   // ITU-R BT.1700 Annex 1 Part B Table 2 item f and Table 3 item s: 625 PAL
@@ -431,8 +453,9 @@ double SyncEdgeRiseTimeSeconds(Standard standard) {
 }
 
 double BurstEnvelopeRiseTimeSeconds(Standard standard) {
-  if (standard == Standard::kNtsc) {
-    // SMPTE 170M-2004 Table 2: burst envelope rise 300 ns (+200/-100) 10%-90%.
+  if (standard == Standard::kNtsc || standard == Standard::kPalM) {
+    // SMPTE 170M-2004 Table 2: burst envelope rise 300 ns (+200/-100) 10%-90%
+    // for System M. PAL-M uses the same M-system burst envelope shape.
     return 300.0e-9;
   }
   // ITU-R BT.1700 Annex 1 Part B Table 2 items g/h: define PAL burst placement
@@ -470,6 +493,25 @@ bool IsPalBurstBlankedLine(int line_1based, int burst_sequence_index) {
   return line_1based >= 311 && line_1based <= 319;
 }
 
+bool IsPalMBurstBlankedLine(int line_1based, int burst_sequence_index) {
+  // ITU-R BT.470-6 Table 2 item 2.17: M/PAL burst blanking — 11 lines per
+  // field-blanking window across the 4-sequence colour frame (Figure 5b).
+  //   Seq I:   lines 260–270 (near field-1/2 boundary at 262/263).
+  //   Seq II:  lines 522–7 (wrapping: 522–525 + 1–7).
+  //   Seq III: lines 259–269.
+  //   Seq IV:  lines 523–8 (wrapping: 523–525 + 1–8).
+  if (burst_sequence_index == 0) {
+    return line_1based >= 260 && line_1based <= 270;
+  }
+  if (burst_sequence_index == 1) {
+    return line_1based >= 522 || line_1based <= 7;
+  }
+  if (burst_sequence_index == 2) {
+    return line_1based >= 259 && line_1based <= 269;
+  }
+  return line_1based >= 523 || line_1based <= 8;
+}
+
 double PalBurstPhaseRadForLine(std::size_t frame_index,
                                const LineTimingPrimitive& line) {
   const int burst_sequence_index =
@@ -488,6 +530,16 @@ bool PalBurstEnabledForLine(std::size_t frame_index,
   const int burst_sequence_index =
       PalBurstSequenceIndex(frame_index, line.field_index_1based);
   return !IsPalBurstBlankedLine(line.line_number_1based, burst_sequence_index);
+}
+
+bool PalMBurstEnabledForLine(std::size_t frame_index,
+                             const LineTimingPrimitive& line) {
+  if (line.sync_pulse_kind != SyncPulseKind::kHorizontal) {
+    return false;
+  }
+  const int burst_sequence_index =
+      PalBurstSequenceIndex(frame_index, line.field_index_1based);
+  return !IsPalMBurstBlankedLine(line.line_number_1based, burst_sequence_index);
 }
 
 bool PalInvertVAxisForLine(std::size_t frame_index,
@@ -690,10 +742,16 @@ bool GenerationStage::GenerateFrameBatch(
   const int frame_samples = synth.frame_samples;
   // SMPTE 170M-2004 Table 1: NTSC burst amplitude = 40 IRE p-p = 20 IRE peak.
   // ITU-R BT.1700 Part B Table 2 item 5: PAL burst amplitude = 300 mV p-p.
-  const double burst_amplitude_mv =
-      (project.cvbs_presets.video_standard_preset == Standard::kNtsc)
-          ? (20.0 * 1000.0 / 140.0)
-          : 150.0;
+  // ITU-R BT.470-6 Table 2 item 2.15: M/PAL burst = 3/7 × (white−blanking).
+  //   PAL: 3/7 × 700 mV = 300 mV p-p → 150.0 mV peak.
+  //   M/PAL: 3/7 × 714.3 mV = 306.1 mV p-p → 153.05 mV peak.
+  const Standard video_standard = project.cvbs_presets.video_standard_preset;
+  double burst_amplitude_mv = 150.0;
+  if (video_standard == Standard::kNtsc) {
+    burst_amplitude_mv = 20.0 * 1000.0 / 140.0;
+  } else if (video_standard == Standard::kPalM) {
+    burst_amplitude_mv = (3.0 / 7.0) * 714.3 / 2.0;
+  }
   std::unique_ptr<IChromaEncoder> chroma_encoder = CreateChromaEncoder(
       project.cvbs_presets.video_standard_preset, timing.sample_rate_4fsc_hz);
 
@@ -893,14 +951,20 @@ bool GenerationStage::GenerateFrameBatch(
         }
       }
 
-      const bool is_pal =
-          project.cvbs_presets.video_standard_preset == Standard::kPal;
-      const bool burst_enabled =
-          is_pal ? PalBurstEnabledForLine(disc_frame_index, line)
-                 : line.burst_enabled;
-      const double burst_phase_rad =
-          is_pal ? PalBurstPhaseRadForLine(disc_frame_index, line)
-                 : line.burst_phase_rad;
+      const bool is_pal = video_standard == Standard::kPal;
+      const bool is_pal_m = video_standard == Standard::kPalM;
+      bool burst_enabled = line.burst_enabled;
+      double burst_phase_rad = line.burst_phase_rad;
+      if (is_pal) {
+        burst_enabled = PalBurstEnabledForLine(disc_frame_index, line);
+        burst_phase_rad = PalBurstPhaseRadForLine(disc_frame_index, line);
+      } else if (is_pal_m) {
+        // ITU-R BT.470-6 Table 2 item 2.17: PAL-M burst blanking uses
+        // System M line numbers (IsPalMBurstBlankedLine). Burst phase
+        // follows the same ±135° alternating pattern as 625-line PAL.
+        burst_enabled = PalMBurstEnabledForLine(disc_frame_index, line);
+        burst_phase_rad = PalBurstPhaseRadForLine(disc_frame_index, line);
+      }
 
       if (burst_enabled) {
         const int burst_sample_start =
@@ -947,15 +1011,15 @@ bool GenerationStage::GenerateFrameBatch(
                     local_line_base);
 
           const bool invert_pal_v_axis =
-              is_pal && PalInvertVAxisForLine(disc_frame_index, line);
+              (is_pal || is_pal_m) &&
+              PalInvertVAxisForLine(disc_frame_index, line);
           const int active_window_line_start_absolute =
               absolute_line_base + active_window_start;
           // SMPTE 170M-2004 Section 10: defines active chroma with burst+180
-          // deg reference for NTSC.
-          const double phase_offset =
-              (project.cvbs_presets.video_standard_preset == Standard::kNtsc)
-                  ? (line.burst_phase_rad + kPi)
-                  : 0.0;
+          // deg reference for NTSC. PAL and PAL-M use 0 phase offset.
+          const double phase_offset = (video_standard == Standard::kNtsc)
+                                          ? (line.burst_phase_rad + kPi)
+                                          : 0.0;
           const double phase_start =
               (kQuarterWaveRad *
                static_cast<double>(active_window_line_start_absolute)) +

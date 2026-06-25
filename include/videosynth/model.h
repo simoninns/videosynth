@@ -24,6 +24,9 @@ namespace videosynth {
 enum class Standard {
   kPal,
   kNtsc,
+  // PAL-M: System M line structure (525 lines, ~60 Hz) with PAL colour
+  // encoding. Used in Brazil. ITU-R BT.470-6 Table 2 (M/PAL column).
+  kPalM,
   kUnknown,
 };
 
@@ -34,6 +37,9 @@ inline Standard StandardFromString(const std::string& value) {
   if (value == "NTSC") {
     return Standard::kNtsc;
   }
+  if (value == "PAL_M" || value == "PAL-M") {
+    return Standard::kPalM;
+  }
   return Standard::kUnknown;
 }
 
@@ -43,6 +49,8 @@ inline std::string StandardToString(Standard standard) {
       return "PAL";
     case Standard::kNtsc:
       return "NTSC";
+    case Standard::kPalM:
+      return "PAL_M";
     default:
       return "UNKNOWN";
   }

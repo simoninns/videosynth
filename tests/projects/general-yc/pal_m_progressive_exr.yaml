@@ -1,0 +1,92 @@
+project:
+  name: PalMProgressiveExrFixture
+  version: "1.0"
+  description: PAL-M progressive EXR fixture
+
+cvbs_presets:
+  video_standard_preset: PAL_M
+  sample_encoding_preset: CVBS_TPG21_4FSC
+  signal_state_preset: STANDARD_TBC_LOCKED
+
+output:
+  video_path: tests/projects/output-general/yc/videosynth_pal_m_progressive_exr.y
+  metadata_path: tests/projects/output-general/yc/videosynth_pal_m_progressive_exr.meta
+  signal_type: yc
+
+sections:
+  - name: PalMExr100Bars
+    type: progressive
+    source: videosynth-assets/assets/exr/720x486/100_BARS.exr
+    duration_frames: 8
+  - name: PalMExr75Bars
+    type: progressive
+    source: videosynth-assets/assets/exr/720x486/75_BARS.exr
+    duration_frames: 8
+  - name: PalMExr75BarsRed
+    type: progressive
+    source: videosynth-assets/assets/exr/720x486/75_BARS_RED.exr
+    duration_frames: 8
+  - name: PalMExrChromaRamp
+    type: progressive
+    source: videosynth-assets/assets/exr/720x486/CHROMA_RAMP.exr
+    duration_frames: 8
+  - name: PalMExrFullRamp
+    type: progressive
+    source: videosynth-assets/assets/exr/720x486/FULL_RAMP.exr
+    duration_frames: 8
+  - name: PalMExrGrey10HStep
+    type: progressive
+    source: videosynth-assets/assets/exr/720x486/GREY_10H_STEP.exr
+    duration_frames: 8
+  - name: PalMExrLumaRamp
+    type: progressive
+    source: videosynth-assets/assets/exr/720x486/LUMA_RAMP.exr
+    duration_frames: 8
+  - name: PalMExrGrey10V
+    type: progressive
+    source: videosynth-assets/assets/exr/720x486/GREY_10V_STEP.exr
+    duration_frames: 8
+  - name: PalMExrGrey5HStep
+    type: progressive
+    source: videosynth-assets/assets/exr/720x486/GREY_5H_STEP.exr
+    duration_frames: 8
+  - name: PalMExrGrey5VStep
+    type: progressive
+    source: videosynth-assets/assets/exr/720x486/GREY_5V_STEP.exr
+    duration_frames: 8
+  - name: PalMExrLegalRamp
+    type: progressive
+    source: videosynth-assets/assets/exr/720x486/LEGAL_RAMP.exr
+    duration_frames: 8
+  - name: PalMExrLumaRampDown
+    type: progressive
+    source: videosynth-assets/assets/exr/720x486/LUMA_RAMP_DOWN.exr
+    duration_frames: 8
+  - name: PalMExrMultiburst
+    type: progressive
+    source: videosynth-assets/assets/exr/720x486/MULTIBURST.exr
+    duration_frames: 8
+  - name: PalMExrPluge
+    type: progressive
+    source: videosynth-assets/assets/exr/720x486/PLUGE.exr
+    duration_frames: 8
+  - name: PalMExrSmpteBars
+    type: progressive
+    source: videosynth-assets/assets/exr/720x486/SMPTE_BARS_001.exr
+    duration_frames: 8
+  - name: PalMExrTartan
+    type: progressive
+    source: videosynth-assets/assets/exr/720x486/TARTAN.exr
+    duration_frames: 8
+  - name: PalMExrValidRamps
+    type: progressive
+    source: videosynth-assets/assets/exr/720x486/VALID_RAMPS.exr
+    duration_frames: 8
+  - name: PalMExrVertLumaRamp
+    type: progressive
+    source: videosynth-assets/assets/exr/720x486/VERT_LUMA_RAMP.exr
+    duration_frames: 8
+  - name: PalMExrYCbCrRamps
+    type: progressive
+    source: videosynth-assets/assets/exr/720x486/Y_CB_CR_RAMPS.exr
+    duration_frames: 8

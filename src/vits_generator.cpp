@@ -26,10 +26,16 @@ constexpr double kPi = 3.14159265358979323846;
 
 double SubcarrierFrequencyHz(Standard standard) {
   if (standard == Standard::kPal) {
+    // EBU Tech. 3280-E Section 1.1.1: PAL subcarrier 4.433618.75 MHz.
     return 4433618.75;
   }
   if (standard == Standard::kNtsc) {
+    // SMPTE 170M-2004 Section 12.5: NTSC subcarrier 3.579545 MHz.
     return 3579545.0;
+  }
+  if (standard == Standard::kPalM) {
+    // ITU-R BT.470-6 Table 2 item 2.11a: M/PAL subcarrier 3 579 611.49 Hz.
+    return 3579611.49;
   }
   return 0.0;
 }

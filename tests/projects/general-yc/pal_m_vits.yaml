@@ -1,0 +1,36 @@
+project:
+  name: PalMVitsFixture
+  version: "1.0"
+  description: PAL-M VITS fixture
+
+cvbs_presets:
+  video_standard_preset: PAL_M
+  sample_encoding_preset: CVBS_TPG21_4FSC
+  signal_state_preset: STANDARD_TBC_LOCKED
+
+output:
+  video_path: tests/projects/output-general/yc/videosynth_pal_m_vits.y
+  metadata_path: tests/projects/output-general/yc/videosynth_pal_m_vits.meta
+  signal_type: yc
+
+sections:
+  - name: PalMVits
+    type: progressive
+    source: videosynth-assets/assets/exr/720x486/100_BARS.exr
+    duration_frames: 1
+    line_injections:
+      - type: vits
+        target_lines: [17]
+        vits_type: ntc7-composite
+      - type: vits
+        target_lines: [18]
+        vits_type: fcc-multiburst
+      - type: vits
+        target_lines: [21]
+        vits_type: virs
+      - type: vits
+        target_lines: [280]
+        vits_type: ntc7-combination
+      - type: vits
+        target_lines: [281]
+        vits_type: fcc-composite

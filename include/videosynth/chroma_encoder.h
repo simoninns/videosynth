@@ -98,6 +98,30 @@ class NtscChromaEncoder final : public IChromaEncoder {
   mutable std::vector<double> filtered_cr_workspace_;
 };
 
+// PAL-M chroma encoder: PAL UV quadrature encoding with System M signal levels.
+//
+// ITU-R BT.470-6 Table 2 (M/PAL): PAL-M uses the same PAL encoding algorithm
+// (U on sin, V on cos, phase-alternating V) as 625-line PAL, but with System M
+// white level (714.3 mV) instead of 625-line PAL white level (700 mV).
+//
+// Thread-safety: NOT thread-safe due to mutable workspace buffers.
+// Callers must serialize access or create one encoder per thread.
+class PalMChromaEncoder final : public IChromaEncoder {
+ public:
+  explicit PalMChromaEncoder(double sample_rate_hz);
+
+  void EncodeLineFromPhaseStart(
+      const std::vector<YCbCr444Pixel>& source_samples,
+      double carrier_phase_start_rad,
+      std::vector<SampleFixed>* out_chroma_mv) const override;
+
+ private:
+  std::vector<double> u_filter_taps_;
+  std::vector<double> v_filter_taps_;
+  mutable std::vector<double> filtered_u_workspace_;
+  mutable std::vector<double> filtered_v_workspace_;
+};
+
 // Thread-safety: CreateChromaEncoder returns a new encoder instance. The
 // caller owns the returned unique_ptr and is responsible for thread-safety.
 std::unique_ptr<IChromaEncoder> CreateChromaEncoder(Standard standard,

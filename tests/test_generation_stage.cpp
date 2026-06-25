@@ -36,8 +36,18 @@ int BurstStartSamples(double sample_rate_hz) {
   return static_cast<int>(std::lround(sample_rate_hz * 5.6e-6));
 }
 
+int BurstStartSamples(Standard standard, double sample_rate_hz) {
+  double us = (standard == Standard::kNtsc) ? 5.3e-6 : 5.6e-6;
+  return static_cast<int>(std::lround(sample_rate_hz * us));
+}
+
 int BurstEndSamples(double sample_rate_hz) {
   return static_cast<int>(std::lround(sample_rate_hz * 8.0e-6));
+}
+
+int BurstEndSamples(Standard standard, double sample_rate_hz) {
+  double us = (standard == Standard::kNtsc) ? 7.97e-6 : 8.0e-6;
+  return static_cast<int>(std::lround(sample_rate_hz * us));
 }
 
 std::string DefaultBarsExrPath(Standard standard) {
@@ -814,8 +824,9 @@ TEST(GenerationStageTimingTest, AppliesBurstEnvelopeRampAtBurstWindowEdges) {
   const int line_1based = 20;
   const int line_start = (line_1based - 1) * ntsc.samples_per_line_4fsc;
   const int burst_start =
-      line_start + BurstStartSamples(ntsc.sample_rate_4fsc_hz);
-  const int burst_end = line_start + BurstEndSamples(ntsc.sample_rate_4fsc_hz);
+      line_start + BurstStartSamples(Standard::kNtsc, ntsc.sample_rate_4fsc_hz);
+  const int burst_end =
+      line_start + BurstEndSamples(Standard::kNtsc, ntsc.sample_rate_4fsc_hz);
   auto MaxAbsInRange = [&](int start_sample, int end_sample) {
     double max_abs = 0.0;
     for (int i = start_sample; i < end_sample; ++i) {
@@ -855,8 +866,9 @@ TEST(GenerationStageTimingTest,
   const int line_1based = 20;
   const int line_start = (line_1based - 1) * ntsc.samples_per_line_4fsc;
   const int burst_start =
-      line_start + BurstStartSamples(ntsc.sample_rate_4fsc_hz);
-  const int burst_end = line_start + BurstEndSamples(ntsc.sample_rate_4fsc_hz);
+      line_start + BurstStartSamples(Standard::kNtsc, ntsc.sample_rate_4fsc_hz);
+  const int burst_end =
+      line_start + BurstEndSamples(Standard::kNtsc, ntsc.sample_rate_4fsc_hz);
   const int burst_width = burst_end - burst_start;
   ASSERT_GT(burst_width, 8);
 
@@ -904,7 +916,7 @@ TEST(GenerationStageChromaTest,
   const int line_1based = 60;
   const int line_start = (line_1based - 1) * ntsc.samples_per_line_4fsc;
   const int burst_start =
-      line_start + BurstStartSamples(ntsc.sample_rate_4fsc_hz);
+      line_start + BurstStartSamples(Standard::kNtsc, ntsc.sample_rate_4fsc_hz);
   const int burst_mid = burst_start + 8;
   const double subcarrier_hz = ntsc.sample_rate_4fsc_hz / 4.0;
   const LineTimingPrimitive line =

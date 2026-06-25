@@ -524,6 +524,24 @@ bool VitsDefinitionProvider::TryGetDefinition(Standard standard,
     }
   }
 
+  // PAL-M uses System M line structure, so fall back to M/NTSC VITS
+  // definitions when no PAL-M-specific entry exists in the catalog.
+  if (standard == Standard::kPalM) {
+    for (const VitsDefinition& definition : Catalog()) {
+      if (definition.standard == Standard::kNtsc &&
+          definition.vits_type == vits_type) {
+        if (out_definition != nullptr) {
+          *out_definition = definition;
+          out_definition->standard = Standard::kPalM;
+        }
+        if (error != nullptr) {
+          error->clear();
+        }
+        return true;
+      }
+    }
+  }
+
   if (error != nullptr) {
     *error = "Unsupported vits_type '" + vits_type + "' for standard '" +
              StandardToString(standard) + "'.";

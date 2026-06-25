@@ -322,7 +322,7 @@ bool ValidateMkvProfileWithFfprobe(const std::string& source, Standard standard,
       if (error != nullptr) {
         *error =
             "Progressive MKV raster must be 720x576 for PAL and 720x486 for "
-            "NTSC.";
+            "NTSC or PAL-M.";
       }
       return false;
     }
@@ -371,7 +371,7 @@ bool ValidateMkvProfileWithFfprobe(const std::string& source, Standard standard,
       if (error != nullptr) {
         *error =
             "Progressive MKV raster must be 720x576 for PAL and 720x486 for "
-            "NTSC.";
+            "NTSC or PAL-M.";
       }
       return false;
     }
@@ -412,6 +412,57 @@ bool ValidateMkvProfileWithFfprobe(const std::string& source, Standard standard,
       if (error != nullptr) {
         *error =
             "Progressive NTSC MKV sample aspect ratio metadata is outside "
+            "supported tolerance.";
+      }
+      return false;
+    }
+  } else if (standard == Standard::kPalM) {
+    if (width != 720 || height != 486) {
+      if (error != nullptr) {
+        *error =
+            "Progressive MKV raster must be 720x576 for PAL and 720x486 for "
+            "NTSC or PAL-M.";
+      }
+      return false;
+    }
+    const double palm_rate = 30000.0 / 1001.0;
+    if (std::abs(frame_rate - palm_rate) > 1.0e-3) {
+      if (error != nullptr) {
+        *error = "Progressive MKV frame rate must match selected standard.";
+      }
+      return false;
+    }
+    if (field_order != "bt") {
+      if (error != nullptr) {
+        *error =
+            "Progressive PAL-M MKV sections require bottom-field-first field "
+            "order metadata (bt).";
+      }
+      return false;
+    }
+    if (color_primaries != "bt470bg" && color_primaries != "smpte170m") {
+      if (error != nullptr) {
+        *error =
+            "Progressive PAL-M MKV sections require bt470bg or smpte170m color "
+            "primaries metadata.";
+      }
+      return false;
+    }
+    if (!(color_transfer == "bt709" || color_transfer == "bt470bg" ||
+          color_transfer == "smpte170m")) {
+      if (error != nullptr) {
+        *error =
+            "Progressive PAL-M MKV sections require bt709, bt470bg, or "
+            "smpte170m transfer metadata.";
+      }
+      return false;
+    }
+    const double expected_sar = 108.0 / 119.0;
+    if (sample_aspect_ratio > 0.0 &&
+        std::abs(sample_aspect_ratio - expected_sar) > 2.0e-3) {
+      if (error != nullptr) {
+        *error =
+            "Progressive PAL-M MKV sample aspect ratio metadata is outside "
             "supported tolerance.";
       }
       return false;
@@ -552,7 +603,7 @@ bool DecodeMkvFrames(const std::string& source, Standard standard,
     if (error != nullptr) {
       *error =
           "Progressive MKV raster must be 720x576 for PAL and 720x486 for "
-          "NTSC.";
+          "NTSC or PAL-M.";
     }
     return false;
   }
@@ -798,7 +849,8 @@ YCbCr444Pixel ConvertRgbFloatToBt601(std::float_t r, std::float_t g,
 
 bool ValidateExrMetadata(const Imf::Header& header, int width, int height,
                          Standard standard, std::string* error) {
-  if (standard != Standard::kPal && standard != Standard::kNtsc) {
+  if (standard != Standard::kPal && standard != Standard::kNtsc &&
+      standard != Standard::kPalM) {
     if (error != nullptr) {
       *error = "Unsupported video standard for progressive EXR source.";
     }
@@ -870,7 +922,7 @@ bool ValidateExrMetadata(const Imf::Header& header, int width, int height,
   const auto fps_value = fps->value();
   if ((standard == Standard::kPal &&
        !(fps_value.n == 25 && fps_value.d == 1)) ||
-      (standard == Standard::kNtsc &&
+      ((standard == Standard::kNtsc || standard == Standard::kPalM) &&
        !(fps_value.n == 30000 && fps_value.d == 1001))) {
     if (error != nullptr) {
       *error =
@@ -905,7 +957,7 @@ bool LoadExrFrame(const std::string& source, Standard standard,
       if (error != nullptr) {
         *error =
             "Progressive EXR raster must be 720x576 for PAL and 720x486 for "
-            "NTSC.";
+            "NTSC or PAL-M.";
       }
       return false;
     }

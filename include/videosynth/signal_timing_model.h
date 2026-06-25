@@ -51,8 +51,9 @@ inline int Field1LineCount(Standard standard) {
     // With 2:1 interlace this model treats lines 1-312 as field 1.
     return 312;
   }
-  if (standard == Standard::kNtsc) {
+  if (standard == Standard::kNtsc || standard == Standard::kPalM) {
     // SMPTE 170M-2004 Section 11.3: defines 525 lines/frame.
+    // PAL-M uses the same System M line structure as M/NTSC.
     // With 2:1 interlace this model treats lines 1-262 as field 1.
     return 262;
   }
@@ -82,10 +83,9 @@ inline SyncPulseKind GetSyncPulseKind(Standard standard, int line_1based) {
     return SyncPulseKind::kHorizontal;
   }
 
-  if (standard == Standard::kNtsc) {
+  if (standard == Standard::kNtsc || standard == Standard::kPalM) {
     // SMPTE 170M-2004 Section 13.3/Table 3: defines a 9-line vertical sync
-    // block per field. With 1-indexed, line-granular framing, the field-1 block
-    // is at lines 1-9, and the field-2 block aligns to lines 264-272.
+    // block per field. PAL-M uses System M sync structure identical to M/NTSC.
     if (IsLineInRange(line_1based, 1, 3) || IsLineInRange(line_1based, 7, 9) ||
         IsLineInRange(line_1based, 264, 266) ||
         IsLineInRange(line_1based, 270, 272)) {
@@ -113,11 +113,9 @@ inline LineContentKind GetLineContentKind(Standard standard, int line_1based) {
     return LineContentKind::kActivePicture;
   }
 
-  if (standard == Standard::kNtsc) {
-    // SMPTE 170M-2004 Section 13.3/Table 3: defines a 20-line + 1.5 us vertical
-    // blanking interval and notes line-20/282 behavior. In this line-granular
-    // model, field-1 active starts at 22 and field-2 active starts at 284,
-    // leaving line 283 as the field-2 transition line.
+  if (standard == Standard::kNtsc || standard == Standard::kPalM) {
+    // SMPTE 170M-2004 Section 13.3/Table 3: defines a 20-line + 1.5 us
+    // vertical blanking interval. PAL-M uses System M blanking structure.
     if (IsLineInRange(line_1based, 10, 21) ||
         IsLineInRange(line_1based, 263, 283)) {
       return LineContentKind::kVbiBlanking;
@@ -145,6 +143,14 @@ inline double BurstPhaseRad(Standard standard, int line_1based) {
     constexpr double kNtscReferencePhase = kPi / 4.0;
     (void)line_1based;
     return kNtscReferencePhase;
+  }
+
+  if (standard == Standard::kPalM) {
+    // ITU-R BT.470-6 Table 2 item 2.16: M/PAL burst phase alternates
+    // ±135° relative to EU axis, line-to-line, same pattern as 625-line PAL.
+    // The PAL-M colour sequence (Sequences I-IV) is managed in generation_stage
+    // via PalBurstSequenceIndex; this baseline alternates ±135° per line.
+    return ((line_1based % 2) == 1) ? (3.0 * kPi / 4.0) : (-3.0 * kPi / 4.0);
   }
 
   // ITU-R BT.1700 Annex 1 Part B Table 1 item 10f and Figure 8: PAL burst phase

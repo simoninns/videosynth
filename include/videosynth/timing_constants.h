@@ -63,6 +63,22 @@ inline TimingConstants GetTimingConstants(Standard standard) {
     };
   }
 
+  if (standard == Standard::kPalM) {
+    return TimingConstants{
+        // ITU-R BT.470-6 Table 1 item 1: System M — 525 lines/frame.
+        .lines_per_frame = 525,
+        // ITU-R BT.470-6 Table 2 item 2.11b: M/PAL fsc = (909/4) × fH.
+        // At 4fsc, this yields exactly 909 samples per line.
+        .samples_per_line_4fsc = 909,
+        // ITU-R BT.470-6 Table 1 item 2: System M field frequency 60 Hz
+        // (59.94 for colour). M/PAL uses the same M-system frame rate.
+        .frame_rate_hz = 30000.0 / 1001.0,
+        // ITU-R BT.470-6 Table 2 item 2.11a: M/PAL nominal fsc =
+        // 3 579 611.49 Hz; 4fsc = 14 318 445.96 Hz.
+        .sample_rate_4fsc_hz = 14318445.96,
+    };
+  }
+
   throw std::invalid_argument(
       "Timing constants requested for unknown standard");
 }
@@ -97,12 +113,30 @@ inline SignalLevels GetSignalLevels(Standard standard) {
     };
   }
 
+  if (standard == Standard::kPalM) {
+    // ITU-R BT.470-6 Table 1 item 4: System M signal levels.
+    // PAL-M uses System M sync/luminance levels identical to M/NTSC.
+    return SignalLevels{
+        // ITU-R BT.470-6 Table 1 item 4: sync level = -40 IRE.
+        .sync_tip_mv = -285.7,
+        // ITU-R BT.470-6 Table 1 item 4: blanking reference = 0 IRE.
+        .blanking_mv = 0.0,
+        // ITU-R BT.470-6 Table 1 item 4: black-blanking diff = 7.5 IRE.
+        .black_mv = 53.6,
+        // ITU-R BT.470-6 Table 1 item 4: peak white = 100 IRE.
+        .white_mv = 714.3,
+    };
+  }
+
   throw std::invalid_argument("Signal levels requested for unknown standard");
 }
 
 inline SignalLevels GetSignalLevels(const CvbsPresets& presets) {
-  if (presets.video_standard_preset != Standard::kNtsc) {
-    return GetSignalLevels(presets.video_standard_preset);
+  const Standard standard = presets.video_standard_preset;
+  // Both NTSC and PAL-M use System M signal levels with a configurable black
+  // setup pedestal. PAL-M shares the M-system 7.5 IRE black setup.
+  if (standard != Standard::kNtsc && standard != Standard::kPalM) {
+    return GetSignalLevels(standard);
   }
 
   if (!IsSupportedNtscBlackSetupIre(presets.ntsc_black_setup_ire)) {
@@ -110,7 +144,7 @@ inline SignalLevels GetSignalLevels(const CvbsPresets& presets) {
         "Signal levels requested for unsupported NTSC black setup IRE");
   }
 
-  SignalLevels levels = GetSignalLevels(Standard::kNtsc);
+  SignalLevels levels = GetSignalLevels(standard);
   if (std::abs(presets.ntsc_black_setup_ire) < 1e-9) {
     levels.black_mv = levels.blanking_mv;
   }
@@ -127,6 +161,12 @@ inline int SamplesPerFrame4fsc(Standard standard) {
   if (standard == Standard::kNtsc) {
     // SMPTE 244M-2003 Section 4.1.1: 910 samples/line over 525 lines.
     return 910 * 525;
+  }
+
+  if (standard == Standard::kPalM) {
+    // ITU-R BT.470-6 Table 2 item 2.11b: fsc/fH = 909/4 (exact), so 4fsc
+    // yields exactly 909 samples per line over 525 System M lines.
+    return 909 * 525;
   }
 
   throw std::invalid_argument(
