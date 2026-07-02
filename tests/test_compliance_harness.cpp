@@ -28,6 +28,12 @@ namespace {
 
 constexpr double kPi = 3.14159265358979323846;
 
+// Matches kPalSubcarrierAnchorRad in generation_stage.cpp: the 625-line PAL
+// subcarrier lattice is rotated 270° so the burst-blanking meander pairs with
+// the subcarrier phase of colour fields 1/2 (ITU-R BT.1700 Annex 1 Part B
+// Figure 8 with Table 1 item 10f).
+constexpr double kPalSubcarrierAnchorRad = 3.0 * kPi / 2.0;
+
 Project MakeProject(Standard standard, const std::string& source = "") {
   const std::string selected_source =
       source.empty()
@@ -143,8 +149,12 @@ int FindFirstCrossingIndex(const std::vector<SampleFixed>& y_mv, int start,
   return -1;
 }
 
+// Estimates burst phase relative to the subcarrier lattice rotated by
+// |reference_anchor_rad| (kPalSubcarrierAnchorRad for 625-line PAL, 0 for
+// NTSC).
 double EstimateBurstPhaseRad(const std::vector<SampleFixed>& c_mv,
-                             int line_1based, const TimingConstants& timing) {
+                             int line_1based, const TimingConstants& timing,
+                             double reference_anchor_rad = 0.0) {
   const int line_start = (line_1based - 1) * timing.samples_per_line_4fsc;
   const int start = line_start + BurstStartSamples(timing.sample_rate_4fsc_hz);
   const int end = line_start + BurstEndSamples(timing.sample_rate_4fsc_hz);
@@ -153,8 +163,9 @@ double EstimateBurstPhaseRad(const std::vector<SampleFixed>& c_mv,
   double sum_sin = 0.0;
   double sum_cos = 0.0;
   for (int i = start; i < end; ++i) {
-    const double wt = (2.0 * kPi * subcarrier_hz * static_cast<double>(i)) /
-                      timing.sample_rate_4fsc_hz;
+    const double wt = ((2.0 * kPi * subcarrier_hz * static_cast<double>(i)) /
+                       timing.sample_rate_4fsc_hz) +
+                      reference_anchor_rad;
     const double c_mv_double =
         SampleFixedToMillivolts(c_mv[static_cast<std::size_t>(i)]);
     sum_sin += c_mv_double * std::sin(wt);
@@ -171,6 +182,10 @@ double WrappedPhaseDelta(double a_rad, double b_rad) {
     delta += two_pi;
   }
   return delta - kPi;
+}
+
+double WrappedPhaseDeltaAbs(double a_rad, double b_rad) {
+  return std::abs(WrappedPhaseDelta(a_rad, b_rad));
 }
 
 int MapCompositeToCode(Standard standard, double composite_mv) {
@@ -343,9 +358,13 @@ TEST(ComplianceHarnessTest, PalPulseAndEdgeTimingRemainWithinTolerance) {
   const int burst_end = line_start + BurstEndSamples(pal.sample_rate_4fsc_hz);
   EXPECT_EQ(c_mv[static_cast<std::size_t>(burst_start)], 0);
   EXPECT_EQ(c_mv[static_cast<std::size_t>(burst_end - 1)], 0);
-  EXPECT_GT(std::abs(SampleFixedToMillivolts(
-                c_mv[static_cast<std::size_t>((burst_start + burst_end) / 2)])),
-            100.0);
+  double burst_peak_mv = 0.0;
+  for (int bi = burst_start + 1; bi < burst_end - 1; ++bi) {
+    burst_peak_mv = std::max(
+        burst_peak_mv,
+        std::abs(SampleFixedToMillivolts(c_mv[static_cast<std::size_t>(bi)])));
+  }
+  EXPECT_GT(burst_peak_mv, 100.0);
 
   const double level_10 =
       levels.blanking_mv + (levels.sync_tip_mv - levels.blanking_mv) * 0.1;
@@ -382,7 +401,11 @@ TEST(ComplianceHarnessTest,
   EXPECT_NEAR(std::abs(WrappedPhaseDelta(phase_21, phase_22)), 0.0, 0.05);
 }
 
-TEST(ComplianceHarnessTest, PalBurstPolarityAlternatesByLineInFrameSequence) {
+TEST(ComplianceHarnessTest, PalBurstPolarityAlternatesPerLineInIecSequence) {
+  // ITU-R BT.1700 Annex 1 Part B Table 1 item 10f: PAL burst at ±135° from
+  // EU axis, alternating per line. Seq I (frame 0, field 1): odd lines carry
+  // +135°, even lines carry -135°. Item 10h: EV' component of the burst signals
+  // V-switching direction to the decoder; this requires the ±135° encoding.
   GenerationStage generation;
   std::vector<std::string> errors;
   std::vector<SampleFixed> y_mv;
@@ -391,16 +414,17 @@ TEST(ComplianceHarnessTest, PalBurstPolarityAlternatesByLineInFrameSequence) {
       generation.Generate(MakeProject(Standard::kPal), &y_mv, &c_mv, &errors));
 
   const TimingConstants pal = GetTimingConstants(Standard::kPal);
-  const double phase_23 = EstimateBurstPhaseRad(c_mv, 23, pal);
-  const double phase_24 = EstimateBurstPhaseRad(c_mv, 24, pal);
-  const double phase_25 = EstimateBurstPhaseRad(c_mv, 25, pal);
+  const double phase_23 =
+      EstimateBurstPhaseRad(c_mv, 23, pal, kPalSubcarrierAnchorRad);
+  const double phase_24 =
+      EstimateBurstPhaseRad(c_mv, 24, pal, kPalSubcarrierAnchorRad);
+  const double phase_25 =
+      EstimateBurstPhaseRad(c_mv, 25, pal, kPalSubcarrierAnchorRad);
 
-  EXPECT_GT(phase_23, 0.0);
-  EXPECT_LT(phase_24, 0.0);
-  EXPECT_GT(phase_25, 0.0);
-  EXPECT_NEAR(std::abs(phase_23), 3.0 * kPi / 4.0, 0.05);
-  EXPECT_NEAR(std::abs(phase_24), 3.0 * kPi / 4.0, 0.05);
-  EXPECT_NEAR(std::abs(phase_25), 3.0 * kPi / 4.0, 0.05);
+  constexpr double k135Deg = 3.0 * kPi / 4.0;
+  EXPECT_NEAR(phase_23, k135Deg, 0.1);
+  EXPECT_NEAR(phase_24, -k135Deg, 0.1);
+  EXPECT_NEAR(phase_25, k135Deg, 0.1);
 }
 
 TEST(ComplianceHarnessTest,

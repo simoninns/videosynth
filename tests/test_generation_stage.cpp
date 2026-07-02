@@ -50,6 +50,12 @@ int BurstEndSamples(Standard standard, double sample_rate_hz) {
   return static_cast<int>(std::lround(sample_rate_hz * us));
 }
 
+// Matches kPalSubcarrierAnchorRad in generation_stage.cpp: the 625-line PAL
+// subcarrier lattice is rotated 270° so the burst-blanking meander pairs with
+// the subcarrier phase of colour fields 1/2 (ITU-R BT.1700 Annex 1 Part B
+// Figure 8 with Table 1 item 10f).
+constexpr double kPalSubcarrierAnchorRad = 3.0 * 3.14159265358979323846 / 2.0;
+
 std::string DefaultBarsExrPath(Standard standard) {
   return (std::filesystem::path(VIDEOSYNTH_SOURCE_DIR) /
           (standard == Standard::kPal
@@ -284,6 +290,9 @@ double BurstWindowMean(const std::vector<SampleFixed>& c_mv, int line_1based,
   return count > 0 ? (sum / static_cast<double>(count)) : 0.0;
 }
 
+// Estimates PAL burst phase relative to the anchored subcarrier lattice
+// (carrier plus kPalSubcarrierAnchorRad), returning the ±135° swinging-burst
+// offset.
 double EstimateBurstPhaseRad(const std::vector<SampleFixed>& c_mv,
                              int line_1based, const TimingConstants& timing) {
   constexpr double kPi = 3.14159265358979323846;
@@ -295,8 +304,9 @@ double EstimateBurstPhaseRad(const std::vector<SampleFixed>& c_mv,
   double sum_sin = 0.0;
   double sum_cos = 0.0;
   for (int i = start; i < end; ++i) {
-    const double wt = 2.0 * kPi * subcarrier_hz *
-                      (static_cast<double>(i) / timing.sample_rate_4fsc_hz);
+    const double wt = (2.0 * kPi * subcarrier_hz *
+                       (static_cast<double>(i) / timing.sample_rate_4fsc_hz)) +
+                      kPalSubcarrierAnchorRad;
     const double c_mv_double =
         SampleFixedToMillivolts(c_mv[static_cast<std::size_t>(i)]);
     sum_sin += c_mv_double * std::sin(wt);
@@ -342,7 +352,8 @@ DecodedPalChromaSample DecodePalChromaWindowBurstLocked(
        ++sample_index) {
     const double t =
         static_cast<double>(sample_index) / timing.sample_rate_4fsc_hz;
-    const double wt = (2.0 * kPi * subcarrier_hz * t) + phase_correction;
+    const double wt = (2.0 * kPi * subcarrier_hz * t) +
+                      kPalSubcarrierAnchorRad + phase_correction;
     const double chroma_norm =
         SampleFixedToMillivolts(c_mv[static_cast<std::size_t>(sample_index)]) /
         kCompositeChromaScaleMillivolts;
@@ -727,18 +738,26 @@ TEST(GenerationStageTimingTest,
                                   &errors));
   const TimingConstants pal = GetTimingConstants(Standard::kPal);
 
-  // PAL 625 has 283.75 subcarrier cycles/line and V-switching, so adjacent
-  // burst-bearing lines carry a quarter-cycle phase delta in this model.
-  const double pal_line20_phase = EstimateBurstPhaseRad(c_pal, 20, pal);
-  const double pal_line21_phase = EstimateBurstPhaseRad(c_pal, 21, pal);
-  const double pal_line22_phase = EstimateBurstPhaseRad(c_pal, 22, pal);
-  EXPECT_NEAR(WrappedPhaseDeltaAbs(pal_line20_phase, pal_line21_phase),
-              kPi / 2.0, 0.25);
-  EXPECT_NEAR(WrappedPhaseDeltaAbs(pal_line21_phase, pal_line22_phase),
-              kPi / 2.0, 0.25);
+  // ITU-R BT.1700 Annex 1 Part B Table 1 item 10f: PAL burst at ±135° relative
+  // to EU axis, alternating per line. For Seq I (frame 0, field 1): odd lines
+  // carry +135°, even lines carry -135°. Item 10h: the EV' component of the
+  // burst signals V-switching direction to the decoder; this requires ±135°.
+  const double pal_odd_phase = EstimateBurstPhaseRad(c_pal, 23, pal);
+  const double pal_even_phase = EstimateBurstPhaseRad(c_pal, 24, pal);
+  const double pal_odd2_phase = EstimateBurstPhaseRad(c_pal, 25, pal);
+  constexpr double k135Deg = 3.0 * kPi / 4.0;
+  EXPECT_NEAR(pal_odd_phase, k135Deg, 0.15);
+  EXPECT_NEAR(pal_even_phase, -k135Deg, 0.15);
+  EXPECT_NEAR(pal_odd2_phase, k135Deg, 0.15);
 }
 
 TEST(GenerationStageTimingTest, PalBurstPhaseFollowsFourFrameSequence) {
+  // ITU-R BT.1700 Annex 1 Part B Table 1 item 10f: burst polarity on a fixed
+  // odd line alternates +135° (Seq I/II) and -135° (Seq III/IV) across frames.
+  // The burst total phase (carrier + ±135° offset) groups consecutive frame
+  // pairs: frames {0,1} share one total phase and frames {2,3} share another
+  // π-apart. These two measures together uniquely identify all 4 frames of the
+  // PAL colour sequence, enabling ld-decode to track the 8-field cycle.
   constexpr double kPi = 3.14159265358979323846;
   GenerationStage generation;
   std::vector<std::string> errors;
@@ -752,9 +771,10 @@ TEST(GenerationStageTimingTest, PalBurstPhaseFollowsFourFrameSequence) {
   const int line_1based = 23;
   const int burst_offset_start = BurstStartSamples(pal.sample_rate_4fsc_hz);
   const int burst_offset_end = BurstEndSamples(pal.sample_rate_4fsc_hz);
-  const double subcarrier_hz = pal.sample_rate_4fsc_hz / 4.0;
 
-  auto phase_for_frame = [&](int frame_index) {
+  // Burst polarity: correlation against the anchored subcarrier lattice
+  // returns ±135°.
+  auto burst_polarity = [&](int frame_index) {
     const int frame_base = frame_index * frame_samples;
     const int line_start =
         frame_base + ((line_1based - 1) * pal.samples_per_line_4fsc);
@@ -763,8 +783,8 @@ TEST(GenerationStageTimingTest, PalBurstPhaseFollowsFourFrameSequence) {
     double sum_sin = 0.0;
     double sum_cos = 0.0;
     for (int i = start; i < end; ++i) {
-      const double wt = 2.0 * kPi * subcarrier_hz *
-                        (static_cast<double>(i) / pal.sample_rate_4fsc_hz);
+      const double wt =
+          ((kPi / 2.0) * static_cast<double>(i)) + kPalSubcarrierAnchorRad;
       sum_sin += static_cast<double>(c_pal[static_cast<std::size_t>(i)]) *
                  std::sin(wt);
       sum_cos += static_cast<double>(c_pal[static_cast<std::size_t>(i)]) *
@@ -773,16 +793,151 @@ TEST(GenerationStageTimingTest, PalBurstPhaseFollowsFourFrameSequence) {
     return std::atan2(sum_cos, sum_sin);
   };
 
-  const double p1 = phase_for_frame(0);
-  const double p2 = phase_for_frame(1);
-  const double p3 = phase_for_frame(2);
-  const double p4 = phase_for_frame(3);
+  // Burst total phase: local-reference correlation returns carrier + offset.
+  auto burst_total_phase = [&](int frame_index) {
+    const int frame_base = frame_index * frame_samples;
+    const int line_start =
+        frame_base + ((line_1based - 1) * pal.samples_per_line_4fsc);
+    const int start = line_start + burst_offset_start;
+    const int end = line_start + burst_offset_end;
+    double sum_sin = 0.0;
+    double sum_cos = 0.0;
+    for (int i = start; i < end; ++i) {
+      const double wt_local = (kPi / 2.0) * static_cast<double>(i - start);
+      sum_sin += static_cast<double>(c_pal[static_cast<std::size_t>(i)]) *
+                 std::sin(wt_local);
+      sum_cos += static_cast<double>(c_pal[static_cast<std::size_t>(i)]) *
+                 std::cos(wt_local);
+    }
+    return std::atan2(sum_cos, sum_sin);
+  };
 
-  // PAL colour framing is a 4-frame sequence. The same frame line two frames
-  // later is half a cycle away, and the per-frame step is quarter-cycle.
-  EXPECT_NEAR(WrappedPhaseDeltaAbs(p1, p2), kPi / 2.0, 0.25);
-  EXPECT_NEAR(WrappedPhaseDeltaAbs(p2, p3), kPi / 2.0, 0.25);
-  EXPECT_NEAR(WrappedPhaseDeltaAbs(p3, p4), kPi / 2.0, 0.25);
+  // Odd line 23 burst polarity: +135° for Seq I (frames 0,2), -135° for Seq III
+  // (frames 1,3). Each polarity switch signals a V-axis inversion change (item
+  // 10h).
+  constexpr double k135Deg = 3.0 * kPi / 4.0;
+  EXPECT_NEAR(burst_polarity(0), k135Deg, 0.15);
+  EXPECT_NEAR(burst_polarity(1), -k135Deg, 0.15);
+  EXPECT_NEAR(burst_polarity(2), k135Deg, 0.15);
+  EXPECT_NEAR(burst_polarity(3), -k135Deg, 0.15);
+
+  // Burst total phase: frames {0,1} share one total phase, frames {2,3} share
+  // a total phase π apart. All four frames are uniquely identifiable.
+  const double tp0 = burst_total_phase(0);
+  const double tp1 = burst_total_phase(1);
+  const double tp2 = burst_total_phase(2);
+  const double tp3 = burst_total_phase(3);
+  EXPECT_NEAR(WrappedPhaseDeltaAbs(tp0, tp1), 0.0, 0.15);
+  EXPECT_NEAR(WrappedPhaseDeltaAbs(tp2, tp3), 0.0, 0.15);
+  EXPECT_NEAR(WrappedPhaseDeltaAbs(tp0, tp2), kPi, 0.15);
+}
+
+int PalLineSampleOffset(int line_1based);
+
+// Peak chroma magnitude (mV) within the burst window of a line, addressed by
+// an absolute line-start sample offset (frame base plus line offset).
+double BurstWindowPeakMv(const std::vector<SampleFixed>& c_mv,
+                         int line_start_sample, Standard standard,
+                         double sample_rate_hz) {
+  const int start =
+      line_start_sample + BurstStartSamples(standard, sample_rate_hz);
+  const int end = line_start_sample + BurstEndSamples(standard, sample_rate_hz);
+  double peak = 0.0;
+  for (int i = start; i < end; ++i) {
+    peak = std::max(
+        peak,
+        std::abs(SampleFixedToMillivolts(c_mv[static_cast<std::size_t>(i)])));
+  }
+  return peak;
+}
+
+TEST(GenerationStageTimingTest, PalBurstBlankingMeanderAlternatesPerFrame) {
+  // ITU-R BT.1700 Annex 1 Part B Figure 8: the burst-blanking windows are
+  //   I: lines 623-006, II: 310-318, III: 622-005, IV: 311-319,
+  // spanning frame boundaries. The meander edge lines (6, 310, 319, 622) must
+  // therefore alternate between consecutive frames; decoders identify the
+  // 4-field position of the 8-field sequence from this alternation (ld-decode
+  // checks burst presence on field line 6 of each field).
+  GenerationStage generation;
+  std::vector<std::string> errors;
+  std::vector<SampleFixed> y;
+  std::vector<SampleFixed> c;
+  ASSERT_TRUE(
+      generation.Generate(MakeProject(Standard::kPal, 2), &y, &c, &errors));
+
+  const TimingConstants pal = GetTimingConstants(Standard::kPal);
+  const int frame_samples = SamplesPerFrame4fsc(Standard::kPal);
+  const auto burst_present = [&](int frame_index, int line_1based) {
+    const double peak = BurstWindowPeakMv(
+        c, frame_index * frame_samples + PalLineSampleOffset(line_1based),
+        Standard::kPal, pal.sample_rate_4fsc_hz);
+    return peak > 50.0;
+  };
+
+  // Frame 0 carries fields I/II: windows 1-6, 310-318, and 622-625 (start of
+  // window III, which precedes the next frame's field III).
+  EXPECT_FALSE(burst_present(0, 6));
+  EXPECT_FALSE(burst_present(0, 310));
+  EXPECT_TRUE(burst_present(0, 319));
+  EXPECT_FALSE(burst_present(0, 622));
+
+  // Frame 1 carries fields III/IV: windows 1-5, 311-319, and 623-625.
+  EXPECT_TRUE(burst_present(1, 6));
+  EXPECT_TRUE(burst_present(1, 310));
+  EXPECT_FALSE(burst_present(1, 319));
+  EXPECT_TRUE(burst_present(1, 622));
+
+  // Lines outside all windows carry burst in both frames; lines covered by
+  // overlapping windows carry burst in neither.
+  for (int frame_index = 0; frame_index < 2; ++frame_index) {
+    EXPECT_TRUE(burst_present(frame_index, 7));
+    EXPECT_TRUE(burst_present(frame_index, 320));
+    EXPECT_TRUE(burst_present(frame_index, 621));
+    EXPECT_FALSE(burst_present(frame_index, 310 + 8));
+  }
+}
+
+TEST(GenerationStageTimingTest, PalMBurstBlankingMeanderAlternatesPerFrame) {
+  // ITU-R BT.1700 Annex 1 Part B Figure 9: the 525-line M/PAL burst-blanking
+  // windows are I: lines 523-008, II: 260-270, III: 522-007, IV: 259-269,
+  // spanning frame boundaries. Windows II and IV overlap on lines 260-269 and
+  // line 270 falls in the System M equalizing block, so the meander edges
+  // observable on horizontal lines are 259 and 522; they must alternate
+  // between consecutive frames.
+  GenerationStage generation;
+  std::vector<std::string> errors;
+  std::vector<SampleFixed> y;
+  std::vector<SampleFixed> c;
+  ASSERT_TRUE(
+      generation.Generate(MakeProject(Standard::kPalM, 2), &y, &c, &errors));
+
+  const TimingConstants pal_m = GetTimingConstants(Standard::kPalM);
+  const int frame_samples = SamplesPerFrame4fsc(Standard::kPalM);
+  const auto burst_present = [&](int frame_index, int line_1based) {
+    const int line_start = frame_index * frame_samples +
+                           (line_1based - 1) * pal_m.samples_per_line_4fsc;
+    const double peak = BurstWindowPeakMv(c, line_start, Standard::kPalM,
+                                          pal_m.sample_rate_4fsc_hz);
+    return peak > 50.0;
+  };
+
+  // Frame 0 carries fields I/II: windows 1-8, 260-270, and 522-525 (start of
+  // window III, which precedes the next frame's field III).
+  EXPECT_TRUE(burst_present(0, 259));
+  EXPECT_FALSE(burst_present(0, 522));
+
+  // Frame 1 carries fields III/IV: windows 1-7, 259-269, and 523-525.
+  EXPECT_FALSE(burst_present(1, 259));
+  EXPECT_TRUE(burst_present(1, 522));
+
+  // Lines 260-263 lie in both windows II and IV (always blanked); lines 258
+  // and 521 lie outside all windows (always burst).
+  for (int frame_index = 0; frame_index < 2; ++frame_index) {
+    EXPECT_FALSE(burst_present(frame_index, 260));
+    EXPECT_FALSE(burst_present(frame_index, 263));
+    EXPECT_TRUE(burst_present(frame_index, 258));
+    EXPECT_TRUE(burst_present(frame_index, 521));
+  }
 }
 
 TEST(GenerationStageTimingTest, ShapesSyncEdgesInsteadOfHardSteps) {
@@ -1015,18 +1170,38 @@ TEST(GenerationStageChromaTest,
   std::vector<double> decoded_hues;
   decoded_hues.reserve(4);
 
+  constexpr double kPi = 3.14159265358979323846;
+  constexpr double kChromaScaleMv = 350.0;
+
   for (int line_1based = 23; line_1based <= 26; ++line_1based) {
     const int line_start = (line_1based - 1) * pal.samples_per_line_4fsc;
-    const DecodedPalChromaSample decoded = DecodePalChromaWindowBurstLocked(
-        c, line_1based, line_start + active_start + sample_window_start,
-        line_start + active_start + sample_window_end, pal);
+    const int sample_start = line_start + active_start + sample_window_start;
+    const int sample_end = line_start + active_start + sample_window_end;
 
-    const double v_unswitched = decoded.burst_phase_rad < 0.0
-                                    ? -decoded.v_switched
-                                    : decoded.v_switched;
-    const double decoded_hue = std::atan2(v_unswitched, decoded.u);
-    const double decoded_magnitude =
-        std::sqrt((decoded.u * decoded.u) + (v_unswitched * v_unswitched));
+    double sum_u = 0.0;
+    double sum_v = 0.0;
+    int count = 0;
+    for (int i = sample_start; i < sample_end; ++i) {
+      const double wt =
+          ((kPi / 2.0) * static_cast<double>(i)) + kPalSubcarrierAnchorRad;
+      const double cn =
+          SampleFixedToMillivolts(c[static_cast<std::size_t>(i)]) /
+          kChromaScaleMv;
+      sum_u += cn * std::sin(wt);
+      sum_v += cn * std::cos(wt);
+      ++count;
+    }
+    const double u =
+        count > 0 ? (2.0 * sum_u / static_cast<double>(count)) : 0.0;
+    const double v_switched =
+        count > 0 ? (2.0 * sum_v / static_cast<double>(count)) : 0.0;
+
+    // Frame 0, burst_seq=0: even lines have V-axis inversion in synthesis.
+    const bool v_inverted = (line_1based % 2 == 0);
+    const double v = v_inverted ? -v_switched : v_switched;
+
+    const double decoded_hue = std::atan2(v, u);
+    const double decoded_magnitude = std::sqrt(u * u + v * v);
 
     decoded_hues.push_back(decoded_hue);
     EXPECT_GT(decoded_magnitude, 0.08);
@@ -1305,7 +1480,7 @@ TEST(GenerationStageTest, PalLaserdiscPilotBurstDoesNotAffectActivePicture) {
       << "Pilot burst must not affect active-picture luma samples";
 }
 
-// Equalizing pulses (lines 4–6, 311–312, 316–318, 623–625) also receive the
+// Equalizing pulses (lines 4–5, 311–312, 316–318, 623–625) also receive the
 // pilot burst — verify that their flat regions oscillate.
 TEST(GenerationStageTest, PalLaserdiscPilotBurstAppliedToEqualizingPulses) {
   const Project project = MakePalPilotBurstProject();

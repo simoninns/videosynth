@@ -107,7 +107,7 @@ To avoid ambiguity, this specification uses **PAL** and **NTSC** with the follow
 
 The following are **out of scope** for this specification unless explicitly added in a future revision:
 
-- PAL-M, PAL-N, PAL-60, NTSC 4.43, SECAM, and other non-625/50-PAL or non-NTSC-M variants.
+- PAL-N, PAL-60, NTSC 4.43, SECAM, and other non-625/50-PAL or non-NTSC-M variants (PAL-M — 525/59.94 with the System M line structure and 3.575611 MHz subcarrier — **is** supported).
 - RF transmission/channel-plan differences (for example PAL-I RF sound spacing), because this document defines **baseband CVBS generation** rather than broadcast RF modulation.
 
 Practical interpretation:
@@ -299,8 +299,9 @@ $$
 
 - The PAL V-switch is applied by inverting the V axis on lines where the burst polarity sequence requires negative burst phase. This is sequence-aware and is not modeled as a simple global odd/even toggle.
 - PAL burst phase uses the BT.1700 sequence map (I/II/III/IV across colour fields) with nominal burst phases of $+135^\circ$ and $-135^\circ$ per Table 1 item 10f.
-- PAL burst suppression in the vertical interval follows BT.1700 Figure 8 (line windows for I/II/III/IV sequences).
-- PAL subcarrier phase progression is continuous across the full frame sample timeline (non-orthogonal 4fsc lattice per EBU Tech. 3280-E), and active-picture chroma uses the same sequence model as burst.
+- PAL burst suppression in the vertical interval follows BT.1700 Figure 8. The four 9-line blanking windows (I: 623–006, II: 310–318, III: 622–005, IV: 311–319) are defined in frame-line numbers and span frame boundaries, so they are applied per colour-frame parity: even-parity disc frames (fields I/II) blank lines 1–6, 310–318, and 622–625; odd-parity frames (fields III/IV) blank lines 1–5, 311–319, and 623–625. The alternation of the meander edge lines (6, 310, 319, 622) is what allows decoders (e.g. ld-decode/decode-orc) to identify the 4-field position of the 8-field sequence. PAL-M applies the corresponding 11-line windows of Figure 9 (I: 523–008, II: 260–270, III: 522–007, IV: 259–269) in the same parity-keyed manner.
+- PAL subcarrier phase progression is continuous across the full frame sample timeline (non-orthogonal 4fsc lattice per EBU Tech. 3280-E, 709 379 samples/frame), and active-picture chroma uses the same sequence model as burst. Because 709 379 ≡ 3 (mod 4), the subcarrier-to-frame phase rotates by 270° per frame, producing the 4-frame (8-field) colour sequence.
+- The 625-line PAL subcarrier lattice is rotated by a fixed 270° anchor so that disc frame 0 (meander parity 0, carrying fields I/II) presents the subcarrier-to-frame phase of colour fields 1/2. This pairing was validated against the ld-decode/decode-orc field-phase detection: without the anchor, the two fields of a frame decode as non-consecutive field IDs. PAL-M uses a zero anchor.
 
 ### **NTSC Chroma Encoding Model**
 
@@ -593,30 +594,17 @@ For **PAL (625-line system)**, the vertical blanking interval (VBI) is defined a
 
 | **Line** | **Half-Line Elements** | **Notes**                                          |
 | -------- | ---------------------- | -------------------------------------------------- |
-| 1        | EQ, EQ                 | Pre-equalizing pulses (5 pulses total, 2.5H).      |
-| 2        | EQ, EQ                 | Pre-equalizing pulses.                             |
-| 3        | EQ, EQ                 | Pre-equalizing pulses.                             |
-| 4        | EQ, EQ                 | Pre-equalizing pulses.                             |
-| 5        | EQ, EQ                 | Pre-equalizing pulses.                             |
-| 6        | VS, VS                 | Vertical sync pulse (start).                       |
-| 7        | VS, VS                 | Vertical sync pulse.                               |
-| 8        | VS, VS                 | Vertical sync pulse.                               |
-| 9        | VS, VS                 | Vertical sync pulse.                               |
-| 10       | VS, VS                 | Vertical sync pulse (end).                         |
-| 11       | EQ, EQ                 | Post-equalizing pulses (5 pulses total, 2.5H).     |
-| 12       | EQ, EQ                 | Post-equalizing pulses.                            |
-| 13       | EQ, EQ                 | Post-equalizing pulses.                            |
-| 14       | EQ, EQ                 | Post-equalizing pulses.                            |
-| 15       | EQ, EQ                 | Post-equalizing pulses.                            |
+| 1        | VS, VS                 | Vertical (broad) sync pulses (2.5H nominal, modeled line-granular on lines 1–3). Pre-equalizing pulses for field 1 occupy lines 623–625 of the preceding frame. |
+| 2        | VS, VS                 | Vertical sync pulse.                               |
+| 3        | VS, VS                 | Vertical sync pulse (end).                         |
+| 4        | EQ, EQ                 | Post-equalizing pulses (2.5H nominal, modeled line-granular on lines 4–5). |
+| 5        | EQ, EQ                 | Post-equalizing pulses (end).                      |
+| 6        | H                      | Normal line sync; carries colour burst subject to the BT.1700 Figure 8 burst-blanking sequence (present on fields III/IV frames, blanked on fields I/II frames). |
+| 7-15     | H                      | Blanked horizontal lines (line sync and burst, no content). |
 | 16-18    | BL, BL                 | VBI (Laserdisc biphase: programme status on 16, picture stop/chapter on 17, chapter/time code on 18). |
 | 19-21    | BL, BL                 | VBI (VITS on 19/20; VITC on 19–21; subtitle on 20–21).    |
 | 22       | BL, BL                 | VBI (CEA-608; blanked when Laserdisc active).              |
-| 23-620   | Active Video           | Visible content.                                   |
-| 621      | EQ, EQ                 | Pre-equalizing pulses (5 pulses total, 2.5H).      |
-| 622      | EQ, EQ                 | Pre-equalizing pulses.                             |
-| 623      | VS, VS                 | Vertical sync pulse (start).                       |
-| 624      | VS, VS                 | Vertical sync pulse.                               |
-| 625      | VS, VS                 | Vertical sync pulse (end).                         |
+| 23-310   | Active Video           | Field 1 visible content (burst on line 310 is subject to the Figure 8 window II). |
 
 
 #### **Field 2 (Even Field)**
@@ -632,8 +620,8 @@ For **PAL (625-line system)**, the vertical blanking interval (VBI) is defined a
 | 316      | EQ, EQ                 | Post-equalizing pulses.                        |
 | 317      | EQ, EQ                 | Post-equalizing pulses.                        |
 | 318      | EQ, BL                 | Transition out of sync block (mixed half-line).|
-| 319-334  | BL, BL                 | VBI lines.                                     |
-| 335-622  | Active Video           | Visible content.                               |
+| 319-334  | BL, BL                 | VBI lines (burst on line 319 is subject to the Figure 8 window IV). |
+| 335-622  | Active Video           | Visible content (burst on line 622 is subject to the Figure 8 window III). |
 | 623-625  | EQ, EQ                 | Pre-equalizing pulses for next frame boundary. |
 
 

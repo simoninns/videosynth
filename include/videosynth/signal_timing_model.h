@@ -67,10 +67,13 @@ inline int GetFieldIndex(Standard standard, int line_1based) {
 
 inline SyncPulseKind GetSyncPulseKind(Standard standard, int line_1based) {
   if (standard == Standard::kPal) {
-    // ITU-R BT.1700 Annex 1 Part B Figures 3-5 and Table 3 l/m/n: with
-    // line-granular framing yields the PAL equalizing/sync regions below; mixed
+    // ITU-R BT.1700 Annex 1 Part B Figures 3-5 and Table 2 items l/m/n: the
+    // pre-equalizing, field-sync, and post-equalizing sequences are 2.5H each,
+    // so field 1's post-equalizing sequence ends before line 6 and line 6 is a
+    // normal burst-carrying line (required for the Figure 8 burst-blanking
+    // identification). Line-granular framing yields the regions below; mixed
     // half-line combinations are applied by the generation pulse schedule.
-    if (IsLineInRange(line_1based, 4, 6) ||
+    if (IsLineInRange(line_1based, 4, 5) ||
         IsLineInRange(line_1based, 311, 313) ||
         IsLineInRange(line_1based, 316, 318) ||
         IsLineInRange(line_1based, 623, 625)) {

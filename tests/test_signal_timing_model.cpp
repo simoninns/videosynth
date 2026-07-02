@@ -28,7 +28,10 @@ TEST(SignalTimingModelTest, AssignsFieldIndexFromSequentialLineNumber) {
 
 TEST(SignalTimingModelTest, ClassifiesPalSyncBlocksAndLineKinds) {
   EXPECT_EQ(GetSyncPulseKind(Standard::kPal, 1), SyncPulseKind::kVerticalSync);
-  EXPECT_EQ(GetSyncPulseKind(Standard::kPal, 6), SyncPulseKind::kEqualizing);
+  EXPECT_EQ(GetSyncPulseKind(Standard::kPal, 5), SyncPulseKind::kEqualizing);
+  // ITU-R BT.1700 Annex 1 Part B Table 2 items l/m/n: the post-equalizing
+  // sequence ends before line 6, so line 6 is a normal burst-carrying line.
+  EXPECT_EQ(GetSyncPulseKind(Standard::kPal, 6), SyncPulseKind::kHorizontal);
   EXPECT_EQ(GetSyncPulseKind(Standard::kPal, 16), SyncPulseKind::kHorizontal);
   EXPECT_EQ(GetSyncPulseKind(Standard::kPal, 311), SyncPulseKind::kEqualizing);
   EXPECT_EQ(GetSyncPulseKind(Standard::kPal, 314),

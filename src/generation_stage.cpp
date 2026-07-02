@@ -43,6 +43,16 @@ constexpr double kQuarterWaveRad = kPi / 2.0;
 constexpr double kPilotBurstFreqHz = 3.75e6;
 constexpr double kPilotBurstAmplitudeMv = 300.0;
 
+// ITU-R BT.1700 Annex 1 Part B Figure 8 with Table 1 item 10f: the 8-field
+// PAL sequence pairs each burst-blanking meander position with a specific
+// subcarrier-to-frame phase. Rotating the subcarrier lattice by 270° anchors
+// disc frame 0 (meander parity 0, fields I/II) to the subcarrier phase that
+// decoders identify as colour fields 1/2. Validated against the
+// ld-decode/decode-orc field-phase detection: without this anchor the two
+// fields of a frame decode as non-consecutive field IDs. The anchor applies
+// to 625-line PAL only; PAL-M keeps a zero anchor.
+constexpr double kPalSubcarrierAnchorRad = 3.0 * kPi / 2.0;
+
 struct ActiveRasterGeometry {
   int first_active_line_field1 = 0;
   int first_active_line_field2 = 0;
@@ -479,37 +489,39 @@ bool PalBurstPositiveOnOddLine(int burst_sequence_index) {
   return burst_sequence_index == 0 || burst_sequence_index == 1;
 }
 
-bool IsPalBurstBlankedLine(int line_1based, int burst_sequence_index) {
-  // ITU-R BT.1700 Annex 1 Part B Figure 8: burst blanking windows for 625 PAL.
-  if (burst_sequence_index == 0) {
-    return line_1based >= 623 || line_1based <= 6;
+bool IsPalBurstBlankedLine(int line_1based, int colour_frame_parity) {
+  // ITU-R BT.1700 Annex 1 Part B Figure 8: the four 9-line burst-blanking
+  // windows are defined in frame-line numbers and span frame boundaries:
+  //   I:   lines 623-006    III: lines 622-005
+  //   II:  lines 310-318    IV:  lines 311-319
+  // An even-parity colour frame carries fields I/II, so it takes window I's
+  // head (lines 1-6), window II (310-318), and window III's start (622-625,
+  // preceding the next frame's field III). An odd-parity frame carries fields
+  // III/IV and takes lines 1-5, 311-319, and window I's start (623-625).
+  if (colour_frame_parity == 0) {
+    return line_1based <= 6 || (line_1based >= 310 && line_1based <= 318) ||
+           line_1based >= 622;
   }
-  if (burst_sequence_index == 1) {
-    return line_1based >= 310 && line_1based <= 318;
-  }
-  if (burst_sequence_index == 2) {
-    return line_1based >= 622 || line_1based <= 5;
-  }
-  return line_1based >= 311 && line_1based <= 319;
+  return line_1based <= 5 || (line_1based >= 311 && line_1based <= 319) ||
+         line_1based >= 623;
 }
 
-bool IsPalMBurstBlankedLine(int line_1based, int burst_sequence_index) {
-  // ITU-R BT.470-6 Table 2 item 2.17: M/PAL burst blanking — 11 lines per
-  // field-blanking window across the 4-sequence colour frame (Figure 5b).
-  //   Seq I:   lines 260–270 (near field-1/2 boundary at 262/263).
-  //   Seq II:  lines 522–7 (wrapping: 522–525 + 1–7).
-  //   Seq III: lines 259–269.
-  //   Seq IV:  lines 523–8 (wrapping: 523–525 + 1–8).
-  if (burst_sequence_index == 0) {
-    return line_1based >= 260 && line_1based <= 270;
+bool IsPalMBurstBlankedLine(int line_1based, int colour_frame_parity) {
+  // ITU-R BT.1700 Annex 1 Part B Figure 9: the four 11-line burst-blanking
+  // windows for 525-line M/PAL, defined in frame-line numbers and spanning
+  // frame boundaries:
+  //   I:   lines 523-008    III: lines 522-007
+  //   II:  lines 260-270    IV:  lines 259-269
+  // An even-parity colour frame carries fields I/II, so it takes window I's
+  // head (lines 1-8), window II (260-270), and window III's start (522-525,
+  // preceding the next frame's field III). An odd-parity frame carries fields
+  // III/IV and takes lines 1-7, 259-269, and window I's start (523-525).
+  if (colour_frame_parity == 0) {
+    return line_1based <= 8 || (line_1based >= 260 && line_1based <= 270) ||
+           line_1based >= 522;
   }
-  if (burst_sequence_index == 1) {
-    return line_1based >= 522 || line_1based <= 7;
-  }
-  if (burst_sequence_index == 2) {
-    return line_1based >= 259 && line_1based <= 269;
-  }
-  return line_1based >= 523 || line_1based <= 8;
+  return line_1based <= 7 || (line_1based >= 259 && line_1based <= 269) ||
+         line_1based >= 523;
 }
 
 double PalBurstPhaseRadForLine(std::size_t frame_index,
@@ -527,9 +539,8 @@ bool PalBurstEnabledForLine(std::size_t frame_index,
   if (line.sync_pulse_kind != SyncPulseKind::kHorizontal) {
     return false;
   }
-  const int burst_sequence_index =
-      PalBurstSequenceIndex(frame_index, line.field_index_1based);
-  return !IsPalBurstBlankedLine(line.line_number_1based, burst_sequence_index);
+  const int colour_frame_parity = static_cast<int>(frame_index % 2U);
+  return !IsPalBurstBlankedLine(line.line_number_1based, colour_frame_parity);
 }
 
 bool PalMBurstEnabledForLine(std::size_t frame_index,
@@ -537,9 +548,8 @@ bool PalMBurstEnabledForLine(std::size_t frame_index,
   if (line.sync_pulse_kind != SyncPulseKind::kHorizontal) {
     return false;
   }
-  const int burst_sequence_index =
-      PalBurstSequenceIndex(frame_index, line.field_index_1based);
-  return !IsPalMBurstBlankedLine(line.line_number_1based, burst_sequence_index);
+  const int colour_frame_parity = static_cast<int>(frame_index % 2U);
+  return !IsPalMBurstBlankedLine(line.line_number_1based, colour_frame_parity);
 }
 
 bool PalInvertVAxisForLine(std::size_t frame_index,
@@ -976,14 +986,20 @@ bool GenerationStage::GenerateFrameBatch(
         const int burst_sample_start_absolute =
             absolute_line_base + (burst_sample_start - local_line_base);
 
-        double burst_sin =
-            std::sin((kQuarterWaveRad *
-                      static_cast<double>(burst_sample_start_absolute)) +
-                     burst_phase_rad);
-        double burst_cos =
-            std::cos((kQuarterWaveRad *
-                      static_cast<double>(burst_sample_start_absolute)) +
-                     burst_phase_rad);
+        // ITU-R BT.1700 Annex 1 Part B Table 1 item 10f: PAL/PAL-M burst at
+        // ±135° from EU axis, alternating per line per PalBurstPhaseRadForLine.
+        // Item 10h: V-switching direction is carried in the EV' component of
+        // the burst; this requires burst_phase_rad to remain ±135° so decoders
+        // can extract the sign. NTSC burst_phase_rad is kept at π/4 (45°) per
+        // the constant-reference convention in signal_timing_model.h.
+        const double subcarrier_anchor_rad =
+            is_pal ? kPalSubcarrierAnchorRad : 0.0;
+        double burst_sin = std::sin(
+            kQuarterWaveRad * static_cast<double>(burst_sample_start_absolute) +
+            subcarrier_anchor_rad + burst_phase_rad);
+        double burst_cos = std::cos(
+            kQuarterWaveRad * static_cast<double>(burst_sample_start_absolute) +
+            subcarrier_anchor_rad + burst_phase_rad);
 
         for (int i = burst_sample_start; i < burst_sample_end; ++i) {
           const int relative_index = i - burst_sample_start;
@@ -1016,10 +1032,13 @@ bool GenerationStage::GenerateFrameBatch(
           const int active_window_line_start_absolute =
               absolute_line_base + active_window_start;
           // SMPTE 170M-2004 Section 10: defines active chroma with burst+180
-          // deg reference for NTSC. PAL and PAL-M use 0 phase offset.
-          const double phase_offset = (video_standard == Standard::kNtsc)
-                                          ? (line.burst_phase_rad + kPi)
-                                          : 0.0;
+          // deg reference for NTSC. PAL and PAL-M use 0 phase offset; PAL
+          // additionally carries the subcarrier anchor so picture chroma stays
+          // phase-coherent with the anchored burst.
+          const double phase_offset =
+              (video_standard == Standard::kNtsc)
+                  ? (line.burst_phase_rad + kPi)
+                  : (is_pal ? kPalSubcarrierAnchorRad : 0.0);
           const double phase_start =
               (kQuarterWaveRad *
                static_cast<double>(active_window_line_start_absolute)) +
