@@ -173,6 +173,49 @@ inline int SamplesPerFrame4fsc(Standard standard) {
       "Frame sample count requested for unknown standard");
 }
 
+// Audio is frame-locked to the video standard per the CVBS File Format
+// Specification (Audio Data). PAL uses an exact 44100 Hz clock; the System M
+// standards (NTSC, PAL-M) use 44,100,000/1001 Hz. Both yield an exact integer
+// sample count per stored frame.
+
+// Authoritative audio sample rate in Hz (may be a non-integer rational).
+inline double AudioSampleRateHz(Standard standard) {
+  if (standard == Standard::kPal) {
+    return 44100.0;
+  }
+  if (standard == Standard::kNtsc || standard == Standard::kPalM) {
+    return 44100000.0 / 1001.0;
+  }
+  throw std::invalid_argument(
+      "Audio sample rate requested for unknown standard");
+}
+
+// Integer nSamplesPerSec written to the WAV `fmt ` chunk header. PAL is exact
+// (44100); the System M rate is rounded to 44056 for the header field.
+inline int AudioHeaderSampleRateHz(Standard standard) {
+  if (standard == Standard::kPal) {
+    return 44100;
+  }
+  if (standard == Standard::kNtsc || standard == Standard::kPalM) {
+    return 44056;
+  }
+  throw std::invalid_argument(
+      "Audio header sample rate requested for unknown standard");
+}
+
+// Exact number of audio samples per stored video frame.
+// PAL: 44100 / 25 = 1764. System M: (44,100,000/1001) / (30000/1001) = 1470.
+inline int AudioSamplesPerFrame(Standard standard) {
+  if (standard == Standard::kPal) {
+    return 1764;
+  }
+  if (standard == Standard::kNtsc || standard == Standard::kPalM) {
+    return 1470;
+  }
+  throw std::invalid_argument(
+      "Audio samples-per-frame requested for unknown standard");
+}
+
 inline double SampleRateHzForEncodingPreset(Standard standard,
                                             const std::string& preset) {
   const TimingConstants timing = GetTimingConstants(standard);

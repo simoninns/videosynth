@@ -307,7 +307,8 @@ ParseResult ParseYamlNode(const YAML::Node& root, ILogger* logger) {
                                                   "start_frame",
                                                   "noise",
                                                   "dropouts",
-                                                  "osd"};
+                                                  "osd",
+                                                  "audio"};
       ValidateAllowedKeys(section_node, section_keys, "section",
                           &result.errors);
       if (!result.errors.empty()) {
@@ -474,6 +475,69 @@ ParseResult ParseYamlNode(const YAML::Node& root, ILogger* logger) {
             section.osd.overlays.push_back(overlay);
           }
         }
+      }
+
+      if (section_node["audio"]) {
+        const YAML::Node audio_node = section_node["audio"];
+        if (!audio_node.IsMap()) {
+          result.errors.push_back(
+              "section field 'audio' must be a map/object.");
+          return result;
+        }
+        const std::set<std::string> audio_keys = {"waveform", "frequency",
+                                                  "amplitude", "ramp"};
+        ValidateAllowedKeys(audio_node, audio_keys, "section.audio",
+                            &result.errors);
+        if (!result.errors.empty()) {
+          return result;
+        }
+
+        AudioParameters audio;
+        audio.enabled = true;
+        if (audio_node["waveform"]) {
+          audio.waveform_text = audio_node["waveform"].as<std::string>("");
+          audio.waveform = AudioWaveformFromString(audio.waveform_text);
+        }
+        if (audio_node["frequency"]) {
+          audio.frequency_hz = audio_node["frequency"].as<double>();
+        }
+        if (audio_node["amplitude"]) {
+          audio.amplitude = audio_node["amplitude"].as<double>();
+        }
+
+        if (audio_node["ramp"]) {
+          const YAML::Node ramp_node = audio_node["ramp"];
+          if (!ramp_node.IsMap()) {
+            result.errors.push_back("section.audio.ramp must be a map/object.");
+            return result;
+          }
+          const std::set<std::string> ramp_keys = {"start", "end", "mode",
+                                                   "period"};
+          ValidateAllowedKeys(ramp_node, ramp_keys, "section.audio.ramp",
+                              &result.errors);
+          if (!result.errors.empty()) {
+            return result;
+          }
+
+          audio.ramp_enabled = true;
+          if (ramp_node["start"]) {
+            audio.ramp_start_hz = ramp_node["start"].as<double>();
+            audio.ramp_start_specified = true;
+          }
+          if (ramp_node["end"]) {
+            audio.ramp_end_hz = ramp_node["end"].as<double>();
+            audio.ramp_end_specified = true;
+          }
+          if (ramp_node["mode"]) {
+            audio.ramp_mode_text = ramp_node["mode"].as<std::string>("");
+            audio.ramp_mode = AudioRampModeFromString(audio.ramp_mode_text);
+          }
+          if (ramp_node["period"]) {
+            audio.ramp_period_seconds = ramp_node["period"].as<double>();
+          }
+        }
+
+        section.audio = audio;
       }
 
       result.project.sections.push_back(section);

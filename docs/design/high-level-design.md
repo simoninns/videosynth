@@ -168,6 +168,8 @@ VideoSynth currently follows a **four-stage sampled-domain architecture**:
 3. **Dropout Injection Stage** (`DropoutInjectionStage`): Applies optional per-section random and scratch dropout events to the fixed-point mV Y/C buffers after noise, and writes a conformant SQLite dropout sidecar (`<basename>.dropouts.meta`).
 4. **[Output Stage](#output-stage)**: Validates frame-span alignment, combines Y and C, quantises to the active digital interface code space, and formats the final CVBS output files.
 
+Alongside these four stages, an optional **Audio Track Writer** (`AudioWavWriter`) runs when at least one section enables an `audio:` block. It synthesises a per-section test-tone waveform (`AudioSynthesizer`) frame-locked to the video, and streams a single stereo 16-bit PCM RIFF/WAVE track to `<basename>_audio_00.wav`. Per-frame audio buffers are routed through the **same** disc-skip withhold/replay decisions as the Y/C buffers, so the emitted WAV stays sample-accurately aligned to the stored video frames. See [Section 7 `audio:`](#audio-sub-key-optional-per-section).
+
 ### **Key Principles**
 
 - **Independent Y and C Generation**: Luma and chroma are generated separately and combined only at the output stage.
@@ -701,7 +703,7 @@ For **NTSC (525-line system)**, the vertical blanking interval (VBI) is defined 
 The current parser, validator, and runtime implement only a subset of the YAML surface described in this section:
 
 - Implemented top-level presets: `video_standard_preset`, `sample_encoding_preset`, `signal_state_preset`, `ntsc_black_setup_ire`, `output.video_path`, `output.metadata_path`, and `output.signal_type` (`"composite"` or `"yc"`; defaults to `"composite"`).
-- Implemented section fields: `name`, `type`, `source`, `start_frame`, and `duration_frames`.
+- Implemented section fields: `name`, `type`, `source`, `start_frame`, `duration_frames`, and the optional per-section `noise:`, `dropouts:`, `osd:`, and `audio:` blocks.
 - The `line_injections` schema is represented in the current parser data model and receives validator-level schema/compatibility checks for injection type, `target_lines`, and standard-dependent VITS constraints.
 - VITS line injections have a generation-stage orchestration path and are applied only on their targeted frame lines within the owning section span.
 - Built-in VITS catalog entries now carry full waveform-definition primitive/composite trees for every supported `vits_type`, so the default runtime path can render all supported PAL and NTSC VITS patterns.
@@ -745,6 +747,10 @@ sections:
     noise:                     # Optional noise injection for this section
       noise_db: 48.0           # Floor noise level; sets Black PSNR target [20.0–61.0 dB]
       noise_spread_db: 4.0     # White is 4 dB noisier than black; White SNR = noise_db - noise_spread_db
+    audio:                     # Optional frame-locked audio test tone for this section
+      waveform: sine           # sine, square, sawtooth, or triangle
+      frequency: 1000.0        # Fixed-tone frequency in Hz [0, 22000]
+      amplitude: 0.5           # Peak amplitude as a fraction of full scale [0.0, 1.0]
     line_injections:           # Line-based injections for this section
       - type: vits
         target_lines: [10, 11, 12]
@@ -840,6 +846,76 @@ sections:
         seed: 42
       scratch:
         scale: 3
+```
+
+---
+
+#### **`audio:` Sub-Key (Optional, Per-Section)**
+
+The `audio:` block generates a synthetic test-tone waveform for the exact duration (in frames) of its section. When at least one section enables audio, the pipeline writes a single frame-locked audio track alongside the CVBS/Y-C output as `<basename>_audio_00.wav` (the basename is derived from `output.video_path` by stripping a trailing `.composite` or `.y` suffix).
+
+Fixed design decisions:
+- **Single track** for the whole project (`_audio_00`); the schema is structured so a future multi-track extension (the format permits up to 16) is additive.
+- **Mono duplicated to L+R** — one waveform is synthesised and written identically to both stereo channels (the format mandates 2-channel PCM).
+- **Phase reset per section** — each section's oscillator starts at phase 0; no phase state is carried across section boundaries.
+
+**Frame lock** — the track is stereo, 16-bit signed little-endian PCM (RIFF/WAVE, format tag `0x0001`) at a sample rate locked to the video standard, so the total sample count is always `frames × samples_per_frame`:
+
+| Preset | Audio sample rate (authoritative) | `fmt` `nSamplesPerSec` | Samples/frame |
+|--------|-----------------------------------|------------------------|---------------|
+| `PAL` | 44100 Hz (exact) | 44100 | 1764 |
+| `NTSC` | 44,100,000⁄1001 Hz | 44056 | 1470 |
+| `PAL_M` | 44,100,000⁄1001 Hz | 44056 | 1470 |
+
+**Fields**:
+
+| Key | Type | Required | Range / Values | Description |
+|-----|------|----------|----------------|-------------|
+| `waveform` | string | No | `sine`, `square`, `sawtooth`, `triangle` | Oscillator shape. Default `sine`. Waveforms are naive (non-band-limited) — acceptable for test signals. |
+| `frequency` | float | No | [0, 22000] Hz | Fixed-tone frequency, used when no `ramp:` block is present. Default `1000.0`. |
+| `amplitude` | float | No | [0.0, 1.0] | Peak amplitude as a fraction of full scale. Default `0.5`. |
+| `ramp:` | map | No | — | Optional frequency-sweep block (below); mutually exclusive with the fixed `frequency` mode. |
+
+**`ramp:` block** — frequency sweep:
+
+| Key | Type | Required | Range / Values | Description |
+|-----|------|----------|----------------|-------------|
+| `start` | float | Yes | [0, 22000] Hz | Sweep start frequency. |
+| `end` | float | Yes | [0, 22000] Hz | Sweep end frequency. |
+| `mode` | string | No | `up`, `down`, `bounce` | `up` = start→end, `down` = end→start, `bounce` = start→end→start over the ramp span. Default `up`. |
+| `period` | float | No | [0, section duration s] | `0` (default) sweeps once over the whole section; `> 0` makes one sweep last this many seconds and repeat until the section ends. |
+
+Frequency semantics: instantaneous frequency drives a phase accumulator (`phase += 2π·f(t)/fs`) so swept tones stay continuous within a section. All frequencies (fixed and ramp `start`/`end`) must lie in `[0, 22000]` Hz — safely below the ~22.05 kHz Nyquist limit of the 44.1 kHz-family rates.
+
+**Skip interaction**: audio follows the **output** frame stream, not the raw disc/section stream. Per-frame audio buffers are withheld and replayed by the identical `disc_skips` decisions applied to the Y/C buffers, so forward skips withhold the matching audio and backward skips replay byte-identical audio, preserving `frames × samples_per_frame` alignment. Sections with no `audio:` block (or disabled audio) emit silence for their frame span, keeping every stored frame's sample count exact. When a track is written, `audio_locked` is set `TRUE` in the `.meta` `cvbs_file` table.
+
+Example YAML:
+
+```yaml
+sections:
+  - name: "FixedTone"
+    type: progressive
+    source: "assets/bars.exr"
+    duration_frames: 8
+    audio:
+      waveform: sine
+      frequency: 1000.0
+      amplitude: 0.5
+  - name: "SilenceGap"       # No audio: block — silent, but still frame-locked
+    type: progressive
+    source: "assets/bars.exr"
+    duration_frames: 8
+  - name: "SweepUp"
+    type: progressive
+    source: "assets/bars.exr"
+    duration_frames: 8
+    audio:
+      waveform: sawtooth
+      amplitude: 0.5
+      ramp:
+        start: 200.0
+        end: 4000.0
+        mode: up
 ```
 
 ---

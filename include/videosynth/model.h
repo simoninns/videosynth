@@ -169,6 +169,75 @@ struct OsdConfig {
   std::vector<OsdOverlay> overlays;
 };
 
+// Oscillator shape for synthetic per-section audio. kUnknown marks an
+// unrecognised YAML value so the validator can reject it with a clear message.
+enum class AudioWaveform { kSine, kSquare, kSawtooth, kTriangle, kUnknown };
+
+// Direction of a frequency ramp within a section (or within one ramp period).
+enum class AudioRampMode { kUp, kDown, kBounce, kUnknown };
+
+inline AudioWaveform AudioWaveformFromString(const std::string& value) {
+  if (value == "sine") {
+    return AudioWaveform::kSine;
+  }
+  if (value == "square") {
+    return AudioWaveform::kSquare;
+  }
+  if (value == "sawtooth") {
+    return AudioWaveform::kSawtooth;
+  }
+  if (value == "triangle") {
+    return AudioWaveform::kTriangle;
+  }
+  return AudioWaveform::kUnknown;
+}
+
+inline AudioRampMode AudioRampModeFromString(const std::string& value) {
+  if (value == "up") {
+    return AudioRampMode::kUp;
+  }
+  if (value == "down") {
+    return AudioRampMode::kDown;
+  }
+  if (value == "bounce") {
+    return AudioRampMode::kBounce;
+  }
+  return AudioRampMode::kUnknown;
+}
+
+// Thread-safety: AudioParameters is a plain data container with no mutable
+// state. It may be read concurrently from multiple threads.
+//
+// Per-section synthetic test-tone description. Frequency is either a fixed
+// tone (frequency_hz, used when !ramp_enabled) or a linear ramp between
+// ramp_start_hz and ramp_end_hz. A ramp spans the whole section when
+// ramp_period_seconds == 0, or repeats every ramp_period_seconds when > 0.
+struct AudioParameters {
+  bool enabled = false;
+  AudioWaveform waveform = AudioWaveform::kSine;
+  // Raw YAML waveform value retained for validation error messages.
+  std::string waveform_text;
+
+  // Fixed-frequency mode (used when !ramp_enabled).
+  double frequency_hz = 1000.0;
+
+  // Ramp mode.
+  bool ramp_enabled = false;
+  double ramp_start_hz = 0.0;
+  double ramp_end_hz = 0.0;
+  bool ramp_start_specified = false;
+  bool ramp_end_specified = false;
+  AudioRampMode ramp_mode = AudioRampMode::kUp;
+  // Raw YAML ramp-mode value retained for validation error messages.
+  std::string ramp_mode_text;
+  // 0.0 => ramp spans the whole section; > 0.0 => one ramp cycle lasts this
+  // many seconds and repeats across the section duration.
+  double ramp_period_seconds = 0.0;
+
+  // Peak amplitude as a fraction of full scale [0.0, 1.0].
+  double amplitude = 0.5;
+};
+
 struct Section {
   struct LineInjectionCode {
     std::string code_type;
@@ -201,6 +270,7 @@ struct Section {
   NoiseParameters noise = {};
   DropoutParameters dropouts = {};
   OsdConfig osd = {};
+  AudioParameters audio = {};
 };
 
 struct OutputTargets {
@@ -243,5 +313,16 @@ struct Project {
   // skips; the pipeline uses the standard batch loop.
   std::vector<DiscSkip> disc_skips;
 };
+
+// True if any section requests synthetic audio. When false the pipeline emits
+// no WAV track and the metadata audio_locked field stays NULL.
+inline bool ProjectEnablesAudio(const Project& project) {
+  for (const Section& section : project.sections) {
+    if (section.audio.enabled) {
+      return true;
+    }
+  }
+  return false;
+}
 
 }  // namespace videosynth

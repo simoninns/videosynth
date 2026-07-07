@@ -1176,5 +1176,170 @@ TEST(ProjectValidatorTest, AcceptsMultipleValidDiscSkips) {
   EXPECT_TRUE(result.is_valid);
 }
 
+TEST(ProjectValidatorTest, AcceptsValidFixedAudio) {
+  Project project = MakeValidProject();
+  project.sections[0].duration_frames = 25;
+  AudioParameters& audio = project.sections[0].audio;
+  audio.enabled = true;
+  audio.waveform = AudioWaveform::kSine;
+  audio.frequency_hz = 1000.0;
+  audio.amplitude = 0.5;
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_TRUE(result.is_valid);
+  EXPECT_TRUE(result.errors.empty());
+}
+
+TEST(ProjectValidatorTest, AcceptsValidPeriodicRampAudio) {
+  Project project = MakeValidProject();
+  project.sections[0].duration_frames = 25;  // 1.0 s at 25 fps.
+  AudioParameters& audio = project.sections[0].audio;
+  audio.enabled = true;
+  audio.ramp_enabled = true;
+  audio.ramp_start_specified = true;
+  audio.ramp_end_specified = true;
+  audio.ramp_start_hz = 100.0;
+  audio.ramp_end_hz = 2000.0;
+  audio.ramp_mode = AudioRampMode::kBounce;
+  audio.ramp_period_seconds = 0.5;
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_TRUE(result.is_valid);
+  EXPECT_TRUE(result.errors.empty());
+}
+
+TEST(ProjectValidatorTest, RejectsUnknownAudioWaveform) {
+  Project project = MakeValidProject();
+  project.sections[0].audio.enabled = true;
+  project.sections[0].audio.waveform = AudioWaveform::kUnknown;
+  project.sections[0].audio.waveform_text = "noise";
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_FALSE(result.is_valid);
+  ASSERT_FALSE(result.errors.empty());
+}
+
+TEST(ProjectValidatorTest, RejectsAudioAmplitudeOutOfRange) {
+  Project project = MakeValidProject();
+  project.sections[0].audio.enabled = true;
+  project.sections[0].audio.amplitude = 1.5;
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_FALSE(result.is_valid);
+  ASSERT_FALSE(result.errors.empty());
+}
+
+TEST(ProjectValidatorTest, RejectsAudioFrequencyOutOfRange) {
+  Project project = MakeValidProject();
+  project.sections[0].audio.enabled = true;
+  project.sections[0].audio.frequency_hz = 30000.0;
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_FALSE(result.is_valid);
+  ASSERT_FALSE(result.errors.empty());
+}
+
+TEST(ProjectValidatorTest, RejectsRampMissingEndFrequency) {
+  Project project = MakeValidProject();
+  AudioParameters& audio = project.sections[0].audio;
+  audio.enabled = true;
+  audio.ramp_enabled = true;
+  audio.ramp_start_specified = true;
+  audio.ramp_start_hz = 100.0;
+  // ramp_end_specified deliberately left false.
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_FALSE(result.is_valid);
+  ASSERT_FALSE(result.errors.empty());
+}
+
+TEST(ProjectValidatorTest, RejectsUnknownRampMode) {
+  Project project = MakeValidProject();
+  AudioParameters& audio = project.sections[0].audio;
+  audio.enabled = true;
+  audio.ramp_enabled = true;
+  audio.ramp_start_specified = true;
+  audio.ramp_end_specified = true;
+  audio.ramp_start_hz = 100.0;
+  audio.ramp_end_hz = 200.0;
+  audio.ramp_mode = AudioRampMode::kUnknown;
+  audio.ramp_mode_text = "fast";
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_FALSE(result.is_valid);
+  ASSERT_FALSE(result.errors.empty());
+}
+
+TEST(ProjectValidatorTest, RejectsRampFrequencyOutOfRange) {
+  Project project = MakeValidProject();
+  AudioParameters& audio = project.sections[0].audio;
+  audio.enabled = true;
+  audio.ramp_enabled = true;
+  audio.ramp_start_specified = true;
+  audio.ramp_end_specified = true;
+  audio.ramp_start_hz = 100.0;
+  audio.ramp_end_hz = 25000.0;
+  audio.ramp_mode = AudioRampMode::kUp;
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_FALSE(result.is_valid);
+  ASSERT_FALSE(result.errors.empty());
+}
+
+TEST(ProjectValidatorTest, RejectsRampPeriodExceedingSectionDuration) {
+  Project project = MakeValidProject();
+  project.sections[0].duration_frames = 25;  // 1.0 s at 25 fps.
+  AudioParameters& audio = project.sections[0].audio;
+  audio.enabled = true;
+  audio.ramp_enabled = true;
+  audio.ramp_start_specified = true;
+  audio.ramp_end_specified = true;
+  audio.ramp_start_hz = 100.0;
+  audio.ramp_end_hz = 200.0;
+  audio.ramp_mode = AudioRampMode::kUp;
+  audio.ramp_period_seconds = 2.0;  // Exceeds the 1.0 s section.
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_FALSE(result.is_valid);
+  ASSERT_FALSE(result.errors.empty());
+}
+
+TEST(ProjectValidatorTest, RejectsNegativeRampPeriod) {
+  Project project = MakeValidProject();
+  AudioParameters& audio = project.sections[0].audio;
+  audio.enabled = true;
+  audio.ramp_enabled = true;
+  audio.ramp_start_specified = true;
+  audio.ramp_end_specified = true;
+  audio.ramp_start_hz = 100.0;
+  audio.ramp_end_hz = 200.0;
+  audio.ramp_mode = AudioRampMode::kUp;
+  audio.ramp_period_seconds = -1.0;
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_FALSE(result.is_valid);
+  ASSERT_FALSE(result.errors.empty());
+}
+
 }  // namespace
 }  // namespace videosynth

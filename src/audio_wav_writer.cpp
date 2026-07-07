@@ -1,0 +1,248 @@
+/*
+ * File:        audio_wav_writer.cpp
+ * Module:      audio_wav_writer
+ * Purpose:     Streams frame-locked stereo 16-bit PCM audio to a RIFF/WAVE file
+ *              alongside the generated CVBS output.
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: 2026 Simon Inns
+ */
+
+#include "videosynth/audio_wav_writer.h"
+
+#include <array>
+#include <cstdint>
+#include <filesystem>
+#include <limits>
+#include <string_view>
+
+#include "videosynth/timing_constants.h"
+
+namespace videosynth {
+
+namespace {
+
+// RIFF/WAVE constants for stereo 16-bit signed PCM. WAVEFORMAT PCM tag 0x0001.
+constexpr std::uint16_t kPcmFormatTag = 0x0001;
+constexpr std::uint16_t kChannelCount = 2;
+constexpr std::uint16_t kBitsPerSample = 16;
+constexpr std::uint16_t kBytesPerSample = kBitsPerSample / 8;
+// 44-byte canonical header: RIFF (12) + fmt (24) + data chunk header (8).
+constexpr std::size_t kHeaderBytes = 44;
+constexpr std::size_t kRiffSizeOffset = 4;
+constexpr std::size_t kDataSizeOffset = 40;
+
+void AppendLittleEndian16(std::vector<char>* out, std::uint16_t value) {
+  out->push_back(static_cast<char>(value & 0xFF));
+  out->push_back(static_cast<char>((value >> 8) & 0xFF));
+}
+
+void AppendLittleEndian32(std::vector<char>* out, std::uint32_t value) {
+  out->push_back(static_cast<char>(value & 0xFF));
+  out->push_back(static_cast<char>((value >> 8) & 0xFF));
+  out->push_back(static_cast<char>((value >> 16) & 0xFF));
+  out->push_back(static_cast<char>((value >> 24) & 0xFF));
+}
+
+void AppendFourCc(std::vector<char>* out, std::string_view tag) {
+  out->insert(out->end(), tag.begin(), tag.end());
+}
+
+// Serialises a canonical 44-byte RIFF/WAVE header. riff_size is (36 + data
+// bytes) and data_size is the PCM payload length; both are placeholders at
+// BeginWrite and back-patched at FinalizeWrite.
+std::vector<char> BuildHeader(int sample_rate_hz, std::uint32_t riff_size,
+                              std::uint32_t data_size) {
+  const std::uint32_t byte_rate = static_cast<std::uint32_t>(sample_rate_hz) *
+                                  kChannelCount * kBytesPerSample;
+  const std::uint16_t block_align = kChannelCount * kBytesPerSample;
+
+  std::vector<char> header;
+  header.reserve(kHeaderBytes);
+  AppendFourCc(&header, "RIFF");
+  AppendLittleEndian32(&header, riff_size);
+  AppendFourCc(&header, "WAVE");
+  AppendFourCc(&header, "fmt ");
+  AppendLittleEndian32(&header, 16);  // PCM fmt chunk body size.
+  AppendLittleEndian16(&header, kPcmFormatTag);
+  AppendLittleEndian16(&header, kChannelCount);
+  AppendLittleEndian32(&header, static_cast<std::uint32_t>(sample_rate_hz));
+  AppendLittleEndian32(&header, byte_rate);
+  AppendLittleEndian16(&header, block_align);
+  AppendLittleEndian16(&header, kBitsPerSample);
+  AppendFourCc(&header, "data");
+  AppendLittleEndian32(&header, data_size);
+  return header;
+}
+
+}  // namespace
+
+AudioWavWriter::AudioWavWriter(ILogger* logger) : logger_(logger) {}
+
+std::string AudioWavWriter::DeriveAudioPath(const std::string& video_path) {
+  constexpr std::string_view kCompositeSuffix = ".composite";
+  constexpr std::string_view kLumaSuffix = ".y";
+  constexpr std::string_view kAudioSuffix = "_audio_00.wav";
+
+  std::string base = video_path;
+  auto ends_with = [&](std::string_view suffix) {
+    return base.size() >= suffix.size() &&
+           base.compare(base.size() - suffix.size(), suffix.size(), suffix) ==
+               0;
+  };
+
+  if (ends_with(kCompositeSuffix)) {
+    base.resize(base.size() - kCompositeSuffix.size());
+  } else if (ends_with(kLumaSuffix)) {
+    base.resize(base.size() - kLumaSuffix.size());
+  }
+  return base + std::string(kAudioSuffix);
+}
+
+bool AudioWavWriter::BeginWrite(const Project& project,
+                                std::vector<std::string>* errors) {
+  if (errors == nullptr) {
+    return false;
+  }
+  if (session_open_) {
+    errors->push_back("Audio write session already open.");
+    return false;
+  }
+
+  int header_sample_rate_hz = 0;
+  try {
+    header_sample_rate_hz =
+        AudioHeaderSampleRateHz(project.cvbs_presets.video_standard_preset);
+  } catch (const std::exception& e) {
+    errors->push_back(std::string("Audio writer requires a supported video "
+                                  "standard: ") +
+                      e.what());
+    return false;
+  }
+
+  const std::string audio_path = DeriveAudioPath(project.output.video_path);
+  if (audio_path.empty()) {
+    errors->push_back(
+        "Audio output path could not be derived from video_path.");
+    return false;
+  }
+
+  std::error_code ec;
+  std::filesystem::create_directories(
+      std::filesystem::path(audio_path).parent_path(), ec);
+  if (ec) {
+    errors->push_back("Failed to create audio output directory for: " +
+                      audio_path + " (" + ec.message() + ")");
+    return false;
+  }
+
+  stream_.open(audio_path, std::ios::binary | std::ios::trunc);
+  if (!stream_) {
+    errors->push_back("Failed to open audio output file: " + audio_path);
+    return false;
+  }
+
+  // Reserve the header with placeholder sizes; sizes are patched on finalize.
+  const std::vector<char> header = BuildHeader(header_sample_rate_hz, 0, 0);
+  stream_.write(header.data(), static_cast<std::streamsize>(header.size()));
+  if (!stream_) {
+    errors->push_back("Failed to write audio header to: " + audio_path);
+    stream_.close();
+    return false;
+  }
+
+  audio_path_ = audio_path;
+  header_sample_rate_hz_ = header_sample_rate_hz;
+  data_bytes_ = 0;
+  session_open_ = true;
+
+  if (logger_ != nullptr) {
+    logger_->Trace("Opened audio output file for writing: " + audio_path);
+  }
+  return true;
+}
+
+bool AudioWavWriter::AppendFrameAudio(
+    const std::vector<std::int16_t>& mono_samples,
+    std::vector<std::string>* errors) {
+  if (errors == nullptr) {
+    return false;
+  }
+  if (!session_open_) {
+    errors->push_back("Audio write session is not open.");
+    return false;
+  }
+
+  // Each mono sample becomes an L+R stereo pair of 16-bit samples.
+  const std::uint64_t frame_bytes = static_cast<std::uint64_t>(
+      mono_samples.size() * kChannelCount * kBytesPerSample);
+  if (data_bytes_ + frame_bytes + (kHeaderBytes - 8) >
+      std::numeric_limits<std::uint32_t>::max()) {
+    errors->push_back("Audio track exceeds the 4 GB RIFF/WAVE size limit.");
+    return false;
+  }
+
+  std::vector<char> interleaved;
+  interleaved.reserve(mono_samples.size() * kChannelCount * kBytesPerSample);
+  for (const std::int16_t sample : mono_samples) {
+    AppendLittleEndian16(&interleaved,
+                         static_cast<std::uint16_t>(sample));  // Left.
+    AppendLittleEndian16(&interleaved,
+                         static_cast<std::uint16_t>(sample));  // Right.
+  }
+
+  stream_.write(interleaved.data(),
+                static_cast<std::streamsize>(interleaved.size()));
+  if (!stream_) {
+    errors->push_back("Failed while writing audio samples to: " + audio_path_);
+    return false;
+  }
+
+  data_bytes_ += frame_bytes;
+  return true;
+}
+
+bool AudioWavWriter::FinalizeWrite(std::vector<std::string>* errors) {
+  if (errors == nullptr) {
+    return false;
+  }
+  if (!session_open_) {
+    errors->push_back("Audio write session is not open.");
+    return false;
+  }
+
+  const std::uint32_t data_size = static_cast<std::uint32_t>(data_bytes_);
+  const std::uint32_t riff_size =
+      static_cast<std::uint32_t>((kHeaderBytes - 8) + data_bytes_);
+
+  // Back-patch the RIFF chunk size and the data chunk size in place.
+  std::array<char, 4> le_riff{};
+  std::array<char, 4> le_data{};
+  for (int i = 0; i < 4; ++i) {
+    le_riff[static_cast<std::size_t>(i)] =
+        static_cast<char>((riff_size >> (8 * i)) & 0xFF);
+    le_data[static_cast<std::size_t>(i)] =
+        static_cast<char>((data_size >> (8 * i)) & 0xFF);
+  }
+
+  stream_.seekp(static_cast<std::streamoff>(kRiffSizeOffset), std::ios::beg);
+  stream_.write(le_riff.data(), le_riff.size());
+  stream_.seekp(static_cast<std::streamoff>(kDataSizeOffset), std::ios::beg);
+  stream_.write(le_data.data(), le_data.size());
+  if (!stream_) {
+    errors->push_back("Failed to finalize audio header for: " + audio_path_);
+    stream_.close();
+    session_open_ = false;
+    return false;
+  }
+
+  stream_.close();
+  session_open_ = false;
+
+  if (logger_ != nullptr) {
+    logger_->Info("Wrote audio track: " + audio_path_);
+  }
+  return true;
+}
+
+}  // namespace videosynth

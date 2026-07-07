@@ -79,5 +79,23 @@ TEST(TimingConstantsTest,
             1334667U);
 }
 
+TEST(TimingConstantsTest, ProvidesPalAudioRateAndSamplesPerFrame) {
+  EXPECT_DOUBLE_EQ(AudioSampleRateHz(Standard::kPal), 44100.0);
+  EXPECT_EQ(AudioHeaderSampleRateHz(Standard::kPal), 44100);
+  EXPECT_EQ(AudioSamplesPerFrame(Standard::kPal), 1764);
+}
+
+TEST(TimingConstantsTest, ProvidesNtscAudioRateAndSamplesPerFrame) {
+  EXPECT_DOUBLE_EQ(AudioSampleRateHz(Standard::kNtsc), 44100000.0 / 1001.0);
+  EXPECT_EQ(AudioHeaderSampleRateHz(Standard::kNtsc), 44056);
+  EXPECT_EQ(AudioSamplesPerFrame(Standard::kNtsc), 1470);
+}
+
+TEST(TimingConstantsTest, ProvidesPalMAudioRateAndSamplesPerFrame) {
+  EXPECT_DOUBLE_EQ(AudioSampleRateHz(Standard::kPalM), 44100000.0 / 1001.0);
+  EXPECT_EQ(AudioHeaderSampleRateHz(Standard::kPalM), 44056);
+  EXPECT_EQ(AudioSamplesPerFrame(Standard::kPalM), 1470);
+}
+
 }  // namespace
 }  // namespace videosynth

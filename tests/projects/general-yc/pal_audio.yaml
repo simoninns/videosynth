@@ -1,0 +1,79 @@
+# PAL Audio Example (Y/C output)
+#
+# Frame-locked synthetic audio generation. Each section declares an optional
+# `audio:` block that synthesises a test-tone waveform for the exact duration
+# (in frames) of that section. The emitted track is written alongside the Y/C
+# output as videosynth_pal_audio_audio_00.wav — note the basename is derived by
+# stripping the trailing ".y" suffix — sample-locked to the stored video frames
+# (PAL: 44100 Hz, 1764 samples/frame).
+#
+# This fixture exercises, across its four sections:
+#   - Fixed-frequency sine and square tones
+#   - A section-spanning frequency ramp (sawtooth, up)
+#   - A silence gap (a section with no `audio:` block) that still emits the
+#     exact per-frame sample count, proving frame alignment holds.
+
+project:
+  name: PalAudio
+  version: "1.0"
+  description: PAL frame-locked audio — fixed tones, section-spanning ramp, and a silence gap
+
+cvbs_presets:
+  video_standard_preset: PAL
+  sample_encoding_preset: CVBS_U10_4FSC
+  signal_state_preset: STANDARD_TBC_LOCKED
+
+output:
+  video_path: tests/projects/output-general/yc/videosynth_pal_audio.y
+  metadata_path: tests/projects/output-general/yc/videosynth_pal_audio.meta
+  signal_type: yc
+
+sections:
+
+  # ---------------------------------------------------------------------------
+  # Section 1: fixed-frequency sine tone (default waveform)
+  # ---------------------------------------------------------------------------
+  - name: FixedSine
+    type: progressive
+    source: videosynth-assets/assets/exr/720x576/75_BARS.exr
+    duration_frames: 8
+    audio:
+      waveform: sine
+      frequency: 1000.0
+      amplitude: 0.5
+
+  # ---------------------------------------------------------------------------
+  # Section 2: fixed-frequency square tone at higher amplitude
+  # ---------------------------------------------------------------------------
+  - name: FixedSquare
+    type: progressive
+    source: videosynth-assets/assets/exr/720x576/75_BARS.exr
+    duration_frames: 8
+    audio:
+      waveform: square
+      frequency: 440.0
+      amplitude: 0.7
+
+  # ---------------------------------------------------------------------------
+  # Section 3: silence gap — no `audio:` block. The track still advances by the
+  # exact per-frame sample count so the WAV stays frame-locked.
+  # ---------------------------------------------------------------------------
+  - name: SilenceGap
+    type: progressive
+    source: videosynth-assets/assets/exr/720x576/75_BARS.exr
+    duration_frames: 8
+
+  # ---------------------------------------------------------------------------
+  # Section 4: section-spanning sawtooth sweep, 200 Hz -> 4000 Hz (mode: up)
+  # ---------------------------------------------------------------------------
+  - name: SweepUp
+    type: progressive
+    source: videosynth-assets/assets/exr/720x576/75_BARS.exr
+    duration_frames: 8
+    audio:
+      waveform: sawtooth
+      amplitude: 0.5
+      ramp:
+        start: 200.0
+        end: 4000.0
+        mode: up

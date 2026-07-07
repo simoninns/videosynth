@@ -635,5 +635,71 @@ TEST(OutputStageTest, KeepsFixedPointQuantizationEquivalentToReferenceProfile) {
   std::filesystem::remove(metadata_path);
 }
 
+TEST(OutputStageTest, AudioLockedIsNullWhenNoSectionEnablesAudio) {
+  OutputStage output;
+  Project project = MakeProject(Standard::kPal);
+  const std::size_t frame_span =
+      static_cast<std::size_t>(SamplesPerFrame4fsc(Standard::kPal));
+  std::vector<SampleFixed> y(frame_span, MillivoltsToSampleFixed(0.0));
+  std::vector<SampleFixed> c(frame_span, MillivoltsToSampleFixed(0.0));
+
+  const std::filesystem::path video_path =
+      std::filesystem::temp_directory_path() /
+      "videosynth_output_stage_audio_null.composite";
+  const std::filesystem::path metadata_path =
+      std::filesystem::temp_directory_path() /
+      "videosynth_output_stage_audio_null.meta";
+  project.output.video_path = video_path.string();
+  project.output.metadata_path = metadata_path.string();
+  std::filesystem::remove(video_path);
+  std::filesystem::remove(metadata_path);
+
+  std::vector<std::string> errors;
+  ASSERT_TRUE(output.Write(project, y, c, &errors));
+
+  CvbsMetadata metadata;
+  ASSERT_TRUE(ReadCvbsMetadata(metadata_path, &metadata));
+  EXPECT_TRUE(metadata.audio_locked_is_null);
+
+  std::filesystem::remove(video_path);
+  std::filesystem::remove(metadata_path);
+}
+
+TEST(OutputStageTest, AudioLockedIsTrueWhenSectionEnablesAudio) {
+  OutputStage output;
+  Project project = MakeProject(Standard::kPal);
+  Section section;
+  section.name = "Tone";
+  section.audio.enabled = true;
+  project.sections.push_back(section);
+
+  const std::size_t frame_span =
+      static_cast<std::size_t>(SamplesPerFrame4fsc(Standard::kPal));
+  std::vector<SampleFixed> y(frame_span, MillivoltsToSampleFixed(0.0));
+  std::vector<SampleFixed> c(frame_span, MillivoltsToSampleFixed(0.0));
+
+  const std::filesystem::path video_path =
+      std::filesystem::temp_directory_path() /
+      "videosynth_output_stage_audio_locked.composite";
+  const std::filesystem::path metadata_path =
+      std::filesystem::temp_directory_path() /
+      "videosynth_output_stage_audio_locked.meta";
+  project.output.video_path = video_path.string();
+  project.output.metadata_path = metadata_path.string();
+  std::filesystem::remove(video_path);
+  std::filesystem::remove(metadata_path);
+
+  std::vector<std::string> errors;
+  ASSERT_TRUE(output.Write(project, y, c, &errors));
+
+  CvbsMetadata metadata;
+  ASSERT_TRUE(ReadCvbsMetadata(metadata_path, &metadata));
+  EXPECT_FALSE(metadata.audio_locked_is_null);
+  EXPECT_TRUE(metadata.audio_locked);
+
+  std::filesystem::remove(video_path);
+  std::filesystem::remove(metadata_path);
+}
+
 }  // namespace
 }  // namespace videosynth

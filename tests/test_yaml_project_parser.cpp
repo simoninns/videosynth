@@ -668,5 +668,172 @@ TEST(YamlProjectParserTest, NoDiscSkipsFieldLeavesListEmpty) {
   EXPECT_TRUE(result.project.disc_skips.empty());
 }
 
+TEST(YamlProjectParserTest, ParsesFixedFrequencyAudioBlock) {
+  const std::string yaml =
+      "cvbs_presets:\n"
+      "  video_standard_preset: PAL\n"
+      "output:\n"
+      "  video_path: out.composite\n"
+      "  metadata_path: out.meta\n"
+      "sections:\n"
+      "  - name: Tone\n"
+      "    type: progressive\n"
+      "    source: fixture.exr\n"
+      "    duration_frames: 10\n"
+      "    audio:\n"
+      "      waveform: square\n"
+      "      frequency: 440.0\n"
+      "      amplitude: 0.8\n";
+
+  YamlProjectParser parser;
+  const ParseResult result = parser.ParseString(yaml);
+
+  ASSERT_TRUE(result.ok);
+  ASSERT_EQ(result.project.sections.size(), 1U);
+  const AudioParameters& audio = result.project.sections[0].audio;
+  EXPECT_TRUE(audio.enabled);
+  EXPECT_EQ(audio.waveform, AudioWaveform::kSquare);
+  EXPECT_DOUBLE_EQ(audio.frequency_hz, 440.0);
+  EXPECT_DOUBLE_EQ(audio.amplitude, 0.8);
+  EXPECT_FALSE(audio.ramp_enabled);
+}
+
+TEST(YamlProjectParserTest, AudioBlockDefaultsWhenFieldsOmitted) {
+  const std::string yaml =
+      "cvbs_presets:\n"
+      "  video_standard_preset: PAL\n"
+      "output:\n"
+      "  video_path: out.composite\n"
+      "  metadata_path: out.meta\n"
+      "sections:\n"
+      "  - name: Tone\n"
+      "    type: progressive\n"
+      "    source: fixture.exr\n"
+      "    duration_frames: 10\n"
+      "    audio: {}\n";
+
+  YamlProjectParser parser;
+  const ParseResult result = parser.ParseString(yaml);
+
+  ASSERT_TRUE(result.ok);
+  const AudioParameters& audio = result.project.sections[0].audio;
+  EXPECT_TRUE(audio.enabled);
+  EXPECT_EQ(audio.waveform, AudioWaveform::kSine);
+  EXPECT_DOUBLE_EQ(audio.frequency_hz, 1000.0);
+  EXPECT_DOUBLE_EQ(audio.amplitude, 0.5);
+  EXPECT_FALSE(audio.ramp_enabled);
+}
+
+TEST(YamlProjectParserTest, ParsesSectionSpanningRampAudioBlock) {
+  const std::string yaml =
+      "cvbs_presets:\n"
+      "  video_standard_preset: PAL\n"
+      "output:\n"
+      "  video_path: out.composite\n"
+      "  metadata_path: out.meta\n"
+      "sections:\n"
+      "  - name: Sweep\n"
+      "    type: progressive\n"
+      "    source: fixture.exr\n"
+      "    duration_frames: 10\n"
+      "    audio:\n"
+      "      waveform: sine\n"
+      "      ramp:\n"
+      "        start: 100.0\n"
+      "        end: 2000.0\n"
+      "        mode: up\n";
+
+  YamlProjectParser parser;
+  const ParseResult result = parser.ParseString(yaml);
+
+  ASSERT_TRUE(result.ok);
+  const AudioParameters& audio = result.project.sections[0].audio;
+  EXPECT_TRUE(audio.enabled);
+  EXPECT_TRUE(audio.ramp_enabled);
+  EXPECT_TRUE(audio.ramp_start_specified);
+  EXPECT_TRUE(audio.ramp_end_specified);
+  EXPECT_DOUBLE_EQ(audio.ramp_start_hz, 100.0);
+  EXPECT_DOUBLE_EQ(audio.ramp_end_hz, 2000.0);
+  EXPECT_EQ(audio.ramp_mode, AudioRampMode::kUp);
+  EXPECT_DOUBLE_EQ(audio.ramp_period_seconds, 0.0);
+}
+
+TEST(YamlProjectParserTest, ParsesPeriodicRampAudioBlock) {
+  const std::string yaml =
+      "cvbs_presets:\n"
+      "  video_standard_preset: PAL\n"
+      "output:\n"
+      "  video_path: out.composite\n"
+      "  metadata_path: out.meta\n"
+      "sections:\n"
+      "  - name: Sweep\n"
+      "    type: progressive\n"
+      "    source: fixture.exr\n"
+      "    duration_frames: 25\n"
+      "    audio:\n"
+      "      ramp:\n"
+      "        start: 500.0\n"
+      "        end: 50.0\n"
+      "        mode: bounce\n"
+      "        period: 0.5\n";
+
+  YamlProjectParser parser;
+  const ParseResult result = parser.ParseString(yaml);
+
+  ASSERT_TRUE(result.ok);
+  const AudioParameters& audio = result.project.sections[0].audio;
+  EXPECT_TRUE(audio.ramp_enabled);
+  EXPECT_EQ(audio.ramp_mode, AudioRampMode::kBounce);
+  EXPECT_DOUBLE_EQ(audio.ramp_period_seconds, 0.5);
+}
+
+TEST(YamlProjectParserTest, RejectsUnknownAudioKey) {
+  const std::string yaml =
+      "cvbs_presets:\n"
+      "  video_standard_preset: PAL\n"
+      "output:\n"
+      "  video_path: out.composite\n"
+      "  metadata_path: out.meta\n"
+      "sections:\n"
+      "  - name: Tone\n"
+      "    type: progressive\n"
+      "    source: fixture.exr\n"
+      "    duration_frames: 10\n"
+      "    audio:\n"
+      "      frequency: 440.0\n"
+      "      gain: 0.8\n";
+
+  YamlProjectParser parser;
+  const ParseResult result = parser.ParseString(yaml);
+
+  EXPECT_FALSE(result.ok);
+  ASSERT_FALSE(result.errors.empty());
+}
+
+TEST(YamlProjectParserTest, RejectsUnknownAudioRampKey) {
+  const std::string yaml =
+      "cvbs_presets:\n"
+      "  video_standard_preset: PAL\n"
+      "output:\n"
+      "  video_path: out.composite\n"
+      "  metadata_path: out.meta\n"
+      "sections:\n"
+      "  - name: Sweep\n"
+      "    type: progressive\n"
+      "    source: fixture.exr\n"
+      "    duration_frames: 10\n"
+      "    audio:\n"
+      "      ramp:\n"
+      "        start: 100.0\n"
+      "        end: 200.0\n"
+      "        slope: fast\n";
+
+  YamlProjectParser parser;
+  const ParseResult result = parser.ParseString(yaml);
+
+  EXPECT_FALSE(result.ok);
+  ASSERT_FALSE(result.errors.empty());
+}
+
 }  // namespace
 }  // namespace videosynth

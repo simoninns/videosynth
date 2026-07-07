@@ -13,6 +13,8 @@ find_package(SQLite3 REQUIRED)
 find_package(OpenEXR REQUIRED)
 
 add_library(videosynth_core
+    src/audio_synthesizer.cpp
+    src/audio_wav_writer.cpp
     src/biphase_encoder.cpp
     src/biphase_injection_manager.cpp
     src/cav_code_generator.cpp
@@ -67,6 +69,10 @@ enable_testing()
 
 add_executable(videosynth_tests
     tests/test_active_sample_mapping.cpp
+    tests/test_audio_fixture_projects.cpp
+    tests/test_audio_pipeline.cpp
+    tests/test_audio_synthesizer.cpp
+    tests/test_audio_wav_writer.cpp
     tests/test_biphase_encoder.cpp
     tests/test_cav_code_generators.cpp
     tests/test_clv_code_generators.cpp
@@ -124,6 +130,9 @@ include(GoogleTest)
 gtest_discover_tests(videosynth_tests TEST_LIST videosynth_discovered_tests)
 
 set(videosynth_functional_test_patterns
+    "^AudioFixtureProjectsTest\\."
+    "^AudioPipelineTest\\."
+    "^AudioWavWriterTest\\."
     "^FrameSourceTest\\."
     "^ProjectFixturesTest\\."
     "^ComplianceHarnessTest\\."
@@ -137,6 +146,8 @@ set(videosynth_functional_test_patterns
 
 set(videosynth_unit_test_patterns
     "^ActiveSampleMappingTest\\."
+    "^AudioSynthesizerTest\\."
+    "^AudioWavWriterPathTest\\."
     "^BiphaseEncoderTest\\."
     "^BiphaseUtilsTest\\."
     "^CavCodeGeneratorTest\\."

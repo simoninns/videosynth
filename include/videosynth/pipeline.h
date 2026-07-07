@@ -9,6 +9,7 @@
 
 #pragma once
 
+#include "videosynth/audio_wav_writer.h"
 #include "videosynth/dropout_injection_stage.h"
 #include "videosynth/interfaces.h"
 #include "videosynth/noise_injection_stage.h"
@@ -20,11 +21,16 @@ namespace videosynth {
 // are accessed without synchronization.
 class VideoSynthPipeline {
  public:
+  // audio_writer is an optional collaborator (nullable, like noise_injection
+  // and dropout_injection). When non-null and the project enables audio on at
+  // least one section, a single frame-locked WAV track is emitted alongside the
+  // CVBS output.
   VideoSynthPipeline(IProjectParser* parser, IProjectValidator* validator,
                      IGenerationStage* generation,
                      NoiseInjectionStage* noise_injection,
                      DropoutInjectionStage* dropout_injection,
-                     IOutputStage* output, ILogger* logger);
+                     IOutputStage* output, ILogger* logger,
+                     AudioWavWriter* audio_writer = nullptr);
 
   // Orchestrates the full pipeline:
   //   parse -> validate -> generate -> noise -> dropout -> output.
@@ -47,6 +53,7 @@ class VideoSynthPipeline {
   DropoutInjectionStage* dropout_injection_;
   IOutputStage* output_;
   ILogger* logger_;
+  AudioWavWriter* audio_writer_;
 };
 
 }  // namespace videosynth

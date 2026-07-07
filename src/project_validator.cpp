@@ -19,6 +19,7 @@
 #include "videosynth/biphase_types.h"
 #include "videosynth/dropout_scale.h"
 #include "videosynth/osd_token_resolver.h"
+#include "videosynth/timing_constants.h"
 #include "videosynth/vits_definition_provider.h"
 
 namespace {
@@ -1070,6 +1071,123 @@ void ValidateOsdConfig(const videosynth::Section& section,
   }
 }
 
+// Audio frequency bounds from audio-generation-design.md: [0, 22000] Hz,
+// safely below the ~22.03-22.05 kHz Nyquist limit of the 44.1 kHz-family rates.
+constexpr double kAudioFrequencyMinHz = 0.0;
+constexpr double kAudioFrequencyMaxHz = 22000.0;
+
+bool IsAudioFrequencyInRange(double hz) {
+  return hz >= kAudioFrequencyMinHz && hz <= kAudioFrequencyMaxHz;
+}
+
+void ValidateAudioParameters(const videosynth::Section& section,
+                             videosynth::Standard standard,
+                             videosynth::ValidationResult* result) {
+  if (result == nullptr || !section.audio.enabled) {
+    return;
+  }
+
+  const videosynth::AudioParameters& audio = section.audio;
+
+  // Waveform must be one of the four supported shapes.
+  if (audio.waveform == videosynth::AudioWaveform::kUnknown) {
+    result->is_valid = false;
+    result->errors.push_back(
+        "Audio validation error in section '" + section.name + "': waveform '" +
+        audio.waveform_text +
+        "' is not recognised. Expected one of: sine, square, sawtooth, "
+        "triangle.");
+    return;
+  }
+
+  // Amplitude in [0.0, 1.0].
+  if (audio.amplitude < 0.0 || audio.amplitude > 1.0) {
+    result->is_valid = false;
+    result->errors.push_back("Audio validation error in section '" +
+                             section.name +
+                             "': amplitude must be in [0.0, 1.0]; got " +
+                             std::to_string(audio.amplitude) + ".");
+    return;
+  }
+
+  // Fixed frequency must be in range.
+  if (!IsAudioFrequencyInRange(audio.frequency_hz)) {
+    result->is_valid = false;
+    result->errors.push_back("Audio validation error in section '" +
+                             section.name +
+                             "': frequency must be in [0, 22000] Hz; got " +
+                             std::to_string(audio.frequency_hz) + ".");
+    return;
+  }
+
+  if (!audio.ramp_enabled) {
+    return;
+  }
+
+  // Ramp requires both start and end frequencies.
+  if (!audio.ramp_start_specified || !audio.ramp_end_specified) {
+    result->is_valid = false;
+    result->errors.push_back(
+        "Audio validation error in section '" + section.name +
+        "': ramp requires both 'start' and 'end' frequencies.");
+    return;
+  }
+
+  // Ramp mode must be recognised.
+  if (audio.ramp_mode == videosynth::AudioRampMode::kUnknown) {
+    result->is_valid = false;
+    result->errors.push_back(
+        "Audio validation error in section '" + section.name +
+        "': ramp mode '" + audio.ramp_mode_text +
+        "' is not recognised. Expected one of: up, down, bounce.");
+    return;
+  }
+
+  // Ramp start/end frequencies must be in range.
+  if (!IsAudioFrequencyInRange(audio.ramp_start_hz) ||
+      !IsAudioFrequencyInRange(audio.ramp_end_hz)) {
+    result->is_valid = false;
+    result->errors.push_back(
+        "Audio validation error in section '" + section.name +
+        "': ramp start/end frequencies must be in [0, 22000] Hz; got start=" +
+        std::to_string(audio.ramp_start_hz) +
+        ", end=" + std::to_string(audio.ramp_end_hz) + ".");
+    return;
+  }
+
+  // Ramp period must be non-negative.
+  if (audio.ramp_period_seconds < 0.0) {
+    result->is_valid = false;
+    result->errors.push_back("Audio validation error in section '" +
+                             section.name +
+                             "': ramp period must be >= 0; got " +
+                             std::to_string(audio.ramp_period_seconds) + ".");
+    return;
+  }
+
+  // A positive period must not exceed the section's duration in seconds. The
+  // check is skipped for 'all'-duration sections and unknown standards (the
+  // latter is already reported as a project-level error).
+  if (audio.ramp_period_seconds > 0.0 && !section.duration_frames_all &&
+      standard != videosynth::Standard::kUnknown) {
+    const videosynth::TimingConstants timing =
+        videosynth::GetTimingConstants(standard);
+    const double section_seconds =
+        (timing.frame_rate_hz > 0.0)
+            ? section.duration_frames / timing.frame_rate_hz
+            : 0.0;
+    if (audio.ramp_period_seconds > section_seconds) {
+      result->is_valid = false;
+      result->errors.push_back("Audio validation error in section '" +
+                               section.name + "': ramp period (" +
+                               std::to_string(audio.ramp_period_seconds) +
+                               " s) exceeds section duration (" +
+                               std::to_string(section_seconds) + " s).");
+      return;
+    }
+  }
+}
+
 }  // namespace
 
 namespace videosynth {
@@ -1223,6 +1341,12 @@ ValidationResult ProjectValidator::Validate(const Project& project) {
       }
 
       ValidateOsdConfig(section, &result);
+      if (!result.is_valid) {
+        break;
+      }
+
+      ValidateAudioParameters(
+          section, project.cvbs_presets.video_standard_preset, &result);
       if (!result.is_valid) {
         break;
       }

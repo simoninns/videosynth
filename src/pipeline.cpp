@@ -10,10 +10,13 @@
 #include "videosynth/pipeline.h"
 
 #include <algorithm>
+#include <cstdint>
+#include <optional>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
+#include "videosynth/audio_synthesizer.h"
 #include "videosynth/dropout_injection_stage.h"
 #include "videosynth/fixed_point.h"
 #include "videosynth/noise_injection_stage.h"
@@ -91,6 +94,42 @@ std::size_t ComputeBatchFrameCount(const Project& project) {
   return std::min<std::size_t>(computed, 64U);
 }
 
+// Per-disc-frame audio scheduling derived from the frame schedule. Consecutive
+// frames that share the same Section* form one section run; the oscillator
+// resets to phase 0 at the run's first frame and accumulates phase across the
+// run. section_total_samples holds the run's total audio sample count so a
+// section-spanning ramp can normalise its sweep.
+struct AudioSectionPlan {
+  std::vector<char> is_section_start;
+  std::vector<std::int64_t> section_total_samples;
+};
+
+AudioSectionPlan BuildAudioSectionPlan(
+    const std::vector<IGenerationStage::FrameScheduleItem>& schedule,
+    int samples_per_frame) {
+  AudioSectionPlan plan;
+  const std::size_t frame_count = schedule.size();
+  plan.is_section_start.assign(frame_count, 0);
+  plan.section_total_samples.assign(frame_count, 0);
+
+  std::size_t run_start = 0;
+  while (run_start < frame_count) {
+    const Section* section = schedule[run_start].section;
+    std::size_t run_end = run_start;
+    while (run_end < frame_count && schedule[run_end].section == section) {
+      ++run_end;
+    }
+    const std::int64_t total =
+        static_cast<std::int64_t>(run_end - run_start) * samples_per_frame;
+    plan.is_section_start[run_start] = 1;
+    for (std::size_t i = run_start; i < run_end; ++i) {
+      plan.section_total_samples[i] = total;
+    }
+    run_start = run_end;
+  }
+  return plan;
+}
+
 std::size_t ComputeProgressInterval(std::size_t total_frames) {
   if (total_frames <= 120U) {
     return 1U;
@@ -108,14 +147,16 @@ VideoSynthPipeline::VideoSynthPipeline(IProjectParser* parser,
                                        IGenerationStage* generation,
                                        NoiseInjectionStage* noise_injection,
                                        DropoutInjectionStage* dropout_injection,
-                                       IOutputStage* output, ILogger* logger)
+                                       IOutputStage* output, ILogger* logger,
+                                       AudioWavWriter* audio_writer)
     : parser_(parser),
       validator_(validator),
       generation_(generation),
       noise_injection_(noise_injection),
       dropout_injection_(dropout_injection),
       output_(output),
-      logger_(logger) {}
+      logger_(logger),
+      audio_writer_(audio_writer) {}
 
 bool VideoSynthPipeline::Run(const RunOptions& options) {
   logger_->Info("Starting pipeline: parse -> validate -> generate -> output");
@@ -203,6 +244,47 @@ bool VideoSynthPipeline::Run(const RunOptions& options) {
     output_->FinalizeWrite(&cleanup_errors);
   };
 
+  // -------------------------------------------------------------------
+  // Optional frame-locked audio track. Only active when an audio writer is
+  // supplied and at least one section enables audio. Audio is generated per
+  // disc frame and routed through the identical DiscFrameAction write/cache/
+  // replay path as the Y/C buffers so it stays sample-accurately frame-locked
+  // to the output frame stream.
+  // -------------------------------------------------------------------
+  const bool audio_enabled =
+      audio_writer_ != nullptr && ProjectEnablesAudio(parse_result.project);
+  std::optional<AudioSynthesizer> audio_synth;
+  AudioSectionPlan audio_plan;
+  int audio_samples_per_frame = 0;
+  if (audio_enabled) {
+    const Standard standard =
+        parse_result.project.cvbs_presets.video_standard_preset;
+    audio_samples_per_frame = AudioSamplesPerFrame(standard);
+    audio_synth.emplace(AudioSampleRateHz(standard));
+    audio_plan = BuildAudioSectionPlan(schedule, audio_samples_per_frame);
+
+    std::vector<std::string> audio_errors;
+    if (!audio_writer_->BeginWrite(parse_result.project, &audio_errors)) {
+      for (const std::string& error : audio_errors) {
+        logger_->Error(error);
+      }
+      CloseOutputSessionOnFailure();
+      return false;
+    }
+  }
+
+  // Synthesises one disc frame of mono audio, resetting oscillator phase at
+  // section boundaries. Must be called exactly once per disc frame in
+  // increasing disc-frame order so per-section phase accumulation stays exact.
+  auto SynthesizeDiscFrame =
+      [&](std::size_t disc_frame) -> std::vector<std::int16_t> {
+    if (audio_plan.is_section_start[disc_frame] != 0) {
+      audio_synth->BeginSection(schedule[disc_frame].section->audio,
+                                audio_plan.section_total_samples[disc_frame]);
+    }
+    return audio_synth->Synthesize(audio_samples_per_frame);
+  };
+
   if (has_skips) {
     // -------------------------------------------------------------------
     // Skip-aware per-frame loop.
@@ -220,6 +302,10 @@ bool VideoSynthPipeline::Run(const RunOptions& options) {
                                               std::vector<SampleFixed>>>
         frame_cache;
     frame_cache.reserve(total_disc_frames);
+
+    // Audio cache mirrors frame_cache so backward-skip replays re-emit
+    // byte-identical audio for the same disc frames.
+    std::unordered_map<std::size_t, std::vector<std::int16_t>> audio_cache;
 
     const std::size_t progress_interval =
         ComputeProgressInterval(total_disc_frames);
@@ -253,8 +339,18 @@ bool VideoSynthPipeline::Run(const RunOptions& options) {
 
       const DiscFrameAction& action = skip_plan[disc_frame];
 
+      // Synthesise this disc frame's audio once, in order, so oscillator phase
+      // advances even for withheld (forward-skipped) frames.
+      std::vector<std::int16_t> audio_frame;
+      if (audio_enabled) {
+        audio_frame = SynthesizeDiscFrame(disc_frame);
+      }
+
       if (action.cache_samples) {
         frame_cache[disc_frame] = {y_mv, c_mv};
+        if (audio_enabled) {
+          audio_cache[disc_frame] = audio_frame;
+        }
       }
 
       if (action.write_to_output) {
@@ -265,6 +361,16 @@ bool VideoSynthPipeline::Run(const RunOptions& options) {
             logger_->Error(error);
           }
           return false;
+        }
+        if (audio_enabled) {
+          std::vector<std::string> audio_errors;
+          if (!audio_writer_->AppendFrameAudio(audio_frame, &audio_errors)) {
+            CloseOutputSessionOnFailure();
+            for (const std::string& error : audio_errors) {
+              logger_->Error(error);
+            }
+            return false;
+          }
         }
       }
 
@@ -284,6 +390,25 @@ bool VideoSynthPipeline::Run(const RunOptions& options) {
             logger_->Error(error);
           }
           return false;
+        }
+        if (audio_enabled) {
+          const auto audio_it = audio_cache.find(src);
+          if (audio_it == audio_cache.end()) {
+            CloseOutputSessionOnFailure();
+            logger_->Error(
+                "Disc skip internal error: audio cache miss for frame " +
+                std::to_string(src) + ".");
+            return false;
+          }
+          std::vector<std::string> audio_errors;
+          if (!audio_writer_->AppendFrameAudio(audio_it->second,
+                                               &audio_errors)) {
+            CloseOutputSessionOnFailure();
+            for (const std::string& error : audio_errors) {
+              logger_->Error(error);
+            }
+            return false;
+          }
         }
       }
 
@@ -349,6 +474,22 @@ bool VideoSynthPipeline::Run(const RunOptions& options) {
         return false;
       }
 
+      if (audio_enabled) {
+        for (std::size_t disc_frame = processed_frames;
+             disc_frame < processed_frames + frames_this_batch; ++disc_frame) {
+          const std::vector<std::int16_t> audio_frame =
+              SynthesizeDiscFrame(disc_frame);
+          std::vector<std::string> audio_errors;
+          if (!audio_writer_->AppendFrameAudio(audio_frame, &audio_errors)) {
+            CloseOutputSessionOnFailure();
+            for (const std::string& error : audio_errors) {
+              logger_->Error(error);
+            }
+            return false;
+          }
+        }
+      }
+
       processed_frames += frames_this_batch;
       if (processed_frames >= next_progress_mark ||
           processed_frames == total_disc_frames) {
@@ -366,6 +507,16 @@ bool VideoSynthPipeline::Run(const RunOptions& options) {
       logger_->Error(error);
     }
     return false;
+  }
+
+  if (audio_enabled) {
+    std::vector<std::string> audio_errors;
+    if (!audio_writer_->FinalizeWrite(&audio_errors)) {
+      for (const std::string& error : audio_errors) {
+        logger_->Error(error);
+      }
+      return false;
+    }
   }
 
   if (dropout_injection_ != nullptr) {

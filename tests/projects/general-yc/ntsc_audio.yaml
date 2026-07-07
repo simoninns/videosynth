@@ -1,0 +1,85 @@
+# NTSC Audio Example (Y/C output)
+#
+# Frame-locked synthetic audio generation. Each section declares an optional
+# `audio:` block that synthesises a test-tone waveform for the exact duration
+# (in frames) of that section. The emitted track is written alongside the Y/C
+# output as videosynth_ntsc_audio_audio_00.wav — note the basename is derived by
+# stripping the trailing ".y" suffix — sample-locked to the stored video frames
+# (NTSC: 44,100,000/1001 Hz, header 44056, 1470 samples/frame).
+#
+# This fixture exercises, across its four sections:
+#   - A section-spanning frequency ramp down (triangle)
+#   - A periodic frequency ramp in bounce mode (sine)
+#   - A silence gap (a section with no `audio:` block) that still emits the
+#     exact per-frame sample count, proving frame alignment holds
+#   - A fixed-frequency square tone.
+
+project:
+  name: NtscAudio
+  version: "1.0"
+  description: NTSC frame-locked audio — section-spanning ramp, periodic bounce, silence gap, fixed tone
+
+cvbs_presets:
+  video_standard_preset: NTSC
+  sample_encoding_preset: CVBS_U10_4FSC
+  signal_state_preset: STANDARD_TBC_LOCKED
+
+output:
+  video_path: tests/projects/output-general/yc/videosynth_ntsc_audio.y
+  metadata_path: tests/projects/output-general/yc/videosynth_ntsc_audio.meta
+  signal_type: yc
+
+sections:
+
+  # ---------------------------------------------------------------------------
+  # Section 1: section-spanning triangle sweep, 5000 Hz -> 500 Hz (mode: down)
+  # ---------------------------------------------------------------------------
+  - name: SweepDown
+    type: progressive
+    source: videosynth-assets/assets/exr/720x486/75_BARS.exr
+    duration_frames: 8
+    audio:
+      waveform: triangle
+      amplitude: 0.5
+      ramp:
+        start: 500.0
+        end: 5000.0
+        mode: down
+
+  # ---------------------------------------------------------------------------
+  # Section 2: periodic sine sweep bouncing 300 Hz -> 3000 Hz -> 300 Hz, one
+  # bounce cycle every 0.1 s, repeating across the section.
+  # ---------------------------------------------------------------------------
+  - name: PeriodicBounce
+    type: progressive
+    source: videosynth-assets/assets/exr/720x486/75_BARS.exr
+    duration_frames: 8
+    audio:
+      waveform: sine
+      amplitude: 0.5
+      ramp:
+        start: 300.0
+        end: 3000.0
+        mode: bounce
+        period: 0.1
+
+  # ---------------------------------------------------------------------------
+  # Section 3: silence gap — no `audio:` block. The track still advances by the
+  # exact per-frame sample count so the WAV stays frame-locked.
+  # ---------------------------------------------------------------------------
+  - name: SilenceGap
+    type: progressive
+    source: videosynth-assets/assets/exr/720x486/75_BARS.exr
+    duration_frames: 8
+
+  # ---------------------------------------------------------------------------
+  # Section 4: fixed-frequency square tone
+  # ---------------------------------------------------------------------------
+  - name: FixedSquare
+    type: progressive
+    source: videosynth-assets/assets/exr/720x486/75_BARS.exr
+    duration_frames: 8
+    audio:
+      waveform: square
+      frequency: 1000.0
+      amplitude: 0.6

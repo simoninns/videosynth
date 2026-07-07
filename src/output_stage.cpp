@@ -426,7 +426,13 @@ bool WriteMetadataDatabase(const Project& project, std::size_t frame_count,
   }
 
   sqlite3_bind_int(insert_stmt, 10, has_nonstandard ? 1 : 0);
-  sqlite3_bind_null(insert_stmt, 11);  // audio_locked: NULL (no audio tracks)
+  // audio_locked: TRUE when a frame-locked audio track is written (i.e. at
+  // least one section enables audio), NULL otherwise.
+  if (ProjectEnablesAudio(project)) {
+    sqlite3_bind_int(insert_stmt, 11, 1);
+  } else {
+    sqlite3_bind_null(insert_stmt, 11);
+  }
   sqlite3_bind_null(insert_stmt, 12);  // capture_notes
 
   if (sqlite3_step(insert_stmt) != SQLITE_DONE) {
