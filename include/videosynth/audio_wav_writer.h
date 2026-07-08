@@ -59,6 +59,10 @@ class AudioWavWriter {
   // false and appends a message to errors on any failure.
   bool FinalizeWrite(std::vector<std::string>* errors);
 
+  // Abandons the current write session: closes the stream and removes the
+  // partially-written WAV file. No-op when no session is open.
+  void AbortWrite();
+
   // Derives the audio track path from a CVBS output path. Strips a trailing
   // ".composite" or ".y" suffix (if present) and appends "_audio_00.wav".
   static std::string DeriveAudioPath(const std::string& video_path);

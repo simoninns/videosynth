@@ -85,6 +85,11 @@ class DropoutInjectionStage {
   // Returns false and populates errors on SQLite failure.
   bool Finalize(std::vector<std::string>* errors);
 
+  // Abandons an in-progress sidecar session: discards the open transaction,
+  // closes the database handle, and removes the partially-written sidecar
+  // file. No-op if Begin was not called or the sidecar was not created.
+  void Abort();
+
  private:
   // Returns the index of section within project.sections, or 0.
   static std::size_t FindSectionIndex(const Project& project,
@@ -138,6 +143,9 @@ class DropoutInjectionStage {
 
   sqlite3* db_ = nullptr;
   sqlite3_stmt* insert_stmt_ = nullptr;
+  // Sidecar file path for the currently open session; used by Abort to
+  // remove the partially-written file.
+  std::string sidecar_path_;
 
   // Cached scratch events for the current section.
   const Section* cached_scratch_section_ = nullptr;

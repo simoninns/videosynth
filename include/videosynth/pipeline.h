@@ -16,9 +16,18 @@
 
 namespace videosynth {
 
-// Thread-safety: VideoSynthPipeline is NOT thread-safe. The Run method must
-// not be called concurrently from multiple threads. All component pointers
-// are accessed without synchronization.
+// Thread-safety: VideoSynthPipeline is NOT thread-safe. A whole pipeline run
+// (Run or RunProject) executes on a single thread, which may be any thread —
+// a worker thread is fine; there is no main-thread affinity. Run/RunProject
+// must not be called concurrently from multiple threads on the same instance
+// because the injected stage collaborators (IGenerationStage, IOutputStage,
+// NoiseInjectionStage, DropoutInjectionStage, AudioWavWriter) are NOT
+// thread-safe and are accessed without synchronization. ILogger,
+// IProjectParser, and IProjectValidator implementations must remain
+// thread-safe per their interface contracts. Relative paths in the project
+// (section sources, output paths) are resolved against the process working
+// directory by the stages; callers running on worker threads must pass
+// already-resolved paths.
 class VideoSynthPipeline {
  public:
   // audio_writer is an optional collaborator (nullable, like noise_injection
@@ -32,18 +41,47 @@ class VideoSynthPipeline {
                      IOutputStage* output, ILogger* logger,
                      AudioWavWriter* audio_writer = nullptr);
 
-  // Orchestrates the full pipeline:
-  //   parse -> validate -> generate -> noise -> dropout -> output.
+  // Orchestrates the full pipeline from a project file:
+  //   parse -> RunProject (validate -> generate -> noise -> dropout ->
+  //   output).
   //
   // Args:
   //   options: Contains project path and runtime configuration.
+  //   observer: Optional (nullable) progress observer; see RunProject.
+  //   cancellation: Optional (nullable) cancellation token; see RunProject.
   //
   // Returns:
-  //   true if the entire pipeline completed successfully, false on any error.
-  //   Errors are logged via the logger_ and also returned through the
-  //   IProjectParser, IProjectValidator, IGenerationStage, and IOutputStage
-  //   interfaces' error output parameters.
-  bool Run(const RunOptions& options);
+  //   true if the entire pipeline completed successfully, false on any error
+  //   or cancellation. Errors are logged via the logger_ and also returned
+  //   through the IProjectParser, IProjectValidator, IGenerationStage, and
+  //   IOutputStage interfaces' error output parameters.
+  bool Run(const RunOptions& options, IPipelineObserver* observer = nullptr,
+           CancellationToken* cancellation = nullptr);
+
+  // Orchestrates the pipeline for an already-parsed project:
+  //   validate -> generate -> noise -> dropout -> output.
+  //
+  // Relative paths inside the project (section sources, output targets) are
+  // used as-is; callers must resolve them before invoking this method.
+  //
+  // Args:
+  //   project: Fully-populated project model to run.
+  //   options: Runtime configuration (validate_only etc.); project_path is
+  //     ignored on this entry point.
+  //   observer: Optional (nullable) progress observer. Callbacks are invoked
+  //     synchronously on the calling thread; OnRunFinished fires exactly once.
+  //   cancellation: Optional (nullable) cooperative cancellation token,
+  //     polled between frame batches. On cancellation all in-progress output
+  //     artefacts (video/chroma/metadata/WAV/dropout-sidecar files) are
+  //     removed, OnRunFinished(kCancelled) is reported, and false is
+  //     returned.
+  //
+  // Returns:
+  //   true if the entire pipeline completed successfully, false on any error
+  //   or cancellation.
+  bool RunProject(const Project& project, const RunOptions& options,
+                  IPipelineObserver* observer = nullptr,
+                  CancellationToken* cancellation = nullptr);
 
  private:
   IProjectParser* parser_;

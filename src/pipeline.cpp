@@ -158,7 +158,9 @@ VideoSynthPipeline::VideoSynthPipeline(IProjectParser* parser,
       logger_(logger),
       audio_writer_(audio_writer) {}
 
-bool VideoSynthPipeline::Run(const RunOptions& options) {
+bool VideoSynthPipeline::Run(const RunOptions& options,
+                             IPipelineObserver* observer,
+                             CancellationToken* cancellation) {
   logger_->Info("Starting pipeline: parse -> validate -> generate -> output");
 
   const ParseResult parse_result = parser_->ParseFile(options.project_path);
@@ -166,34 +168,72 @@ bool VideoSynthPipeline::Run(const RunOptions& options) {
     for (const std::string& error : parse_result.errors) {
       logger_->Error(error);
     }
+    if (observer != nullptr) {
+      observer->OnRunFinished(PipelineRunStatus::kFailed);
+    }
     return false;
   }
 
-  const ValidationResult validation_result =
-      validator_->Validate(parse_result.project);
+  return RunProject(parse_result.project, options, observer, cancellation);
+}
+
+bool VideoSynthPipeline::RunProject(const Project& project,
+                                    const RunOptions& options,
+                                    IPipelineObserver* observer,
+                                    CancellationToken* cancellation) {
+  // Reports the terminal status exactly once and converts it to the boolean
+  // pipeline result.
+  auto FinishRun = [&](PipelineRunStatus status) {
+    if (observer != nullptr) {
+      observer->OnRunFinished(status);
+    }
+    return status == PipelineRunStatus::kSucceeded;
+  };
+
+  auto NotifyStage = [&](const char* stage_name) {
+    if (observer != nullptr) {
+      observer->OnStageStarted(stage_name);
+    }
+  };
+
+  auto IsCancelled = [&]() {
+    return cancellation != nullptr && cancellation->IsCancellationRequested();
+  };
+
+  NotifyStage("validate");
+  const ValidationResult validation_result = validator_->Validate(project);
   for (const std::string& warning : validation_result.warnings) {
     logger_->Warning(warning);
+    if (observer != nullptr) {
+      observer->OnWarning(warning);
+    }
   }
   if (!validation_result.is_valid) {
     for (const std::string& error : validation_result.errors) {
       logger_->Error(error);
     }
-    return false;
+    return FinishRun(PipelineRunStatus::kFailed);
   }
 
   if (options.validate_only) {
     logger_->Info("Validation successful.");
-    return true;
+    return FinishRun(PipelineRunStatus::kSucceeded);
   }
 
+  if (IsCancelled()) {
+    logger_->Info("Pipeline run cancelled before generation started.");
+    return FinishRun(PipelineRunStatus::kCancelled);
+  }
+
+  NotifyStage("generate");
   std::vector<IGenerationStage::FrameScheduleItem> schedule;
   std::vector<std::string> generation_errors;
-  if (!generation_->BuildFrameSchedule(parse_result.project, &schedule,
+  if (!generation_->BuildFrameSchedule(project, &schedule,
                                        &generation_errors)) {
     for (const std::string& error : generation_errors) {
       logger_->Error(error);
     }
-    return false;
+    return FinishRun(PipelineRunStatus::kFailed);
   }
 
   const std::size_t total_disc_frames = schedule.size();
@@ -201,14 +241,13 @@ bool VideoSynthPipeline::Run(const RunOptions& options) {
   // Determine whether disc skips are configured.  When present, an output plan
   // is built and the pipeline processes one disc frame at a time; otherwise
   // the normal batch path is used.
-  const bool has_skips = !parse_result.project.disc_skips.empty();
+  const bool has_skips = !project.disc_skips.empty();
 
   std::vector<DiscFrameAction> skip_plan;
   std::size_t total_output_frames = total_disc_frames;
 
   if (has_skips) {
-    skip_plan =
-        ComputeDiscSkipPlan(parse_result.project.disc_skips, total_disc_frames);
+    skip_plan = ComputeDiscSkipPlan(project.disc_skips, total_disc_frames);
     total_output_frames = 0U;
     for (const DiscFrameAction& a : skip_plan) {
       if (a.write_to_output) {
@@ -219,23 +258,22 @@ bool VideoSynthPipeline::Run(const RunOptions& options) {
   }
 
   std::vector<std::string> output_errors;
-  if (!output_->BeginWrite(parse_result.project, total_output_frames,
-                           &output_errors)) {
+  if (!output_->BeginWrite(project, total_output_frames, &output_errors)) {
     for (const std::string& error : output_errors) {
       logger_->Error(error);
     }
-    return false;
+    return FinishRun(PipelineRunStatus::kFailed);
   }
 
   if (dropout_injection_ != nullptr) {
     std::vector<std::string> dropout_errors;
-    if (!dropout_injection_->Begin(parse_result.project, &dropout_errors)) {
+    if (!dropout_injection_->Begin(project, &dropout_errors)) {
       for (const std::string& error : dropout_errors) {
         logger_->Error(error);
       }
       std::vector<std::string> cleanup_errors;
       output_->FinalizeWrite(&cleanup_errors);
-      return false;
+      return FinishRun(PipelineRunStatus::kFailed);
     }
   }
 
@@ -252,26 +290,47 @@ bool VideoSynthPipeline::Run(const RunOptions& options) {
   // to the output frame stream.
   // -------------------------------------------------------------------
   const bool audio_enabled =
-      audio_writer_ != nullptr && ProjectEnablesAudio(parse_result.project);
+      audio_writer_ != nullptr && ProjectEnablesAudio(project);
   std::optional<AudioSynthesizer> audio_synth;
   AudioSectionPlan audio_plan;
   int audio_samples_per_frame = 0;
   if (audio_enabled) {
-    const Standard standard =
-        parse_result.project.cvbs_presets.video_standard_preset;
+    const Standard standard = project.cvbs_presets.video_standard_preset;
     audio_samples_per_frame = AudioSamplesPerFrame(standard);
     audio_synth.emplace(AudioSampleRateHz(standard));
     audio_plan = BuildAudioSectionPlan(schedule, audio_samples_per_frame);
 
     std::vector<std::string> audio_errors;
-    if (!audio_writer_->BeginWrite(parse_result.project, &audio_errors)) {
+    if (!audio_writer_->BeginWrite(project, &audio_errors)) {
       for (const std::string& error : audio_errors) {
         logger_->Error(error);
       }
       CloseOutputSessionOnFailure();
-      return false;
+      return FinishRun(PipelineRunStatus::kFailed);
     }
   }
+
+  // Aborts all in-progress output artefacts after a cancellation request:
+  // video/chroma/metadata via the output stage, the WAV track, and the
+  // dropout sidecar. Each abort is a no-op when its session is not open.
+  auto CancelRun = [&]() {
+    output_->AbortWrite();
+    if (audio_enabled) {
+      audio_writer_->AbortWrite();
+    }
+    if (dropout_injection_ != nullptr) {
+      dropout_injection_->Abort();
+    }
+    logger_->Info(
+        "Pipeline run cancelled; in-progress output files were removed.");
+    return FinishRun(PipelineRunStatus::kCancelled);
+  };
+
+  auto NotifyProgress = [&](std::size_t frames_completed) {
+    if (observer != nullptr) {
+      observer->OnFrameProgress(frames_completed, total_disc_frames);
+    }
+  };
 
   // Synthesises one disc frame of mono audio, resetting oscillator phase at
   // section boundaries. Must be called exactly once per disc frame in
@@ -313,28 +372,31 @@ bool VideoSynthPipeline::Run(const RunOptions& options) {
 
     for (std::size_t disc_frame = 0U; disc_frame < total_disc_frames;
          ++disc_frame) {
+      if (IsCancelled()) {
+        return CancelRun();
+      }
+
       std::vector<SampleFixed> y_mv;
       std::vector<SampleFixed> c_mv;
 
       generation_errors.clear();
-      if (!generation_->GenerateFrameBatch(parse_result.project, schedule,
-                                           disc_frame, 1U, &y_mv, &c_mv,
-                                           &generation_errors)) {
+      if (!generation_->GenerateFrameBatch(project, schedule, disc_frame, 1U,
+                                           &y_mv, &c_mv, &generation_errors)) {
         CloseOutputSessionOnFailure();
         for (const std::string& error : generation_errors) {
           logger_->Error(error);
         }
-        return false;
+        return FinishRun(PipelineRunStatus::kFailed);
       }
 
       if (noise_injection_ != nullptr) {
-        noise_injection_->InjectNoise(parse_result.project, schedule,
-                                      disc_frame, 1U, &y_mv, &c_mv);
+        noise_injection_->InjectNoise(project, schedule, disc_frame, 1U, &y_mv,
+                                      &c_mv);
       }
 
       if (dropout_injection_ != nullptr) {
-        dropout_injection_->InjectDropouts(parse_result.project, schedule,
-                                           disc_frame, 1U, &y_mv, &c_mv);
+        dropout_injection_->InjectDropouts(project, schedule, disc_frame, 1U,
+                                           &y_mv, &c_mv);
       }
 
       const DiscFrameAction& action = skip_plan[disc_frame];
@@ -360,7 +422,7 @@ bool VideoSynthPipeline::Run(const RunOptions& options) {
           for (const std::string& error : output_errors) {
             logger_->Error(error);
           }
-          return false;
+          return FinishRun(PipelineRunStatus::kFailed);
         }
         if (audio_enabled) {
           std::vector<std::string> audio_errors;
@@ -369,7 +431,7 @@ bool VideoSynthPipeline::Run(const RunOptions& options) {
             for (const std::string& error : audio_errors) {
               logger_->Error(error);
             }
-            return false;
+            return FinishRun(PipelineRunStatus::kFailed);
           }
         }
       }
@@ -380,7 +442,7 @@ bool VideoSynthPipeline::Run(const RunOptions& options) {
           CloseOutputSessionOnFailure();
           logger_->Error("Disc skip internal error: cache miss for frame " +
                          std::to_string(src) + ".");
-          return false;
+          return FinishRun(PipelineRunStatus::kFailed);
         }
         output_errors.clear();
         if (!output_->AppendSamples(it->second.first, it->second.second,
@@ -389,7 +451,7 @@ bool VideoSynthPipeline::Run(const RunOptions& options) {
           for (const std::string& error : output_errors) {
             logger_->Error(error);
           }
-          return false;
+          return FinishRun(PipelineRunStatus::kFailed);
         }
         if (audio_enabled) {
           const auto audio_it = audio_cache.find(src);
@@ -398,7 +460,7 @@ bool VideoSynthPipeline::Run(const RunOptions& options) {
             logger_->Error(
                 "Disc skip internal error: audio cache miss for frame " +
                 std::to_string(src) + ".");
-            return false;
+            return FinishRun(PipelineRunStatus::kFailed);
           }
           std::vector<std::string> audio_errors;
           if (!audio_writer_->AppendFrameAudio(audio_it->second,
@@ -407,11 +469,12 @@ bool VideoSynthPipeline::Run(const RunOptions& options) {
             for (const std::string& error : audio_errors) {
               logger_->Error(error);
             }
-            return false;
+            return FinishRun(PipelineRunStatus::kFailed);
           }
         }
       }
 
+      NotifyProgress(disc_frame + 1U);
       if (disc_frame + 1U >= next_progress_mark ||
           disc_frame + 1U == total_disc_frames) {
         logger_->Info("Pipeline progress: " + std::to_string(disc_frame + 1U) +
@@ -424,8 +487,7 @@ bool VideoSynthPipeline::Run(const RunOptions& options) {
     // -------------------------------------------------------------------
     // Standard batched loop (no disc skips).
     // -------------------------------------------------------------------
-    const std::size_t batch_frame_count =
-        ComputeBatchFrameCount(parse_result.project);
+    const std::size_t batch_frame_count = ComputeBatchFrameCount(project);
     const std::size_t progress_interval =
         ComputeProgressInterval(total_disc_frames);
 
@@ -437,32 +499,34 @@ bool VideoSynthPipeline::Run(const RunOptions& options) {
     std::size_t next_progress_mark = progress_interval;
 
     while (processed_frames < total_disc_frames) {
+      if (IsCancelled()) {
+        return CancelRun();
+      }
+
       const std::size_t frames_this_batch =
           std::min(batch_frame_count, total_disc_frames - processed_frames);
       std::vector<SampleFixed> y_mv;
       std::vector<SampleFixed> c_mv;
 
       generation_errors.clear();
-      if (!generation_->GenerateFrameBatch(parse_result.project, schedule,
-                                           processed_frames, frames_this_batch,
-                                           &y_mv, &c_mv, &generation_errors)) {
+      if (!generation_->GenerateFrameBatch(project, schedule, processed_frames,
+                                           frames_this_batch, &y_mv, &c_mv,
+                                           &generation_errors)) {
         CloseOutputSessionOnFailure();
         for (const std::string& error : generation_errors) {
           logger_->Error(error);
         }
-        return false;
+        return FinishRun(PipelineRunStatus::kFailed);
       }
 
       if (noise_injection_ != nullptr) {
-        noise_injection_->InjectNoise(parse_result.project, schedule,
-                                      processed_frames, frames_this_batch,
-                                      &y_mv, &c_mv);
+        noise_injection_->InjectNoise(project, schedule, processed_frames,
+                                      frames_this_batch, &y_mv, &c_mv);
       }
 
       if (dropout_injection_ != nullptr) {
-        dropout_injection_->InjectDropouts(parse_result.project, schedule,
-                                           processed_frames, frames_this_batch,
-                                           &y_mv, &c_mv);
+        dropout_injection_->InjectDropouts(project, schedule, processed_frames,
+                                           frames_this_batch, &y_mv, &c_mv);
       }
 
       output_errors.clear();
@@ -471,7 +535,7 @@ bool VideoSynthPipeline::Run(const RunOptions& options) {
         for (const std::string& error : output_errors) {
           logger_->Error(error);
         }
-        return false;
+        return FinishRun(PipelineRunStatus::kFailed);
       }
 
       if (audio_enabled) {
@@ -485,12 +549,13 @@ bool VideoSynthPipeline::Run(const RunOptions& options) {
             for (const std::string& error : audio_errors) {
               logger_->Error(error);
             }
-            return false;
+            return FinishRun(PipelineRunStatus::kFailed);
           }
         }
       }
 
       processed_frames += frames_this_batch;
+      NotifyProgress(processed_frames);
       if (processed_frames >= next_progress_mark ||
           processed_frames == total_disc_frames) {
         logger_->Info("Pipeline progress: " + std::to_string(processed_frames) +
@@ -501,12 +566,13 @@ bool VideoSynthPipeline::Run(const RunOptions& options) {
     }
   }
 
+  NotifyStage("finalize");
   output_errors.clear();
   if (!output_->FinalizeWrite(&output_errors)) {
     for (const std::string& error : output_errors) {
       logger_->Error(error);
     }
-    return false;
+    return FinishRun(PipelineRunStatus::kFailed);
   }
 
   if (audio_enabled) {
@@ -515,7 +581,7 @@ bool VideoSynthPipeline::Run(const RunOptions& options) {
       for (const std::string& error : audio_errors) {
         logger_->Error(error);
       }
-      return false;
+      return FinishRun(PipelineRunStatus::kFailed);
     }
   }
 
@@ -525,12 +591,12 @@ bool VideoSynthPipeline::Run(const RunOptions& options) {
       for (const std::string& error : dropout_errors) {
         logger_->Error(error);
       }
-      return false;
+      return FinishRun(PipelineRunStatus::kFailed);
     }
   }
 
   logger_->Info("Generation completed successfully.");
-  return true;
+  return FinishRun(PipelineRunStatus::kSucceeded);
 }
 
 }  // namespace videosynth

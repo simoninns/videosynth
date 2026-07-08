@@ -1648,6 +1648,13 @@ The runtime uses a **central pipeline module** to process sections and combine t
 [YAML Project File] → [Validation] → [Pipeline Controller (schedule + progress)] → [Generation Stage (batched frames)] → [Noise Injection Stage (per-section)] → [Dropout Injection Stage (per-section)] → [Output Stage (append + finalize)] → [CVBS File (Video + Metadata) + Dropout Sidecar (.dropouts.meta)]
 ```
 
+### **Pipeline Entry Points and Concurrency**
+
+- `VideoSynthPipeline::Run(options, observer, cancellation)` parses the YAML project file and delegates to `RunProject`. `VideoSynthPipeline::RunProject(project, options, observer, cancellation)` runs the pipeline for an already-parsed in-memory `Project` (validate → generate → noise → dropout → output); relative paths in the project are used as-is and must be resolved by the caller. The CLI uses `Run`; front-ends that hold an in-memory project (e.g. a GUI) use `RunProject`.
+- `observer` (optional, nullable) is an `IPipelineObserver` receiving stage transitions (`validate`, `generate`, `finalize`), per-batch frame progress (`frames_completed / frames_total`), validation warnings, and a terminal `PipelineRunStatus` (`kSucceeded` / `kCancelled` / `kFailed`) reported exactly once. Callbacks run synchronously on the pipeline's executing thread.
+- `cancellation` (optional, nullable) is a thread-safe one-shot `CancellationToken` polled between frame batches (and per disc frame in the skip-aware loop). On cancellation the pipeline aborts all in-progress artefacts — video/chroma/metadata via `IOutputStage::AbortWrite`, the WAV track via `AudioWavWriter::AbortWrite`, and the dropout sidecar via `DropoutInjectionStage::Abort` — so a cancelled run leaves no partially-written output files, reports `kCancelled` (not an error), and returns `false`.
+- A whole pipeline run executes on a single thread, which may be a worker thread; there is no main-thread affinity. `ILogger`, `IProjectParser`, and `IProjectValidator` implementations are thread-safe; the stage collaborators are single-owner and NOT thread-safe, so a pipeline instance must not run concurrently with itself.
+
 ---
 
 ### **Detailed Pipeline Steps**

@@ -26,7 +26,10 @@ enum class LogLevel {
 
 // Thread-safety: SpdlogLogger IS thread-safe. The underlying spdlog::logger
 // is designed for concurrent use from multiple threads. All logging methods
-// (Info, Warning, Error, Debug, Trace) may be called concurrently.
+// (Info, Warning, Error, Debug, Trace) may be called concurrently. The
+// logger is constructed directly with multi-threaded (_mt) sinks and is NOT
+// registered in spdlog's global registry, so instances carry no hidden
+// global or main-thread state and may be created and used on any thread.
 class SpdlogLogger final : public ILogger {
  public:
   // Constructs a logger with the specified level and optional log file.

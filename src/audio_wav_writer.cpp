@@ -245,4 +245,22 @@ bool AudioWavWriter::FinalizeWrite(std::vector<std::string>* errors) {
   return true;
 }
 
+void AudioWavWriter::AbortWrite() {
+  if (!session_open_) {
+    return;
+  }
+
+  stream_.close();
+  // Removal failures are ignored: cleanup is best-effort on abort.
+  std::error_code ec;
+  std::filesystem::remove(audio_path_, ec);
+
+  if (logger_ != nullptr) {
+    logger_->Info("Audio write session aborted; removed " + audio_path_);
+  }
+
+  session_open_ = false;
+  data_bytes_ = 0;
+}
+
 }  // namespace videosynth

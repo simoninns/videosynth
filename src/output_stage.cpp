@@ -730,6 +730,35 @@ bool OutputStage::FinalizeWrite(std::vector<std::string>* errors) {
   return true;
 }
 
+void OutputStage::AbortWrite() {
+  if (!IsSessionOpen()) {
+    return;
+  }
+
+  video_stream_.close();
+  if (chroma_stream_.is_open()) {
+    chroma_stream_.close();
+  }
+
+  // Removal failures are ignored: the session is discarded either way and a
+  // best-effort cleanup is all a cancelled run requires.
+  std::error_code ec;
+  std::filesystem::remove(current_project_.output.video_path, ec);
+  const std::string chroma_path =
+      DeriveChromaPath(current_project_.output.video_path);
+  if (current_project_.output.signal_type == "yc" && !chroma_path.empty()) {
+    std::filesystem::remove(chroma_path, ec);
+  }
+  std::filesystem::remove(current_project_.output.metadata_path, ec);
+
+  if (logger_ != nullptr) {
+    logger_->Info("Output write session aborted; removed in-progress files.");
+  }
+
+  write_session_open_ = false;
+  written_samples_ = 0U;
+}
+
 bool OutputStage::Write(const Project& project,
                         const std::vector<SampleFixed>& y_mv,
                         const std::vector<SampleFixed>& c_mv,

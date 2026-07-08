@@ -57,6 +57,11 @@ class OutputStage final : public IOutputStage {
   //   true on success, false on any error.
   bool FinalizeWrite(std::vector<std::string>* errors) override;
 
+  // Abandons the current write session: closes the video (and chroma)
+  // streams and removes the partially-written video, chroma, and metadata
+  // files. No-op when no session is open.
+  void AbortWrite() override;
+
   // Convenience method that performs BeginWrite, AppendSamples, and
   // FinalizeWrite in sequence for a complete single-frame write.
   //

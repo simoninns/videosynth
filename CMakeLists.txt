@@ -109,6 +109,7 @@ add_executable(videosynth_tests
     tests/test_biphase_system.cpp
     tests/test_biphase_final.cpp
     tests/test_noise_injection.cpp
+    tests/test_deterministic_output.cpp
     tests/test_dropout_injection.cpp
     tests/test_osd_renderer.cpp
     tests/test_osd_token_resolver.cpp
@@ -136,6 +137,7 @@ set(videosynth_functional_test_patterns
     "^FrameSourceTest\\."
     "^ProjectFixturesTest\\."
     "^ComplianceHarnessTest\\."
+    "^DeterministicOutputTest\\."
     "^GenerationStageTest\\."
     "^GenerationStageTimingTest\\."
     "^GenerationStageChromaTest\\."

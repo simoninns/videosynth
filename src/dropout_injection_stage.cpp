@@ -16,8 +16,10 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <filesystem>
 #include <random>
 #include <string>
+#include <system_error>
 #include <utility>
 #include <vector>
 
@@ -307,7 +309,35 @@ bool DropoutInjectionStage::Begin(const Project& project,
     return false;
   }
 
+  sidecar_path_ = sidecar_path;
   return true;
+}
+
+void DropoutInjectionStage::Abort() {
+  if (db_ == nullptr) {
+    return;
+  }
+
+  if (insert_stmt_ != nullptr) {
+    sqlite3_finalize(insert_stmt_);
+    insert_stmt_ = nullptr;
+  }
+
+  // Discard the open transaction; errors are ignored because the file is
+  // removed immediately afterwards.
+  sqlite3_exec(db_, "ROLLBACK;", nullptr, nullptr, nullptr);
+  sqlite3_close(db_);
+  db_ = nullptr;
+
+  std::error_code ec;
+  std::filesystem::remove(sidecar_path_, ec);
+  sidecar_path_.clear();
+
+  if (logger_ != nullptr) {
+    logger_->Info(
+        "DropoutInjectionStage: sidecar session aborted; removed "
+        "in-progress sidecar file.");
+  }
 }
 
 bool DropoutInjectionStage::Finalize(std::vector<std::string>* errors) {

@@ -91,6 +91,7 @@ class MockOutput final : public IOutputStage {
     errors->clear();
     return true;
   }
+  void AbortWrite() override {}
   bool Write(const Project&, const std::vector<SampleFixed>&,
              const std::vector<SampleFixed>&,
              std::vector<std::string>* errors) override {

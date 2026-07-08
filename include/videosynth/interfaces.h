@@ -9,6 +9,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <cstddef>
 #include <string>
 #include <vector>
@@ -24,6 +25,62 @@ struct RunOptions {
   bool validate_only = false;
   std::string log_level = "info";
   std::string log_file;
+};
+
+// Terminal status of a pipeline run, reported through
+// IPipelineObserver::OnRunFinished.
+enum class PipelineRunStatus {
+  kSucceeded,
+  kCancelled,
+  kFailed,
+};
+
+// Cooperative cancellation flag for a pipeline run. The producer (for example
+// a GUI cancel button) calls RequestCancellation; the pipeline polls
+// IsCancellationRequested between frame batches and stops at the next check.
+//
+// Thread-safety: CancellationToken IS thread-safe. RequestCancellation and
+// IsCancellationRequested may be called concurrently from any thread; the
+// flag is a single std::atomic<bool>. The token is one-shot per run: it
+// cannot be reset, so use a fresh token for each pipeline run.
+class CancellationToken {
+ public:
+  void RequestCancellation() {
+    cancellation_requested_.store(true, std::memory_order_relaxed);
+  }
+
+  bool IsCancellationRequested() const {
+    return cancellation_requested_.load(std::memory_order_relaxed);
+  }
+
+ private:
+  std::atomic<bool> cancellation_requested_{false};
+};
+
+// Receives progress callbacks during a pipeline run.
+//
+// Thread-safety: all callbacks are invoked synchronously on the thread that
+// executes the pipeline run (which may be a worker thread). Implementations
+// that forward to another thread (for example a GUI event loop) must perform
+// their own cross-thread marshalling. Callbacks must not re-enter the
+// pipeline.
+class IPipelineObserver {
+ public:
+  virtual ~IPipelineObserver() = default;
+
+  // Called when a pipeline stage begins ("validate", "generate", "finalize").
+  virtual void OnStageStarted(const std::string& stage_name) = 0;
+
+  // Called after each processed frame batch. frames_completed is monotonic
+  // non-decreasing and reaches frames_total on an uncancelled run.
+  virtual void OnFrameProgress(std::size_t frames_completed,
+                               std::size_t frames_total) = 0;
+
+  // Called for each non-fatal warning (for example validation warnings).
+  virtual void OnWarning(const std::string& message) = 0;
+
+  // Called exactly once at the end of the run with the terminal status.
+  virtual void OnRunFinished(PipelineRunStatus status) = 0;
 };
 
 // Thread-safety: Implementations of ILogger must be thread-safe.
@@ -174,6 +231,13 @@ class IOutputStage {
   // vector and must ensure the pointer is valid (non-null). The implementation
   // clears and populates this vector but does not take ownership.
   virtual bool FinalizeWrite(std::vector<std::string>* errors) = 0;
+
+  // Abandons an in-progress write session: closes any open streams and
+  // removes the partially-written output artefacts (video/chroma/metadata
+  // files) so a cancelled run leaves nothing behind. No-op when no session is
+  // open. Never fails; removal errors are ignored because the session state
+  // is discarded regardless.
+  virtual void AbortWrite() = 0;
 
   // Ownership: errors is an output parameter. The caller owns the pointed-to
   // vector and must ensure the pointer is valid (non-null). The implementation
