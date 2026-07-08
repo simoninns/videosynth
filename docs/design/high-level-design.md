@@ -1882,11 +1882,18 @@ videosynth --project project.yaml [options]
 | ------------ | ------------------------------------------------- | ----------- |
 | `--project`  | Path to the YAML project file (required).         | -           |
 | `--validate` | Validate the YAML file without generating output. | `false`     |
+| `--threads <n>` | Frame synthesis worker threads: `auto` (one per hardware thread) or a positive integer. `1` selects the pure sequential path. Output is byte-identical regardless of the thread count; projects with `disc_skips` always run sequentially. | `auto` |
 | `--log-level <level>` | Set the log level to `info`, `debug`, or `trace`. | `info` |
 | `--log-file <filename>` | Write log output to the specified file in addition to the console. | none |
 
 Output paths are configured in YAML under `output.video_path` and `output.metadata_path`.
 
+Multi-threaded generation splits frame processing into a sequential
+schedule-enrichment pass (per-frame VBI code words, colour-sequence indices,
+OSD token strings) followed by order-independent per-frame sample synthesis on
+a worker pool; frames are reassembled in order (bounded to 2 × thread count
+in-flight frames) before output, dropout-sidecar, and audio emission, so all
+emitted artefacts match the sequential path byte for byte.
 
 ---
 
@@ -1898,6 +1905,9 @@ videosynth --project pal_test.yaml
 
 # Validate a project file without generating output
 videosynth --project ntsc_test.yaml --validate
+
+# Generate on the pure sequential path (single-threaded)
+videosynth --project pal_test.yaml --threads 1
 
 # Generate with debug logging and a log file
 videosynth --project pal_test.yaml --log-level debug --log-file out/videosynth.log

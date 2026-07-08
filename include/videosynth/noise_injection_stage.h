@@ -41,8 +41,11 @@ namespace videosynth {
 // Within a single run, the same (frame, section) pair always produces identical
 // output regardless of batch size.
 //
-// Thread-safety: NoiseInjectionStage is NOT thread-safe. InjectNoise must not
-// be called concurrently from multiple threads.
+// Thread-safety: NoiseInjectionStage IS thread-safe for concurrent InjectNoise
+// calls on distinct buffers: the method is const, per-frame RNGs are seeded
+// deterministically from immutable state (run_base_seed_ is fixed at
+// construction), and the logger contract requires thread-safety. Callers must
+// not pass the same buffer to concurrent calls.
 class NoiseInjectionStage {
  public:
   explicit NoiseInjectionStage(ILogger* logger);
@@ -60,7 +63,7 @@ class NoiseInjectionStage {
       const Project& project,
       const std::vector<IGenerationStage::FrameScheduleItem>& schedule,
       std::size_t frame_offset, std::size_t frame_count,
-      std::vector<SampleFixed>* y_mv, std::vector<SampleFixed>* c_mv);
+      std::vector<SampleFixed>* y_mv, std::vector<SampleFixed>* c_mv) const;
 
  private:
   ILogger* logger_;

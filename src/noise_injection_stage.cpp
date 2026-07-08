@@ -84,7 +84,7 @@ void NoiseInjectionStage::InjectNoise(
     const Project& project,
     const std::vector<IGenerationStage::FrameScheduleItem>& schedule,
     std::size_t frame_offset, std::size_t frame_count,
-    std::vector<SampleFixed>* y_mv, std::vector<SampleFixed>* c_mv) {
+    std::vector<SampleFixed>* y_mv, std::vector<SampleFixed>* c_mv) const {
   if (y_mv == nullptr || c_mv == nullptr) {
     return;
   }

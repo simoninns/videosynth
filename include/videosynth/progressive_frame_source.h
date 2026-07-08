@@ -11,6 +11,7 @@
 #pragma once
 
 #include <cstdint>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -37,11 +38,12 @@ struct FrameSourceImage {
   const YCbCr444Pixel& PixelAt(int x, int y) const;
 };
 
-// Thread-safety: ProgressiveFrameSource is NOT thread-safe due to mutable
-// cache state (has_cached_exr_frame_, cached_exr_source_, etc.). Inherits the
-// thread-safe requirement from IProgressiveFrameProvider but implementations
-// must handle their own synchronization. Concurrent calls will result in race
-// conditions on the cache.
+// Thread-safety: ProgressiveFrameSource IS thread-safe, satisfying the
+// IProgressiveFrameProvider contract. The mutable decode cache
+// (has_cached_exr_frame_, cached_mkv_frames_, etc.) is guarded by an internal
+// mutex; GenerateFrame, ResolveFrameCount, and ClearCache may be called
+// concurrently from multiple threads. Cache misses decode while holding the
+// mutex, so concurrent readers of an uncached source serialise on the decode.
 class ProgressiveFrameSource final : public IProgressiveFrameProvider {
  public:
   // Checks if this source supports the given section.
@@ -93,6 +95,9 @@ class ProgressiveFrameSource final : public IProgressiveFrameProvider {
                      std::string* error) const override;
 
  private:
+  // Guards all mutable cache members below.
+  mutable std::mutex cache_mutex_;
+
   mutable bool has_cached_exr_frame_ = false;
   mutable std::string cached_exr_source_;
   mutable Standard cached_exr_standard_ = Standard::kUnknown;

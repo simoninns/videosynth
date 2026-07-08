@@ -20,14 +20,22 @@ namespace videosynth {
 // (Run or RunProject) executes on a single thread, which may be any thread —
 // a worker thread is fine; there is no main-thread affinity. Run/RunProject
 // must not be called concurrently from multiple threads on the same instance
-// because the injected stage collaborators (IGenerationStage, IOutputStage,
-// NoiseInjectionStage, DropoutInjectionStage, AudioWavWriter) are NOT
-// thread-safe and are accessed without synchronization. ILogger,
-// IProjectParser, and IProjectValidator implementations must remain
-// thread-safe per their interface contracts. Relative paths in the project
-// (section sources, output paths) are resolved against the process working
-// directory by the stages; callers running on worker threads must pass
-// already-resolved paths.
+// because the injected single-owner stage collaborators (IOutputStage,
+// DropoutInjectionStage's sidecar session, AudioWavWriter) are accessed
+// without synchronization. ILogger, IProjectParser, and IProjectValidator
+// implementations must remain thread-safe per their interface contracts.
+//
+// When RunOptions::threads resolves to more than one worker, the pipeline
+// internally spawns a FrameSynthesisPool for the run: frame synthesis
+// (IGenerationStage::GenerateFrameBatch, NoiseInjectionStage::InjectNoise,
+// DropoutInjectionStage::ComputeFrameDropouts) executes concurrently on pool
+// workers, while output, sidecar-row commits, audio, and observer callbacks
+// stay on the run thread in frame order. Output is byte-identical to the
+// sequential path.
+//
+// Relative paths in the project (section sources, output paths) are resolved
+// against the process working directory by the stages; callers running on
+// worker threads must pass already-resolved paths.
 class VideoSynthPipeline {
  public:
   // audio_writer is an optional collaborator (nullable, like noise_injection

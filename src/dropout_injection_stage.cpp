@@ -389,19 +389,15 @@ void DropoutInjectionStage::WriteSidecarRow(int64_t frame_id,
   sqlite3_step(insert_stmt_);
 }
 
-void DropoutInjectionStage::EnsureScratchEvents(const Section& section,
-                                                std::size_t section_index,
-                                                int lines_per_frame,
-                                                int samples_per_line) {
-  if (cached_scratch_section_ == &section) {
-    return;
-  }
-  cached_scratch_section_ = &section;
-  scratch_events_.clear();
+// static
+std::vector<ScratchEvent> DropoutInjectionStage::ComputeScratchEvents(
+    const Section& section, std::size_t section_index, int lines_per_frame,
+    int samples_per_line, uint64_t run_base_seed) {
+  std::vector<ScratchEvent> scratch_events;
 
   if (!section.dropouts.scratch.enabled ||
       section.dropouts.scratch.scale == 0) {
-    return;
+    return scratch_events;
   }
 
   const ScratchDropoutDerivedParams sp =
@@ -410,9 +406,9 @@ void DropoutInjectionStage::EnsureScratchEvents(const Section& section,
   const uint64_t scratch_base =
       section.dropouts.scratch.seed_specified
           ? static_cast<uint64_t>(section.dropouts.scratch.seed)
-          : run_base_seed_;
+          : run_base_seed;
 
-  scratch_events_.reserve(static_cast<std::size_t>(sp.count));
+  scratch_events.reserve(static_cast<std::size_t>(sp.count));
 
   for (int e = 0; e < sp.count; ++e) {
     const uint64_t seed_e =
@@ -433,21 +429,31 @@ void DropoutInjectionStage::EnsureScratchEvents(const Section& section,
     ev.peak_width = width_dist(rng_e);
     ev.direction = dir_dist(rng_e) == 0 ? -1 : 1;
     ev.max_push_fraction = push_dist(rng_e);
-    scratch_events_.push_back(ev);
+    scratch_events.push_back(ev);
   }
+
+  return scratch_events;
 }
 
-// Applies the directional signal push and writes sidecar row(s), splitting
+// Applies the directional signal push and appends sidecar row(s), splitting
 // at the active-picture boundary when the run straddles it.
+// static
 void DropoutInjectionStage::ApplyAndRecordRun(
     int sample_start, int sample_count, int direction, double push_fraction,
     int64_t frame_id, int active_picture_start, int active_picture_end,
     const SignalLevels& levels, SampleFixed clamp_min, SampleFixed clamp_max,
     std::vector<SampleFixed>* y_mv, std::vector<SampleFixed>* c_mv,
-    std::size_t frame_buffer_offset) {
+    std::size_t frame_buffer_offset, std::vector<DropoutSidecarRow>* out_rows) {
   if (sample_count <= 0) {
     return;
   }
+
+  auto AppendRow = [out_rows, frame_id](int64_t row_sample_start,
+                                        int64_t row_sample_count,
+                                        int severity) {
+    out_rows->push_back(DropoutSidecarRow{frame_id, row_sample_start,
+                                          row_sample_count, severity});
+  };
 
   // The dropout shifts the signal as a DC offset (preserving peak-to-peak
   // amplitude) rather than lerping to a fixed target.  Maximum shift amplitude
@@ -490,20 +496,20 @@ void DropoutInjectionStage::ApplyAndRecordRun(
 
   // Case 1: run is entirely before the active picture.
   if (run_end <= active_picture_start) {
-    WriteSidecarRow(frame_id, sample_start, sample_count, kSeverityNonVisible);
+    AppendRow(sample_start, sample_count, kSeverityNonVisible);
     return;
   }
 
   // Case 2: run is entirely within the active picture.
   if (sample_start >= active_picture_start &&
       run_end <= active_picture_end + 1) {
-    WriteSidecarRow(frame_id, sample_start, sample_count, kSeverityVisible);
+    AppendRow(sample_start, sample_count, kSeverityVisible);
     return;
   }
 
   // Case 3: run is entirely after the active picture.
   if (sample_start > active_picture_end) {
-    WriteSidecarRow(frame_id, sample_start, sample_count, kSeverityNonVisible);
+    AppendRow(sample_start, sample_count, kSeverityNonVisible);
     return;
   }
 
@@ -511,8 +517,8 @@ void DropoutInjectionStage::ApplyAndRecordRun(
   if (sample_start < active_picture_start && run_end > active_picture_start) {
     const int before = active_picture_start - sample_start;
     const int after = run_end - active_picture_start;
-    WriteSidecarRow(frame_id, sample_start, before, kSeverityNonVisible);
-    WriteSidecarRow(frame_id, active_picture_start, after, kSeverityVisible);
+    AppendRow(sample_start, before, kSeverityNonVisible);
+    AppendRow(active_picture_start, after, kSeverityVisible);
     return;
   }
 
@@ -520,25 +526,27 @@ void DropoutInjectionStage::ApplyAndRecordRun(
   if (sample_start <= active_picture_end && run_end > active_picture_end + 1) {
     const int inside = active_picture_end + 1 - sample_start;
     const int after = run_end - (active_picture_end + 1);
-    WriteSidecarRow(frame_id, sample_start, inside, kSeverityVisible);
-    WriteSidecarRow(frame_id, active_picture_end + 1, after,
-                    kSeverityNonVisible);
+    AppendRow(sample_start, inside, kSeverityVisible);
+    AppendRow(active_picture_end + 1, after, kSeverityNonVisible);
     return;
   }
 
   // Fallback: treat as non-visible.
-  WriteSidecarRow(frame_id, sample_start, sample_count, kSeverityNonVisible);
+  AppendRow(sample_start, sample_count, kSeverityNonVisible);
 }
 
+// static
 void DropoutInjectionStage::ProcessScratchDropouts(
-    int samples_per_line, int64_t frame_id, int frame_index_in_section,
+    const std::vector<ScratchEvent>& scratch_events, int samples_per_line,
+    int64_t frame_id, int frame_index_in_section,
     std::vector<std::pair<int, int>>* out_scratch, const SignalLevels& levels,
     SampleFixed clamp_min, SampleFixed clamp_max,
     std::vector<SampleFixed>* y_mv, std::vector<SampleFixed>* c_mv,
-    std::size_t frame_buffer_offset, int samples_per_frame) {
+    std::size_t frame_buffer_offset, int samples_per_frame,
+    std::vector<DropoutSidecarRow>* out_rows) {
   out_scratch->clear();
 
-  if (scratch_events_.empty()) {
+  if (scratch_events.empty()) {
     return;
   }
 
@@ -551,7 +559,7 @@ void DropoutInjectionStage::ProcessScratchDropouts(
       : (samples_per_line == 909) ? kPalMActivePictureEnd
                                   : kNtscActivePictureEnd;
 
-  for (const ScratchEvent& ev : scratch_events_) {
+  for (const ScratchEvent& ev : scratch_events) {
     const int max_frame = ev.duration_frames - 1;
     if (frame_index_in_section < 0 || frame_index_in_section > max_frame) {
       continue;
@@ -580,7 +588,8 @@ void DropoutInjectionStage::ProcessScratchDropouts(
 
     ApplyAndRecordRun(sample_start, width, ev.direction, current_push, frame_id,
                       active_picture_start, active_picture_end, levels,
-                      clamp_min, clamp_max, y_mv, c_mv, frame_buffer_offset);
+                      clamp_min, clamp_max, y_mv, c_mv, frame_buffer_offset,
+                      out_rows);
   }
 
   // Sort scratch intervals for overlap clipping.
@@ -593,7 +602,8 @@ void DropoutInjectionStage::ProcessRandomDropouts(
     int64_t frame_id, const std::vector<std::pair<int, int>>& scratch_intervals,
     const SignalLevels& levels, SampleFixed clamp_min, SampleFixed clamp_max,
     std::vector<SampleFixed>* y_mv, std::vector<SampleFixed>* c_mv,
-    std::size_t frame_buffer_offset) {
+    std::size_t frame_buffer_offset,
+    std::vector<DropoutSidecarRow>* out_rows) const {
   (void)lines_per_frame;
 
   const uint64_t random_base =
@@ -650,7 +660,86 @@ void DropoutInjectionStage::ProcessRandomDropouts(
     ApplyAndRecordRun(ev.start, ev.count, ev.direction, ev.push_fraction,
                       frame_id, active_picture_start, active_picture_end,
                       levels, clamp_min, clamp_max, y_mv, c_mv,
-                      frame_buffer_offset);
+                      frame_buffer_offset, out_rows);
+  }
+}
+
+void DropoutInjectionStage::ComputeFrameDropouts(
+    const Project& project,
+    const std::vector<IGenerationStage::FrameScheduleItem>& schedule,
+    std::size_t global_frame, std::vector<SampleFixed>* y_mv,
+    std::vector<SampleFixed>* c_mv, std::size_t frame_buffer_offset,
+    std::vector<DropoutSidecarRow>* out_rows) const {
+  if (y_mv == nullptr || c_mv == nullptr || out_rows == nullptr ||
+      global_frame >= schedule.size()) {
+    return;
+  }
+
+  const Standard standard = project.cvbs_presets.video_standard_preset;
+  const int samples_per_frame = SamplesPerFrame4fsc(standard);
+  if (samples_per_frame <= 0) {
+    return;
+  }
+
+  const Section* section = schedule[global_frame].section;
+  if (section == nullptr) {
+    return;
+  }
+
+  const bool random_active =
+      section->dropouts.random.enabled && section->dropouts.random.scale > 0;
+  const bool scratch_active =
+      section->dropouts.scratch.enabled && section->dropouts.scratch.scale > 0;
+
+  if (!random_active && !scratch_active) {
+    return;
+  }
+
+  const TimingConstants timing = GetTimingConstants(standard);
+  const int lines_per_frame = timing.lines_per_frame;
+  const int samples_per_line = timing.samples_per_line_4fsc;
+
+  const SignalLevels levels = GetSignalLevels(project.cvbs_presets);
+
+  const SampleFixed clamp_min = MillivoltsToSampleFixed(
+      (standard == Standard::kPal) ? kPalClampMinMv : kNtscClampMinMv);
+  const SampleFixed clamp_max = MillivoltsToSampleFixed(
+      (standard == Standard::kPal) ? kPalClampMaxMv : kNtscClampMaxMv);
+
+  const std::size_t section_index = FindSectionIndex(project, section);
+  const int64_t frame_id = static_cast<int64_t>(global_frame);
+  // The section frame index for the scratch envelope is the position within
+  // the section, which corresponds to source_frame_index in the schedule.
+  const int frame_index_in_section = schedule[global_frame].source_frame_index;
+
+  // 1. Process scratch dropouts first; collect their covered intervals.
+  // Scratch events are recomputed deterministically per frame so this method
+  // needs no mutable cache and stays order-independent.
+  std::vector<std::pair<int, int>> scratch_intervals;
+  if (scratch_active) {
+    const std::vector<ScratchEvent> scratch_events =
+        ComputeScratchEvents(*section, section_index, lines_per_frame,
+                             samples_per_line, run_base_seed_);
+    ProcessScratchDropouts(scratch_events, samples_per_line, frame_id,
+                           frame_index_in_section, &scratch_intervals, levels,
+                           clamp_min, clamp_max, y_mv, c_mv,
+                           frame_buffer_offset, samples_per_frame, out_rows);
+  }
+
+  // 2. Process random dropouts, clipping against scratch intervals.
+  if (random_active) {
+    ProcessRandomDropouts(*section, section_index, global_frame,
+                          samples_per_frame, lines_per_frame, samples_per_line,
+                          frame_id, scratch_intervals, levels, clamp_min,
+                          clamp_max, y_mv, c_mv, frame_buffer_offset, out_rows);
+  }
+}
+
+void DropoutInjectionStage::CommitSidecarRows(
+    const std::vector<DropoutSidecarRow>& rows) {
+  for (const DropoutSidecarRow& row : rows) {
+    WriteSidecarRow(row.frame_id, row.sample_start, row.sample_count,
+                    row.severity);
   }
 }
 
@@ -669,77 +758,18 @@ void DropoutInjectionStage::InjectDropouts(
     return;
   }
 
-  const TimingConstants timing = GetTimingConstants(standard);
-  const int lines_per_frame = timing.lines_per_frame;
-  const int samples_per_line = timing.samples_per_line_4fsc;
-
-  const SignalLevels levels = GetSignalLevels(project.cvbs_presets);
-
-  const SampleFixed clamp_min = MillivoltsToSampleFixed(
-      (standard == Standard::kPal) ? kPalClampMinMv : kNtscClampMinMv);
-  const SampleFixed clamp_max = MillivoltsToSampleFixed(
-      (standard == Standard::kPal) ? kPalClampMaxMv : kNtscClampMaxMv);
-
-  // Track frame index within each section for the scratch envelope.
-  // We compute it lazily from the schedule.
-  // Note: the schedule maps global_frame → section pointer +
-  // source_frame_index. The section frame index for scratch is the position
-  // within the section, which corresponds to source_frame_index in the
-  // schedule.
-
+  std::vector<DropoutSidecarRow> rows;
   for (std::size_t i = 0; i < frame_count; ++i) {
     const std::size_t global_frame = frame_offset + i;
     if (global_frame >= schedule.size()) {
       break;
     }
-    const Section* section = schedule[global_frame].section;
-    if (section == nullptr) {
-      continue;
-    }
-
-    const bool random_active =
-        section->dropouts.random.enabled && section->dropouts.random.scale > 0;
-    const bool scratch_active = section->dropouts.scratch.enabled &&
-                                section->dropouts.scratch.scale > 0;
-
-    if (!random_active && !scratch_active) {
-      continue;
-    }
-
-    const std::size_t section_index = FindSectionIndex(project, section);
     const std::size_t frame_buffer_offset =
         i * static_cast<std::size_t>(samples_per_frame);
-    const int64_t frame_id = static_cast<int64_t>(global_frame);
-    const int frame_index_in_section =
-        schedule[global_frame].source_frame_index;
-
-    if (scratch_active) {
-      EnsureScratchEvents(*section, section_index, lines_per_frame,
-                          samples_per_line);
-    } else {
-      // Clear cache if we switched to a section without scratch.
-      if (cached_scratch_section_ == section) {
-        cached_scratch_section_ = nullptr;
-        scratch_events_.clear();
-      }
-    }
-
-    // 1. Process scratch dropouts first; collect their covered intervals.
-    std::vector<std::pair<int, int>> scratch_intervals;
-    if (scratch_active) {
-      ProcessScratchDropouts(samples_per_line, frame_id, frame_index_in_section,
-                             &scratch_intervals, levels, clamp_min, clamp_max,
-                             y_mv, c_mv, frame_buffer_offset,
-                             samples_per_frame);
-    }
-
-    // 2. Process random dropouts, clipping against scratch intervals.
-    if (random_active) {
-      ProcessRandomDropouts(
-          *section, section_index, global_frame, samples_per_frame,
-          lines_per_frame, samples_per_line, frame_id, scratch_intervals,
-          levels, clamp_min, clamp_max, y_mv, c_mv, frame_buffer_offset);
-    }
+    rows.clear();
+    ComputeFrameDropouts(project, schedule, global_frame, y_mv, c_mv,
+                         frame_buffer_offset, &rows);
+    CommitSidecarRows(rows);
   }
 }
 

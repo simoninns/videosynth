@@ -35,6 +35,17 @@ struct ScratchEvent {
   double max_push_fraction;
 };
 
+// One dropout annotation destined for the sidecar database. Produced by
+// ComputeFrameDropouts (any thread) and written by CommitSidecarRows on the
+// pipeline thread so rows are inserted in frame order regardless of the
+// frame synthesis order.
+struct DropoutSidecarRow {
+  std::int64_t frame_id = 0;
+  std::int64_t sample_start = 0;
+  std::int64_t sample_count = 0;
+  int severity = 0;
+};
+
 // Applies random and scratch dropout events to the Y/C mV-domain sample
 // buffers for sections that have dropout injection enabled, and writes dropout
 // annotation rows to a conformant SQLite sidecar file
@@ -53,8 +64,11 @@ struct ScratchEvent {
 // If no section has dropout injection enabled, Begin() becomes a no-op and
 // Finalize() does nothing.
 //
-// Thread-safety: DropoutInjectionStage is NOT thread-safe. InjectDropouts must
-// not be called concurrently from multiple threads.
+// Thread-safety: ComputeFrameDropouts is const, reads only immutable state
+// (run_base_seed_ is fixed at construction), and may be called concurrently
+// from multiple threads on distinct buffers. All other methods (Begin,
+// InjectDropouts, CommitSidecarRows, Finalize, Abort) own the SQLite handle
+// and must be called from a single thread with no concurrent access.
 class DropoutInjectionStage {
  public:
   explicit DropoutInjectionStage(ILogger* logger);
@@ -74,11 +88,39 @@ class DropoutInjectionStage {
   // Applies random and scratch dropout events to y_mv/c_mv in-place for each
   // frame in the batch, and appends dropout_run rows to the sidecar.
   // Args match the contract used by NoiseInjectionStage::InjectNoise.
+  // Equivalent to ComputeFrameDropouts + CommitSidecarRows per frame.
   void InjectDropouts(
       const Project& project,
       const std::vector<IGenerationStage::FrameScheduleItem>& schedule,
       std::size_t frame_offset, std::size_t frame_count,
       std::vector<SampleFixed>* y_mv, std::vector<SampleFixed>* c_mv);
+
+  // Applies random and scratch dropout events for a single frame in-place and
+  // appends the frame's sidecar rows to out_rows instead of writing them to
+  // the database. Deterministic for a given (project, global_frame, seed)
+  // regardless of processing order, and safe to call concurrently from
+  // multiple threads on distinct buffers.
+  //
+  // Args:
+  //   project:             Parsed project supplying signal levels and presets.
+  //   schedule:            Frame schedule mapping frame indices to sections.
+  //   global_frame:        Index of the frame within the schedule; also used
+  //                        as the sidecar frame_id.
+  //   y_mv, c_mv:          Sample buffers containing (at least) this frame.
+  //   frame_buffer_offset: Offset of the frame's first sample within the
+  //                        buffers.
+  //   out_rows:            Receives the frame's sidecar rows (appended).
+  void ComputeFrameDropouts(
+      const Project& project,
+      const std::vector<IGenerationStage::FrameScheduleItem>& schedule,
+      std::size_t global_frame, std::vector<SampleFixed>* y_mv,
+      std::vector<SampleFixed>* c_mv, std::size_t frame_buffer_offset,
+      std::vector<DropoutSidecarRow>* out_rows) const;
+
+  // Writes previously computed sidecar rows to the open sidecar session.
+  // Rows must be committed in frame order to keep the sidecar byte-identical
+  // to a sequential run. No-op when no sidecar session is open.
+  void CommitSidecarRows(const std::vector<DropoutSidecarRow>& rows);
 
   // Commits the sidecar transaction and closes the database handle.
   // No-op if Begin was not called or no rows were written.
@@ -102,15 +144,18 @@ class DropoutInjectionStage {
   // with scale > 0.
   static bool AnyDropoutEnabled(const Project& project);
 
-  // Ensures scratch_events_ is populated for the given section.
-  void EnsureScratchEvents(const Section& section, std::size_t section_index,
-                           int lines_per_frame, int samples_per_line);
+  // Derives the deterministic scratch event set for a section. Pure function
+  // of its arguments, so per-frame recomputation is order-independent.
+  static std::vector<ScratchEvent> ComputeScratchEvents(
+      const Section& section, std::size_t section_index, int lines_per_frame,
+      int samples_per_line, uint64_t run_base_seed);
 
   // Writes a single dropout_run row to the sidecar.
   void WriteSidecarRow(int64_t frame_id, int64_t sample_start,
                        int64_t sample_count, int severity);
 
-  // Applies random dropout events for one frame after overlap resolution.
+  // Applies random dropout events for one frame after overlap resolution,
+  // appending sidecar rows to out_rows.
   void ProcessRandomDropouts(
       const Section& section, std::size_t section_index,
       std::size_t global_frame, int samples_per_frame, int lines_per_frame,
@@ -118,25 +163,29 @@ class DropoutInjectionStage {
       const std::vector<std::pair<int, int>>& scratch_intervals,
       const SignalLevels& levels, SampleFixed clamp_min, SampleFixed clamp_max,
       std::vector<SampleFixed>* y_mv, std::vector<SampleFixed>* c_mv,
-      std::size_t frame_buffer_offset);
+      std::size_t frame_buffer_offset,
+      std::vector<DropoutSidecarRow>* out_rows) const;
 
-  // Applies scratch dropout events for one frame.
-  void ProcessScratchDropouts(
-      int samples_per_line, int64_t frame_id, int frame_index_in_section,
+  // Applies scratch dropout events for one frame, appending sidecar rows to
+  // out_rows.
+  static void ProcessScratchDropouts(
+      const std::vector<ScratchEvent>& scratch_events, int samples_per_line,
+      int64_t frame_id, int frame_index_in_section,
       std::vector<std::pair<int, int>>* out_scratch, const SignalLevels& levels,
       SampleFixed clamp_min, SampleFixed clamp_max,
       std::vector<SampleFixed>* y_mv, std::vector<SampleFixed>* c_mv,
-      std::size_t frame_buffer_offset, int samples_per_frame);
+      std::size_t frame_buffer_offset, int samples_per_frame,
+      std::vector<DropoutSidecarRow>* out_rows);
 
-  // Splits a run at any active-picture boundary, writing sidecar rows and
+  // Splits a run at any active-picture boundary, appending sidecar rows and
   // applying the signal push for each resulting sub-run.
-  void ApplyAndRecordRun(int sample_start, int sample_count, int direction,
-                         double push_fraction, int64_t frame_id,
-                         int active_picture_start, int active_picture_end,
-                         const SignalLevels& levels, SampleFixed clamp_min,
-                         SampleFixed clamp_max, std::vector<SampleFixed>* y_mv,
-                         std::vector<SampleFixed>* c_mv,
-                         std::size_t frame_buffer_offset);
+  static void ApplyAndRecordRun(
+      int sample_start, int sample_count, int direction, double push_fraction,
+      int64_t frame_id, int active_picture_start, int active_picture_end,
+      const SignalLevels& levels, SampleFixed clamp_min, SampleFixed clamp_max,
+      std::vector<SampleFixed>* y_mv, std::vector<SampleFixed>* c_mv,
+      std::size_t frame_buffer_offset,
+      std::vector<DropoutSidecarRow>* out_rows);
 
   ILogger* logger_;
   uint64_t run_base_seed_;
@@ -146,10 +195,6 @@ class DropoutInjectionStage {
   // Sidecar file path for the currently open session; used by Abort to
   // remove the partially-written file.
   std::string sidecar_path_;
-
-  // Cached scratch events for the current section.
-  const Section* cached_scratch_section_ = nullptr;
-  std::vector<ScratchEvent> scratch_events_;
 };
 
 }  // namespace videosynth

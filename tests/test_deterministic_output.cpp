@@ -160,9 +160,10 @@ Project MakeDeterministicProject(const std::filesystem::path& output_dir,
   return project;
 }
 
-// Runs the full sequential pipeline once with a fresh set of concrete
-// stages, as the CLI does, and returns the pipeline result.
-bool RunPipelineOnce(const Project& project) {
+// Runs the full pipeline once with a fresh set of concrete stages, as the
+// CLI does, and returns the pipeline result. threads follows the RunOptions
+// convention (1 = sequential path, N > 1 = worker-pool synthesis).
+bool RunPipelineOnce(const Project& project, int threads = 1) {
   NullLogger logger;
   YamlProjectParser parser(&logger);
   ProgressiveFrameSourceProbe probe;
@@ -177,6 +178,7 @@ bool RunPipelineOnce(const Project& project) {
                               &noise_injection, &dropout_injection, &output,
                               &logger, &audio_writer);
   RunOptions options;
+  options.threads = threads;
   return pipeline.RunProject(project, options);
 }
 
@@ -248,6 +250,45 @@ TEST(DeterministicOutputTest,
   EXPECT_EQ(ReadFileBytes(first.dropout_sidecar),
             ReadFileBytes(second.dropout_sidecar))
       << "Dropout sidecar is not byte-identical across runs.";
+
+  std::error_code ec;
+  std::filesystem::remove_all(output_dir, ec);
+}
+
+TEST(DeterministicOutputTest, SingleAndMultiThreadRunsAreByteIdentical) {
+  const std::filesystem::path output_dir =
+      std::filesystem::temp_directory_path() / "videosynth_thread_determinism";
+  std::filesystem::create_directories(output_dir);
+
+  const Project sequential_project =
+      MakeDeterministicProject(output_dir, "threads1");
+  const Project parallel_project =
+      MakeDeterministicProject(output_dir, "threads4");
+
+  ASSERT_TRUE(RunPipelineOnce(sequential_project, 1));
+  ASSERT_TRUE(RunPipelineOnce(parallel_project, 4));
+
+  const RunArtefacts sequential = ArtefactPaths(sequential_project);
+  const RunArtefacts parallel = ArtefactPaths(parallel_project);
+
+  const std::vector<char> sequential_composite =
+      ReadFileBytes(sequential.composite);
+  ASSERT_FALSE(sequential_composite.empty());
+  EXPECT_EQ(sequential_composite, ReadFileBytes(parallel.composite))
+      << "CVBS sample stream differs between 1-thread and 4-thread runs.";
+
+  EXPECT_EQ(ReadFileBytes(sequential.metadata),
+            ReadFileBytes(parallel.metadata))
+      << "Metadata database differs between 1-thread and 4-thread runs.";
+
+  const std::vector<char> sequential_audio = ReadFileBytes(sequential.audio);
+  ASSERT_FALSE(sequential_audio.empty());
+  EXPECT_EQ(sequential_audio, ReadFileBytes(parallel.audio))
+      << "Audio track differs between 1-thread and 4-thread runs.";
+
+  EXPECT_EQ(ReadFileBytes(sequential.dropout_sidecar),
+            ReadFileBytes(parallel.dropout_sidecar))
+      << "Dropout sidecar differs between 1-thread and 4-thread runs.";
 
   std::error_code ec;
   std::filesystem::remove_all(output_dir, ec);

@@ -23,6 +23,7 @@
 #include "videosynth/biphase_injection_manager.h"
 #include "videosynth/chroma_encoder.h"
 #include "videosynth/fixed_point.h"
+#include "videosynth/frame_enrichment.h"
 #include "videosynth/osd_renderer.h"
 #include "videosynth/osd_token_resolver.h"
 #include "videosynth/progressive_frame_source.h"
@@ -656,7 +657,7 @@ bool GenerationStage::BuildFrameSchedule(
   // picture_number code. This offset is added to global_frame_index when
   // computing the colour-subcarrier phase so that sources not starting at PN 1
   // still produce disc-accurate colour sequences ((PN-1) % colour_period).
-  initial_frame_offset_ = 0;
+  std::size_t initial_frame_offset = 0;
   for (const Section& sec : project.sections) {
     bool found = false;
     for (const Section::LineInjection& inj : sec.line_injections) {
@@ -666,8 +667,7 @@ bool GenerationStage::BuildFrameSchedule(
       for (const Section::LineInjectionCode& code : inj.codes) {
         if (code.code_type == "picture_number" && code.start_value_specified &&
             code.start_value > 1) {
-          initial_frame_offset_ =
-              static_cast<std::size_t>(code.start_value - 1);
+          initial_frame_offset = static_cast<std::size_t>(code.start_value - 1);
           found = true;
           break;
         }
@@ -676,8 +676,7 @@ bool GenerationStage::BuildFrameSchedule(
     }
     if (found) break;
   }
-  biphase_manager_.SetInitialFrameCount(
-      static_cast<int>(initial_frame_offset_));
+  biphase_manager_.SetInitialFrameCount(static_cast<int>(initial_frame_offset));
 
   std::vector<std::pair<const Section*, int>> frame_sections;
   std::string schedule_error;
@@ -713,6 +712,43 @@ bool GenerationStage::BuildFrameSchedule(
         .disc_picture_number = disc_pn,
     });
     ++section_frame_offset;
+  }
+
+  // Sequential enrichment pass: resolve the per-frame VBI payload, colour
+  // context, and OSD token strings once, in schedule order, by advancing the
+  // biphase generators over the whole schedule. With the payload attached,
+  // GenerateFrameBatch needs no mutable cross-frame state and frames can be
+  // synthesised out of order.
+  const Standard standard = project.cvbs_presets.video_standard_preset;
+  const SampledSynthesisContext synth = BuildSampledSynthesisContext(standard);
+  const int active_window_start =
+      std::max(0, std::min(synth.active.active_window_start_samples,
+                           synth.max_line_samples - 1));
+  for (std::size_t frame_index = 0; frame_index < out_schedule->size();
+       ++frame_index) {
+    FrameScheduleItem& item = (*out_schedule)[frame_index];
+    auto enrichment = std::make_shared<FrameEnrichment>();
+
+    // disc_frame_index represents (PN - 1) for the frame, anchoring
+    // colour-subcarrier and pilot-burst phase to the disc picture number.
+    enrichment->disc_frame_index =
+        (item.disc_picture_number > 0)
+            ? static_cast<std::size_t>(item.disc_picture_number - 1)
+            : (frame_index + initial_frame_offset);
+
+    if (!biphase_manager_.ResolveFrame(
+            *item.section, standard, synth.sample_rate_hz, active_window_start,
+            enrichment.get(), errors)) {
+      return false;
+    }
+
+    enrichment->osd_texts.reserve(item.section->osd.overlays.size());
+    for (const OsdOverlay& overlay : item.section->osd.overlays) {
+      enrichment->osd_texts.push_back(osd_token_resolver_.Resolve(
+          overlay.text, enrichment->context, item.section->name));
+    }
+
+    item.enrichment = std::move(enrichment);
   }
 
   if (logger_ != nullptr) {
@@ -846,6 +882,27 @@ bool GenerationStage::GenerateFrameBatch(
       return false;
     }
 
+    // The enrichment payload carries the resolved VBI code words and OSD
+    // token strings. Hand-built schedules without a payload are accepted only
+    // for sections that need neither.
+    const FrameEnrichment* enrichment = frame_item.enrichment.get();
+    if (enrichment == nullptr) {
+      bool has_laserdisc_injection = false;
+      for (const Section::LineInjection& injection : section->line_injections) {
+        if (Lowercase(injection.type) == "laserdisc") {
+          has_laserdisc_injection = true;
+          break;
+        }
+      }
+      if (has_laserdisc_injection || !section->osd.overlays.empty()) {
+        errors->push_back(
+            "Frame schedule item is missing its enrichment payload; build "
+            "the schedule with BuildFrameSchedule for sections using "
+            "laserdisc line injections or OSD overlays.");
+        return false;
+      }
+    }
+
     if (logger_ != nullptr && schedule.size() <= 120U) {
       logger_->Trace("Generating frame " +
                      std::to_string(global_frame_index + 1U) + " of " +
@@ -870,14 +927,16 @@ bool GenerationStage::GenerateFrameBatch(
     const int local_frame_base = static_cast<int>(
         local_frame_index * static_cast<std::size_t>(frame_samples));
     // disc_frame_index represents (PN - 1) for the current frame, anchoring
-    // colour-subcarrier phase and pilot-burst phase to the disc picture number.
-    // When disc_picture_number is populated (CAV sections with picture_number
-    // codes), use it directly; fall back to the global file index plus the
-    // first-section offset for sections without a picture_number code.
+    // colour-subcarrier phase and pilot-burst phase to the disc picture
+    // number. Resolved during the BuildFrameSchedule enrichment pass; for
+    // hand-built schedules without a payload, fall back to the schedule
+    // position (or the picture number when populated).
     const std::size_t disc_frame_index =
-        (frame_item.disc_picture_number > 0)
-            ? static_cast<std::size_t>(frame_item.disc_picture_number - 1)
-            : (global_frame_index + initial_frame_offset_);
+        (enrichment != nullptr) ? enrichment->disc_frame_index
+                                : ((frame_item.disc_picture_number > 0)
+                                       ? static_cast<std::size_t>(
+                                             frame_item.disc_picture_number - 1)
+                                       : global_frame_index);
     const int absolute_frame_base = static_cast<int>(
         disc_frame_index * static_cast<std::size_t>(frame_samples));
     SectionVitsLineMap section_vits_lines;
@@ -1144,23 +1203,17 @@ bool GenerationStage::GenerateFrameBatch(
       }
     }
 
-    if (!biphase_manager_.ProcessFrame(
-            out_y_mv, local_frame_base, synth.line_sample_offsets,
-            synth.line_sample_counts, *section,
-            project.cvbs_presets.video_standard_preset,
-            timing.sample_rate_4fsc_hz, synth.frame_lines, active_window_start,
-            active_window_end, errors)) {
-      return false;
+    if (enrichment != nullptr) {
+      InjectResolvedVbiLines(
+          *enrichment, out_y_mv, local_frame_base, synth.line_sample_offsets,
+          synth.line_sample_counts, project.cvbs_presets.video_standard_preset,
+          timing.sample_rate_4fsc_hz, active_window_end);
     }
 
     if (!section->osd.overlays.empty()) {
-      const PerFrameContext& ctx = biphase_manager_.GetLastFrameContext();
-      std::vector<std::string> resolved_texts;
-      resolved_texts.reserve(section->osd.overlays.size());
-      for (const OsdOverlay& ov : section->osd.overlays) {
-        resolved_texts.push_back(
-            osd_token_resolver_.Resolve(ov.text, ctx, section->name));
-      }
+      // Non-null and correctly sized: enforced by the enrichment guard above
+      // and the BuildFrameSchedule enrichment pass.
+      const std::vector<std::string>& resolved_texts = enrichment->osd_texts;
       const SignalLevels osd_levels =
           GetSignalLevels(project.cvbs_presets.video_standard_preset);
       const int field1_start = synth.active.first_active_line_field1 - 1;

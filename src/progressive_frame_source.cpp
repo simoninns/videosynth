@@ -31,6 +31,7 @@
 #include <exception>
 #include <fstream>
 #include <map>
+#include <mutex>
 #include <sstream>
 #include <utility>
 #include <vector>
@@ -1087,6 +1088,7 @@ bool ProgressiveFrameSource::SupportsSection(const Section& section) const {
 }
 
 void ProgressiveFrameSource::ClearCache() const {
+  const std::lock_guard<std::mutex> lock(cache_mutex_);
   has_cached_exr_frame_ = false;
   cached_exr_source_.clear();
   cached_exr_standard_ = Standard::kUnknown;
@@ -1128,6 +1130,7 @@ bool ProgressiveFrameSource::ResolveFrameCount(const Section& section,
   }
 
   if (EndsWithLowercase(source, ".mkv")) {
+    const std::lock_guard<std::mutex> lock(cache_mutex_);
     if (!EnsureMkvCache(section, standard, 0, true, &cached_mkv_frames_,
                         &cached_mkv_source_, &cached_mkv_standard_,
                         &has_cached_mkv_frames_, &cached_mkv_is_complete_,
@@ -1166,6 +1169,7 @@ bool ProgressiveFrameSource::GenerateFrame(const Section& section,
       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
 
   if (EndsWithLowercase(source, ".exr")) {
+    const std::lock_guard<std::mutex> lock(cache_mutex_);
     const bool cache_hit = has_cached_exr_frame_ &&
                            cached_exr_source_ == section.source &&
                            cached_exr_standard_ == standard;
@@ -1209,6 +1213,7 @@ bool ProgressiveFrameSource::GenerateFrame(const Section& section,
       required_frames = section.start_frame + section.duration_frames;
     }
 
+    const std::lock_guard<std::mutex> lock(cache_mutex_);
     if (!EnsureMkvCache(
             section, standard, required_frames, section.duration_frames_all,
             &cached_mkv_frames_, &cached_mkv_source_, &cached_mkv_standard_,

@@ -20,9 +20,13 @@
 
 namespace videosynth {
 
-// Thread-safety: GenerationStage is NOT thread-safe. Inherits the NOT
-// thread-safe guarantee from IGenerationStage. Concurrent calls to any public
-// method will result in undefined behavior.
+// Thread-safety: BuildFrameSchedule and Generate are NOT thread-safe and must
+// not run concurrently with any other method (they mutate the biphase
+// enrichment state). After BuildFrameSchedule has returned successfully,
+// GenerateFrameBatch is safe to call concurrently from multiple threads for
+// disjoint frame ranges with distinct output buffers: it reads only the
+// immutable per-item FrameEnrichment payload, the internally-synchronised
+// progressive frame source cache, and const collaborators.
 class GenerationStage final : public IGenerationStage {
  public:
   explicit GenerationStage(
@@ -30,7 +34,12 @@ class GenerationStage final : public IGenerationStage {
       const IVitsDefinitionProvider* vits_definition_provider = nullptr,
       const IVitsGenerator* vits_generator = nullptr);
 
-  // Builds a schedule mapping project sections to output frames.
+  // Builds a schedule mapping project sections to output frames, then runs
+  // the sequential enrichment pass: every FrameScheduleItem receives a
+  // FrameEnrichment payload (resolved VBI code words, colour context, OSD
+  // token strings) so GenerateFrameBatch is a pure function of
+  // (project, enriched schedule item) and frames can be synthesised in any
+  // order.
   //
   // Args:
   //   project: The validated project configuration.
@@ -44,6 +53,10 @@ class GenerationStage final : public IGenerationStage {
                           std::vector<std::string>* errors) override;
 
   // Generates a batch of frames from the project's progressive frame sources.
+  //
+  // Schedule items must carry their enrichment payload when the section uses
+  // laserdisc line injections or OSD overlays; hand-built schedules without
+  // enrichment are only accepted for sections that use neither.
   //
   // Args:
   //   project: The validated project configuration.
@@ -84,13 +97,11 @@ class GenerationStage final : public IGenerationStage {
   VitsGenerator default_vits_generator_;
   const IVitsDefinitionProvider* vits_definition_provider_;
   const IVitsGenerator* vits_generator_;
+  // Advanced only during the BuildFrameSchedule enrichment pass; not touched
+  // by GenerateFrameBatch.
   BiphaseInjectionManager biphase_manager_;
   OsdRenderer osd_renderer_;
   OsdTokenResolver osd_token_resolver_;
-  // Fallback disc frame offset: (first_PN - 1). Used for sections that have no
-  // picture_number injection code (lead-in, lead-out, plain sections). When
-  // disc_picture_number is populated in FrameScheduleItem it takes precedence.
-  std::size_t initial_frame_offset_ = 0;
 };
 
 }  // namespace videosynth

@@ -19,6 +19,7 @@
 #include "videosynth/audio_synthesizer.h"
 #include "videosynth/dropout_injection_stage.h"
 #include "videosynth/fixed_point.h"
+#include "videosynth/frame_synthesis_pool.h"
 #include "videosynth/noise_injection_stage.h"
 #include "videosynth/timing_constants.h"
 
@@ -344,6 +345,18 @@ bool VideoSynthPipeline::RunProject(const Project& project,
     return audio_synth->Synthesize(audio_samples_per_frame);
   };
 
+  // Resolve the frame synthesis worker count. Disc-skip projects always use
+  // the sequential per-frame loop: skips replay cached frames and the plan
+  // logic is inherently order-dependent.
+  const unsigned synthesis_threads =
+      FrameSynthesisPool::ResolveThreadCount(options.threads);
+  const bool parallel_synthesis = !has_skips && synthesis_threads > 1U;
+  if (has_skips && synthesis_threads > 1U) {
+    logger_->Info(
+        "Disc skips present; using the sequential generation path regardless "
+        "of the requested thread count.");
+  }
+
   if (has_skips) {
     // -------------------------------------------------------------------
     // Skip-aware per-frame loop.
@@ -482,6 +495,100 @@ bool VideoSynthPipeline::RunProject(const Project& project,
                       " disc frame(s) processed.");
         next_progress_mark += progress_interval;
       }
+    }
+  } else if (parallel_synthesis) {
+    // -------------------------------------------------------------------
+    // Worker-pool frame synthesis (no disc skips, threads > 1).
+    //
+    // Frames are synthesised out of order on the pool using the enriched
+    // schedule and per-frame noise/dropout seeds, then reassembled in frame
+    // order on this thread for output, sidecar rows, and audio — so the
+    // emitted bytes are identical to the sequential path.
+    // -------------------------------------------------------------------
+    const std::size_t progress_interval =
+        ComputeProgressInterval(total_disc_frames);
+
+    logger_->Info("Generating and writing " +
+                  std::to_string(total_disc_frames) + " frame(s) using " +
+                  std::to_string(synthesis_threads) + " synthesis threads.");
+
+    auto SynthesizeFrameJob = [&](std::size_t disc_frame,
+                                  SynthesizedFrame* out_frame) {
+      std::vector<std::string> job_errors;
+      if (!generation_->GenerateFrameBatch(project, schedule, disc_frame, 1U,
+                                           &out_frame->y_mv, &out_frame->c_mv,
+                                           &job_errors)) {
+        out_frame->ok = false;
+        out_frame->errors = job_errors;
+        return;
+      }
+      if (noise_injection_ != nullptr) {
+        noise_injection_->InjectNoise(project, schedule, disc_frame, 1U,
+                                      &out_frame->y_mv, &out_frame->c_mv);
+      }
+      if (dropout_injection_ != nullptr) {
+        dropout_injection_->ComputeFrameDropouts(
+            project, schedule, disc_frame, &out_frame->y_mv, &out_frame->c_mv,
+            0U, &out_frame->dropout_rows);
+      }
+    };
+
+    std::size_t next_progress_mark = progress_interval;
+    bool consumer_failed = false;
+    auto ConsumeFrame = [&](std::size_t disc_frame,
+                            SynthesizedFrame&& frame) -> bool {
+      output_errors.clear();
+      if (!output_->AppendSamples(frame.y_mv, frame.c_mv, &output_errors)) {
+        for (const std::string& error : output_errors) {
+          logger_->Error(error);
+        }
+        consumer_failed = true;
+        return false;
+      }
+
+      if (dropout_injection_ != nullptr) {
+        dropout_injection_->CommitSidecarRows(frame.dropout_rows);
+      }
+
+      if (audio_enabled) {
+        const std::vector<std::int16_t> audio_frame =
+            SynthesizeDiscFrame(disc_frame);
+        std::vector<std::string> audio_errors;
+        if (!audio_writer_->AppendFrameAudio(audio_frame, &audio_errors)) {
+          for (const std::string& error : audio_errors) {
+            logger_->Error(error);
+          }
+          consumer_failed = true;
+          return false;
+        }
+      }
+
+      NotifyProgress(disc_frame + 1U);
+      if (disc_frame + 1U >= next_progress_mark ||
+          disc_frame + 1U == total_disc_frames) {
+        logger_->Info("Pipeline progress: " + std::to_string(disc_frame + 1U) +
+                      "/" + std::to_string(total_disc_frames) +
+                      " frame(s) written.");
+        next_progress_mark += progress_interval;
+      }
+      return true;
+    };
+
+    FrameSynthesisPool pool(synthesis_threads);
+    std::vector<std::string> pool_errors;
+    if (!pool.RunOrdered(total_disc_frames, SynthesizeFrameJob, ConsumeFrame,
+                         cancellation, &pool_errors)) {
+      if (IsCancelled()) {
+        return CancelRun();
+      }
+      for (const std::string& error : pool_errors) {
+        logger_->Error(error);
+      }
+      if (!consumer_failed && pool_errors.empty()) {
+        logger_->Error("Frame synthesis pool stopped without completing.");
+      }
+      CloseOutputSessionOnFailure();
+      return FinishRun(PipelineRunStatus::kFailed);
     }
   } else {
     // -------------------------------------------------------------------

@@ -11,6 +11,7 @@
 
 #include <atomic>
 #include <cstddef>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -20,11 +21,20 @@
 
 namespace videosynth {
 
+struct FrameEnrichment;
+
 struct RunOptions {
   std::string project_path;
   bool validate_only = false;
   std::string log_level = "info";
   std::string log_file;
+  // Frame synthesis worker thread count:
+  //   0  = auto (std::thread::hardware_concurrency; the CLI default),
+  //   1  = pure sequential path (the library default),
+  //   N  = N worker threads.
+  // Output is byte-identical regardless of this value. Projects with
+  // disc_skips always run the sequential path.
+  int threads = 1;
 };
 
 // Terminal status of a pipeline run, reported through
@@ -160,10 +170,12 @@ class IProgressiveFrameProvider {
                              std::string* error) const = 0;
 };
 
-// Thread-safety: Implementations of IGenerationStage are NOT thread-safe.
-// Callers must ensure sequential access. Concurrent calls to Generate,
-// GenerateFrameBatch, or BuildFrameSchedule from multiple threads will result
-// in undefined behavior.
+// Thread-safety: BuildFrameSchedule and Generate are NOT thread-safe and must
+// not run concurrently with any other method. After BuildFrameSchedule has
+// returned successfully, GenerateFrameBatch may be called concurrently from
+// multiple threads for disjoint frame ranges with distinct output buffers;
+// this relies on the schedule items carrying their FrameEnrichment payload
+// (see frame_enrichment.h).
 class IGenerationStage {
  public:
   virtual ~IGenerationStage() = default;
@@ -175,6 +187,12 @@ class IGenerationStage {
     // Used to derive disc-accurate colour-subcarrier phase independent of file
     // position.
     int disc_picture_number = 0;
+    // Fully-resolved per-frame VBI payload, colour context, and OSD token
+    // strings, populated by the sequential enrichment pass inside
+    // BuildFrameSchedule. Shared (immutable) so schedule copies stay cheap.
+    // Null for hand-built schedules; such schedules can only be generated for
+    // sections without laserdisc injections or OSD overlays.
+    std::shared_ptr<const FrameEnrichment> enrichment;
   };
 
   // Ownership: out_schedule and errors are output parameters. The caller owns

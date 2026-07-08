@@ -23,6 +23,7 @@
 #include "videosynth/fixed_point.h"
 #include "videosynth/fm_code_generator.h"
 #include "videosynth/fm_encoder.h"
+#include "videosynth/frame_enrichment.h"
 #include "videosynth/line_placement_engine.h"
 #include "videosynth/model.h"
 #include "videosynth/signal_timing_model.h"
@@ -30,17 +31,34 @@
 
 namespace videosynth {
 
-// Per-frame snapshot captured after injection and before generator advance.
-// Available via GetLastFrameContext() for token-based OSD rendering.
-struct PerFrameContext {
-  // Decoded CAV picture number for this frame (0 if no picture_number
-  // generator is active).
-  int picture_number = 0;
-  // Raw 24-bit biphase code values produced by all active generators.
-  std::vector<uint32_t> biphase_words;
-  // Colour-frame sequence index: 0–3 for PAL (V-axis cycle), 0–1 for NTSC.
-  int colour_frame_index = 0;
-};
+// Writes the fully-resolved VBI waveforms for one frame into the luma buffer.
+//
+// Pure function of its arguments: it holds no state across calls and may be
+// invoked concurrently from multiple threads on distinct buffers (or disjoint
+// frame regions of a shared buffer). Encoders are constructed locally from
+// sample_rate_hz, producing waveforms identical to the sequential
+// BiphaseInjectionManager::ProcessFrame path.
+//
+// Args:
+//   enrichment:                Resolved per-frame VBI payload (vbi_lines).
+//   out_y_mv:                  Luma sample buffer for the current batch.
+//   frame_sample_base:         Offset of this frame's first sample in
+//                              out_y_mv.
+//   line_sample_offsets:       Per-line sample offsets relative to the frame
+//                              base (indexed by line_number - 1).
+//   line_sample_counts:        Samples per line (indexed by line_number - 1).
+//   standard:                  PAL or NTSC.
+//   sample_rate_hz:            4fsc sample rate in Hz.
+//   active_window_end_samples: Sample offset (exclusive) of the
+//                              active-picture window end within a line;
+//                              injection is clamped to this boundary.
+void InjectResolvedVbiLines(const FrameEnrichment& enrichment,
+                            std::vector<SampleFixed>* out_y_mv,
+                            int frame_sample_base,
+                            const std::vector<int>& line_sample_offsets,
+                            const std::vector<int>& line_sample_counts,
+                            Standard standard, double sample_rate_hz,
+                            int active_window_end_samples);
 
 // Orchestrates biphase and 40-bit FM VBI injection for LaserDisc authoring.
 //
@@ -100,7 +118,39 @@ class BiphaseInjectionManager {
   // Has no effect if called before Reset() (Reset() overwrites frame_count_).
   void SetInitialFrameCount(int initial_count);
 
-  // Processes biphase VBI injection for one frame.
+  // Resolves the VBI injection payload for one frame without writing samples.
+  //
+  // This is the sequential half of frame processing: it detects section
+  // transitions, derives the colour-frame index, captures the current code
+  // words (24-bit biphase values, 40-bit FM payloads, white flag placement)
+  // as VbiLineInjection entries in out_enrichment->vbi_lines, updates the
+  // GetLastFrameContext() snapshot (also copied to out_enrichment->context),
+  // and advances all stateful generators. Must be called exactly once per
+  // frame in schedule order.
+  //
+  // The resolved payload is later rendered by InjectResolvedVbiLines, which
+  // is stateless and may run on any thread. out_enrichment->disc_frame_index
+  // and osd_texts are NOT populated here; the caller owns those fields.
+  //
+  // Args:
+  //   section:                     The section rendered in this frame.
+  //   standard:                    PAL or NTSC.
+  //   sample_rate_hz:              4fsc sample rate in Hz.
+  //   active_window_start_samples: Sample offset of the active-picture window
+  //                                start within a line; used as the normal
+  //                                biphase horizontal start position.
+  //   out_enrichment:              Receives vbi_lines and context; non-null.
+  //   errors:                      Output for error messages; non-null.
+  //
+  // Returns true on success. Returns false and appends a message to errors
+  // on any error.
+  bool ResolveFrame(const Section& section, Standard standard,
+                    double sample_rate_hz, int active_window_start_samples,
+                    FrameEnrichment* out_enrichment,
+                    std::vector<std::string>* errors);
+
+  // Processes biphase VBI injection for one frame: ResolveFrame followed by
+  // InjectResolvedVbiLines on the same buffer.
   //
   // Must be called for every frame in the schedule in order; the manager
   // advances stateful code generators at the end of each call. If the
@@ -174,29 +224,6 @@ class BiphaseInjectionManager {
   bool InitializeSection(const Section& section, Standard standard,
                          double sample_rate_hz,
                          std::vector<std::string>* errors);
-
-  // Writes a 24-bit biphase waveform into the Y buffer for one VBI line.
-  // Overwrites samples from start_sample up to (not including) active_end with
-  // the biphase signal (baseline for the post-signal tail, waveform at front).
-  void InjectBiphaseCode(std::vector<SampleFixed>* out_y_mv, int line_base,
-                         int active_end, const std::string& code_type,
-                         Standard standard, const SignalLevels& levels,
-                         int start_sample);
-
-  // Writes a 40-bit FM waveform into the Y buffer for one VBI line (NTSC).
-  // Writes from start_sample up to (not including) active_end.
-  void InjectFmCode(std::vector<SampleFixed>* out_y_mv, int line_base,
-                    int active_end, const std::string& code_type,
-                    bool field_one, const SignalLevels& levels,
-                    int start_sample);
-
-  // Writes the white flag pulse into a VBI line (NTSC only).
-  // Fills blanking from start_sample to active_end, then overlays a shaped
-  // 100 IRE pulse of flag_length_samples with 135 ns rise/fall transitions
-  // per IEC 60857 Figure 12.
-  void InjectWhiteFlag(std::vector<SampleFixed>* out_y_mv, int line_base,
-                       int active_end, const SignalLevels& levels,
-                       int start_sample, int flag_length_samples);
 
   // Advances all stateful code generators by one frame.
   void AdvanceGenerators();

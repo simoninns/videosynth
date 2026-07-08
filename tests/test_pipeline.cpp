@@ -9,7 +9,9 @@
 
 #include <gtest/gtest.h>
 
+#include <atomic>
 #include <cstddef>
+#include <limits>
 #include <string>
 #include <thread>
 #include <utility>
@@ -52,10 +54,14 @@ class MockValidator final : public IProjectValidator {
 
 class MockGeneration final : public IGenerationStage {
  public:
-  bool called = false;
+  // Atomic: GenerateFrameBatch may run concurrently on pool worker threads
+  // when RunOptions::threads > 1.
+  std::atomic<bool> called{false};
   // When true, embeds start_frame as a unique marker in every sample so
   // tests can verify which disc frame produced each output frame.
   bool embed_frame_id = false;
+  // Frames at or beyond this index fail with an error message.
+  std::size_t fail_at_frame = std::numeric_limits<std::size_t>::max();
   std::vector<std::string>* call_log = nullptr;
 
   bool BuildFrameSchedule(const Project& project,
@@ -83,6 +89,11 @@ class MockGeneration final : public IGenerationStage {
     called = true;
     if (call_log != nullptr) {
       call_log->push_back("generate_batch");
+    }
+    if (fail_at_frame < start_frame + frame_count &&
+        fail_at_frame >= start_frame) {
+      errors->push_back("mock generation failure");
+      return false;
     }
     out_y_mv->clear();
     out_c_mv->clear();
@@ -570,6 +581,125 @@ TEST(PipelineTest, ObserverReportsFailedStatusOnValidationError) {
 
   ASSERT_EQ(observer.statuses.size(), 1U);
   EXPECT_EQ(observer.statuses[0], PipelineRunStatus::kFailed);
+}
+
+// ---------------------------------------------------------------------------
+// Worker-pool synthesis path (RunOptions::threads > 1)
+// ---------------------------------------------------------------------------
+
+TEST(PipelineTest,
+     ParallelSynthesisProducesOrderedFramesIdenticalToSequential) {
+  const Project project = MakeProject(30);
+
+  auto RunWithThreads = [&project](int threads,
+                                   std::vector<SampleFixed>* out_samples) {
+    MockParser parser;
+    MockValidator validator;
+    validator.result.is_valid = true;
+    MockGeneration generation;
+    generation.embed_frame_id = true;
+    MockOutput output;
+    MockLogger logger;
+    VideoSynthPipeline pipeline(&parser, &validator, &generation, nullptr,
+                                nullptr, &output, &logger);
+    RunOptions options;
+    options.threads = threads;
+    const bool ok = pipeline.RunProject(project, options);
+    *out_samples = output.appended_first_samples;
+    return ok;
+  };
+
+  std::vector<SampleFixed> sequential_samples;
+  std::vector<SampleFixed> parallel_samples;
+  ASSERT_TRUE(RunWithThreads(1, &sequential_samples));
+  ASSERT_TRUE(RunWithThreads(4, &parallel_samples));
+
+  // The parallel path appends one frame at a time, in frame order.
+  ASSERT_EQ(parallel_samples.size(), 30U);
+  for (std::size_t i = 0; i < parallel_samples.size(); ++i) {
+    EXPECT_EQ(parallel_samples[i], static_cast<SampleFixed>(i));
+  }
+  // Sequential batches carry the same frames in the same order (the batch
+  // path appends several frames per call; compare via its first markers).
+  ASSERT_FALSE(sequential_samples.empty());
+  EXPECT_EQ(sequential_samples.front(), parallel_samples.front());
+}
+
+TEST(PipelineTest, ParallelSynthesisReportsMonotonicPerFrameProgress) {
+  const Project project = MakeProject(12);
+
+  MockParser parser;
+  MockValidator validator;
+  validator.result.is_valid = true;
+  MockGeneration generation;
+  MockOutput output;
+  MockLogger logger;
+  RecordingObserver observer;
+
+  VideoSynthPipeline pipeline(&parser, &validator, &generation, nullptr,
+                              nullptr, &output, &logger);
+  RunOptions options;
+  options.threads = 4;
+  EXPECT_TRUE(pipeline.RunProject(project, options, &observer));
+
+  ASSERT_EQ(observer.progress.size(), 12U);
+  for (std::size_t i = 0; i < observer.progress.size(); ++i) {
+    EXPECT_EQ(observer.progress[i].first, i + 1U);
+    EXPECT_EQ(observer.progress[i].second, 12U);
+  }
+  ASSERT_EQ(observer.statuses.size(), 1U);
+  EXPECT_EQ(observer.statuses[0], PipelineRunStatus::kSucceeded);
+}
+
+TEST(PipelineTest, ParallelSynthesisCancellationAbortsCleanly) {
+  const Project project = MakeProject(60);
+
+  MockParser parser;
+  MockValidator validator;
+  validator.result.is_valid = true;
+  MockGeneration generation;
+  MockOutput output;
+  MockLogger logger;
+  RecordingObserver observer;
+  CancellationToken cancellation;
+  output.cancel_after_first_append = &cancellation;
+
+  VideoSynthPipeline pipeline(&parser, &validator, &generation, nullptr,
+                              nullptr, &output, &logger);
+  RunOptions options;
+  options.threads = 4;
+  EXPECT_FALSE(pipeline.RunProject(project, options, &observer, &cancellation));
+
+  EXPECT_TRUE(output.abort_called);
+  EXPECT_FALSE(output.finalize_called);
+  EXPECT_LT(output.appended_first_samples.size(), 60U);
+  ASSERT_EQ(observer.statuses.size(), 1U);
+  EXPECT_EQ(observer.statuses[0], PipelineRunStatus::kCancelled);
+}
+
+TEST(PipelineTest, ParallelSynthesisWorkerErrorReportsFailedStatus) {
+  const Project project = MakeProject(20);
+
+  MockParser parser;
+  MockValidator validator;
+  validator.result.is_valid = true;
+  MockGeneration generation;
+  generation.fail_at_frame = 7U;
+  MockOutput output;
+  MockLogger logger;
+  RecordingObserver observer;
+
+  VideoSynthPipeline pipeline(&parser, &validator, &generation, nullptr,
+                              nullptr, &output, &logger);
+  RunOptions options;
+  options.threads = 4;
+  EXPECT_FALSE(pipeline.RunProject(project, options, &observer));
+
+  ASSERT_EQ(observer.statuses.size(), 1U);
+  EXPECT_EQ(observer.statuses[0], PipelineRunStatus::kFailed);
+  EXPECT_FALSE(logger.errors.empty());
+  // Frames before the failing index were appended in order; none after it.
+  EXPECT_LE(output.appended_first_samples.size(), 7U);
 }
 
 TEST(PipelineTest, SequentialRunsFromWorkerThreadProduceIdenticalResults) {

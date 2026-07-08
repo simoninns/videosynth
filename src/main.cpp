@@ -7,6 +7,7 @@
  * SPDX-FileCopyrightText: 2026 Simon Inns
  */
 
+#include <cstdlib>
 #include <iostream>
 #include <string>
 
@@ -47,14 +48,39 @@ void PrintUsage() {
       << "  Output paths are read from project YAML under output.video_path "
          "and output.metadata_path.\n"
       << "  --validate  Validate only; do not generate output.\n"
+      << "  --threads <n>  Frame synthesis worker threads (default: auto).\n"
+      << "              Use 1 for the pure sequential path; output is\n"
+      << "              byte-identical regardless of the thread count.\n"
       << "  --log-level <level>  Set log level: info, debug, or trace.\n"
       << "  --log-file <filename>  Write logs to a file as well as stderr.\n";
+}
+
+// Parses the --threads argument: "auto" or a positive integer.
+// Returns true and stores the RunOptions convention (0 = auto) on success.
+bool ParseThreadCount(const std::string& value, int* out_threads) {
+  if (value == "auto") {
+    *out_threads = 0;
+    return true;
+  }
+  if (value.empty() ||
+      value.find_first_not_of("0123456789") != std::string::npos) {
+    return false;
+  }
+  const int parsed = std::atoi(value.c_str());
+  if (parsed < 1) {
+    return false;
+  }
+  *out_threads = parsed;
+  return true;
 }
 
 }  // namespace
 
 int main(int argc, char** argv) {
   videosynth::RunOptions options;
+  // CLI default is auto (0); the RunOptions member itself defaults to the
+  // sequential path for library callers.
+  options.threads = 0;
 
   for (int i = 1; i < argc; ++i) {
     const std::string arg = argv[i];
@@ -63,6 +89,11 @@ int main(int argc, char** argv) {
       options.project_path = argv[++i];
     } else if (arg == "--validate") {
       options.validate_only = true;
+    } else if (arg == "--threads" && i + 1 < argc) {
+      if (!ParseThreadCount(argv[++i], &options.threads)) {
+        PrintUsage();
+        return 2;
+      }
     } else if (arg == "--log-level" && i + 1 < argc) {
       options.log_level = argv[++i];
     } else if (arg == "--log-file" && i + 1 < argc) {
