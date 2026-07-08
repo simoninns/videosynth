@@ -703,6 +703,8 @@ For **NTSC (525-line system)**, the vertical blanking interval (VBI) is defined 
 The current parser, validator, and runtime implement only a subset of the YAML surface described in this section:
 
 - Implemented top-level presets: `video_standard_preset`, `sample_encoding_preset`, `signal_state_preset`, `ntsc_black_setup_ire`, `output.video_path`, `output.metadata_path`, and `output.signal_type` (`"composite"` or `"yc"`; defaults to `"composite"`).
+- The `project:` block fields `name`, `version`, and `description` are parsed and retained on the in-memory `Project` model, so they survive load/save round-trips.
+- A YAML project **emitter** (`YamlProjectEmitter` in `videosynth_core`) serialises an in-memory `Project` back to this schema. It writes fields in the canonical order shown below and emits only explicitly-set optional blocks (`noise:`, `dropouts:`, `osd:`, `audio:`, `line_injections:`, `disc_skips:`), so emitted files stay minimal and diffable. Emit → parse is lossless: a saved file parses back to an equal `Project`, which is the contract that keeps GUI-saved projects loadable by the CLI and vice versa.
 - Implemented section fields: `name`, `type`, `source`, `start_frame`, `duration_frames`, and the optional per-section `noise:`, `dropouts:`, `osd:`, and `audio:` blocks.
 - The `line_injections` schema is represented in the current parser data model and receives validator-level schema/compatibility checks for injection type, `target_lines`, and standard-dependent VITS constraints.
 - VITS line injections have a generation-stage orchestration path and are applied only on their targeted frame lines within the owning section span.
@@ -1882,6 +1884,7 @@ videosynth --project project.yaml [options]
 | ------------ | ------------------------------------------------- | ----------- |
 | `--project`  | Path to the YAML project file (required).         | -           |
 | `--validate` | Validate the YAML file without generating output. | `false`     |
+| `--version`  | Print the build version (short git commit hash, `-dirty` suffix for modified trees, or the release override string) and exit. | -           |
 | `--threads <n>` | Frame synthesis worker threads: `auto` (one per hardware thread) or a positive integer. `1` selects the pure sequential path. Output is byte-identical regardless of the thread count; projects with `disc_skips` always run sequentially. | `auto` |
 | `--log-level <level>` | Set the log level to `info`, `debug`, or `trace`. | `info` |
 | `--log-file <filename>` | Write log output to the specified file in addition to the console. | none |

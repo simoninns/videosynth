@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=VideoSynth
+GenericName=Analogue Video Signal Generator
+Comment=Create, edit, and generate CVBS test signal projects
+Exec=videosynth-gui
+Icon=videosynth-gui
+Terminal=false
+Categories=AudioVideo;Video;Engineering;
+Keywords=CVBS;PAL;NTSC;composite;laserdisc;test signal;

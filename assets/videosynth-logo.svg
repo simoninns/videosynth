@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  File:        videosynth-logo.svg
+  Purpose:     Placeholder VideoSynth logotype and application icon
+               (colour-bar raster over a composite line waveform)
+
+  SPDX-License-Identifier: GPL-3.0-or-later
+  SPDX-FileCopyrightText: 2026 Simon Inns
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <!-- Background tile -->
+  <rect x="0" y="0" width="256" height="256" rx="44" fill="#181c26"/>
+  <rect x="8" y="8" width="240" height="240" rx="38" fill="#202634"/>
+
+  <!-- 75% colour bars (white, yellow, cyan, green, magenta, red, blue) -->
+  <g>
+    <rect x="36" y="40" width="26.286" height="88" fill="#c0c0c0"/>
+    <rect x="62.286" y="40" width="26.286" height="88" fill="#c0c000"/>
+    <rect x="88.571" y="40" width="26.286" height="88" fill="#00c0c0"/>
+    <rect x="114.857" y="40" width="26.286" height="88" fill="#00c000"/>
+    <rect x="141.143" y="40" width="26.286" height="88" fill="#c000c0"/>
+    <rect x="167.429" y="40" width="26.286" height="88" fill="#c00000"/>
+    <rect x="193.714" y="40" width="26.286" height="88" fill="#0000c0"/>
+  </g>
+
+  <!-- Raster scanline hints over the bars -->
+  <g fill="#202634" opacity="0.55">
+    <rect x="36" y="60" width="184" height="3"/>
+    <rect x="36" y="82" width="184" height="3"/>
+    <rect x="36" y="104" width="184" height="3"/>
+  </g>
+
+  <!-- Composite line waveform: sync pulse, burst, active-video steps -->
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Blanking baseline -->
+    <path d="M 28 188 H 228" stroke="#3a445c" stroke-width="3"/>
+    <!-- Sync tip and stepped luminance trace -->
+    <path d="M 28 188 H 40 V 214 H 56 V 188 H 62
+             l 4 -8 4 16 4 -16 4 16 4 -8
+             H 92 V 148 H 124 V 160 H 156 V 172 H 188 V 188 H 228"
+          stroke="#e8ecf4" stroke-width="6"/>
+  </g>
+</svg>

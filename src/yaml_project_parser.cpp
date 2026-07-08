@@ -237,6 +237,11 @@ ParseResult ParseYamlNode(const YAML::Node& root, ILogger* logger) {
       result.project.version = root["project"]["version"].as<std::string>();
     }
 
+    if (root["project"] && root["project"]["description"]) {
+      result.project.description =
+          root["project"]["description"].as<std::string>();
+    }
+
     if (root["project"]) {
       const std::set<std::string> project_keys = {"name", "version",
                                                   "description"};

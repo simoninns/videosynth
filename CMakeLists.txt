@@ -6,6 +6,48 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# Version string: PROJECT_VERSION_OVERRIDE (e.g. from a Nix build) wins,
+# otherwise the short git commit hash with a "-dirty" suffix when the working
+# tree has uncommitted changes.
+if(DEFINED PROJECT_VERSION_OVERRIDE)
+    set(VIDEOSYNTH_VERSION "${PROJECT_VERSION_OVERRIDE}")
+else()
+    find_package(Git QUIET)
+    set(GIT_COMMIT_HASH "unknown")
+    if(GIT_FOUND)
+        execute_process(
+            COMMAND ${GIT_EXECUTABLE} rev-parse --short HEAD
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+            OUTPUT_VARIABLE GIT_COMMIT_HASH
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+            ERROR_QUIET
+        )
+        if(GIT_COMMIT_HASH STREQUAL "")
+            set(GIT_COMMIT_HASH "unknown")
+        else()
+            execute_process(
+                COMMAND ${GIT_EXECUTABLE} diff-index --quiet HEAD --
+                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+                RESULT_VARIABLE GIT_DIRTY
+                ERROR_QUIET
+            )
+            if(NOT GIT_DIRTY EQUAL 0)
+                set(GIT_COMMIT_HASH "${GIT_COMMIT_HASH}-dirty")
+            endif()
+        endif()
+    endif()
+    set(VIDEOSYNTH_VERSION "${GIT_COMMIT_HASH}")
+endif()
+message(STATUS "VideoSynth version: ${VIDEOSYNTH_VERSION}")
+
+configure_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/videosynth_version.h.in
+    ${CMAKE_CURRENT_BINARY_DIR}/generated/videosynth_version.h
+    @ONLY
+)
+
+option(VIDEOSYNTH_BUILD_GUI "Build the Qt6 GUI application" ON)
+
 find_package(yaml-cpp REQUIRED)
 find_package(spdlog REQUIRED)
 find_package(GTest REQUIRED)
@@ -37,6 +79,7 @@ add_library(videosynth_core
     src/signal_shaping.cpp
     src/vits_definition_provider.cpp
     src/vits_generator.cpp
+    src/yaml_project_emitter.cpp
     src/yaml_project_parser.cpp
     src/osd_renderer.cpp
     src/osd_token_resolver.cpp
@@ -61,10 +104,81 @@ add_executable(videosynth
     src/main.cpp
 )
 
+target_include_directories(videosynth
+    PRIVATE
+        ${CMAKE_CURRENT_BINARY_DIR}/generated
+)
+
 target_link_libraries(videosynth
     PRIVATE
         videosynth_core
 )
+
+if(VIDEOSYNTH_BUILD_GUI)
+    find_package(Qt6 COMPONENTS Widgets Svg QUIET)
+    if(NOT Qt6_FOUND)
+        message(STATUS "Qt6 not found - skipping GUI build")
+        set(VIDEOSYNTH_BUILD_GUI OFF)
+    endif()
+endif()
+
+if(VIDEOSYNTH_BUILD_GUI)
+    add_library(videosynth_gui_lib STATIC
+        src/gui/main_window.cpp
+        src/gui/main_window.h
+        src/gui/project_document.cpp
+        src/gui/project_document.h
+        src/gui/project_templates.cpp
+        src/gui/project_templates.h
+        src/gui/theme_color_tokens.h
+        src/gui/theme_controller.cpp
+        src/gui/theme_controller.h
+        src/gui/theme_manager.cpp
+        src/gui/theme_manager.h
+        src/gui/validation_controller.cpp
+        src/gui/validation_controller.h
+        src/gui/validation_issues_model.cpp
+        src/gui/validation_issues_model.h
+        src/gui/videosynth_gui_resources.qrc
+    )
+
+    # Qt code generators are enabled per-target so the core library and CLI
+    # build identically with or without Qt present.
+    set_target_properties(videosynth_gui_lib PROPERTIES
+        AUTOMOC ON
+        AUTORCC ON
+    )
+
+    target_include_directories(videosynth_gui_lib
+        PUBLIC
+            ${CMAKE_CURRENT_SOURCE_DIR}/src/gui
+        PRIVATE
+            ${CMAKE_CURRENT_BINARY_DIR}/generated
+    )
+
+    target_link_libraries(videosynth_gui_lib
+        PUBLIC
+            videosynth_core
+            Qt6::Widgets
+            Qt6::Svg
+    )
+
+    add_executable(videosynth-gui
+        src/gui/main.cpp
+    )
+
+    set_target_properties(videosynth-gui PROPERTIES AUTOMOC ON)
+
+    target_include_directories(videosynth-gui
+        PRIVATE
+            ${CMAKE_CURRENT_BINARY_DIR}/generated
+    )
+
+    target_link_libraries(videosynth-gui
+        PRIVATE
+            videosynth_gui_lib
+    )
+endif()
 
 enable_testing()
 
@@ -100,6 +214,7 @@ add_executable(videosynth_tests
     tests/test_vits_generator_pal.cpp
     tests/test_vits_generator_ntsc.cpp
     tests/test_line_injection_vits_integration.cpp
+    tests/test_yaml_project_emitter.cpp
     tests/test_yaml_project_parser.cpp
     tests/test_timing_constants.cpp
     tests/test_biphase_validation.cpp
@@ -133,6 +248,32 @@ target_link_libraries(videosynth_tests
 include(GoogleTest)
 gtest_discover_tests(videosynth_tests TEST_LIST videosynth_discovered_tests)
 
+if(VIDEOSYNTH_BUILD_GUI)
+    add_executable(videosynth_gui_tests
+        tests/gui/gui_test_main.cpp
+        tests/gui/test_project_document.cpp
+        tests/gui/test_project_file_lifecycle.cpp
+        tests/gui/test_theme_manager.cpp
+        tests/gui/test_theme_settings.cpp
+        tests/gui/test_validation_controller.cpp
+        tests/gui/test_validation_issues_model.cpp
+    )
+
+    target_compile_definitions(videosynth_gui_tests
+        PRIVATE
+            VIDEOSYNTH_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
+    )
+
+    target_link_libraries(videosynth_gui_tests
+        PRIVATE
+            videosynth_gui_lib
+            GTest::gtest
+    )
+
+    gtest_discover_tests(videosynth_gui_tests
+        TEST_LIST videosynth_gui_discovered_tests)
+endif()
+
 set(videosynth_functional_test_patterns
     "^AudioFixtureProjectsTest\\."
     "^AudioPipelineTest\\."
@@ -147,6 +288,9 @@ set(videosynth_functional_test_patterns
     "^GenerationStageProgressiveTest\\."
     "^LineInjectionVitsIntegrationTest\\."
     "^OutputStageTest\\."
+    "^ProjectFileLifecycleTest\\."
+    "^ThemeSettingsTest\\."
+    "^YamlProjectEmitterFixturesTest\\."
 )
 
 set(videosynth_unit_test_patterns
@@ -172,7 +316,10 @@ set(videosynth_unit_test_patterns
     "^BiphaseInjectionManagerNtscClvTest\\."
     "^ChromaEncoderTest\\."
     "^PipelineTest\\."
+    "^ProjectDocumentTest\\."
     "^ProjectValidatorTest\\."
+    "^ValidationControllerTest\\."
+    "^ValidationIssuesModelTest\\."
     "^BiphaseValidationTest\\."
     "^CrossInjectionValidationTest\\."
     "^NtscVirsValidationTest\\."
@@ -194,6 +341,8 @@ set(videosynth_unit_test_patterns
     "^VitsGeneratorTest\\."
     "^VitsGeneratorPalTest\\."
     "^VitsGeneratorNtscTest\\."
+    "^ThemeManagerTest\\."
+    "^YamlProjectEmitterTest\\."
     "^YamlProjectParserTest\\."
 )
 
@@ -210,7 +359,7 @@ endforeach()
 string(APPEND videosynth_test_label_script ")\n\n")
 
 string(APPEND videosynth_test_label_script
-    "foreach(test_name IN LISTS videosynth_discovered_tests)\n"
+    "foreach(test_name IN LISTS videosynth_discovered_tests videosynth_gui_discovered_tests)\n"
     "  set(test_classification \"\")\n"
     "\n"
     "  foreach(pattern IN LISTS videosynth_functional_test_patterns)\n"
@@ -275,6 +424,10 @@ if(CLANG_FORMAT_EXE)
     add_custom_target(clang_format_check ALL DEPENDS ${FORMAT_STAMPS})
     add_dependencies(videosynth clang_format_check)
     add_dependencies(videosynth_tests clang_format_check)
+    if(VIDEOSYNTH_BUILD_GUI)
+        add_dependencies(videosynth-gui clang_format_check)
+        add_dependencies(videosynth_gui_tests clang_format_check)
+    endif()
 else()
     message(STATUS "clang-format not found — format checks disabled")
 endif()
@@ -285,6 +438,12 @@ if(CLANG_TIDY_EXE)
     set_target_properties(videosynth_core videosynth videosynth_tests
         PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_EXE}"
     )
+    if(VIDEOSYNTH_BUILD_GUI)
+        set_target_properties(videosynth_gui_lib videosynth-gui
+            videosynth_gui_tests
+            PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_EXE}"
+        )
+    endif()
 else()
     message(STATUS "clang-tidy not found — static analysis disabled")
 endif()

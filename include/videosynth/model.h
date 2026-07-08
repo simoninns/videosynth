@@ -306,6 +306,8 @@ struct DiscSkip {
 struct Project {
   std::string name;
   std::string version;
+  // Optional free-text description carried through load/save round-trips.
+  std::string description;
   CvbsPresets cvbs_presets;
   OutputTargets output;
   std::vector<Section> sections;
@@ -313,6 +315,116 @@ struct Project {
   // skips; the pipeline uses the standard batch loop.
   std::vector<DiscSkip> disc_skips;
 };
+
+// Equality operators for the project model. Comparison is exact (including
+// floating-point fields); intended for parse/emit round-trip verification and
+// document dirty tracking, not for tolerance-based signal comparison.
+inline bool operator==(const BiphasePresets& /*a*/,
+                       const BiphasePresets& /*b*/) {
+  return true;
+}
+
+inline bool operator==(const CvbsPresets& a, const CvbsPresets& b) {
+  return a.video_standard_preset == b.video_standard_preset &&
+         a.sample_encoding_preset == b.sample_encoding_preset &&
+         a.signal_state_preset == b.signal_state_preset &&
+         a.pal_laserdisc_pilot_burst == b.pal_laserdisc_pilot_burst &&
+         a.ntsc_laserdisc_vbi_burst == b.ntsc_laserdisc_vbi_burst &&
+         a.ntsc_black_setup_ire == b.ntsc_black_setup_ire &&
+         a.ntsc_black_setup_ire_specified == b.ntsc_black_setup_ire_specified &&
+         a.biphase_presets == b.biphase_presets;
+}
+
+inline bool operator==(const NoiseParameters& a, const NoiseParameters& b) {
+  return a.enabled == b.enabled && a.noise_db == b.noise_db &&
+         a.noise_spread_db == b.noise_spread_db &&
+         a.noise_seed == b.noise_seed &&
+         a.noise_seed_specified == b.noise_seed_specified;
+}
+
+inline bool operator==(const RandomDropoutParameters& a,
+                       const RandomDropoutParameters& b) {
+  return a.enabled == b.enabled && a.scale == b.scale &&
+         a.seed_specified == b.seed_specified && a.seed == b.seed;
+}
+
+inline bool operator==(const ScratchDropoutParameters& a,
+                       const ScratchDropoutParameters& b) {
+  return a.enabled == b.enabled && a.scale == b.scale &&
+         a.seed_specified == b.seed_specified && a.seed == b.seed;
+}
+
+inline bool operator==(const DropoutParameters& a, const DropoutParameters& b) {
+  return a.random == b.random && a.scratch == b.scratch;
+}
+
+inline bool operator==(const OsdOverlay& a, const OsdOverlay& b) {
+  return a.text == b.text && a.x == b.x && a.y == b.y && a.scale == b.scale &&
+         a.fg_luma == b.fg_luma && a.bg_luma == b.bg_luma;
+}
+
+inline bool operator==(const OsdConfig& a, const OsdConfig& b) {
+  return a.overlays == b.overlays;
+}
+
+inline bool operator==(const AudioParameters& a, const AudioParameters& b) {
+  return a.enabled == b.enabled && a.waveform == b.waveform &&
+         a.waveform_text == b.waveform_text &&
+         a.frequency_hz == b.frequency_hz && a.ramp_enabled == b.ramp_enabled &&
+         a.ramp_start_hz == b.ramp_start_hz && a.ramp_end_hz == b.ramp_end_hz &&
+         a.ramp_start_specified == b.ramp_start_specified &&
+         a.ramp_end_specified == b.ramp_end_specified &&
+         a.ramp_mode == b.ramp_mode && a.ramp_mode_text == b.ramp_mode_text &&
+         a.ramp_period_seconds == b.ramp_period_seconds &&
+         a.amplitude == b.amplitude;
+}
+
+inline bool operator==(const Section::LineInjectionCode& a,
+                       const Section::LineInjectionCode& b) {
+  return a.code_type == b.code_type && a.start_value == b.start_value &&
+         a.start_value_specified == b.start_value_specified &&
+         a.chapter == b.chapter && a.chapter_specified == b.chapter_specified &&
+         a.programme_status == b.programme_status &&
+         a.programme_status_specified == b.programme_status_specified &&
+         a.users_code == b.users_code &&
+         a.users_code_specified == b.users_code_specified;
+}
+
+inline bool operator==(const Section::LineInjection& a,
+                       const Section::LineInjection& b) {
+  return a.type == b.type && a.target_lines == b.target_lines &&
+         a.vits_type == b.vits_type && a.disc_type == b.disc_type &&
+         a.codes == b.codes;
+}
+
+inline bool operator==(const Section& a, const Section& b) {
+  return a.name == b.name && a.type == b.type &&
+         a.section_type == b.section_type &&
+         a.line_injections == b.line_injections && a.source == b.source &&
+         a.duration_frames_all == b.duration_frames_all &&
+         a.duration_frames == b.duration_frames &&
+         a.start_frame == b.start_frame && a.noise == b.noise &&
+         a.dropouts == b.dropouts && a.osd == b.osd && a.audio == b.audio;
+}
+
+inline bool operator==(const OutputTargets& a, const OutputTargets& b) {
+  return a.video_path == b.video_path && a.metadata_path == b.metadata_path &&
+         a.signal_type == b.signal_type;
+}
+
+inline bool operator==(const DiscSkip& a, const DiscSkip& b) {
+  return a.at_frame == b.at_frame && a.direction == b.direction &&
+         a.count == b.count;
+}
+
+inline bool operator==(const Project& a, const Project& b) {
+  return a.name == b.name && a.version == b.version &&
+         a.description == b.description && a.cvbs_presets == b.cvbs_presets &&
+         a.output == b.output && a.sections == b.sections &&
+         a.disc_skips == b.disc_skips;
+}
+
+inline bool operator!=(const Project& a, const Project& b) { return !(a == b); }
 
 // True if any section requests synthetic audio. When false the pipeline emits
 // no WAV track and the metadata audio_locked field stays NULL.

@@ -21,6 +21,7 @@
 #include "videosynth/progressive_frame_source_probe.h"
 #include "videosynth/project_validator.h"
 #include "videosynth/yaml_project_parser.h"
+#include "videosynth_version.h"
 
 namespace {
 
@@ -48,6 +49,7 @@ void PrintUsage() {
       << "  Output paths are read from project YAML under output.video_path "
          "and output.metadata_path.\n"
       << "  --validate  Validate only; do not generate output.\n"
+      << "  --version   Print the build version (git commit hash) and exit.\n"
       << "  --threads <n>  Frame synthesis worker threads (default: auto).\n"
       << "              Use 1 for the pure sequential path; output is\n"
       << "              byte-identical regardless of the thread count.\n"
@@ -84,6 +86,11 @@ int main(int argc, char** argv) {
 
   for (int i = 1; i < argc; ++i) {
     const std::string arg = argv[i];
+
+    if (arg == "--version") {
+      std::cout << VIDEOSYNTH_VERSION << "\n";
+      return 0;
+    }
 
     if (arg == "--project" && i + 1 < argc) {
       options.project_path = argv[++i];

@@ -1,0 +1,12 @@
+<!--
+  File:        videosynth_gui_resources.qrc
+  Purpose:     Qt resources embedded into the videosynth-gui binary
+
+  SPDX-License-Identifier: GPL-3.0-or-later
+  SPDX-FileCopyrightText: 2026 Simon Inns
+-->
+<RCC>
+    <qresource prefix="/videosynth-gui">
+        <file alias="icon.png">../../assets/videosynth-icon-256.png</file>
+    </qresource>
+</RCC>

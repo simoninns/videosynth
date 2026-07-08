@@ -10,16 +10,20 @@
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs { inherit system; };
+        # Git metadata is unavailable inside the Nix build sandbox, so the
+        # commit hash is passed in as a version override instead.
+        versionString = self.shortRev or self.dirtyShortRev or "0.1.0";
       in {
         packages.default = pkgs.stdenv.mkDerivation {
           pname = "videosynth";
-          version = "0.1.0";
+          version = versionString;
           src = self;
 
           nativeBuildInputs = with pkgs; [
             cmake
             ninja
             pkg-config
+            qt6.wrapQtAppsHook
           ];
 
           buildInputs = with pkgs; [
@@ -30,11 +34,14 @@
             openexr
             zlib
             ffmpeg
+            qt6.qtbase
+            qt6.qtsvg
           ];
 
           cmakeFlags = [
             "-DCMAKE_BUILD_TYPE=Release"
             "-DBUILD_TESTING=ON"
+            "-DPROJECT_VERSION_OVERRIDE=${versionString}"
           ];
 
           doCheck = true;
@@ -60,9 +67,17 @@
             openexr
             zlib
             ffmpeg
+            qt6.qtbase
+            qt6.qtsvg
             llvmPackages_18.clang-tools
             ccache
           ];
+
+          # Qt needs its platform plugins on the path when the GUI is run
+          # directly from the dev shell (outside wrapQtAppsHook).
+          shellHook = ''
+            export QT_PLUGIN_PATH="${pkgs.qt6.qtbase}/lib/qt-6/plugins''${QT_PLUGIN_PATH:+:$QT_PLUGIN_PATH}"
+          '';
         };
       });
 }
