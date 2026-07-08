@@ -549,4 +549,20 @@ bool VitsDefinitionProvider::TryGetDefinition(Standard standard,
   return false;
 }
 
+std::vector<std::string> VitsDefinitionProvider::ListVitsTypes(
+    Standard standard) const {
+  // PAL-M uses System M line structure, so the M/NTSC catalogue applies
+  // (mirrors the TryGetDefinition fallback).
+  const Standard lookup =
+      (standard == Standard::kPalM) ? Standard::kNtsc : standard;
+
+  std::vector<std::string> vits_types;
+  for (const VitsDefinition& definition : Catalog()) {
+    if (definition.standard == lookup) {
+      vits_types.push_back(definition.vits_type);
+    }
+  }
+  return vits_types;
+}
+
 }  // namespace videosynth

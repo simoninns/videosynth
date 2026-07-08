@@ -49,37 +49,6 @@ std::string Lowercase(std::string value) {
   return value;
 }
 
-// Returns true if code_type is allowed in the given section_type per IEC
-// 60856/60857 Appendix D.
-bool IsCodeTypeValidForSectionType(const std::string& code_type,
-                                   videosynth::SectionType section_type) {
-  using ST = videosynth::SectionType;
-  if (code_type == "lead_in") {
-    return section_type == ST::kLeadIn;
-  }
-  if (code_type == "lead_out") {
-    return section_type == ST::kLeadOut;
-  }
-  if (code_type == "users_code") {
-    return section_type == ST::kLeadIn || section_type == ST::kLeadOut;
-  }
-  if (code_type == "fm_white_flag") {
-    // Valid in all three section types.
-    return section_type == ST::kLeadIn || section_type == ST::kProgrammeArea ||
-           section_type == ST::kLeadOut;
-  }
-  // All remaining codes (picture_number, picture_stop, chapter_number,
-  // programme_status, programme_time_code, clv_code, clv_picture_number,
-  // fm_picture_number, fm_programme_time) are programme_area only.
-  return section_type == ST::kProgrammeArea;
-}
-
-// Returns true if code_type requires NTSC standard (IEC 60857 FM codes).
-bool IsNtscOnlyCodeType(const std::string& code_type) {
-  return code_type == "fm_picture_number" || code_type == "fm_programme_time" ||
-         code_type == "fm_white_flag";
-}
-
 // Parses a decimal or "0x"-prefixed hex string into a uint32_t.
 bool ParseHexValue(const std::string& hex_str, uint32_t* out_value) {
   if (hex_str.empty() || out_value == nullptr) {
@@ -598,8 +567,8 @@ bool ValidateLaserdiscSectionTypeAndCodes(
     // 5.4/5.5: Validate each code type.
     for (const videosynth::Section::LineInjectionCode& code : injection.codes) {
       // Section-type compatibility (IEC Appendix D matrix).
-      if (!IsCodeTypeValidForSectionType(code.code_type,
-                                         section.section_type)) {
+      if (!videosynth::IsCodeTypeValidForSectionType(code.code_type,
+                                                     section.section_type)) {
         result->is_valid = false;
         result->errors.push_back(
             "Laserdisc injection validation error: code_type '" +
@@ -610,7 +579,7 @@ bool ValidateLaserdiscSectionTypeAndCodes(
       }
 
       // Standard restriction: FM codes require System M (NTSC or PAL-M).
-      if (IsNtscOnlyCodeType(code.code_type) &&
+      if (videosynth::IsSystemMOnlyCodeType(code.code_type) &&
           standard != videosynth::Standard::kNtsc &&
           standard != videosynth::Standard::kPalM) {
         result->is_valid = false;

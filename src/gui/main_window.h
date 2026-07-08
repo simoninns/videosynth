@@ -14,19 +14,25 @@
 #include <QModelIndex>
 
 #include "project_document.h"
+#include "project_settings_editor.h"
+#include "section_editor.h"
+#include "section_list_dock.h"
+#include "source_probe_controller.h"
 #include "theme_controller.h"
 #include "validation_controller.h"
 #include "validation_issues_model.h"
 
 class QLabel;
 class QMenu;
+class QTabWidget;
 
 namespace videosynth::gui {
 
 // Main window shell: menu bar (File / Edit / Project / Generate / View /
-// Help), status bar, issues dock, and project file lifecycle (New / Open /
-// Save / Save As / Recent Files) over a ProjectDocument. Section editing,
-// generation, and preview panes attach here in later phases.
+// Help), status bar, issues dock, sections dock, and the central authoring
+// tabs (project settings and per-section editors) over a ProjectDocument
+// with file lifecycle (New / Open / Save / Save As / Recent Files).
+// Generation and preview panes attach here in later phases.
 //
 // Thread-safety: NOT thread-safe. GUI (main) thread only.
 class MainWindow : public QMainWindow {
@@ -59,7 +65,8 @@ class MainWindow : public QMainWindow {
 
  private:
   void BuildMenus();
-  void BuildCentralPlaceholder();
+  void BuildCentralEditors();
+  void BuildSectionsDock();
   void BuildIssuesDock();
   void RestoreWindowGeometry();
 
@@ -76,9 +83,13 @@ class MainWindow : public QMainWindow {
   ProjectDocument* document_;
   ValidationController* validation_controller_;
   ValidationIssuesModel* issues_model_;
+  SourceProbeController* probe_controller_;
   QMenu* recent_files_menu_ = nullptr;
-  QLabel* placeholder_label_ = nullptr;
   QLabel* validation_status_label_ = nullptr;
+  QTabWidget* editor_tabs_ = nullptr;
+  ProjectSettingsEditor* project_settings_editor_ = nullptr;
+  SectionEditor* section_editor_ = nullptr;
+  SectionListDock* section_list_dock_ = nullptr;
 };
 
 }  // namespace videosynth::gui

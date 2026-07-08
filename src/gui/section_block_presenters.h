@@ -1,0 +1,82 @@
+/*
+ * File:        section_block_presenters.h
+ * Module:      gui
+ * Purpose:     Widget-free mapping layer for the optional per-section YAML
+ *              blocks (audio, noise, dropouts, OSD)
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: 2026 Simon Inns
+ */
+
+#pragma once
+
+#include <string>
+#include <vector>
+
+#include "videosynth/model.h"
+
+namespace videosynth::gui {
+
+// Thread-safety: all functions in this module are thread-safe pure functions
+// over their arguments.
+
+// Editor input limits mirrored from the rules in project_validator.cpp (and
+// the design documents it cites) so widgets constrain values to exactly what
+// validation accepts.
+namespace editor_limits {
+// Noise: noise-injection-design.md bounds enforced by ValidateNoiseParameters.
+inline constexpr double kNoiseDbMin = 20.0;
+inline constexpr double kNoiseDbMax = 61.0;
+// Dropouts: active scale range enforced by ValidateDropoutParameters (0 only
+// as "block disabled", so editors offer 1–20).
+inline constexpr int kDropoutScaleMin = 1;
+inline constexpr int kDropoutScaleMax = 20;
+// OSD: glyph scale and luma ranges enforced by ValidateOsdConfig.
+inline constexpr int kOsdScaleMin = 1;
+inline constexpr int kOsdScaleMax = 4;
+inline constexpr double kLumaMin = 0.0;
+inline constexpr double kLumaMax = 1.0;
+// Audio: audio-generation-design.md bounds enforced by
+// ValidateAudioParameters.
+inline constexpr double kAudioFrequencyMinHz = 0.0;
+inline constexpr double kAudioFrequencyMaxHz = 22000.0;
+inline constexpr double kAudioAmplitudeMin = 0.0;
+inline constexpr double kAudioAmplitudeMax = 1.0;
+}  // namespace editor_limits
+
+// Enable/disable helpers for the optional blocks. Disabling always resets
+// the block to its default-constructed state so YamlProjectEmitter drops it
+// from the emitted file (a disabled block must never emit defaults);
+// enabling seeds validator-clean defaults.
+
+void SetNoiseBlockEnabled(Section* section, bool enabled);
+void SetNoiseSeedSpecified(Section* section, bool specified);
+
+void SetRandomDropoutsEnabled(Section* section, bool enabled);
+void SetScratchDropoutsEnabled(Section* section, bool enabled);
+
+void SetAudioBlockEnabled(Section* section, bool enabled);
+// Switching to ramp mode seeds a validator-clean up-ramp; switching back
+// clears every ramp field so the emitted block returns to fixed-frequency
+// form.
+void SetAudioRampEnabled(Section* section, bool enabled);
+// Keeps waveform and waveform_text consistent; `waveform_name` must be one
+// of "sine", "square", "sawtooth", "triangle".
+void SetAudioWaveform(Section* section, const std::string& waveform_name);
+
+// The OSD block exists exactly when the overlay list is non-empty.
+bool OsdBlockEnabled(const Section& section);
+OsdOverlay MakeDefaultOsdOverlay();
+
+// Waveform / ramp-mode option lists for editors, in model.h parse order.
+std::vector<std::string> AudioWaveformOptions();
+std::vector<std::string> AudioRampModeOptions();
+
+// Supported OSD template tokens with help text for the overlay editor.
+struct OsdTokenHelp {
+  std::string token;
+  std::string description;
+};
+std::vector<OsdTokenHelp> OsdTokenCatalogue();
+
+}  // namespace videosynth::gui

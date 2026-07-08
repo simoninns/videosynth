@@ -124,12 +124,34 @@ endif()
 
 if(VIDEOSYNTH_BUILD_GUI)
     add_library(videosynth_gui_lib STATIC
+        src/gui/disc_skips_editor.cpp
+        src/gui/disc_skips_editor.h
+        src/gui/disc_skips_model.cpp
+        src/gui/disc_skips_model.h
+        src/gui/line_injection_presenter.cpp
+        src/gui/line_injection_presenter.h
+        src/gui/line_injections_editor.cpp
+        src/gui/line_injections_editor.h
         src/gui/main_window.cpp
         src/gui/main_window.h
         src/gui/project_document.cpp
         src/gui/project_document.h
+        src/gui/project_settings_editor.cpp
+        src/gui/project_settings_editor.h
+        src/gui/project_settings_presenter.cpp
+        src/gui/project_settings_presenter.h
         src/gui/project_templates.cpp
         src/gui/project_templates.h
+        src/gui/section_block_presenters.cpp
+        src/gui/section_block_presenters.h
+        src/gui/section_editor.cpp
+        src/gui/section_editor.h
+        src/gui/section_list_dock.cpp
+        src/gui/section_list_dock.h
+        src/gui/section_list_model.cpp
+        src/gui/section_list_model.h
+        src/gui/source_probe_controller.cpp
+        src/gui/source_probe_controller.h
         src/gui/theme_color_tokens.h
         src/gui/theme_controller.cpp
         src/gui/theme_controller.h
@@ -251,8 +273,15 @@ gtest_discover_tests(videosynth_tests TEST_LIST videosynth_discovered_tests)
 if(VIDEOSYNTH_BUILD_GUI)
     add_executable(videosynth_gui_tests
         tests/gui/gui_test_main.cpp
+        tests/gui/test_disc_skips_model.cpp
+        tests/gui/test_line_injection_presenter.cpp
         tests/gui/test_project_document.cpp
         tests/gui/test_project_file_lifecycle.cpp
+        tests/gui/test_project_settings_presenter.cpp
+        tests/gui/test_section_block_presenters.cpp
+        tests/gui/test_section_editing_roundtrip.cpp
+        tests/gui/test_section_list_model.cpp
+        tests/gui/test_source_probe_controller.cpp
         tests/gui/test_theme_manager.cpp
         tests/gui/test_theme_settings.cpp
         tests/gui/test_validation_controller.cpp
@@ -289,6 +318,7 @@ set(videosynth_functional_test_patterns
     "^LineInjectionVitsIntegrationTest\\."
     "^OutputStageTest\\."
     "^ProjectFileLifecycleTest\\."
+    "^SectionEditingRoundTripTest\\."
     "^ThemeSettingsTest\\."
     "^YamlProjectEmitterFixturesTest\\."
 )
@@ -317,7 +347,13 @@ set(videosynth_unit_test_patterns
     "^ChromaEncoderTest\\."
     "^PipelineTest\\."
     "^ProjectDocumentTest\\."
+    "^ProjectSettingsPresenterTest\\."
     "^ProjectValidatorTest\\."
+    "^SectionListModelTest\\."
+    "^SectionBlockPresenterTest\\."
+    "^LineInjectionPresenterTest\\."
+    "^DiscSkipsModelTest\\."
+    "^SourceProbeControllerTest\\."
     "^ValidationControllerTest\\."
     "^ValidationIssuesModelTest\\."
     "^BiphaseValidationTest\\."

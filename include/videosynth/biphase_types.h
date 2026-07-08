@@ -10,6 +10,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 namespace videosynth {
 
@@ -99,6 +100,55 @@ inline bool IsValidClvCodeType(const std::string& code_type) {
 // Returns true if code_type is a known laserdisc code type for any disc type.
 inline bool IsKnownLaserdiscCodeType(const std::string& code_type) {
   return IsValidCavCodeType(code_type) || IsValidClvCodeType(code_type);
+}
+
+// All known laserdisc code types (union of the CAV and CLV sets) in a stable
+// presentation order. Shared by the validator's rules and the GUI editors so
+// the offered choices always match what validation accepts.
+inline const std::vector<std::string>& AllLaserdiscCodeTypes() {
+  static const std::vector<std::string> kCodeTypes = {
+      "lead_in",           "lead_out",
+      "picture_number",    "picture_stop",
+      "chapter_number",    "programme_status",
+      "users_code",        "programme_time_code",
+      "clv_code",          "clv_picture_number",
+      "fm_picture_number", "fm_programme_time",
+      "fm_white_flag",
+  };
+  return kCodeTypes;
+}
+
+// Returns true if code_type is allowed in the given section_type per IEC
+// 60856/60857 Appendix D.
+inline bool IsCodeTypeValidForSectionType(const std::string& code_type,
+                                          SectionType section_type) {
+  if (code_type == "lead_in") {
+    return section_type == SectionType::kLeadIn;
+  }
+  if (code_type == "lead_out") {
+    return section_type == SectionType::kLeadOut;
+  }
+  if (code_type == "users_code") {
+    return section_type == SectionType::kLeadIn ||
+           section_type == SectionType::kLeadOut;
+  }
+  if (code_type == "fm_white_flag") {
+    // Valid in all three section types.
+    return section_type == SectionType::kLeadIn ||
+           section_type == SectionType::kProgrammeArea ||
+           section_type == SectionType::kLeadOut;
+  }
+  // All remaining codes (picture_number, picture_stop, chapter_number,
+  // programme_status, programme_time_code, clv_code, clv_picture_number,
+  // fm_picture_number, fm_programme_time) are programme_area only.
+  return section_type == SectionType::kProgrammeArea;
+}
+
+// Returns true if code_type requires System M line structure (IEC 60857
+// 40-bit FM codes) — valid only for NTSC or PAL-M projects.
+inline bool IsSystemMOnlyCodeType(const std::string& code_type) {
+  return code_type == "fm_picture_number" || code_type == "fm_programme_time" ||
+         code_type == "fm_white_flag";
 }
 
 }  // namespace videosynth

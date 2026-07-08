@@ -14,6 +14,7 @@
 #include <QDockWidget>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QGroupBox>
 #include <QKeySequence>
 #include <QLabel>
 #include <QListView>
@@ -21,11 +22,14 @@
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QPixmap>
+#include <QScrollArea>
 #include <QSettings>
 #include <QStatusBar>
 #include <QStringList>
+#include <QTabWidget>
 #include <QVBoxLayout>
 
+#include "disc_skips_editor.h"
 #include "project_templates.h"
 #include "videosynth/yaml_project_emitter.h"
 #include "videosynth/yaml_project_parser.h"
@@ -50,11 +54,13 @@ MainWindow::MainWindow(ThemeController* theme_controller, QWidget* parent)
       theme_controller_(theme_controller),
       document_(new ProjectDocument(this)),
       validation_controller_(new ValidationController({}, this)),
-      issues_model_(new ValidationIssuesModel(this)) {
+      issues_model_(new ValidationIssuesModel(this)),
+      probe_controller_(new SourceProbeController({}, this)) {
   setWindowIcon(QIcon(QStringLiteral(":/videosynth-gui/icon.png")));
 
   BuildMenus();
-  BuildCentralPlaceholder();
+  BuildCentralEditors();
+  BuildSectionsDock();
   BuildIssuesDock();
   statusBar()->showMessage(tr("Ready"));
   validation_status_label_ = new QLabel(this);
@@ -65,9 +71,7 @@ MainWindow::MainWindow(ThemeController* theme_controller, QWidget* parent)
   });
   connect(document_, &ProjectDocument::DocumentReset, this, [this] {
     validation_controller_->RequestValidation(document_->project());
-    if (placeholder_label_ != nullptr) {
-      placeholder_label_->setText(document_->display_name());
-    }
+    section_editor_->SetCurrentSection(section_list_dock_->current_section());
     UpdateWindowTitle();
   });
   connect(document_, &ProjectDocument::ModifiedStateChanged, this,
@@ -82,6 +86,11 @@ MainWindow::MainWindow(ThemeController* theme_controller, QWidget* parent)
   issues_model_->SetDarkTheme(theme_controller_->is_dark());
   connect(theme_controller_, &ThemeController::ThemeChanged, this,
           [this](bool is_dark) { issues_model_->SetDarkTheme(is_dark); });
+
+  // Start from the template so the editors show a valid project instead of
+  // an empty document (matches File > New; not marked modified).
+  document_->ResetProject(MakeDefaultPalProject(), QString());
+  section_list_dock_->SelectSection(0);
 
   UpdateWindowTitle();
   RestoreWindowGeometry();
@@ -159,25 +168,51 @@ void MainWindow::BuildMenus() {
   help_menu->addAction(tr("&About"), this, &MainWindow::OnAbout);
 }
 
-void MainWindow::BuildCentralPlaceholder() {
-  auto* central = new QWidget(this);
-  auto* layout = new QVBoxLayout(central);
+void MainWindow::BuildCentralEditors() {
+  editor_tabs_ = new QTabWidget(this);
 
-  auto* logo_label = new QLabel(central);
-  logo_label->setPixmap(
-      QPixmap(QStringLiteral(":/videosynth-gui/icon.png"))
-          .scaled(128, 128, Qt::KeepAspectRatio, Qt::SmoothTransformation));
-  logo_label->setAlignment(Qt::AlignCenter);
+  // Project tab: settings form plus the project-level disc skips table.
+  auto* project_page = new QWidget(editor_tabs_);
+  auto* project_layout = new QVBoxLayout(project_page);
+  project_layout->setContentsMargins(0, 0, 0, 0);
+  auto* project_scroll = new QScrollArea(project_page);
+  project_scroll->setWidgetResizable(true);
+  project_scroll->setFrameShape(QFrame::NoFrame);
+  auto* project_content = new QWidget(project_scroll);
+  auto* project_content_layout = new QVBoxLayout(project_content);
+  project_settings_editor_ =
+      new ProjectSettingsEditor(document_, project_content);
+  project_content_layout->addWidget(project_settings_editor_);
+  auto* disc_skips_group = new QGroupBox(tr("Disc Skips"), project_content);
+  auto* disc_skips_layout = new QVBoxLayout(disc_skips_group);
+  disc_skips_layout->addWidget(
+      new DiscSkipsEditor(document_, disc_skips_group));
+  project_content_layout->addWidget(disc_skips_group);
+  project_content_layout->addStretch();
+  project_scroll->setWidget(project_content);
+  project_layout->addWidget(project_scroll);
+  editor_tabs_->addTab(project_page, tr("Project"));
 
-  placeholder_label_ = new QLabel(tr("No project loaded"), central);
-  placeholder_label_->setAlignment(Qt::AlignCenter);
+  section_editor_ = new SectionEditor(document_, probe_controller_, this);
+  editor_tabs_->addTab(section_editor_, tr("Section"));
 
-  layout->addStretch();
-  layout->addWidget(logo_label);
-  layout->addWidget(placeholder_label_);
-  layout->addStretch();
+  setCentralWidget(editor_tabs_);
+}
 
-  setCentralWidget(central);
+void MainWindow::BuildSectionsDock() {
+  auto* dock = new QDockWidget(tr("Sections"), this);
+  dock->setObjectName(QStringLiteral("sections_dock"));
+  section_list_dock_ = new SectionListDock(document_, dock);
+  dock->setWidget(section_list_dock_);
+  addDockWidget(Qt::LeftDockWidgetArea, dock);
+
+  connect(section_list_dock_, &SectionListDock::CurrentSectionChanged, this,
+          [this](int index) {
+            section_editor_->SetCurrentSection(index);
+            if (index >= 0) {
+              editor_tabs_->setCurrentWidget(section_editor_);
+            }
+          });
 }
 
 void MainWindow::BuildIssuesDock() {
@@ -211,6 +246,7 @@ void MainWindow::OnNewProject() {
     return;
   }
   document_->ResetProject(MakeDefaultPalProject(), QString());
+  section_list_dock_->SelectSection(0);
   statusBar()->showMessage(tr("New project created"), 3000);
 }
 
@@ -248,13 +284,18 @@ void MainWindow::OnIssueActivated(const QModelIndex& index) {
   }
   const int section_index =
       index.data(ValidationIssuesModel::kSectionIndexRole).toInt();
-  // Editors attach to this hook in a later phase; surface the target for
-  // now.
   emit IssueNavigationRequested(section_index);
-  if (section_index >= 0) {
+
+  // Navigate to the offending editor: section issues focus that section's
+  // editor; project-level issues focus the project settings tab.
+  if (section_index >= 0 && section_index < document_->section_count()) {
+    section_list_dock_->SelectSection(section_index);
+    section_editor_->SetCurrentSection(section_index);
+    editor_tabs_->setCurrentWidget(section_editor_);
     statusBar()->showMessage(
         tr("Issue relates to section %1").arg(section_index + 1), 3000);
   } else {
+    editor_tabs_->setCurrentIndex(0);
     statusBar()->showMessage(tr("Project-level issue"), 3000);
   }
 }
@@ -312,6 +353,7 @@ void MainWindow::LoadProjectFromFile(const QString& path) {
   }
 
   document_->ResetProject(std::move(result.project), path);
+  section_list_dock_->SelectSection(0);
   AddToRecentFiles(path);
   statusBar()->showMessage(tr("Opened %1").arg(path), 3000);
 }

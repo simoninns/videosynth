@@ -10,6 +10,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 #include "videosynth/model.h"
 #include "videosynth/vits_definition.h"
@@ -52,6 +53,11 @@ class VitsDefinitionProvider final : public IVitsDefinitionProvider {
   bool TryGetDefinition(Standard standard, const std::string& vits_type,
                         VitsDefinition* out_definition,
                         std::string* error) const override;
+
+  // Returns the catalogue vits_type names available for the given standard,
+  // in catalogue order. PAL-M falls back to the M/NTSC definitions, mirroring
+  // TryGetDefinition. Used by editors to offer a standard-filtered catalogue.
+  std::vector<std::string> ListVitsTypes(Standard standard) const;
 };
 
 }  // namespace videosynth
