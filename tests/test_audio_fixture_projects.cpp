@@ -203,23 +203,19 @@ void RunAudioFixtureProject(const AudioFixture& fixture) {
 }
 
 TEST(AudioFixtureProjectsTest, PalCompositeFixtureEmitsFrameLockedWav) {
-  RunAudioFixtureProject(
-      {"tests/projects/general/pal_audio.yaml", Standard::kPal});
+  RunAudioFixtureProject({"tests/general/pal_audio.yaml", Standard::kPal});
 }
 
 TEST(AudioFixtureProjectsTest, NtscCompositeFixtureEmitsFrameLockedWav) {
-  RunAudioFixtureProject(
-      {"tests/projects/general/ntsc_audio.yaml", Standard::kNtsc});
+  RunAudioFixtureProject({"tests/general/ntsc_audio.yaml", Standard::kNtsc});
 }
 
 TEST(AudioFixtureProjectsTest, PalYcFixtureEmitsFrameLockedWav) {
-  RunAudioFixtureProject(
-      {"tests/projects/general-yc/pal_audio.yaml", Standard::kPal});
+  RunAudioFixtureProject({"tests/general-yc/pal_audio.yaml", Standard::kPal});
 }
 
 TEST(AudioFixtureProjectsTest, NtscYcFixtureEmitsFrameLockedWav) {
-  RunAudioFixtureProject(
-      {"tests/projects/general-yc/ntsc_audio.yaml", Standard::kNtsc});
+  RunAudioFixtureProject({"tests/general-yc/ntsc_audio.yaml", Standard::kNtsc});
 }
 
 }  // namespace

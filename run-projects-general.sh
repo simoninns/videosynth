@@ -2,7 +2,7 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-output_dir="$repo_root/tests/projects/output-general"
+output_dirs=("$repo_root/tests/general-output" "$repo_root/tests/general-yc-output")
 binary="$repo_root/build/videosynth"
 
 if [[ -z "${IN_NIX_SHELL:-}" ]] || ! command -v ffprobe >/dev/null 2>&1; then
@@ -16,17 +16,17 @@ if [[ ! -x "$binary" ]]; then
 fi
 
 cd "$repo_root"
-mkdir -p "$output_dir"
+mkdir -p "${output_dirs[@]}"
 
 shopt -s nullglob
 projects=(
-  "$repo_root/tests/projects/general"/*.yaml
-  "$repo_root/tests/projects/general-yc"/*.yaml
+  "$repo_root/tests/general"/*.yaml
+  "$repo_root/tests/general-yc"/*.yaml
 )
 shopt -u nullglob
 
 if (( ${#projects[@]} == 0 )); then
-  echo "No project fixtures found in tests/projects/general or tests/projects/general-yc" >&2
+  echo "No project fixtures found in tests/general or tests/general-yc" >&2
   exit 1
 fi
 
@@ -47,4 +47,4 @@ if (( failures > 0 )); then
   exit 1
 fi
 
-echo "All project fixtures ran successfully. Outputs are in tests/projects/output-general/."
+echo "All project fixtures ran successfully. Outputs are in tests/general-output/ and tests/general-yc-output/."

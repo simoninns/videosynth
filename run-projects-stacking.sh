@@ -2,7 +2,7 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-output_dir="$repo_root/tests/projects/output-stacking"
+output_dirs=("$repo_root/tests/stacking-output" "$repo_root/tests/stacking-yc-output")
 binary="$repo_root/build/videosynth"
 
 if [[ -z "${IN_NIX_SHELL:-}" ]] || ! command -v ffprobe >/dev/null 2>&1; then
@@ -16,17 +16,17 @@ if [[ ! -x "$binary" ]]; then
 fi
 
 cd "$repo_root"
-mkdir -p "$output_dir"
+mkdir -p "${output_dirs[@]}"
 
 shopt -s nullglob
 projects=(
-  "$repo_root/tests/projects/stacking"/*.yaml
-  "$repo_root/tests/projects/stacking-yc"/*.yaml
+  "$repo_root/tests/stacking"/*.yaml
+  "$repo_root/tests/stacking-yc"/*.yaml
 )
 shopt -u nullglob
 
 if (( ${#projects[@]} == 0 )); then
-  echo "No project fixtures found in tests/projects/stacking or tests/projects/stacking-yc" >&2
+  echo "No project fixtures found in tests/stacking or tests/stacking-yc" >&2
   exit 1
 fi
 
@@ -47,4 +47,4 @@ if (( failures > 0 )); then
   exit 1
 fi
 
-echo "All stacking project fixtures ran successfully. Outputs are in tests/projects/output-stacking/."
+echo "All stacking project fixtures ran successfully. Outputs are in tests/stacking-output/ and tests/stacking-yc-output/."

@@ -33,7 +33,7 @@ namespace videosynth {
 namespace {
 
 std::string FixturePath(const std::string& fixture_name) {
-  return std::string(VIDEOSYNTH_SOURCE_DIR) + "/tests/projects/" + fixture_name;
+  return std::string(VIDEOSYNTH_SOURCE_DIR) + "/tests/" + fixture_name;
 }
 
 std::filesystem::path ResolveFixtureOutputPath(

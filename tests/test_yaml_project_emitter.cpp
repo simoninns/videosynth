@@ -442,7 +442,8 @@ sections:
 }
 
 // Functional suite: round-trips every project YAML shipped in docs/examples/
-// and tests/projects/ through parse -> emit -> parse and cross-checks
+// and tests/{general,general-yc,stacking,stacking-yc}/ through parse -> emit ->
+// parse and cross-checks
 // validation outcomes. Touches the filesystem, so classified functional.
 class YamlProjectEmitterFixturesTest : public ::testing::Test {
  protected:
@@ -456,8 +457,8 @@ class YamlProjectEmitterFixturesTest : public ::testing::Test {
         files.push_back(entry.path());
       }
     }
-    for (const auto& entry : std::filesystem::recursive_directory_iterator(
-             source_dir / "tests" / "projects")) {
+    for (const auto& entry :
+         std::filesystem::recursive_directory_iterator(source_dir / "tests")) {
       if (entry.path().extension() == ".yaml") {
         files.push_back(entry.path());
       }

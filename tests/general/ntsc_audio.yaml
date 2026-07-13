@@ -1,0 +1,97 @@
+# NTSC Audio Example (composite output)
+#
+# Frame-locked synthetic multi-track audio. Each section declares an optional
+# `audio:` block containing a `channel_pairs:` list; each channel pair (0-7)
+# becomes a separate stereo WAV file `<basename>_audio_<pair>.wav`. For NTSC the
+# audio is 48000 Hz, 24-bit, following the SMPTE 272M five-frame sequence
+# (1602/1601 samples per frame). Every declared pair's file spans the whole
+# output; omitted pairs/channels are stored as silence.
+#
+# This fixture exercises, across its four sections:
+#   - Multi-track output (several channel pairs)
+#   - Distinct left/right tones and a silent channel
+#   - A section-spanning ramp down and a periodic bounce ramp
+#   - A silence gap (a section with no audio: block)
+
+project:
+  name: NtscAudio
+  version: "1.0"
+  description: NTSC multi-track audio — channel pairs, distinct L/R, ramps, silence gap
+
+cvbs_presets:
+  video_standard_preset: NTSC
+  sample_encoding_preset: CVBS_U10_4FSC
+  signal_state_preset: STANDARD_TBC_LOCKED
+
+output:
+  video_path: tests/general-output/videosynth_ntsc_audio.composite
+
+sections:
+
+  # ---------------------------------------------------------------------------
+  # Section 1: stereo pair plus a distinct-L/R pair and a left-only pair.
+  # ---------------------------------------------------------------------------
+  - name: StereoBars
+    type: progressive
+    source: "{bundled}/exr/720x486/75_BARS.exr"
+    duration_frames: 8
+    audio:
+      channel_pairs:
+        - pair: 0
+          description: Analogue stereo
+          left:  { waveform: sine, frequency: 1000.0, amplitude: 0.5 }
+          right: { waveform: sine, frequency: 1000.0, amplitude: 0.5 }
+        - pair: 1
+          description: Stereo test (L/R differ)
+          left:  { waveform: triangle, frequency: 400.0, amplitude: 0.5 }
+          right: { waveform: triangle, frequency: 700.0, amplitude: 0.5 }
+        - pair: 4
+          description: Commentary (left only)
+          left:  { waveform: square, frequency: 440.0, amplitude: 0.6 }
+          # right omitted -> silent
+
+  # ---------------------------------------------------------------------------
+  # Section 2: section-spanning triangle sweep down on the main pair.
+  # ---------------------------------------------------------------------------
+  - name: SweepDown
+    type: progressive
+    source: "{bundled}/exr/720x486/75_BARS.exr"
+    duration_frames: 8
+    audio:
+      channel_pairs:
+        - pair: 0
+          left:
+            waveform: triangle
+            amplitude: 0.5
+            ramp: { start: 500.0, end: 5000.0, mode: down }
+          right:
+            waveform: triangle
+            amplitude: 0.5
+            ramp: { start: 500.0, end: 5000.0, mode: down }
+
+  # ---------------------------------------------------------------------------
+  # Section 3: silence gap — no audio: block. Every pair file still advances by
+  # the exact per-frame sample count so the tracks stay frame-locked.
+  # ---------------------------------------------------------------------------
+  - name: SilenceGap
+    type: progressive
+    source: "{bundled}/exr/720x486/75_BARS.exr"
+    duration_frames: 8
+
+  # ---------------------------------------------------------------------------
+  # Section 4: periodic bounce sweep and a fixed square tone on another pair.
+  # ---------------------------------------------------------------------------
+  - name: PeriodicBounce
+    type: progressive
+    source: "{bundled}/exr/720x486/75_BARS.exr"
+    duration_frames: 8
+    audio:
+      channel_pairs:
+        - pair: 0
+          left:
+            waveform: sine
+            amplitude: 0.5
+            ramp: { start: 300.0, end: 3000.0, mode: bounce, period: 0.1 }
+        - pair: 1
+          left:  { waveform: square, frequency: 1000.0, amplitude: 0.6 }
+          right: { waveform: square, frequency: 1000.0, amplitude: 0.6 }

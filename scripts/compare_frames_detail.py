@@ -4,7 +4,7 @@
 import struct
 from pathlib import Path
 
-OUT = Path('/home/sdi/Coding/videosynth/tests/projects/output-stacking')
+OUT = Path('/home/sdi/Coding/videosynth/tests/stacking-output')
 
 # PAL 4FSC constants
 PAL_SAMPLES_PER_LINE = 1135

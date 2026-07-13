@@ -1,0 +1,89 @@
+# PAL Audio Example (Y/C output)
+#
+# Frame-locked synthetic multi-track audio. Each section declares an optional
+# `audio:` block containing a `channel_pairs:` list; each channel pair (0-7)
+# becomes a separate stereo WAV file `<basename>_audio_<pair>.wav` — note the
+# basename is derived by stripping the trailing ".y" suffix — sample-locked to
+# the stored video frames (PAL: 48000 Hz, 24-bit, 1920 samples/frame).
+#
+# This fixture exercises, across its four sections:
+#   - Multi-track output (several channel pairs)
+#   - Distinct left/right tones and a silent channel
+#   - A section-spanning ramp and a silence gap
+
+project:
+  name: PalAudio
+  version: "1.0"
+  description: PAL multi-track Y/C audio — channel pairs, distinct L/R, ramp, silence gap
+
+cvbs_presets:
+  video_standard_preset: PAL
+  sample_encoding_preset: CVBS_U10_4FSC
+  signal_state_preset: STANDARD_TBC_LOCKED
+
+output:
+  video_path: tests/general-yc-output/videosynth_pal_audio.y
+  signal_type: yc
+
+sections:
+
+  # ---------------------------------------------------------------------------
+  # Section 1: stereo pair, a distinct-L/R pair, and a left-only pair.
+  # ---------------------------------------------------------------------------
+  - name: StereoBars
+    type: progressive
+    source: "{bundled}/exr/720x576/75_BARS.exr"
+    duration_frames: 8
+    audio:
+      channel_pairs:
+        - pair: 0
+          description: Analogue stereo
+          left:  { waveform: sine, frequency: 1000.0, amplitude: 0.5 }
+          right: { waveform: sine, frequency: 1000.0, amplitude: 0.5 }
+        - pair: 1
+          description: Stereo test (L/R differ)
+          left:  { waveform: sine, frequency: 440.0, amplitude: 0.5 }
+          right: { waveform: sine, frequency: 880.0, amplitude: 0.5 }
+        - pair: 2
+          description: Commentary (left only)
+          left:  { waveform: square, frequency: 300.0, amplitude: 0.4 }
+          # right omitted -> silent
+
+  # ---------------------------------------------------------------------------
+  # Section 2: fixed square tone (stereo).
+  # ---------------------------------------------------------------------------
+  - name: FixedSquare
+    type: progressive
+    source: "{bundled}/exr/720x576/75_BARS.exr"
+    duration_frames: 8
+    audio:
+      channel_pairs:
+        - pair: 0
+          left:  { waveform: square, frequency: 440.0, amplitude: 0.7 }
+          right: { waveform: square, frequency: 440.0, amplitude: 0.7 }
+        - pair: 1
+          left:  { waveform: sine, frequency: 660.0, amplitude: 0.5 }
+
+  # ---------------------------------------------------------------------------
+  # Section 3: silence gap — no audio: block. Every pair file still advances by
+  # the exact per-frame sample count so the tracks stay frame-locked.
+  # ---------------------------------------------------------------------------
+  - name: SilenceGap
+    type: progressive
+    source: "{bundled}/exr/720x576/75_BARS.exr"
+    duration_frames: 8
+
+  # ---------------------------------------------------------------------------
+  # Section 4: section-spanning sawtooth sweep, 200 Hz -> 4000 Hz (mode: up).
+  # ---------------------------------------------------------------------------
+  - name: SweepUp
+    type: progressive
+    source: "{bundled}/exr/720x576/75_BARS.exr"
+    duration_frames: 8
+    audio:
+      channel_pairs:
+        - pair: 0
+          left:
+            waveform: sawtooth
+            amplitude: 0.5
+            ramp: { start: 200.0, end: 4000.0, mode: up }

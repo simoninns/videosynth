@@ -15,7 +15,7 @@ PN 9 is present in all 4 sources:
 import struct
 from pathlib import Path
 
-OUT = Path('/home/sdi/Coding/videosynth/tests/projects/output-stacking')
+OUT = Path('/home/sdi/Coding/videosynth/tests/stacking-output')
 
 # (label, path, frame_count, pn9_frame_index)
 PAL_SOURCES = [

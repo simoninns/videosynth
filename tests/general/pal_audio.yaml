@@ -1,0 +1,115 @@
+# PAL Audio Example (composite output)
+#
+# Frame-locked synthetic multi-track audio. Each section declares an optional
+# `audio:` block containing a `channel_pairs:` list. Each channel pair (0-7)
+# becomes a separate stereo WAV file `<basename>_audio_<pair>.wav`, sample-locked
+# to the stored video frames (PAL: 48000 Hz, 24-bit, 1920 samples/frame). Every
+# declared pair's file spans the whole output; a section that omits a pair emits
+# silence for its frames, and an omitted left/right channel is stored as all
+# zeros (SMPTE 272M §6.4).
+#
+# This fixture exercises, across its four sections:
+#   - Up to 8 channel pairs (multi-track CVBS)
+#   - Distinct left/right tones within a pair
+#   - A silent channel within a declared pair (left-only)
+#   - Per-pair descriptions
+#   - A silence gap (a section with no audio: block)
+#   - Section-spanning and periodic frequency ramps
+
+project:
+  name: PalAudio
+  version: "1.0"
+  description: PAL multi-track audio — 8 channel pairs, distinct L/R, silent channels, ramps
+
+cvbs_presets:
+  video_standard_preset: PAL
+  sample_encoding_preset: CVBS_U10_4FSC
+  signal_state_preset: STANDARD_TBC_LOCKED
+
+output:
+  video_path: tests/general-output/videosynth_pal_audio.composite
+
+sections:
+
+  # ---------------------------------------------------------------------------
+  # Section 1: a few pairs with distinct L/R and a left-only pair.
+  # ---------------------------------------------------------------------------
+  - name: StereoBars
+    type: progressive
+    source: "{bundled}/exr/720x576/75_BARS.exr"
+    duration_frames: 8
+    audio:
+      channel_pairs:
+        - pair: 0
+          description: Analogue stereo
+          left:  { waveform: sine, frequency: 1000.0, amplitude: 0.5 }
+          right: { waveform: sine, frequency: 1000.0, amplitude: 0.5 }
+        - pair: 1
+          description: Stereo test (L/R differ)
+          left:  { waveform: sine, frequency: 440.0, amplitude: 0.5 }
+          right: { waveform: sine, frequency: 880.0, amplitude: 0.5 }
+        - pair: 2
+          description: Commentary (left only)
+          left:  { waveform: square, frequency: 300.0, amplitude: 0.4 }
+          # right omitted -> silent
+
+  # ---------------------------------------------------------------------------
+  # Section 2: all eight channel pairs active (exercises max multi-track).
+  # ---------------------------------------------------------------------------
+  - name: EightPairs
+    type: progressive
+    source: "{bundled}/exr/720x576/75_BARS.exr"
+    duration_frames: 8
+    audio:
+      channel_pairs:
+        - pair: 0
+          left:  { waveform: sine, frequency: 500.0 }
+          right: { waveform: sine, frequency: 500.0 }
+        - pair: 1
+          left:  { waveform: square, frequency: 600.0 }
+          right: { waveform: square, frequency: 600.0 }
+        - pair: 2
+          left:  { waveform: sawtooth, frequency: 700.0 }
+          right: { waveform: sawtooth, frequency: 700.0 }
+        - pair: 3
+          left:  { waveform: triangle, frequency: 800.0 }
+          right: { waveform: triangle, frequency: 800.0 }
+        - pair: 4
+          left:  { waveform: sine, frequency: 900.0 }
+        - pair: 5
+          left:  { waveform: sine, frequency: 1000.0 }
+        - pair: 6
+          left:  { waveform: sine, frequency: 1100.0 }
+        - pair: 7
+          description: Aux
+          left:  { waveform: sine, frequency: 1200.0 }
+
+  # ---------------------------------------------------------------------------
+  # Section 3: silence gap — no audio: block. All eight pair files still advance
+  # by the exact per-frame sample count so they stay frame-locked.
+  # ---------------------------------------------------------------------------
+  - name: SilenceGap
+    type: progressive
+    source: "{bundled}/exr/720x576/75_BARS.exr"
+    duration_frames: 8
+
+  # ---------------------------------------------------------------------------
+  # Section 4: ramps — a section-spanning sawtooth sweep (left) and a periodic
+  # bounce (a different pair).
+  # ---------------------------------------------------------------------------
+  - name: Sweeps
+    type: progressive
+    source: "{bundled}/exr/720x576/75_BARS.exr"
+    duration_frames: 8
+    audio:
+      channel_pairs:
+        - pair: 0
+          left:
+            waveform: sawtooth
+            amplitude: 0.5
+            ramp: { start: 200.0, end: 4000.0, mode: up }
+        - pair: 3
+          left:
+            waveform: sine
+            amplitude: 0.5
+            ramp: { start: 300.0, end: 3000.0, mode: bounce, period: 0.1 }
