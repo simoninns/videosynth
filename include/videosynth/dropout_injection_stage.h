@@ -132,13 +132,14 @@ class DropoutInjectionStage {
   // file. No-op if Begin was not called or the sidecar was not created.
   void Abort();
 
+  // Derives the sidecar file path from the project metadata path. Public so
+  // front-ends can report the artefact path without duplicating the rule.
+  static std::string DeriveSidecarPath(const std::string& metadata_path);
+
  private:
   // Returns the index of section within project.sections, or 0.
   static std::size_t FindSectionIndex(const Project& project,
                                       const Section* section);
-
-  // Derives the sidecar file path from the project metadata path.
-  static std::string DeriveSidecarPath(const std::string& metadata_path);
 
   // Returns true if any section in project has at least one dropout type
   // with scale > 0.
