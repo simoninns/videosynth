@@ -12,7 +12,10 @@
 #include <QCloseEvent>
 #include <QMainWindow>
 #include <QModelIndex>
+#include <QStringList>
 
+#include "generation_controller.h"
+#include "log_message_model.h"
 #include "project_document.h"
 #include "project_settings_editor.h"
 #include "section_editor.h"
@@ -22,17 +25,21 @@
 #include "validation_controller.h"
 #include "validation_issues_model.h"
 
+class QAction;
 class QLabel;
 class QMenu;
+class QProgressBar;
 class QTabWidget;
 
 namespace videosynth::gui {
 
 // Main window shell: menu bar (File / Edit / Project / Generate / View /
-// Help), status bar, issues dock, sections dock, and the central authoring
-// tabs (project settings and per-section editors) over a ProjectDocument
-// with file lifecycle (New / Open / Save / Save As / Recent Files).
-// Generation and preview panes attach here in later phases.
+// Help), status bar, issues dock, sections dock, log dock, and the central
+// authoring tabs (project settings and per-section editors) over a
+// ProjectDocument with file lifecycle (New / Open / Save / Save As / Recent
+// Files). Generation runs in-process on a worker thread through
+// GenerationController with progress, logging, and cancellation. Preview
+// panes attach here in a later phase.
 //
 // Thread-safety: NOT thread-safe. GUI (main) thread only.
 class MainWindow : public QMainWindow {
@@ -62,12 +69,19 @@ class MainWindow : public QMainWindow {
   bool OnSave();
   bool OnSaveAs();
   void OnIssueActivated(const QModelIndex& index);
+  void OnPreferences();
+  void OnGenerate();
+  void OnGenerationFinished(GenerationController::RunStatus status);
 
  private:
   void BuildMenus();
   void BuildCentralEditors();
   void BuildSectionsDock();
   void BuildIssuesDock();
+  void BuildLogDock();
+  void BuildGenerationStatusWidgets();
+  void ConnectGenerationController();
+  void ShowGenerationSummary();
   void RestoreWindowGeometry();
 
   // Returns false when the user cancels an unsaved-changes prompt.
@@ -84,12 +98,20 @@ class MainWindow : public QMainWindow {
   ValidationController* validation_controller_;
   ValidationIssuesModel* issues_model_;
   SourceProbeController* probe_controller_;
+  GenerationController* generation_controller_;
+  LogMessageModel* log_model_;
   QMenu* recent_files_menu_ = nullptr;
   QLabel* validation_status_label_ = nullptr;
+  QProgressBar* generation_progress_bar_ = nullptr;
+  QAction* generate_action_ = nullptr;
+  QAction* cancel_generation_action_ = nullptr;
   QTabWidget* editor_tabs_ = nullptr;
   ProjectSettingsEditor* project_settings_editor_ = nullptr;
   SectionEditor* section_editor_ = nullptr;
   SectionListDock* section_list_dock_ = nullptr;
+  // Output artefacts of the most recently started run, for the completion
+  // summary dialog.
+  QStringList last_run_artefacts_;
 };
 
 }  // namespace videosynth::gui

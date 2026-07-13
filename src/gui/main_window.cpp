@@ -11,6 +11,8 @@
 
 #include <QAction>
 #include <QActionGroup>
+#include <QDesktopServices>
+#include <QDir>
 #include <QDockWidget>
 #include <QFileDialog>
 #include <QFileInfo>
@@ -22,15 +24,22 @@
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QPixmap>
+#include <QProgressBar>
+#include <QPushButton>
 #include <QScrollArea>
 #include <QSettings>
 #include <QStatusBar>
 #include <QStringList>
 #include <QTabWidget>
+#include <QUrl>
 #include <QVBoxLayout>
 
 #include "disc_skips_editor.h"
+#include "generation_preferences.h"
+#include "preferences_dialog.h"
 #include "project_templates.h"
+#include "videosynth/audio_wav_writer.h"
+#include "videosynth/dropout_injection_stage.h"
 #include "videosynth/yaml_project_emitter.h"
 #include "videosynth/yaml_project_parser.h"
 #include "videosynth_version.h"
@@ -47,6 +56,26 @@ QString ProjectFileFilter() {
   return MainWindow::tr("VideoSynth projects (*.yaml *.yml);;All files (*)");
 }
 
+// True when at least one section enables the given optional capability, so
+// the completion summary only lists artefacts the run actually produced.
+bool AnySectionEnablesAudio(const Project& project) {
+  for (const Section& section : project.sections) {
+    if (section.audio.enabled) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool AnySectionEnablesDropouts(const Project& project) {
+  for (const Section& section : project.sections) {
+    if (section.dropouts.random.enabled || section.dropouts.scratch.enabled) {
+      return true;
+    }
+  }
+  return false;
+}
+
 }  // namespace
 
 MainWindow::MainWindow(ThemeController* theme_controller, QWidget* parent)
@@ -55,16 +84,22 @@ MainWindow::MainWindow(ThemeController* theme_controller, QWidget* parent)
       document_(new ProjectDocument(this)),
       validation_controller_(new ValidationController({}, this)),
       issues_model_(new ValidationIssuesModel(this)),
-      probe_controller_(new SourceProbeController({}, this)) {
+      probe_controller_(new SourceProbeController({}, this)),
+      generation_controller_(new GenerationController({}, this)),
+      log_model_(
+          new LogMessageModel(LogMessageModel::kDefaultMaxEntries, this)) {
   setWindowIcon(QIcon(QStringLiteral(":/videosynth-gui/icon.png")));
 
   BuildMenus();
   BuildCentralEditors();
   BuildSectionsDock();
   BuildIssuesDock();
+  BuildLogDock();
   statusBar()->showMessage(tr("Ready"));
+  BuildGenerationStatusWidgets();
   validation_status_label_ = new QLabel(this);
   statusBar()->addPermanentWidget(validation_status_label_);
+  ConnectGenerationController();
 
   connect(document_, &ProjectDocument::DocumentChanged, this, [this] {
     validation_controller_->RequestValidation(document_->project());
@@ -84,8 +119,12 @@ MainWindow::MainWindow(ThemeController* theme_controller, QWidget* parent)
             UpdateValidationStatus();
           });
   issues_model_->SetDarkTheme(theme_controller_->is_dark());
+  log_model_->SetDarkTheme(theme_controller_->is_dark());
   connect(theme_controller_, &ThemeController::ThemeChanged, this,
-          [this](bool is_dark) { issues_model_->SetDarkTheme(is_dark); });
+          [this](bool is_dark) {
+            issues_model_->SetDarkTheme(is_dark);
+            log_model_->SetDarkTheme(is_dark);
+          });
 
   // Start from the template so the editors show a valid project instead of
   // an empty document (matches File > New; not marked modified).
@@ -97,6 +136,20 @@ MainWindow::MainWindow(ThemeController* theme_controller, QWidget* parent)
 }
 
 void MainWindow::closeEvent(QCloseEvent* event) {
+  if (generation_controller_->is_running()) {
+    const QMessageBox::StandardButton choice = QMessageBox::question(
+        this, tr("Generation In Progress"),
+        tr("A generation run is in progress.\nCancel it and quit?"),
+        QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+    if (choice != QMessageBox::Yes) {
+      event->ignore();
+      return;
+    }
+    // The controller destructor joins the worker; the pipeline stops at its
+    // next cancellation check and removes in-progress output files.
+    generation_controller_->RequestCancellation();
+  }
+
   if (!MaybeSave()) {
     event->ignore();
     return;
@@ -130,6 +183,9 @@ void MainWindow::BuildMenus() {
       ->setEnabled(false);
   edit_menu->addAction(tr("&Redo"), QKeySequence::Redo, this, [] {})
       ->setEnabled(false);
+  edit_menu->addSeparator();
+  edit_menu->addAction(tr("&Preferences…"), QKeySequence::Preferences, this,
+                       &MainWindow::OnPreferences);
 
   QMenu* project_menu = menuBar()->addMenu(tr("&Project"));
   project_menu->addAction(tr("&Validate"), this, [this] {
@@ -137,8 +193,18 @@ void MainWindow::BuildMenus() {
   });
 
   QMenu* generate_menu = menuBar()->addMenu(tr("&Generate"));
-  generate_menu->addAction(tr("&Generate"), this, [] {})->setEnabled(false);
-  generate_menu->addAction(tr("&Cancel"), this, [] {})->setEnabled(false);
+  generate_menu->addAction(tr("&Validate"), this, [this] {
+    validation_controller_->RequestValidation(document_->project());
+  });
+  generate_action_ = generate_menu->addAction(
+      tr("&Generate"), QKeySequence(Qt::CTRL | Qt::Key_G), this,
+      &MainWindow::OnGenerate);
+  cancel_generation_action_ =
+      generate_menu->addAction(tr("&Cancel Generation"), this, [this] {
+        generation_controller_->RequestCancellation();
+        statusBar()->showMessage(tr("Cancelling generation…"));
+      });
+  cancel_generation_action_->setEnabled(false);
 
   QMenu* view_menu = menuBar()->addMenu(tr("&View"));
   QMenu* theme_menu = view_menu->addMenu(tr("&Theme"));
@@ -228,6 +294,174 @@ void MainWindow::BuildIssuesDock() {
 
   dock->setWidget(view);
   addDockWidget(Qt::BottomDockWidgetArea, dock);
+}
+
+void MainWindow::BuildLogDock() {
+  auto* dock = new QDockWidget(tr("Log"), this);
+  dock->setObjectName(QStringLiteral("log_dock"));
+
+  auto* view = new QListView(dock);
+  view->setModel(log_model_);
+  view->setEditTriggers(QAbstractItemView::NoEditTriggers);
+  view->setSelectionMode(QAbstractItemView::ExtendedSelection);
+  view->setUniformItemSizes(true);
+
+  // Follow the newest message while the run is producing output.
+  connect(log_model_, &QAbstractItemModel::rowsInserted, view,
+          [view] { view->scrollToBottom(); });
+
+  dock->setWidget(view);
+  addDockWidget(Qt::BottomDockWidgetArea, dock);
+}
+
+void MainWindow::BuildGenerationStatusWidgets() {
+  generation_progress_bar_ = new QProgressBar(this);
+  generation_progress_bar_->setVisible(false);
+  generation_progress_bar_->setMaximumWidth(300);
+  generation_progress_bar_->setFormat(tr("%v / %m frames"));
+  statusBar()->addPermanentWidget(generation_progress_bar_);
+}
+
+void MainWindow::ConnectGenerationController() {
+  connect(generation_controller_, &GenerationController::RunStarted, this,
+          [this] {
+            generate_action_->setEnabled(false);
+            cancel_generation_action_->setEnabled(true);
+            // Busy indicator until the first frame progress arrives.
+            generation_progress_bar_->setRange(0, 0);
+            generation_progress_bar_->setVisible(true);
+            statusBar()->showMessage(tr("Generating…"));
+          });
+  connect(
+      generation_controller_, &GenerationController::StageStarted, this,
+      [this](const QString& stage_name) {
+        statusBar()->showMessage(tr("Generation stage: %1").arg(stage_name));
+      });
+  connect(
+      generation_controller_, &GenerationController::FrameProgress, this,
+      [this](qulonglong frames_completed, qulonglong frames_total) {
+        generation_progress_bar_->setRange(0, static_cast<int>(frames_total));
+        generation_progress_bar_->setValue(static_cast<int>(frames_completed));
+      });
+  connect(generation_controller_, &GenerationController::LogMessageReceived,
+          this, [this](int severity, const QString& message) {
+            log_model_->Append(static_cast<LogSeverity>(severity), message);
+          });
+  connect(generation_controller_, &GenerationController::RunFinished, this,
+          &MainWindow::OnGenerationFinished);
+}
+
+void MainWindow::OnPreferences() {
+  QSettings settings;
+  PreferencesDialog dialog(LoadGenerationPreferences(settings), this);
+  if (dialog.exec() == QDialog::Accepted) {
+    const GenerationPreferences preferences = dialog.preferences();
+    SaveGenerationPreferences(preferences, &settings);
+    statusBar()->showMessage(tr("Preferences saved"), 3000);
+  }
+}
+
+void MainWindow::OnGenerate() {
+  if (generation_controller_->is_running()) {
+    return;
+  }
+
+  if (document_->is_modified()) {
+    QMessageBox prompt(this);
+    prompt.setWindowTitle(tr("Unsaved Changes"));
+    prompt.setText(tr("The project \"%1\" has unsaved changes.")
+                       .arg(document_->display_name()));
+    prompt.setInformativeText(
+        tr("Save before generating, or generate from the current in-memory "
+           "project?"));
+    QPushButton* save_button =
+        prompt.addButton(tr("Save and Generate"), QMessageBox::AcceptRole);
+    prompt.addButton(tr("Generate Without Saving"), QMessageBox::ActionRole);
+    QPushButton* cancel_button = prompt.addButton(QMessageBox::Cancel);
+    prompt.setDefaultButton(save_button);
+    prompt.exec();
+    if (prompt.clickedButton() == cancel_button) {
+      return;
+    }
+    if (prompt.clickedButton() == save_button && !OnSave()) {
+      return;
+    }
+  }
+
+  // Relative paths in the project are anchored to the project file's
+  // directory (or the working directory for never-saved projects) because
+  // the run executes on a worker thread.
+  const QString base_dir =
+      document_->file_path().isEmpty()
+          ? QDir::currentPath()
+          : QFileInfo(document_->file_path()).absolutePath();
+  const Project project =
+      ResolveProjectPaths(document_->project(), base_dir.toStdString());
+
+  last_run_artefacts_.clear();
+  last_run_artefacts_.append(QString::fromStdString(project.output.video_path));
+  last_run_artefacts_.append(
+      QString::fromStdString(project.output.metadata_path));
+  if (AnySectionEnablesAudio(project)) {
+    last_run_artefacts_.append(QString::fromStdString(
+        AudioWavWriter::DeriveAudioPath(project.output.video_path)));
+  }
+  if (AnySectionEnablesDropouts(project)) {
+    last_run_artefacts_.append(
+        QString::fromStdString(DropoutInjectionStage::DeriveSidecarPath(
+            project.output.metadata_path)));
+  }
+
+  const QSettings settings;
+  const RunOptions options =
+      MakeRunOptions(LoadGenerationPreferences(settings));
+  log_model_->Clear();
+  generation_controller_->StartGeneration(project, options);
+}
+
+void MainWindow::OnGenerationFinished(GenerationController::RunStatus status) {
+  generate_action_->setEnabled(true);
+  cancel_generation_action_->setEnabled(false);
+  generation_progress_bar_->setVisible(false);
+
+  switch (status) {
+    case GenerationController::RunStatus::kSucceeded:
+      statusBar()->showMessage(tr("Generation completed"), 5000);
+      ShowGenerationSummary();
+      break;
+    case GenerationController::RunStatus::kCancelled:
+      statusBar()->showMessage(tr("Generation cancelled"), 5000);
+      break;
+    case GenerationController::RunStatus::kFailed:
+      statusBar()->showMessage(tr("Generation failed"), 5000);
+      QMessageBox::critical(
+          this, tr("Generation Failed"),
+          tr("The generation run failed. See the Log panel for details."));
+      break;
+  }
+}
+
+void MainWindow::ShowGenerationSummary() {
+  QMessageBox summary(this);
+  summary.setWindowTitle(tr("Generation Complete"));
+  summary.setIcon(QMessageBox::Information);
+
+  summary.setText(tr("Generation completed successfully."));
+  summary.setInformativeText(
+      tr("Output files:\n%1").arg(last_run_artefacts_.join(QLatin1Char('\n'))));
+
+  QPushButton* open_folder_button =
+      summary.addButton(tr("Open Containing Folder"), QMessageBox::ActionRole);
+  summary.addButton(QMessageBox::Ok);
+  summary.setDefaultButton(QMessageBox::Ok);
+  summary.exec();
+
+  if (summary.clickedButton() == open_folder_button &&
+      !last_run_artefacts_.isEmpty()) {
+    const QString folder =
+        QFileInfo(last_run_artefacts_.first()).absolutePath();
+    QDesktopServices::openUrl(QUrl::fromLocalFile(folder));
+  }
 }
 
 void MainWindow::RestoreWindowGeometry() {

@@ -128,12 +128,22 @@ if(VIDEOSYNTH_BUILD_GUI)
         src/gui/disc_skips_editor.h
         src/gui/disc_skips_model.cpp
         src/gui/disc_skips_model.h
+        src/gui/forwarding_logger.cpp
+        src/gui/forwarding_logger.h
+        src/gui/generation_controller.cpp
+        src/gui/generation_controller.h
+        src/gui/generation_preferences.cpp
+        src/gui/generation_preferences.h
         src/gui/line_injection_presenter.cpp
         src/gui/line_injection_presenter.h
         src/gui/line_injections_editor.cpp
         src/gui/line_injections_editor.h
+        src/gui/log_message_model.cpp
+        src/gui/log_message_model.h
         src/gui/main_window.cpp
         src/gui/main_window.h
+        src/gui/preferences_dialog.cpp
+        src/gui/preferences_dialog.h
         src/gui/project_document.cpp
         src/gui/project_document.h
         src/gui/project_settings_editor.cpp
@@ -274,7 +284,11 @@ if(VIDEOSYNTH_BUILD_GUI)
     add_executable(videosynth_gui_tests
         tests/gui/gui_test_main.cpp
         tests/gui/test_disc_skips_model.cpp
+        tests/gui/test_generation_controller.cpp
+        tests/gui/test_generation_parity.cpp
+        tests/gui/test_generation_preferences.cpp
         tests/gui/test_line_injection_presenter.cpp
+        tests/gui/test_log_message_model.cpp
         tests/gui/test_project_document.cpp
         tests/gui/test_project_file_lifecycle.cpp
         tests/gui/test_project_settings_presenter.cpp
@@ -311,6 +325,8 @@ set(videosynth_functional_test_patterns
     "^ProjectFixturesTest\\."
     "^ComplianceHarnessTest\\."
     "^DeterministicOutputTest\\."
+    "^GenerationParityTest\\."
+    "^GenerationPreferencesSettingsTest\\."
     "^GenerationStageTest\\."
     "^GenerationStageTimingTest\\."
     "^GenerationStageChromaTest\\."
@@ -345,6 +361,10 @@ set(videosynth_unit_test_patterns
     "^BiphaseInjectionManagerNtscCavTest\\."
     "^BiphaseInjectionManagerNtscClvTest\\."
     "^ChromaEncoderTest\\."
+    "^ForwardingLoggerTest\\."
+    "^GenerationControllerTest\\."
+    "^GenerationPreferencesTest\\."
+    "^LogMessageModelTest\\."
     "^PipelineTest\\."
     "^ProjectDocumentTest\\."
     "^ProjectSettingsPresenterTest\\."
