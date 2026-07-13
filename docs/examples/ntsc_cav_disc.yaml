@@ -1,29 +1,28 @@
-# NTSC CAV LaserDisc Example
+# NTSC CAV LaserDisc — comprehensive demonstration
 #
-# A complete NTSC CAV disc master with lead-in, two programme chapters,
-# and lead-out. Demonstrates:
-#   - 24-bit biphase codes (picture_number, chapter_number, programme_status)
-#   - 40-bit FM codes (fm_picture_number, fm_white_flag) — mandatory on NTSC CAV
-#   - VIRS signal on lines 19/282 — mandatory per IEC 60857 §9.1.3
-#   - users_code in lead-in and lead-out
+# A complete, runnable NTSC CAV disc master. NTSC laserdisc requires both the
+# 24-bit biphase codes AND the 40-bit FM codes in every section, plus a VIRS
+# colour reference on lines 19/282 (IEC 60857 §9.1.3). On top of the disc codes
+# this demo layers OSD, noise, dropouts and audio:
+#   - 24-bit biphase: picture_number, chapter_number, programme_status,
+#     users_code
+#   - 40-bit FM: fm_picture_number (lines 10/273), fm_white_flag (lines 11/274)
+#   - virs VITS on every section (mandatory on NTSC laserdisc)
+#   - OSD label + per-frame tokens, source noise, random/scratch dropouts,
+#     frame-locked audio
 #
-# NTSC-specific rules:
-#   - Both 24-bit biphase AND 40-bit FM codes must be present in every section
-#   - fm_white_flag is required in lead-in, programme area, and lead-out
-#   - virs VITS injection is mandatory on all NTSC laserdisc sections
-#   - picture_number maximum: 79,999 (IEC 60857 Amendment 2)
-#   - fm_picture_number maximum: 79,999
-#
-# VITS types ntc7-composite, fcc-multiburst, ntc7-combination, fcc-composite
-# are incompatible with NTSC laserdisc (they target the biphase reserved range
-# lines 10-18 and 273-281) and will be rejected by the validator.
+# NTSC-specific rules enforced by the validator:
+#   - Both biphase and FM codes must be present in every laserdisc section
+#   - virs is mandatory; ntc7/fcc VITS types are rejected (they target the
+#     biphase reserved VBI lines 10-18 / 273-281)
+#   - ntsc_laserdisc_vbi_burst is not yet implemented and must stay disabled
 #
 # See docs/user/biphase-design.md for full documentation.
 
 project:
-  name: NtscCavExample
+  name: NtscCavShowcase
   version: "1.0"
-  description: NTSC CAV LaserDisc example — 2 programme chapters
+  description: NTSC CAV LaserDisc showcase — biphase + FM codes, VIRS, OSD, noise, dropouts, audio
 
 cvbs_presets:
   video_standard_preset: NTSC
@@ -31,75 +30,78 @@ cvbs_presets:
   signal_state_preset: STANDARD_TBC_LOCKED
 
 output:
-  video_path: output/ntsc_cav_example.composite
-  metadata_path: output/ntsc_cav_example.meta
+  video_path: "{project}/output/ntsc_cav_showcase.composite"
 
 sections:
 
-  # ---------------------------------------------------------------------------
-  # Lead-in: minimum 938 frames (>= 1.5 mm)
-  # NTSC: fm_white_flag appears on line 11 only during lead-in (not line 274)
-  # ---------------------------------------------------------------------------
   - name: LeadIn
     type: progressive
-    source: assets/bars_ntsc.exr
-    duration_frames: 938
+    source: "{bundled}/exr/720x486/75_BARS.exr"
+    duration_frames: 8
     section_type: lead_in
     line_injections:
       - type: laserdisc
         disc_type: CAV
         codes:
           - code_type: lead_in
-          - code_type: fm_white_flag         # NTSC: line 11 only during lead-in
+          - code_type: fm_white_flag
           - code_type: users_code
-            users_code: "0x80D000"           # X₁=0 (valid range: 0-7)
-      - type: vits                           # IEC 60857 §9.1.3: mandatory colour reference
-        target_lines: [19, 282]
+            users_code: "0x80D234"
+      - type: vits
         vits_type: virs
+        target_lines: [19, 282]
 
-  # ---------------------------------------------------------------------------
-  # Chapter 0: pictures 1-500 (500 frames)
-  # 24-bit biphase: picture_number, chapter_number, programme_status
-  # 40-bit FM: fm_picture_number (lines 10/273), fm_white_flag (lines 11/274)
-  # First chapter after lead-in: stop-bit always 1 per IEC §10.1.5
-  # ---------------------------------------------------------------------------
-  - name: Chapter0
+  - name: Chapter0Bars
     type: progressive
-    source: assets/chapter0_ntsc.mkv
-    duration_frames: 500
+    source: "{bundled}/exr/720x486/75_BARS.exr"
+    duration_frames: 8
     section_type: programme_area
     line_injections:
       - type: laserdisc
         disc_type: CAV
         codes:
-          # 24-bit biphase codes
           - code_type: picture_number
             start_value: 1
           - code_type: chapter_number
             chapter: 0
+          - code_type: picture_stop
           - code_type: programme_status
-            programme_status: "0x8DC001"    # CX on, stereo, copy prohibited
-          # 40-bit FM codes (NTSC only)
-          - code_type: fm_picture_number    # Mirrors picture_number on lines 10/273
-          - code_type: fm_white_flag        # 100 IRE on line 11 or 274
+            programme_status: "0x8DC001"
+          - code_type: fm_picture_number
+          - code_type: fm_white_flag
       - type: vits
-        target_lines: [19, 282]
         vits_type: virs
+        target_lines: [19, 282]
+    osd:
+      overlays:
+        - text: "NTSC CAV Chapter0"
+          x: 8
+          y: 8
+          scale: 2
+          fg_luma: 1.0
+          bg_luma: 0.0
+        - text: "PN:{picture_number} PHASE:{phase_id}"
+          x: 8
+          y: 28
+          scale: 1
+          fg_luma: 1.0
+          bg_luma: 0.0
+    audio:
+      waveform: sine
+      frequency: 1000.0
+      amplitude: 0.5
 
-  # ---------------------------------------------------------------------------
-  # Chapter 1: pictures 501-1000 (500 frames)
-  # ---------------------------------------------------------------------------
-  - name: Chapter1
+  - name: Chapter1Motion
     type: progressive
-    source: assets/chapter1_ntsc.mkv
-    duration_frames: 500
+    source: "{bundled}/mkv/720x486/MOVING_ZONE_2H.mkv"
+    duration_frames: 8
     section_type: programme_area
     line_injections:
       - type: laserdisc
         disc_type: CAV
         codes:
           - code_type: picture_number
-            start_value: 501              # Continues from chapter 0
+            start_value: 9
           - code_type: chapter_number
             chapter: 1
           - code_type: programme_status
@@ -107,26 +109,52 @@ sections:
           - code_type: fm_picture_number
           - code_type: fm_white_flag
       - type: vits
-        target_lines: [19, 282]
         vits_type: virs
+        target_lines: [19, 282]
+    noise:
+      noise_db: 43.0
+      noise_spread_db: 4.0
+    dropouts:
+      random:
+        scale: 8
 
-  # ---------------------------------------------------------------------------
-  # Lead-out: minimum 1250 frames (>= 2.0 mm)
-  # NTSC: fm_white_flag appears on both lines 11 AND 274 during lead-out
-  # ---------------------------------------------------------------------------
+  - name: Chapter2Ramps
+    type: progressive
+    source: "{bundled}/exr/720x486/Y_CB_CR_RAMPS.exr"
+    duration_frames: 8
+    section_type: programme_area
+    line_injections:
+      - type: laserdisc
+        disc_type: CAV
+        codes:
+          - code_type: picture_number
+            start_value: 17
+          - code_type: chapter_number
+            chapter: 2
+          - code_type: programme_status
+            programme_status: "0x8DC001"
+          - code_type: fm_picture_number
+          - code_type: fm_white_flag
+      - type: vits
+        vits_type: virs
+        target_lines: [19, 282]
+    dropouts:
+      scratch:
+        scale: 4
+
   - name: LeadOut
     type: progressive
-    source: assets/bars_ntsc.exr
-    duration_frames: 1250
+    source: "{bundled}/exr/720x486/75_BARS.exr"
+    duration_frames: 8
     section_type: lead_out
     line_injections:
       - type: laserdisc
         disc_type: CAV
         codes:
           - code_type: lead_out
-          - code_type: fm_white_flag         # NTSC: lines 11 AND 274 during lead-out
+          - code_type: fm_white_flag
           - code_type: users_code
-            users_code: "0x80D000"
+            users_code: "0x87D000"
       - type: vits
-        target_lines: [19, 282]
         vits_type: virs
+        target_lines: [19, 282]

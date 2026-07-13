@@ -32,7 +32,6 @@ cvbs_presets:
 
 output:
   video_path: tests/projects/output-stacking/composite/videosynth_pal_m_skip_B.composite
-  metadata_path: tests/projects/output-stacking/composite/videosynth_pal_m_skip_B.meta
 
 sections:
 

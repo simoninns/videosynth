@@ -27,7 +27,6 @@ cvbs_presets:
 
 output:
   video_path: tests/projects/output-stacking/yc/videosynth_ntsc_discsim_B_clean.y
-  metadata_path: tests/projects/output-stacking/yc/videosynth_ntsc_discsim_B_clean.meta
   signal_type: yc
 
 sections:

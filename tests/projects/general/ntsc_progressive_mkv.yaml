@@ -10,7 +10,6 @@ cvbs_presets:
 
 output:
   video_path: tests/projects/output-general/composite/videosynth_ntsc_progressive_mkv.composite
-  metadata_path: tests/projects/output-general/composite/videosynth_ntsc_progressive_mkv.meta
 
 sections:
   - name: NtscMkvMovingZone

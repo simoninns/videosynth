@@ -130,20 +130,29 @@ void ProjectSettingsEditor::BuildUi() {
   video_row->addWidget(video_path_edit_);
   video_row->addWidget(browse_button);
 
+  // The metadata path is not independently settable: metadata, audio, and any
+  // sidecar files are always written to the same folder as the video output,
+  // sharing its base name. Show the derived path read-only for reference.
   metadata_path_edit_ = new QLineEdit(output_group);
-  auto* derive_button = new QPushButton(tr("Derive"), output_group);
-  derive_button->setToolTip(tr("Derive the metadata path from the video path"));
-  auto* metadata_row = new QHBoxLayout();
-  metadata_row->addWidget(metadata_path_edit_);
-  metadata_row->addWidget(derive_button);
+  metadata_path_edit_->setReadOnly(true);
+  metadata_path_edit_->setToolTip(
+      tr("Derived automatically from the video path — all outputs share the "
+         "video's folder and base name."));
 
   video_path_hint_ = new QLabel(output_group);
   video_path_hint_->setWordWrap(true);
 
+  outputs_note_ = new QLabel(
+      tr("Metadata (.meta), audio (.wav), and sidecar files are written to the "
+         "same folder as the video output, sharing its base name."),
+      output_group);
+  outputs_note_->setWordWrap(true);
+
   output_form->addRow(tr("Signal type:"), signal_type_combo_);
   output_form->addRow(tr("Video path:"), video_row);
   output_form->addRow(QString(), video_path_hint_);
-  output_form->addRow(tr("Metadata path:"), metadata_row);
+  output_form->addRow(tr("Metadata path:"), metadata_path_edit_);
+  output_form->addRow(QString(), outputs_note_);
   layout->addWidget(output_group);
 
   layout->addStretch();
@@ -152,12 +161,8 @@ void ProjectSettingsEditor::BuildUi() {
           &ProjectSettingsEditor::OnSignalTypeChanged);
   connect(video_path_edit_, &QLineEdit::editingFinished, this,
           &ProjectSettingsEditor::CommitOutputTargets);
-  connect(metadata_path_edit_, &QLineEdit::editingFinished, this,
-          &ProjectSettingsEditor::CommitOutputTargets);
   connect(browse_button, &QPushButton::clicked, this,
           &ProjectSettingsEditor::OnBrowseVideoPath);
-  connect(derive_button, &QPushButton::clicked, this,
-          &ProjectSettingsEditor::OnDeriveMetadataPath);
 }
 
 void ProjectSettingsEditor::LoadFromDocument() {
@@ -289,10 +294,9 @@ void ProjectSettingsEditor::CommitOutputTargets() {
   output.signal_type = signal_type_combo_->currentText().toStdString();
   output.video_path = EnforceSignalTypeVideoPath(
       video_path_edit_->text().toStdString(), output.signal_type);
-  output.metadata_path = metadata_path_edit_->text().toStdString();
-  if (output.metadata_path.empty()) {
-    output.metadata_path = DeriveMetadataPath(output.video_path);
-  }
+  // All outputs are co-located with the video; the metadata path is always
+  // derived from it rather than set independently.
+  output.metadata_path = DeriveMetadataPath(output.video_path);
 
   committing_ = true;
   document_->SetOutputTargets(output);
@@ -315,12 +319,6 @@ void ProjectSettingsEditor::OnBrowseVideoPath() {
     return;
   }
   video_path_edit_->setText(path);
-  CommitOutputTargets();
-}
-
-void ProjectSettingsEditor::OnDeriveMetadataPath() {
-  metadata_path_edit_->setText(QString::fromStdString(
-      DeriveMetadataPath(video_path_edit_->text().toStdString())));
   CommitOutputTargets();
 }
 

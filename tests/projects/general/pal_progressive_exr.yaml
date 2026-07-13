@@ -10,7 +10,6 @@ cvbs_presets:
 
 output:
   video_path: tests/projects/output-general/composite/videosynth_pal_progressive_exr.composite
-  metadata_path: tests/projects/output-general/composite/videosynth_pal_progressive_exr.meta
 
 sections:
   - name: PalExr100Bars

@@ -52,7 +52,6 @@ class ProjectSettingsEditor : public QWidget {
   void OnStandardChanged();
   void OnSignalTypeChanged();
   void OnBrowseVideoPath();
-  void OnDeriveMetadataPath();
 
   ProjectDocument* document_;
   bool updating_ = false;
@@ -75,6 +74,7 @@ class ProjectSettingsEditor : public QWidget {
   QLineEdit* video_path_edit_ = nullptr;
   QLineEdit* metadata_path_edit_ = nullptr;
   QLabel* video_path_hint_ = nullptr;
+  QLabel* outputs_note_ = nullptr;
 };
 
 }  // namespace videosynth::gui

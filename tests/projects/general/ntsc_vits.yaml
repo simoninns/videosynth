@@ -10,7 +10,6 @@ cvbs_presets:
 
 output:
   video_path: tests/projects/output-general/composite/videosynth_ntsc_vits.composite
-  metadata_path: tests/projects/output-general/composite/videosynth_ntsc_vits.meta
 
 sections:
   - name: NtscVits

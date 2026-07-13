@@ -147,11 +147,29 @@
 - Do **not** modify `flake.nix` or `default.nix` solely for temporary dependencies.
 - Always provide the Nix-based equivalent alongside plain shell commands.
 
+## 7. Post-Session Nix Cleanup
+After completing a development session or task, perform the following steps to clean up the Nix store:
+
+1. **Garbage Collection**:
+   Run `nix-collect-garbage -d` to remove unreachable store paths.
+   - `-d`: Deletes unreachable paths (not just listing them).
+
+2. **Optimize Store**:
+   Run `nix-store --optimise` to deduplicate and compress store paths.
+
+3. **Optional: Limit Generations**:
+   If the agent has access to `nix-env` or `nix profile`, run `nix-env --delete-generations old`
+
+## 8. Pre-Session Nix Setup
+Before starting a session:
+- Check available disk space using `df -h /nix/store`.
+- If space is critically low (< 10% free), run the cleanup steps above immediately.
+
 ---
 
-## 7. Documentation & Specifications
+## 9. Documentation & Specifications
 
-### 7.1 Authoritative Sources
+### 9.1 Authoritative Sources
 - **CVBS file format**:
   - Start: `docs/cvbs-file-format-specification/README.md`
   - Full: `docs/cvbs-file-format-specification/docs/index.md`
@@ -160,7 +178,7 @@
   - Full: `docs/analogue-video-specifications/docs/index.md`
 - **Rule**: if code conflicts with assumptions, align code **and** tests to the spec first.
 
-### 7.2 High-Level Design (HLD) Consistency
+### 9.2 High-Level Design (HLD) Consistency
 - `docs/design/high-level-design.md` is a **living document** and must stay aligned with implemented behaviour.
 - The same requirement applies to all design sub-specifications linked from the HLD.
 - When changing code that affects HLD-described behaviour, **update the HLD in the same task** whenever practical.
@@ -171,7 +189,7 @@
 
 ---
 
-## 8. Implementation Planning
+## 10. Implementation Planning
 
 - Structure plan documents as **phased** tasks for agentic coding.
 - Requirements:
@@ -186,7 +204,7 @@
 
 ---
 
-## 9. Communication Style
+## 11. Communication Style
 
 - Be concise; prefer bullet lists and fenced code blocks over prose.
 - Explain non-obvious choices or trade-offs in one short sentence.
@@ -195,7 +213,7 @@
 
 ---
 
-## 10. Clarification Triggers
+## 12. Clarification Triggers
 
 Ask the user when:
 - Requirements are ambiguous or contradictory.

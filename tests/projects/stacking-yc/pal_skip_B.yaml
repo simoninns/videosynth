@@ -33,7 +33,6 @@ cvbs_presets:
 
 output:
   video_path: tests/projects/output-stacking/yc/videosynth_pal_skip_B.y
-  metadata_path: tests/projects/output-stacking/yc/videosynth_pal_skip_B.meta
   signal_type: yc
 
 sections:

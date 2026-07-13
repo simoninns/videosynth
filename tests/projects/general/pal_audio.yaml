@@ -24,7 +24,6 @@ cvbs_presets:
 
 output:
   video_path: tests/projects/output-general/composite/videosynth_pal_audio.composite
-  metadata_path: tests/projects/output-general/composite/videosynth_pal_audio.meta
 
 sections:
 

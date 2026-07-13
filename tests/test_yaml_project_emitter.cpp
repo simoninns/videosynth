@@ -52,7 +52,6 @@ cvbs_presets:
   video_standard_preset: PAL
 output:
   video_path: out/video.composite
-  metadata_path: out/metadata.meta
 sections:
   - name: Bars
     type: progressive
@@ -87,7 +86,6 @@ cvbs_presets:
   video_standard_preset: PAL
 output:
   video_path: out/video.composite
-  metadata_path: out/metadata.meta
 sections:
   - name: Bars
     type: progressive
@@ -129,7 +127,6 @@ cvbs_presets:
   video_standard_preset: PAL
 output:
   video_path: out/video.composite
-  metadata_path: out/metadata.meta
 sections:
   - name: Bars
     type: progressive
@@ -147,7 +144,6 @@ cvbs_presets:
   ntsc_black_setup_ire: 0.0
 output:
   video_path: out/video.composite
-  metadata_path: out/metadata.meta
 sections:
   - name: Bars
     type: progressive
@@ -164,7 +160,6 @@ cvbs_presets:
   pal_laserdisc_pilot_burst: true
 output:
   video_path: out/video.composite
-  metadata_path: out/metadata.meta
 sections:
   - name: Bars
     type: progressive
@@ -179,7 +174,6 @@ cvbs_presets:
   video_standard_preset: PAL
 output:
   video_path: out/video.y
-  metadata_path: out/metadata.meta
   signal_type: yc
 sections:
   - name: Bars
@@ -195,7 +189,6 @@ cvbs_presets:
   video_standard_preset: PAL
 output:
   video_path: out/video.composite
-  metadata_path: out/metadata.meta
 sections:
   - name: WholeSource
     type: progressive
@@ -211,7 +204,6 @@ cvbs_presets:
   video_standard_preset: PAL
 output:
   video_path: out/video.composite
-  metadata_path: out/metadata.meta
 sections:
   - name: Vits
     type: progressive
@@ -230,7 +222,6 @@ cvbs_presets:
   video_standard_preset: PAL
 output:
   video_path: out/video.composite
-  metadata_path: out/metadata.meta
 sections:
   - name: Chapter0
     type: progressive
@@ -259,7 +250,6 @@ cvbs_presets:
   video_standard_preset: PAL
 output:
   video_path: out/video.composite
-  metadata_path: out/metadata.meta
 sections:
   - name: LeadIn
     type: progressive
@@ -285,7 +275,6 @@ cvbs_presets:
   video_standard_preset: PAL
 output:
   video_path: out/video.composite
-  metadata_path: out/metadata.meta
 sections:
   - name: Noisy
     type: progressive
@@ -310,7 +299,6 @@ cvbs_presets:
   video_standard_preset: PAL
 output:
   video_path: out/video.composite
-  metadata_path: out/metadata.meta
 sections:
   - name: Damaged
     type: progressive
@@ -339,7 +327,6 @@ cvbs_presets:
   video_standard_preset: PAL
 output:
   video_path: out/video.composite
-  metadata_path: out/metadata.meta
 sections:
   - name: Osd
     type: progressive
@@ -363,7 +350,6 @@ cvbs_presets:
   video_standard_preset: PAL
 output:
   video_path: out/video.composite
-  metadata_path: out/metadata.meta
 sections:
   - name: FixedTone
     type: progressive
@@ -399,7 +385,6 @@ cvbs_presets:
   video_standard_preset: PAL
 output:
   video_path: out/video.composite
-  metadata_path: out/metadata.meta
 sections:
   - name: Bars
     type: progressive
@@ -426,7 +411,6 @@ cvbs_presets:
   signal_state_preset: STANDARD_TBC_LOCKED
 output:
   video_path: out/video.composite
-  metadata_path: out/metadata.meta
 sections:
   - name: Bars
     type: progressive

@@ -15,6 +15,7 @@
 #include <set>
 
 #include "videosynth/biphase_types.h"
+#include "videosynth/path_resolution.h"
 
 namespace videosynth {
 
@@ -284,16 +285,17 @@ ParseResult ParseYamlNode(const YAML::Node& root, ILogger* logger) {
     }
 
     const YAML::Node output = root["output"];
-    const std::set<std::string> output_keys = {"video_path", "metadata_path",
-                                               "signal_type"};
+    const std::set<std::string> output_keys = {"video_path", "signal_type"};
     ValidateAllowedKeys(output, output_keys, "output", &result.errors);
     if (!result.errors.empty()) {
       return result;
     }
 
     result.project.output.video_path = output["video_path"].as<std::string>("");
+    // The metadata sidecar is always colocated with the video output and is
+    // never specified in the YAML; derive it from the video path.
     result.project.output.metadata_path =
-        output["metadata_path"].as<std::string>("");
+        DeriveMetadataPath(result.project.output.video_path);
     result.project.output.signal_type =
         output["signal_type"].as<std::string>("composite");
 

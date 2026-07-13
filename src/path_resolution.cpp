@@ -59,6 +59,34 @@ std::vector<std::string> BuiltinRootNames() {
   return {"bundled", "user", "project"};
 }
 
+std::string DeriveMetadataPath(const std::string& video_path) {
+  if (video_path.empty()) {
+    return {};
+  }
+
+  const auto ends_with = [&video_path](const std::string& suffix) {
+    return video_path.size() >= suffix.size() &&
+           video_path.compare(video_path.size() - suffix.size(), suffix.size(),
+                              suffix) == 0;
+  };
+
+  std::string stem;
+  if (ends_with(".composite")) {
+    stem = video_path.substr(
+        0, video_path.size() - std::string(".composite").size());
+  } else if (ends_with(".y")) {
+    stem = video_path.substr(0, video_path.size() - std::string(".y").size());
+  } else {
+    const std::size_t last_separator = video_path.find_last_of("/\\");
+    const std::size_t last_dot = video_path.find_last_of('.');
+    const bool dot_in_last_component =
+        last_dot != std::string::npos &&
+        (last_separator == std::string::npos || last_dot > last_separator);
+    stem = dot_in_last_component ? video_path.substr(0, last_dot) : video_path;
+  }
+  return stem + ".meta";
+}
+
 bool IsBuiltinRootName(const std::string& name) {
   for (const std::string& builtin : BuiltinRootNames()) {
     if (builtin == name) {

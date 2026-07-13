@@ -27,7 +27,6 @@ cvbs_presets:
 
 output:
   video_path: tests/projects/output-stacking/composite/videosynth_pal_stacking_1001.composite
-  metadata_path: tests/projects/output-stacking/composite/videosynth_pal_stacking_1001.meta
 
 sections:
 

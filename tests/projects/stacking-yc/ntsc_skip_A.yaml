@@ -30,7 +30,6 @@ cvbs_presets:
 
 output:
   video_path: tests/projects/output-stacking/yc/videosynth_ntsc_skip_A.y
-  metadata_path: tests/projects/output-stacking/yc/videosynth_ntsc_skip_A.meta
   signal_type: yc
 
 sections:

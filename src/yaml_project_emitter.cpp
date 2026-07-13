@@ -72,7 +72,8 @@ void EmitCvbsPresets(YAML::Emitter& out, const CvbsPresets& presets) {
 void EmitOutputTargets(YAML::Emitter& out, const OutputTargets& output) {
   out << YAML::Key << "output" << YAML::Value << YAML::BeginMap;
   out << YAML::Key << "video_path" << YAML::Value << output.video_path;
-  out << YAML::Key << "metadata_path" << YAML::Value << output.metadata_path;
+  // metadata_path is not emitted: the metadata sidecar is always colocated with
+  // the video output and derived from it on load.
   if (output.signal_type != "composite") {
     out << YAML::Key << "signal_type" << YAML::Value << output.signal_type;
   }

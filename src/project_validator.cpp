@@ -1261,21 +1261,8 @@ ValidationResult ProjectValidator::Validate(const Project& project) {
         "Project configuration error: output.video_path must be set.");
   }
 
-  if (project.output.metadata_path.empty()) {
-    result.is_valid = false;
-    result.errors.push_back(
-        "Project configuration error: output.metadata_path must be set.");
-  }
-
-  if (!project.output.video_path.empty() &&
-      !project.output.metadata_path.empty() &&
-      project.output.video_path == project.output.metadata_path) {
-    result.is_valid = false;
-    result.errors.push_back(
-        "Project configuration error: output.video_path and "
-        "output.metadata_path "
-        "must differ.");
-  }
+  // The metadata sidecar path is always derived from video_path (colocated),
+  // so it needs no separate "must be set" / "must differ" validation.
 
   const std::string& sig_type = project.output.signal_type;
   if (sig_type != "composite" && sig_type != "yc") {

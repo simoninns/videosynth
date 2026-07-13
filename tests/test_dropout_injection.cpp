@@ -39,8 +39,7 @@ const std::string kPalYamlPrefix =
     "  sample_encoding_preset: CVBS_U10_4FSC\n"
     "  signal_state_preset: STANDARD_TBC_LOCKED\n"
     "output:\n"
-    "  video_path: out.composite\n"
-    "  metadata_path: out.meta\n";
+    "  video_path: out.composite\n";
 
 class NullLogger final : public ILogger {
  public:

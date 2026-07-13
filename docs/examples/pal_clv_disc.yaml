@@ -1,27 +1,24 @@
-# PAL CLV LaserDisc Example
+# PAL CLV LaserDisc — demonstration
 #
-# A complete PAL CLV disc master with lead-in, two programme chapters,
-# and lead-out. Demonstrates:
-#   - programme_time_code auto-incrementing from 0:00
+# A complete, runnable PAL CLV disc master demonstrating the CLV biphase code
+# family and time-based addressing:
+#   - programme_time_code (auto-increments once per minute)
 #   - clv_code identification marker
-#   - clv_picture_number frame-level addressing
-#   - chapter_number with CLV line placement
-#   - programme_status with audio/video mode
+#   - clv_picture_number (auto-increments every frame, tracks seconds/frames)
+#   - chapter_number with CLV line placement, programme_status, users_code
+#   - uk-national VITS, an OSD label, and light source noise on a programme
+#     chapter
 #
-# IEC 60856 compliance:
-#   - Lead-in >= 938 frames (1.5 mm at 1.6 µm pitch)
-#   - Lead-out >= 1250 frames (2.0 mm at 1.6 µm pitch)
-#
-# On CLV discs, the programme_time_code auto-increments once per minute
-# (every 1500 frames at PAL 25 fps). The clv_picture_number auto-increments
-# every frame and tracks seconds and frames within each second.
+# On CLV discs the picture counters auto-increment; no start_value is needed.
+# Durations are short (8 frames/section) so the demo generates quickly; the
+# validator warns where they fall below IEC track-pitch minimums.
 #
 # See docs/user/biphase-design.md for full documentation.
 
 project:
-  name: PalClvExample
+  name: PalClvShowcase
   version: "1.0"
-  description: PAL CLV LaserDisc example — 2 programme chapters
+  description: PAL CLV LaserDisc showcase — CLV codes, VITS, OSD, noise
 
 cvbs_presets:
   video_standard_preset: PAL
@@ -29,18 +26,14 @@ cvbs_presets:
   signal_state_preset: STANDARD_TBC_LOCKED
 
 output:
-  video_path: output/pal_clv_example.composite
-  metadata_path: output/pal_clv_example.meta
+  video_path: "{project}/output/pal_clv_showcase.composite"
 
 sections:
 
-  # ---------------------------------------------------------------------------
-  # Lead-in: minimum 938 frames (>= 1.5 mm)
-  # ---------------------------------------------------------------------------
   - name: LeadIn
     type: progressive
-    source: assets/bars_pal.exr
-    duration_frames: 938
+    source: "{bundled}/exr/720x576/75_BARS.exr"
+    duration_frames: 8
     section_type: lead_in
     line_injections:
       - type: laserdisc
@@ -48,59 +41,63 @@ sections:
         codes:
           - code_type: lead_in
           - code_type: users_code
-            users_code: "0x80D000"
+            users_code: "0x80D234"
 
-  # ---------------------------------------------------------------------------
-  # Programme Chapter 0: 37500 frames (25 minutes at PAL 25 fps)
-  # programme_time_code: starts at 0:00, increments each minute
-  # clv_picture_number: starts at 0 sec/frame 0, increments each frame
-  # ---------------------------------------------------------------------------
-  - name: Chapter0
+  - name: Chapter0Bars
     type: progressive
-    source: assets/chapter0_pal.mkv
-    duration_frames: 37500
+    source: "{bundled}/exr/720x576/75_BARS.exr"
+    duration_frames: 8
     section_type: programme_area
     line_injections:
       - type: laserdisc
         disc_type: CLV
         codes:
-          - code_type: programme_time_code   # Auto: 0:00 → 24:59 over 37500 frames
-          - code_type: clv_code              # CLV identification marker
-          - code_type: clv_picture_number    # Auto: frame-level addressing
+          - code_type: programme_time_code
+          - code_type: clv_code
+          - code_type: clv_picture_number
           - code_type: chapter_number
             chapter: 0
           - code_type: programme_status
-            programme_status: "0x8DC000"     # CX on, stereo, copy prohibited
+            programme_status: "0x8DC001"
+      - type: vits
+        vits_type: uk-national
+        target_lines: [19]
+    osd:
+      overlays:
+        - text: "PAL CLV Chapter0"
+          x: 8
+          y: 8
+          scale: 2
+          fg_luma: 1.0
+          bg_luma: 0.0
 
-  # ---------------------------------------------------------------------------
-  # Programme Chapter 1: 37500 frames (25 minutes, total 50 minutes)
-  # Note: programme_time_code and clv_picture_number continue automatically
-  # from where chapter 0 ended — no start_value needed for CLV codes.
-  # ---------------------------------------------------------------------------
-  - name: Chapter1
+  - name: Chapter1Ramps
     type: progressive
-    source: assets/chapter1_pal.mkv
-    duration_frames: 37500
+    source: "{bundled}/exr/720x576/Y_CB_CR_RAMPS.exr"
+    duration_frames: 8
     section_type: programme_area
     line_injections:
       - type: laserdisc
         disc_type: CLV
         codes:
-          - code_type: programme_time_code   # Continues from 25:00 automatically
+          - code_type: programme_time_code
           - code_type: clv_code
-          - code_type: clv_picture_number    # Continues from chapter 0 automatically
+          - code_type: clv_picture_number
           - code_type: chapter_number
             chapter: 1
           - code_type: programme_status
-            programme_status: "0x8DC000"
+            programme_status: "0x8DC002"
+      - type: vits
+        vits_type: uk-national
+        target_lines: [19]
+    noise:
+      noise_db: 48.0
+      noise_spread_db: 4.0
 
-  # ---------------------------------------------------------------------------
-  # Lead-out: minimum 1250 frames (>= 2.0 mm)
-  # ---------------------------------------------------------------------------
   - name: LeadOut
     type: progressive
-    source: assets/bars_pal.exr
-    duration_frames: 1250
+    source: "{bundled}/exr/720x576/75_BARS.exr"
+    duration_frames: 8
     section_type: lead_out
     line_injections:
       - type: laserdisc
@@ -108,4 +105,4 @@ sections:
         codes:
           - code_type: lead_out
           - code_type: users_code
-            users_code: "0x80D000"
+            users_code: "0x87D000"

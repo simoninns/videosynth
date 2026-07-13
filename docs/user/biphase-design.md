@@ -669,7 +669,6 @@ cvbs_presets:
 
 output:
   video_path: output/my_disc.composite
-  metadata_path: output/my_disc.meta
 
 sections:
   # Lead-in: minimum 938 frames (≥ 1.5 mm)
@@ -751,7 +750,6 @@ cvbs_presets:
 
 output:
   video_path: output/clv_disc.composite
-  metadata_path: output/clv_disc.meta
 
 sections:
   - name: LeadIn
@@ -812,7 +810,6 @@ cvbs_presets:
 
 output:
   video_path: output/ntsc_disc.composite
-  metadata_path: output/ntsc_disc.meta
 
 sections:
   - name: LeadIn

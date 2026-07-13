@@ -25,7 +25,6 @@ cvbs_presets:
 
 output:
   video_path: tests/projects/output-general/yc/videosynth_pal_audio.y
-  metadata_path: tests/projects/output-general/yc/videosynth_pal_audio.meta
   signal_type: yc
 
 sections:

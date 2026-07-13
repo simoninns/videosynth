@@ -26,7 +26,6 @@ cvbs_presets:
 
 output:
   video_path: tests/projects/output-stacking/yc/videosynth_ntsc_stacking_3003.y
-  metadata_path: tests/projects/output-stacking/yc/videosynth_ntsc_stacking_3003.meta
   signal_type: yc
 
 sections:

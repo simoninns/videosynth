@@ -60,6 +60,13 @@ AssetRootMap DefaultAssetRoots();
 std::string ResolveAssetPath(const std::string& path, const AssetRootMap& roots,
                              const std::string& project_dir, bool anchor_unset);
 
+// Derives the metadata sidecar path colocated with a video output path: strips
+// a trailing ".composite" or ".y" (otherwise any final extension in the last
+// path component) and appends ".meta". An empty input returns an empty string.
+// The metadata file always shares the video output's directory and stem; it is
+// never configured independently.
+std::string DeriveMetadataPath(const std::string& video_path);
+
 // Resolves a single relative `path` against `base_dir`. Absolute and empty
 // paths are returned unchanged; an empty `base_dir` returns `path` unchanged.
 // Otherwise `base_dir / path` is returned, lexically normalised.

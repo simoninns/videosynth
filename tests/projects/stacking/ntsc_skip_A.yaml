@@ -30,7 +30,6 @@ cvbs_presets:
 
 output:
   video_path: tests/projects/output-stacking/composite/videosynth_ntsc_skip_A.composite
-  metadata_path: tests/projects/output-stacking/composite/videosynth_ntsc_skip_A.meta
 
 sections:
 

@@ -1,0 +1,81 @@
+# PAL Y/C LaserDisc — dual-file output demonstration
+#
+# Identical in structure to a composite PAL CAV disc, but with signal_type: yc
+# so the pipeline writes a separate luma (.y) and chroma (.c) file instead of a
+# single combined composite. The video_path must end in ".y"; the matching
+# ".c" chroma file is written alongside it (as are the metadata sidecar and any
+# audio WAV). This demonstrates the Y/C output path across the biphase, VITS,
+# OSD and audio features.
+
+project:
+  name: PalYcShowcase
+  version: "1.0"
+  description: PAL CAV Y/C showcase — dual-file luma/chroma output
+
+cvbs_presets:
+  video_standard_preset: PAL
+  sample_encoding_preset: CVBS_TPG21_4FSC
+  signal_state_preset: STANDARD_TBC_LOCKED
+
+output:
+  video_path: "{project}/output/pal_yc_showcase.y"
+  signal_type: yc
+
+sections:
+
+  - name: LeadIn
+    type: progressive
+    source: "{bundled}/exr/720x576/75_BARS.exr"
+    duration_frames: 8
+    section_type: lead_in
+    line_injections:
+      - type: laserdisc
+        disc_type: CAV
+        codes:
+          - code_type: lead_in
+          - code_type: users_code
+            users_code: "0x80D234"
+
+  - name: Chapter0Bars
+    type: progressive
+    source: "{bundled}/exr/720x576/75_BARS.exr"
+    duration_frames: 8
+    section_type: programme_area
+    line_injections:
+      - type: laserdisc
+        disc_type: CAV
+        codes:
+          - code_type: picture_number
+            start_value: 1
+          - code_type: chapter_number
+            chapter: 0
+          - code_type: programme_status
+            programme_status: "0x8DC000"
+      - type: vits
+        vits_type: uk-national
+        target_lines: [19]
+    osd:
+      overlays:
+        - text: "PAL Y/C Chapter0"
+          x: 8
+          y: 8
+          scale: 2
+          fg_luma: 1.0
+          bg_luma: 0.0
+    audio:
+      waveform: sine
+      frequency: 1000.0
+      amplitude: 0.5
+
+  - name: LeadOut
+    type: progressive
+    source: "{bundled}/exr/720x576/75_BARS.exr"
+    duration_frames: 8
+    section_type: lead_out
+    line_injections:
+      - type: laserdisc
+        disc_type: CAV
+        codes:
+          - code_type: lead_out
+          - code_type: users_code
+            users_code: "0x87D000"

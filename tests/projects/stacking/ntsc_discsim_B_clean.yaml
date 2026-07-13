@@ -27,7 +27,6 @@ cvbs_presets:
 
 output:
   video_path: tests/projects/output-stacking/composite/videosynth_ntsc_discsim_B_clean.composite
-  metadata_path: tests/projects/output-stacking/composite/videosynth_ntsc_discsim_B_clean.meta
 
 sections:
 

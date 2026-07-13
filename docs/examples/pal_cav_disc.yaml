@@ -1,47 +1,52 @@
-# PAL CAV LaserDisc Example
+# PAL CAV LaserDisc — comprehensive demonstration
 #
-# A complete PAL CAV disc master with lead-in, four programme chapters,
-# and lead-out. Demonstrates:
-#   - Continuous picture_number across chapter boundaries
-#   - chapter_number with automatic stop-bit management
-#   - picture_stop freeze-frame markers
-#   - programme_status with CX noise reduction and copy permission
-#   - users_code in lead-in and lead-out
+# A complete, runnable PAL CAV disc master (lead-in, programme chapters,
+# lead-out) that layers the signal-processing features on top of the biphase
+# codes so a single project exercises most of the application at once:
+#   - CAV biphase codes: picture_number (continuous across chapters),
+#     chapter_number (automatic stop-bit management), picture_stop freeze
+#     markers, programme_status, users_code in lead-in/lead-out
+#   - PAL laserdisc pilot burst (IEC 60856 §9.1.2) on every sync pulse
+#   - uk-national VITS on frame line 19
+#   - On-screen display overlays (static labels and per-frame tokens)
+#   - Two-component Gaussian noise and random/scratch dropout impairments
+#   - Frame-locked synthetic audio (fixed tone and a section-spanning sweep)
+#   - Progressive EXR and MKV sources
 #
-# IEC 60856 compliance:
-#   - Lead-in >= 938 frames (1.5 mm at 1.6 µm pitch)
-#   - Lead-out >= 1250 frames (2.0 mm at 1.6 µm pitch)
-#   - Chapter length >= 30 frames each
+# Paths use logical asset roots: {bundled} is the installed asset library,
+# {project} is this file's directory. The metadata sidecar and the audio WAV
+# are always written alongside the video output.
 #
-# Minimum durations used here for illustration; production masters
-# should use the full IEC-specified minimum lengths.
+# Durations are kept short (8 frames/section) so the demo generates quickly.
+# IEC track-pitch minimums (lead-in >= 938, lead-out >= 1250, chapters >= 30
+# frames) apply to production masters and are surfaced as validator warnings.
+#
+# CVBS_S16_FSC preserves the full pilot-burst waveform (its trough reaches
+# -600 mV, below the -300 mV legal-code floor of the U10/U16/TPG21 presets).
 #
 # See docs/user/biphase-design.md for full documentation.
 
 project:
-  name: PalCavExample
+  name: PalCavShowcase
   version: "1.0"
-  description: PAL CAV LaserDisc example — 4 programme chapters
+  description: PAL CAV LaserDisc showcase — biphase, pilot burst, VITS, OSD, noise, dropouts, audio
 
 cvbs_presets:
   video_standard_preset: PAL
-  sample_encoding_preset: CVBS_TPG21_4FSC
+  sample_encoding_preset: CVBS_S16_FSC
   signal_state_preset: STANDARD_TBC_LOCKED
+  pal_laserdisc_pilot_burst: true
 
 output:
-  video_path: output/pal_cav_example.composite
-  metadata_path: output/pal_cav_example.meta
+  video_path: "{project}/output/pal_cav_showcase.composite"
 
 sections:
 
-  # ---------------------------------------------------------------------------
-  # Lead-in: minimum 938 frames (>= 1.5 mm)
-  # Contains: lead_in code, users_code with manufacturer data
-  # ---------------------------------------------------------------------------
+  # Lead-in: lead_in marker plus a manufacturer users_code.
   - name: LeadIn
     type: progressive
-    source: assets/bars_pal.exr
-    duration_frames: 938
+    source: "{bundled}/exr/720x576/75_BARS.exr"
+    duration_frames: 8
     section_type: lead_in
     line_injections:
       - type: laserdisc
@@ -49,99 +54,110 @@ sections:
         codes:
           - code_type: lead_in
           - code_type: users_code
-            users_code: "0x80D000"    # X₁=0 (valid range: 0-7)
+            users_code: "0x80D234"
 
-  # ---------------------------------------------------------------------------
-  # Chapter 0: pictures 1-500 (500 frames)
-  # First chapter after lead-in: stop-bit is always 1 per IEC §10.1.5
-  # Contains: picture_stop at end of chapter
-  # ---------------------------------------------------------------------------
-  - name: Chapter0
+  # Chapter 0: picture_stop freeze marker, OSD label + per-frame tokens,
+  # uk-national VITS, and a fixed 1 kHz audio tone.
+  - name: Chapter0Bars
     type: progressive
-    source: assets/chapter0_pal.mkv
-    duration_frames: 500
+    source: "{bundled}/exr/720x576/75_BARS.exr"
+    duration_frames: 8
     section_type: programme_area
     line_injections:
       - type: laserdisc
         disc_type: CAV
         codes:
           - code_type: picture_number
-            start_value: 1            # First picture number; auto-increments to 500
+            start_value: 1
           - code_type: chapter_number
-            chapter: 0               # Stop-bit = 1 always (first chapter after lead-in)
-          - code_type: picture_stop  # Freeze-frame at last picture of this chapter
+            chapter: 0
+          - code_type: picture_stop
           - code_type: programme_status
-            programme_status: "0x8DC000"   # CX on, copy prohibited, stereo (Hamming=0)
+            programme_status: "0x8DC000"
+      - type: vits
+        vits_type: uk-national
+        target_lines: [19]
+    osd:
+      overlays:
+        - text: "Chapter0Bars"
+          x: 8
+          y: 8
+          scale: 2
+          fg_luma: 1.0
+          bg_luma: 0.0
+        - text: "PN:{picture_number} PHASE:{phase_id}"
+          x: 8
+          y: 32
+          scale: 1
+          fg_luma: 1.0
+          bg_luma: 0.0
+    audio:
+      waveform: sine
+      frequency: 1000.0
+      amplitude: 0.5
 
-  # ---------------------------------------------------------------------------
-  # Chapter 1: pictures 501-1000 (500 frames)
-  # Normal chapter: stop-bit = 0 for first 400 tracks, then 1
-  # ---------------------------------------------------------------------------
-  - name: Chapter1
+  # Chapter 1: fair-quality source noise plus random dropouts, MKV source.
+  - name: Chapter1Motion
     type: progressive
-    source: assets/chapter1_pal.mkv
-    duration_frames: 500
+    source: "{bundled}/mkv/720x576/MOVING_ZONE_2H.mkv"
+    duration_frames: 8
     section_type: programme_area
     line_injections:
       - type: laserdisc
         disc_type: CAV
         codes:
           - code_type: picture_number
-            start_value: 501          # Continues from chapter 0 (NOT reset to 1)
+            start_value: 9
           - code_type: chapter_number
             chapter: 1
           - code_type: programme_status
-            programme_status: "0x8DC000"
+            programme_status: "0x8DC100"
+      - type: vits
+        vits_type: uk-national
+        target_lines: [19]
+    noise:
+      noise_db: 43.0
+      noise_spread_db: 4.0
+    dropouts:
+      random:
+        scale: 8
 
-  # ---------------------------------------------------------------------------
-  # Chapter 2: pictures 1001-1500 (500 frames)
-  # Demonstrates copy permission enabled
-  # ---------------------------------------------------------------------------
-  - name: Chapter2
+  # Chapter 2: scratch dropouts and a section-spanning audio sweep.
+  - name: Chapter2Ramps
     type: progressive
-    source: assets/chapter2_pal.mkv
-    duration_frames: 500
+    source: "{bundled}/exr/720x576/Y_CB_CR_RAMPS.exr"
+    duration_frames: 8
     section_type: programme_area
     line_injections:
       - type: laserdisc
         disc_type: CAV
         codes:
           - code_type: picture_number
-            start_value: 1001
+            start_value: 17
           - code_type: chapter_number
             chapter: 2
           - code_type: picture_stop
           - code_type: programme_status
-            programme_status: "0x8DC100"   # CX on, copy permitted (X₃ LSB=1)
+            programme_status: "0x8BA000"
+      - type: vits
+        vits_type: uk-national
+        target_lines: [19]
+    dropouts:
+      scratch:
+        scale: 6
+    audio:
+      waveform: sawtooth
+      amplitude: 0.5
+      ramp:
+        start: 200.0
+        end: 4000.0
+        mode: up
 
-  # ---------------------------------------------------------------------------
-  # Chapter 3: pictures 1501-2000 (500 frames)
-  # Demonstrates CX noise reduction off
-  # ---------------------------------------------------------------------------
-  - name: Chapter3
-    type: progressive
-    source: assets/chapter3_pal.mkv
-    duration_frames: 500
-    section_type: programme_area
-    line_injections:
-      - type: laserdisc
-        disc_type: CAV
-        codes:
-          - code_type: picture_number
-            start_value: 1501
-          - code_type: chapter_number
-            chapter: 3
-          - code_type: programme_status
-            programme_status: "0x8BA000"   # CX off (BA prefix), copy prohibited
-
-  # ---------------------------------------------------------------------------
-  # Lead-out: minimum 1250 frames (>= 2.0 mm)
-  # Contains: lead_out code, users_code with manufacturer data
-  # ---------------------------------------------------------------------------
+  # Lead-out: lead_out marker plus users_code.
   - name: LeadOut
     type: progressive
-    source: assets/bars_pal.exr
-    duration_frames: 1250
+    source: "{bundled}/exr/720x576/75_BARS.exr"
+    duration_frames: 8
     section_type: lead_out
     line_injections:
       - type: laserdisc
@@ -149,4 +165,4 @@ sections:
         codes:
           - code_type: lead_out
           - code_type: users_code
-            users_code: "0x80D000"
+            users_code: "0x87D000"

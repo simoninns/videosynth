@@ -702,7 +702,7 @@ For **NTSC (525-line system)**, the vertical blanking interval (VBI) is defined 
 
 The current parser, validator, and runtime implement only a subset of the YAML surface described in this section:
 
-- Implemented top-level presets: `video_standard_preset`, `sample_encoding_preset`, `signal_state_preset`, `ntsc_black_setup_ire`, `output.video_path`, `output.metadata_path`, and `output.signal_type` (`"composite"` or `"yc"`; defaults to `"composite"`).
+- Implemented top-level presets: `video_standard_preset`, `sample_encoding_preset`, `signal_state_preset`, `ntsc_black_setup_ire`, `output.video_path`, and `output.signal_type` (`"composite"` or `"yc"`; defaults to `"composite"`). The metadata sidecar is not configured in YAML: it is always colocated with the video output and its path is derived from `output.video_path` (`.composite`/`.y` → `.meta`).
 - The `project:` block fields `name`, `version`, and `description` are parsed and retained on the in-memory `Project` model, so they survive load/save round-trips.
 - A YAML project **emitter** (`YamlProjectEmitter` in `videosynth_core`) serialises an in-memory `Project` back to this schema. It writes fields in the canonical order shown below and emits only explicitly-set optional blocks (`noise:`, `dropouts:`, `osd:`, `audio:`, `line_injections:`, `disc_skips:`), so emitted files stay minimal and diffable. Emit → parse is lossless: a saved file parses back to an equal `Project`, which is the contract that keeps GUI-saved projects loadable by the CLI and vice versa.
 - Implemented section fields: `name`, `type`, `source`, `start_frame`, `duration_frames`, and the optional per-section `noise:`, `dropouts:`, `osd:`, and `audio:` blocks.
@@ -738,7 +738,6 @@ cvbs_presets:
 
 output:
   video_path: "out/pal_test_video.composite"
-  metadata_path: "out/pal_test_metadata.meta"
   signal_type: composite      # "composite" (default) or "yc"; for "yc", video_path must end in ".y"
 
 sections:
@@ -851,7 +850,7 @@ Rules:
 - `scale` outside `[1, 20]` is a validation error.
 - If `scratch.scale > 0` and the derived maximum scratch lifespan exceeds `section.duration_frames`, a **warning** is emitted (scratch events may never reach their peak amplitude within the section).
 
-**Sidecar output**: when any section has dropout injection enabled, the pipeline creates a companion SQLite file at `<metadata_path_stem>.dropouts.meta` (schema version 5) with a single table `dropout_run(cvbs_file_id, frame_id, sample_start, sample_count, severity)`. Severity is `25` for non-visible VBI runs and `75` for runs intersecting the active picture.
+**Sidecar output**: when any section has dropout injection enabled, the pipeline creates a companion SQLite file at `<metadata_stem>.dropouts.meta` (where `<metadata_stem>` is the derived, video-colocated metadata path; schema version 5) with a single table `dropout_run(cvbs_file_id, frame_id, sample_start, sample_count, severity)`. Severity is `25` for non-visible VBI runs and `75` for runs intersecting the active picture.
 
 Example YAML:
 
@@ -1003,8 +1002,7 @@ video_path: "out/pal_test_video.composite" # project-relative output file path
   - Only one `video_standard_preset` (PAL or NTSC) per project.
   - Only one `sample_encoding_preset` per project.
   - Only one `signal_state_preset` per project.
-  - `output.video_path` and `output.metadata_path` are required in the project YAML.
-  - `output.video_path` and `output.metadata_path` must resolve to different paths.
+  - `output.video_path` is required in the project YAML. The metadata sidecar path is derived from it (video-colocated) and is not specified in YAML.
   - `output.signal_type` must be `"composite"` or `"yc"` (default: `"composite"`).
   - When `output.signal_type` is `"yc"`, `output.video_path` must end in `".y"`.
   - `output.signal_type` must be `"composite"` or `"yc"` (default: `"composite"`).
@@ -1728,7 +1726,7 @@ Current implementation note:
 - **Input**: In-place fixed-point Y/C mV batches (after noise); project dropout parameters per section.
 - **Output**: In-place modified Y/C mV buffers with random and/or scratch dropouts applied; `<basename>.dropouts.meta` SQLite sidecar populated.
 - **Steps**:
-  1. On first call (`Begin`), open the sidecar SQLite file at the path derived from `output.metadata_path` (`.meta` → `.dropouts.meta`). Create the `dropout_run` table (schema version 5) and begin a single transaction.
+  1. On first call (`Begin`), open the sidecar SQLite file at the path derived from the (video-colocated) metadata path (`.meta` → `.dropouts.meta`). Create the `dropout_run` table (schema version 5) and begin a single transaction.
   2. For each frame in the batch:
      - Determine owning section; skip if no dropout type is active.
      - **Scratch pass**: for each pre-computed scratch event, apply the triangular amplitude/width envelope at the current frame index; record covered intervals.
@@ -1910,7 +1908,7 @@ videosynth --project project.yaml [options]
 | `--log-level <level>` | Set the log level to `info`, `debug`, or `trace`. | `info` |
 | `--log-file <filename>` | Write log output to the specified file in addition to the console. | none |
 
-Output paths are configured in YAML under `output.video_path` and `output.metadata_path`.
+The output path is configured in YAML under `output.video_path`; the metadata sidecar and audio track are colocated with it.
 
 Multi-threaded generation splits frame processing into a sequential
 schedule-enrichment pass (per-frame VBI code words, colour-sequence indices,
