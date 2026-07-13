@@ -35,7 +35,7 @@ sections:
   - name: StereoBars
     type: progressive
     source: "{bundled}/exr/720x486/75_BARS.exr"
-    duration_frames: 8
+    duration_frames: 80
     audio:
       channel_pairs:
         - pair: 0
@@ -57,7 +57,7 @@ sections:
   - name: SweepDown
     type: progressive
     source: "{bundled}/exr/720x486/75_BARS.exr"
-    duration_frames: 8
+    duration_frames: 80
     audio:
       channel_pairs:
         - pair: 0
@@ -76,7 +76,7 @@ sections:
   - name: SilenceGap
     type: progressive
     source: "{bundled}/exr/720x486/75_BARS.exr"
-    duration_frames: 8
+    duration_frames: 80
 
   # ---------------------------------------------------------------------------
   # Section 4: periodic bounce sweep plus a fixed square tone on another pair.
@@ -84,7 +84,7 @@ sections:
   - name: PeriodicBounce
     type: progressive
     source: "{bundled}/exr/720x486/75_BARS.exr"
-    duration_frames: 8
+    duration_frames: 80
     audio:
       channel_pairs:
         - pair: 0

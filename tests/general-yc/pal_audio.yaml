@@ -33,7 +33,7 @@ sections:
   - name: StereoBars
     type: progressive
     source: "{bundled}/exr/720x576/75_BARS.exr"
-    duration_frames: 8
+    duration_frames: 80
     audio:
       channel_pairs:
         - pair: 0
@@ -55,7 +55,7 @@ sections:
   - name: FixedSquare
     type: progressive
     source: "{bundled}/exr/720x576/75_BARS.exr"
-    duration_frames: 8
+    duration_frames: 80
     audio:
       channel_pairs:
         - pair: 0
@@ -71,7 +71,7 @@ sections:
   - name: SilenceGap
     type: progressive
     source: "{bundled}/exr/720x576/75_BARS.exr"
-    duration_frames: 8
+    duration_frames: 80
 
   # ---------------------------------------------------------------------------
   # Section 4: section-spanning sawtooth sweep, 200 Hz -> 4000 Hz (mode: up).
@@ -79,7 +79,7 @@ sections:
   - name: SweepUp
     type: progressive
     source: "{bundled}/exr/720x576/75_BARS.exr"
-    duration_frames: 8
+    duration_frames: 80
     audio:
       channel_pairs:
         - pair: 0

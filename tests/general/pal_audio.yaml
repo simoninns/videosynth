@@ -37,7 +37,7 @@ sections:
   - name: StereoBars
     type: progressive
     source: "{bundled}/exr/720x576/75_BARS.exr"
-    duration_frames: 8
+    duration_frames: 80
     audio:
       channel_pairs:
         - pair: 0
@@ -59,7 +59,7 @@ sections:
   - name: EightPairs
     type: progressive
     source: "{bundled}/exr/720x576/75_BARS.exr"
-    duration_frames: 8
+    duration_frames: 80
     audio:
       channel_pairs:
         - pair: 0
@@ -91,7 +91,7 @@ sections:
   - name: SilenceGap
     type: progressive
     source: "{bundled}/exr/720x576/75_BARS.exr"
-    duration_frames: 8
+    duration_frames: 80
 
   # ---------------------------------------------------------------------------
   # Section 4: ramps — a section-spanning sawtooth sweep (left) and a periodic
@@ -100,7 +100,7 @@ sections:
   - name: Sweeps
     type: progressive
     source: "{bundled}/exr/720x576/75_BARS.exr"
-    duration_frames: 8
+    duration_frames: 80
     audio:
       channel_pairs:
         - pair: 0
