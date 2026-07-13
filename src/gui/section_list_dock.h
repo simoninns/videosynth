@@ -20,9 +20,9 @@ class QToolButton;
 
 namespace videosynth::gui {
 
-// Dock widget content for the ordered section list. Operations (add from
-// typed templates, remove, duplicate, move up/down) are routed through
-// ProjectDocument commands; display sync comes from SectionListModel.
+// Dock widget content for the ordered section list. Operations (add, remove,
+// duplicate, move up/down) are routed through ProjectDocument commands;
+// display sync comes from SectionListModel.
 //
 // Thread-safety: NOT thread-safe. GUI (main) thread only.
 class SectionListDock : public QWidget {
@@ -47,17 +47,13 @@ class SectionListDock : public QWidget {
   void PreviewSectionRequested(int index);
 
  private:
-  void OnAddProgressive();
-  void OnAddLaserdiscLeadIn();
-  void OnAddLaserdiscProgramme();
-  void OnAddLaserdiscLeadOut();
+  void OnAddSection();
   void OnRemove();
   void OnDuplicate();
   void OnMoveUp();
   void OnMoveDown();
 
   void AddSection(Section section);
-  Standard project_standard() const;
   void UpdateButtonStates();
 
   ProjectDocument* document_;

@@ -128,7 +128,6 @@ class MainWindow : public QMainWindow {
   QAction* edit_project_action_ = nullptr;
   QAction* project_validate_action_ = nullptr;
   QAction* generate_action_ = nullptr;
-  QAction* generate_validate_action_ = nullptr;
   QAction* cancel_generation_action_ = nullptr;
   QAction* preview_action_ = nullptr;
 

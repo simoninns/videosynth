@@ -207,11 +207,6 @@ void MainWindow::BuildMenus() {
       });
 
   QMenu* generate_menu = menuBar()->addMenu(tr("&Generate"));
-  generate_validate_action_ =
-      generate_menu->addAction(tr("&Validate"), this, [this] {
-        explicit_validation_requested_ = true;
-        validation_controller_->RequestValidation(document_->project());
-      });
   generate_action_ = generate_menu->addAction(
       tr("&Generate"), QKeySequence(Qt::CTRL | Qt::Key_G), this,
       &MainWindow::OnGenerate);
@@ -380,7 +375,6 @@ void MainWindow::UpdateProjectOpenState() {
   save_as_action_->setEnabled(open);
   edit_project_action_->setEnabled(open);
   project_validate_action_->setEnabled(open);
-  generate_validate_action_->setEnabled(open);
   // Keep Generate disabled while a run is already in progress.
   generate_action_->setEnabled(open && !generation_controller_->is_running());
   preview_action_->setEnabled(open);

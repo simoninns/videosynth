@@ -13,7 +13,6 @@
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QItemSelectionModel>
-#include <QMenu>
 #include <QTableView>
 #include <QToolButton>
 #include <QVBoxLayout>
@@ -32,18 +31,6 @@ SectionListDock::SectionListDock(ProjectDocument* document, QWidget* parent)
   auto* buttons = new QHBoxLayout();
   auto* add_button = new QToolButton(this);
   add_button->setText(tr("Add"));
-  add_button->setPopupMode(QToolButton::InstantPopup);
-  auto* add_menu = new QMenu(add_button);
-  add_menu->addAction(tr("Progressive section"), this,
-                      &SectionListDock::OnAddProgressive);
-  add_menu->addSeparator();
-  add_menu->addAction(tr("Laserdisc lead-in"), this,
-                      &SectionListDock::OnAddLaserdiscLeadIn);
-  add_menu->addAction(tr("Laserdisc programme"), this,
-                      &SectionListDock::OnAddLaserdiscProgramme);
-  add_menu->addAction(tr("Laserdisc lead-out"), this,
-                      &SectionListDock::OnAddLaserdiscLeadOut);
-  add_button->setMenu(add_menu);
 
   remove_button_ = new QToolButton(this);
   remove_button_->setText(tr("Remove"));
@@ -78,6 +65,8 @@ SectionListDock::SectionListDock(ProjectDocument* document, QWidget* parent)
   view_->verticalHeader()->setVisible(false);
   layout->addWidget(view_);
 
+  connect(add_button, &QToolButton::clicked, this,
+          &SectionListDock::OnAddSection);
   connect(remove_button_, &QToolButton::clicked, this,
           &SectionListDock::OnRemove);
   connect(duplicate_button_, &QToolButton::clicked, this,
@@ -119,20 +108,8 @@ void SectionListDock::SelectSection(int index) {
   view_->setCurrentIndex(model_->index(index, 0));
 }
 
-void SectionListDock::OnAddProgressive() {
+void SectionListDock::OnAddSection() {
   AddSection(MakeProgressiveSectionTemplate(document_->section_count() + 1));
-}
-
-void SectionListDock::OnAddLaserdiscLeadIn() {
-  AddSection(MakeLaserdiscLeadInSectionTemplate(project_standard()));
-}
-
-void SectionListDock::OnAddLaserdiscProgramme() {
-  AddSection(MakeLaserdiscProgrammeSectionTemplate(project_standard()));
-}
-
-void SectionListDock::OnAddLaserdiscLeadOut() {
-  AddSection(MakeLaserdiscLeadOutSectionTemplate(project_standard()));
 }
 
 void SectionListDock::OnRemove() {
@@ -177,10 +154,6 @@ void SectionListDock::OnMoveDown() {
 void SectionListDock::AddSection(Section section) {
   document_->InsertSection(-1, std::move(section));
   SelectSection(model_->rowCount() - 1);
-}
-
-Standard SectionListDock::project_standard() const {
-  return document_->project().cvbs_presets.video_standard_preset;
 }
 
 void SectionListDock::UpdateButtonStates() {
