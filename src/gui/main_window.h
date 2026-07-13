@@ -100,6 +100,10 @@ class MainWindow : public QMainWindow {
   void LoadProjectFromFile(const QString& path);
   void UpdateWindowTitle();
   void UpdateValidationStatus();
+  // Shows a modal summarising the outcome of a user-initiated validation
+  // (pass or fail). Only invoked for explicit Validate actions, never for the
+  // debounced background validation that keeps the Issues dock current.
+  void ShowExplicitValidationResult();
   QStringList RecentFilePaths() const;
   void UpdateRecentFilesMenu();
   void AddToRecentFiles(const QString& path);
@@ -113,6 +117,9 @@ class MainWindow : public QMainWindow {
   LogMessageModel* log_model_;
   QMenu* recent_files_menu_ = nullptr;
   QLabel* validation_status_label_ = nullptr;
+  // Set when the user triggers Validate from a menu; consumed by the next
+  // completed validation run to show the pass/fail result modal.
+  bool explicit_validation_requested_ = false;
   QProgressBar* generation_progress_bar_ = nullptr;
 
   // Project-dependent actions, disabled while no project is open.

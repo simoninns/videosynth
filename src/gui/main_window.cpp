@@ -29,6 +29,7 @@
 #include <QStackedWidget>
 #include <QStatusBar>
 #include <QStringList>
+#include <QTimer>
 #include <QUrl>
 
 #include "asset_roots.h"
@@ -95,6 +96,8 @@ MainWindow::MainWindow(ThemeController* theme_controller, QWidget* parent)
     validation_controller_->RequestValidation(document_->project());
   });
   connect(document_, &ProjectDocument::DocumentReset, this, [this] {
+    // A pending explicit-validation request belongs to the previous document.
+    explicit_validation_requested_ = false;
     UpdateProjectOpenState();
     if (document_->is_open()) {
       validation_controller_->RequestValidation(document_->project());
@@ -113,6 +116,19 @@ MainWindow::MainWindow(ThemeController* theme_controller, QWidget* parent)
           [this] {
             issues_model_->SetIssues(validation_controller_->issues());
             UpdateValidationStatus();
+            if (explicit_validation_requested_) {
+              // Defer to the event loop: latest-wins means the controller may
+              // immediately restart a queued run after this signal, so only
+              // treat the result as final once it has settled to idle.
+              QTimer::singleShot(0, this, [this] {
+                if (!explicit_validation_requested_ ||
+                    validation_controller_->is_validating()) {
+                  return;
+                }
+                explicit_validation_requested_ = false;
+                ShowExplicitValidationResult();
+              });
+            }
           });
   issues_model_->SetDarkTheme(theme_controller_->is_dark());
   log_model_->SetDarkTheme(theme_controller_->is_dark());
@@ -186,12 +202,14 @@ void MainWindow::BuildMenus() {
                                                  &MainWindow::OnEditProject);
   project_validate_action_ =
       project_menu->addAction(tr("&Validate"), this, [this] {
+        explicit_validation_requested_ = true;
         validation_controller_->RequestValidation(document_->project());
       });
 
   QMenu* generate_menu = menuBar()->addMenu(tr("&Generate"));
   generate_validate_action_ =
       generate_menu->addAction(tr("&Validate"), this, [this] {
+        explicit_validation_requested_ = true;
         validation_controller_->RequestValidation(document_->project());
       });
   generate_action_ = generate_menu->addAction(
@@ -715,6 +733,33 @@ void MainWindow::UpdateValidationStatus() {
     validation_status_label_->setText(
         tr("%1 error(s), %2 warning(s)").arg(errors).arg(warnings));
   }
+}
+
+void MainWindow::ShowExplicitValidationResult() {
+  const int errors = issues_model_->error_count();
+  const int warnings = issues_model_->warning_count();
+
+  if (errors == 0 && warnings == 0) {
+    QMessageBox::information(
+        this, tr("Validation Passed"),
+        tr("The project is valid.\n\nNo errors or warnings were found."));
+    return;
+  }
+
+  QMessageBox box(this);
+  box.setWindowTitle(errors > 0 ? tr("Validation Failed")
+                                : tr("Validation Passed"));
+  box.setIcon(errors > 0 ? QMessageBox::Critical : QMessageBox::Warning);
+  box.setText(errors > 0 ? tr("The project has validation errors and cannot be "
+                              "generated.")
+                         : tr("The project is valid but has warnings."));
+  box.setInformativeText(
+      tr("%1 error(s) and %2 warning(s) were found. See the Issues panel for "
+         "details.")
+          .arg(errors)
+          .arg(warnings));
+  box.setStandardButtons(QMessageBox::Ok);
+  box.exec();
 }
 
 QStringList MainWindow::RecentFilePaths() const {
