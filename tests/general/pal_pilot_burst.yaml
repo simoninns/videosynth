@@ -10,7 +10,7 @@ cvbs_presets:
   pal_laserdisc_pilot_burst: true
 
 output:
-  video_path: tests/general-output/videosynth_pal_pilot_burst.composite
+  video_path: "{project}/../general-output/videosynth_pal_pilot_burst.composite"
 
 sections:
   - name: PalPilotBurst100Bars

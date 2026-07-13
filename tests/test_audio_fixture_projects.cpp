@@ -122,29 +122,35 @@ void RunAudioFixtureProject(const AudioFixture& fixture) {
   const ParseResult parsed = parser.ParseFile(fixture.fixture_path);
   ASSERT_TRUE(parsed.ok) << fixture.fixture_path;
 
+  // Resolve output paths exactly as VideoSynthPipeline does ({project} tokens
+  // anchored to the fixture's directory) so the expected artefact locations
+  // match what the pipeline writes.
+  const std::string project_dir =
+      std::filesystem::path(fixture.fixture_path).parent_path().string();
+  const Project project = ResolveProjectPaths(
+      parsed.project, DefaultAssetRoots(), project_dir, /*anchor_unset=*/false);
+
   int total_frames = 0;
-  for (const Section& section : parsed.project.sections) {
+  for (const Section& section : project.sections) {
     total_frames += section.duration_frames;
   }
   ASSERT_GT(total_frames, 0) << fixture.fixture_path;
 
-  const std::vector<int> channel_pairs =
-      ProjectAudioChannelPairs(parsed.project);
+  const std::vector<int> channel_pairs = ProjectAudioChannelPairs(project);
   ASSERT_FALSE(channel_pairs.empty())
       << fixture.fixture_path << " declares no audio channel pairs";
   // The fixtures are meant to exercise multi-track output.
   EXPECT_GE(channel_pairs.size(), 2U) << fixture.fixture_path;
 
-  const std::filesystem::path video_path = parsed.project.output.video_path;
-  const std::filesystem::path metadata_path =
-      parsed.project.output.metadata_path;
+  const std::filesystem::path video_path = project.output.video_path;
+  const std::filesystem::path metadata_path = project.output.metadata_path;
 
   std::filesystem::create_directories(video_path.parent_path());
   std::filesystem::remove(video_path);
   std::filesystem::remove(metadata_path);
   for (const int pair : channel_pairs) {
-    std::filesystem::remove(AudioWavWriter::DeriveAudioPath(
-        parsed.project.output.video_path, pair));
+    std::filesystem::remove(
+        AudioWavWriter::DeriveAudioPath(project.output.video_path, pair));
   }
 
   // Wire the pipeline exactly as main.cpp does.
@@ -173,7 +179,7 @@ void RunAudioFixtureProject(const AudioFixture& fixture) {
 
   for (const int pair : channel_pairs) {
     const std::filesystem::path audio_path =
-        AudioWavWriter::DeriveAudioPath(parsed.project.output.video_path, pair);
+        AudioWavWriter::DeriveAudioPath(project.output.video_path, pair);
     ASSERT_TRUE(std::filesystem::exists(audio_path))
         << fixture.fixture_path << " -> " << audio_path;
     EXPECT_EQ(

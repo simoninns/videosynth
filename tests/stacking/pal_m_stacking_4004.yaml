@@ -25,7 +25,7 @@ cvbs_presets:
   signal_state_preset: STANDARD_TBC_LOCKED
 
 output:
-  video_path: tests/stacking-output/videosynth_pal_m_stacking_4004.composite
+  video_path: "{project}/../stacking-output/videosynth_pal_m_stacking_4004.composite"
 
 sections:
 

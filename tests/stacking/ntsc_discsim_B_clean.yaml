@@ -26,7 +26,7 @@ cvbs_presets:
   signal_state_preset: STANDARD_TBC_LOCKED
 
 output:
-  video_path: tests/stacking-output/videosynth_ntsc_discsim_B_clean.composite
+  video_path: "{project}/../stacking-output/videosynth_ntsc_discsim_B_clean.composite"
 
 sections:
 

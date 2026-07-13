@@ -24,7 +24,7 @@ cvbs_presets:
   signal_state_preset: STANDARD_TBC_LOCKED
 
 output:
-  video_path: tests/general-yc-output/videosynth_ntsc_audio.y
+  video_path: "{project}/../general-yc-output/videosynth_ntsc_audio.y"
   signal_type: yc
 
 sections:

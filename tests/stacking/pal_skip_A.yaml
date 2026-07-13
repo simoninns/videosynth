@@ -30,7 +30,7 @@ cvbs_presets:
   pal_laserdisc_pilot_burst: true
 
 output:
-  video_path: tests/stacking-output/videosynth_pal_skip_A.composite
+  video_path: "{project}/../stacking-output/videosynth_pal_skip_A.composite"
 
 sections:
 

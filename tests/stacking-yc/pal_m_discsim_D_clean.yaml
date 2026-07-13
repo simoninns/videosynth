@@ -29,7 +29,7 @@ cvbs_presets:
   signal_state_preset: STANDARD_TBC_LOCKED
 
 output:
-  video_path: tests/stacking-yc-output/videosynth_pal_m_discsim_D_clean.y
+  video_path: "{project}/../stacking-yc-output/videosynth_pal_m_discsim_D_clean.y"
   signal_type: yc
 
 sections:

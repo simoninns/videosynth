@@ -36,30 +36,35 @@ std::string FixturePath(const std::string& fixture_name) {
   return std::string(VIDEOSYNTH_SOURCE_DIR) + "/tests/" + fixture_name;
 }
 
-std::filesystem::path ResolveFixtureOutputPath(
-    const std::string& configured_path) {
-  const std::filesystem::path path(configured_path);
-  if (path.is_absolute()) {
-    return path;
-  }
-  return std::filesystem::path(VIDEOSYNTH_SOURCE_DIR) / path;
+std::string FixtureProjectDir(const std::string& fixture_name) {
+  return std::filesystem::path(FixturePath(fixture_name))
+      .parent_path()
+      .string();
 }
 
-void ResolveProgressiveSourcePaths(Project* project) {
+// Resolves {token}/... and bare relative paths (progressive sources, output
+// video/metadata) exactly as the application does, anchoring to the fixture's
+// own directory. This mirrors production ResolveProjectPaths so {project}-
+// relative output targets land in the fixture's sibling output dir regardless
+// of the current working directory.
+void ResolveFixtureProjectPaths(Project* project,
+                                const std::string& project_dir) {
   if (project == nullptr) {
     return;
   }
 
-  // Resolve {bundled}/... tokens (and any bare relative path) exactly as the
-  // application does, anchoring to the repo root so fixtures run from any CWD.
   const AssetRootMap roots = DefaultAssetRoots();
   for (Section& section : project->sections) {
     if (section.type != "progressive" || section.source.empty()) {
       continue;
     }
     section.source = videosynth::ResolveAssetPath(
-        section.source, roots, VIDEOSYNTH_SOURCE_DIR, /*anchor_unset=*/true);
+        section.source, roots, project_dir, /*anchor_unset=*/true);
   }
+  project->output.video_path = videosynth::ResolveAssetPath(
+      project->output.video_path, roots, project_dir, /*anchor_unset=*/true);
+  project->output.metadata_path = videosynth::ResolveAssetPath(
+      project->output.metadata_path, roots, project_dir, /*anchor_unset=*/true);
 }
 
 std::size_t ExpectedProgressiveExrSectionCount(Standard standard) {
@@ -98,7 +103,8 @@ void ExpectVitsFixtureProject(const ExpectedVitsFixture& expected) {
   ASSERT_TRUE(parsed.ok) << expected.fixture_name;
 
   Project project = parsed.project;
-  ResolveProgressiveSourcePaths(&project);
+  ResolveFixtureProjectPaths(&project,
+                             FixtureProjectDir(expected.fixture_name));
   ASSERT_TRUE(validator.Validate(project).is_valid) << expected.fixture_name;
 
   ASSERT_EQ(project.cvbs_presets.video_standard_preset, expected.standard);
@@ -221,7 +227,7 @@ TEST(ProjectFixturesTest, ProgressiveExrFixturesParseAndValidate) {
     ASSERT_TRUE(parsed.ok) << fixture;
 
     Project project = parsed.project;
-    ResolveProgressiveSourcePaths(&project);
+    ResolveFixtureProjectPaths(&project, FixtureProjectDir(fixture));
     const ValidationResult validation = validator.Validate(project);
     ASSERT_TRUE(validation.is_valid) << fixture;
 
@@ -250,7 +256,7 @@ TEST(ProjectFixturesTest, ProgressiveMkvFixturesParseAndValidate) {
     ASSERT_TRUE(parsed.ok) << fixture;
 
     Project project = parsed.project;
-    ResolveProgressiveSourcePaths(&project);
+    ResolveFixtureProjectPaths(&project, FixtureProjectDir(fixture));
     const ValidationResult validation = validator.Validate(project);
     ASSERT_TRUE(validation.is_valid) << fixture;
 
@@ -277,11 +283,7 @@ TEST(ProjectFixturesTest,
     const ParseResult parsed = parser.ParseFile(FixturePath(fixture));
     ASSERT_TRUE(parsed.ok) << fixture;
     Project project = parsed.project;
-    project.output.video_path =
-        ResolveFixtureOutputPath(project.output.video_path).string();
-    project.output.metadata_path =
-        ResolveFixtureOutputPath(project.output.metadata_path).string();
-    ResolveProgressiveSourcePaths(&project);
+    ResolveFixtureProjectPaths(&project, FixtureProjectDir(fixture));
     ASSERT_TRUE(validator.Validate(project).is_valid) << fixture;
 
     std::vector<SampleFixed> y_mv;
@@ -335,11 +337,7 @@ TEST(ProjectFixturesTest,
     const ParseResult parsed = parser.ParseFile(FixturePath(fixture));
     ASSERT_TRUE(parsed.ok) << fixture;
     Project project = parsed.project;
-    project.output.video_path =
-        ResolveFixtureOutputPath(project.output.video_path).string();
-    project.output.metadata_path =
-        ResolveFixtureOutputPath(project.output.metadata_path).string();
-    ResolveProgressiveSourcePaths(&project);
+    ResolveFixtureProjectPaths(&project, FixtureProjectDir(fixture));
     ASSERT_TRUE(validator.Validate(project).is_valid) << fixture;
 
     int expected_source_frames = 0;
@@ -432,7 +430,7 @@ TEST(ProjectFixturesTest, FixtureProjectsCoverSupportedOutputEncodingFamilies) {
     const ParseResult parsed = parser.ParseFile(FixturePath(fixture));
     ASSERT_TRUE(parsed.ok) << fixture;
     Project base_project = parsed.project;
-    ResolveProgressiveSourcePaths(&base_project);
+    ResolveFixtureProjectPaths(&base_project, FixtureProjectDir(fixture));
     ASSERT_TRUE(validator.Validate(base_project).is_valid) << fixture;
 
     std::vector<SampleFixed> y_mv;
@@ -517,7 +515,8 @@ TEST(ProjectFixturesTest, PalPilotBurstFixtureParsesValidatesAndGenerated) {
   ASSERT_TRUE(parsed.ok);
 
   Project project = parsed.project;
-  ResolveProgressiveSourcePaths(&project);
+  ResolveFixtureProjectPaths(&project,
+                             FixtureProjectDir("general/pal_pilot_burst.yaml"));
 
   EXPECT_EQ(project.cvbs_presets.video_standard_preset, Standard::kPal);
   EXPECT_TRUE(project.cvbs_presets.pal_laserdisc_pilot_burst);
@@ -574,11 +573,8 @@ TEST(ProjectFixturesTest,
   ASSERT_TRUE(parsed.ok);
 
   Project project = parsed.project;
-  project.output.video_path =
-      ResolveFixtureOutputPath(project.output.video_path).string();
-  project.output.metadata_path =
-      ResolveFixtureOutputPath(project.output.metadata_path).string();
-  ResolveProgressiveSourcePaths(&project);
+  ResolveFixtureProjectPaths(&project,
+                             FixtureProjectDir("general/pal_pilot_burst.yaml"));
   ASSERT_TRUE(validator.Validate(project).is_valid);
 
   std::vector<SampleFixed> y_mv;
