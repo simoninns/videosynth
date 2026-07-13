@@ -1,0 +1,14 @@
+/*
+ * File:        videosynth_version.h
+ * Module:      version
+ * Purpose:     Build-time version string generated from the git commit hash
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: 2026 Simon Inns
+ */
+
+// Auto-generated from videosynth_version.h.in at configure time - do not edit.
+
+#pragma once
+
+#define VIDEOSYNTH_VERSION "@VIDEOSYNTH_VERSION@"

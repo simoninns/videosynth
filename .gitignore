@@ -39,6 +39,8 @@ build.ninja
 *.app
 *.i*
 *.ii
+# Version header template is a source file, not a compiler intermediate
+!src/videosynth_version.h.in
 
 # Debug and profiler output
 *.dSYM/
