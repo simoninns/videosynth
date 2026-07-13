@@ -262,6 +262,9 @@ void MainWindow::BuildCentralEditors() {
   section_editor_ = new SectionEditor(document_, probe_controller_, this);
   editor_tabs_->addTab(section_editor_, tr("Section"));
 
+  preview_pane_ = new PreviewPane(document_, theme_controller_, this);
+  editor_tabs_->addTab(preview_pane_, tr("Preview"));
+
   setCentralWidget(editor_tabs_);
 }
 
@@ -278,6 +281,11 @@ void MainWindow::BuildSectionsDock() {
             if (index >= 0) {
               editor_tabs_->setCurrentWidget(section_editor_);
             }
+          });
+  connect(section_list_dock_, &SectionListDock::PreviewSectionRequested, this,
+          [this](int index) {
+            editor_tabs_->setCurrentWidget(preview_pane_);
+            preview_pane_->ShowSectionFirstFrame(index);
           });
 }
 

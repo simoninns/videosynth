@@ -143,6 +143,26 @@ std::size_t ComputeProgressInterval(std::size_t total_frames) {
 
 }  // namespace
 
+std::vector<std::size_t> ComputeDiscOutputFrameOrder(
+    const std::vector<DiscSkip>& disc_skips, std::size_t total_disc_frames) {
+  const std::vector<DiscFrameAction> plan =
+      ComputeDiscSkipPlan(disc_skips, total_disc_frames);
+
+  std::vector<std::size_t> output_order;
+  output_order.reserve(total_disc_frames);
+  for (std::size_t disc_frame = 0U; disc_frame < total_disc_frames;
+       ++disc_frame) {
+    const DiscFrameAction& action = plan[disc_frame];
+    if (action.write_to_output) {
+      output_order.push_back(disc_frame);
+    }
+    for (const std::size_t src : action.replay_disc_frames) {
+      output_order.push_back(src);
+    }
+  }
+  return output_order;
+}
+
 VideoSynthPipeline::VideoSynthPipeline(IProjectParser* parser,
                                        IProjectValidator* validator,
                                        IGenerationStage* generation,

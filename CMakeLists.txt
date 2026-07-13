@@ -142,8 +142,16 @@ if(VIDEOSYNTH_BUILD_GUI)
         src/gui/log_message_model.h
         src/gui/main_window.cpp
         src/gui/main_window.h
+        src/gui/picture_view_widget.cpp
+        src/gui/picture_view_widget.h
         src/gui/preferences_dialog.cpp
         src/gui/preferences_dialog.h
+        src/gui/preview_frame_service.cpp
+        src/gui/preview_frame_service.h
+        src/gui/preview_pane.cpp
+        src/gui/preview_pane.h
+        src/gui/preview_render.cpp
+        src/gui/preview_render.h
         src/gui/project_document.cpp
         src/gui/project_document.h
         src/gui/project_settings_editor.cpp
@@ -172,6 +180,9 @@ if(VIDEOSYNTH_BUILD_GUI)
         src/gui/validation_issues_model.cpp
         src/gui/validation_issues_model.h
         src/gui/videosynth_gui_resources.qrc
+        src/gui/waveform_mapping.h
+        src/gui/waveform_scope_widget.cpp
+        src/gui/waveform_scope_widget.h
     )
 
     # Qt code generators are enabled per-target so the core library and CLI
@@ -289,6 +300,9 @@ if(VIDEOSYNTH_BUILD_GUI)
         tests/gui/test_generation_preferences.cpp
         tests/gui/test_line_injection_presenter.cpp
         tests/gui/test_log_message_model.cpp
+        tests/gui/test_preview_frame_service.cpp
+        tests/gui/test_preview_functional.cpp
+        tests/gui/test_preview_render.cpp
         tests/gui/test_project_document.cpp
         tests/gui/test_project_file_lifecycle.cpp
         tests/gui/test_project_settings_presenter.cpp
@@ -300,6 +314,7 @@ if(VIDEOSYNTH_BUILD_GUI)
         tests/gui/test_theme_settings.cpp
         tests/gui/test_validation_controller.cpp
         tests/gui/test_validation_issues_model.cpp
+        tests/gui/test_waveform_mapping.cpp
     )
 
     target_compile_definitions(videosynth_gui_tests
@@ -333,6 +348,7 @@ set(videosynth_functional_test_patterns
     "^GenerationStageProgressiveTest\\."
     "^LineInjectionVitsIntegrationTest\\."
     "^OutputStageTest\\."
+    "^PreviewFunctionalTest\\."
     "^ProjectFileLifecycleTest\\."
     "^SectionEditingRoundTripTest\\."
     "^ThemeSettingsTest\\."
@@ -366,6 +382,8 @@ set(videosynth_unit_test_patterns
     "^GenerationPreferencesTest\\."
     "^LogMessageModelTest\\."
     "^PipelineTest\\."
+    "^PreviewFrameServiceTest\\."
+    "^PreviewRenderTest\\."
     "^ProjectDocumentTest\\."
     "^ProjectSettingsPresenterTest\\."
     "^ProjectValidatorTest\\."
@@ -376,6 +394,7 @@ set(videosynth_unit_test_patterns
     "^SourceProbeControllerTest\\."
     "^ValidationControllerTest\\."
     "^ValidationIssuesModelTest\\."
+    "^WaveformMappingTest\\."
     "^BiphaseValidationTest\\."
     "^CrossInjectionValidationTest\\."
     "^NtscVirsValidationTest\\."

@@ -16,6 +16,7 @@
 
 #include "generation_controller.h"
 #include "log_message_model.h"
+#include "preview_pane.h"
 #include "project_document.h"
 #include "project_settings_editor.h"
 #include "section_editor.h"
@@ -35,11 +36,10 @@ namespace videosynth::gui {
 
 // Main window shell: menu bar (File / Edit / Project / Generate / View /
 // Help), status bar, issues dock, sections dock, log dock, and the central
-// authoring tabs (project settings and per-section editors) over a
-// ProjectDocument with file lifecycle (New / Open / Save / Save As / Recent
-// Files). Generation runs in-process on a worker thread through
-// GenerationController with progress, logging, and cancellation. Preview
-// panes attach here in a later phase.
+// tabs (project settings, per-section editors, and the signal preview) over
+// a ProjectDocument with file lifecycle (New / Open / Save / Save As /
+// Recent Files). Generation runs in-process on a worker thread through
+// GenerationController with progress, logging, and cancellation.
 //
 // Thread-safety: NOT thread-safe. GUI (main) thread only.
 class MainWindow : public QMainWindow {
@@ -108,6 +108,7 @@ class MainWindow : public QMainWindow {
   QTabWidget* editor_tabs_ = nullptr;
   ProjectSettingsEditor* project_settings_editor_ = nullptr;
   SectionEditor* section_editor_ = nullptr;
+  PreviewPane* preview_pane_ = nullptr;
   SectionListDock* section_list_dock_ = nullptr;
   // Output artefacts of the most recently started run, for the completion
   // summary dialog.

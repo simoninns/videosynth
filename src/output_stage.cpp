@@ -21,6 +21,7 @@
 #include <string>
 #include <vector>
 
+#include "videosynth/cvbs_quantization.h"
 #include "videosynth/fixed_point.h"
 #include "videosynth/model.h"
 #include "videosynth/timing_constants.h"
@@ -31,14 +32,6 @@ OutputStage::OutputStage(ILogger* logger) : logger_(logger) {}
 
 namespace {
 
-struct QuantizationProfile {
-  double millivolts_per_code = 1.0;
-  int blanking_code = 0;
-  int minimum_legal_code = 0;
-  int maximum_legal_code = 1023;
-  std::int64_t reciprocal_q30 = 0;
-};
-
 enum class OutputEncoding {
   kCvbsU10,
   kCvbsU16,
@@ -46,78 +39,6 @@ enum class OutputEncoding {
   kCvbsS16Fsc,
   kRawS16,
 };
-
-bool BuildQuantizationProfile(Standard standard, QuantizationProfile* profile) {
-  if (profile == nullptr) {
-    return false;
-  }
-
-  if (standard == Standard::kPal) {
-    *profile = QuantizationProfile{
-        .millivolts_per_code = 1.1905,
-        .blanking_code = 256,
-        .minimum_legal_code = 4,
-        .maximum_legal_code = 1019,
-        .reciprocal_q30 = 0,
-    };
-  } else if (standard == Standard::kNtsc || standard == Standard::kPalM) {
-    // PAL-M uses System M signal levels identical to M/NTSC, so the same
-    // quantization profile applies. ITU-R BT.470-6 Table 1 item 4.
-    *profile = QuantizationProfile{
-        .millivolts_per_code = 1.2755,
-        .blanking_code = 240,
-        .minimum_legal_code = 16,
-        .maximum_legal_code = 1019,
-        .reciprocal_q30 = 0,
-    };
-  } else {
-    return false;
-  }
-
-  profile->reciprocal_q30 = static_cast<std::int64_t>(std::llround(
-      (1.0 / profile->millivolts_per_code) * static_cast<double>(1LL << 30)));
-  if (profile->reciprocal_q30 <= 0) {
-    return false;
-  }
-
-  return true;
-}
-
-int MapCompositeMillivoltsToCode(double composite_mv,
-                                 const QuantizationProfile& profile) {
-  return static_cast<int>(
-             std::lround(composite_mv / profile.millivolts_per_code)) +
-         profile.blanking_code;
-}
-
-int MapCompositeFixedToCode(SampleFixed composite_mv_fixed,
-                            const QuantizationProfile& profile) {
-  constexpr int kReciprocalFractionBits = 30;
-  const std::int64_t product = composite_mv_fixed * profile.reciprocal_q30;
-  const std::int64_t mapped_delta = RoundShiftRightSigned(
-      product, kReciprocalFractionBits + kSampleFractionBits);
-  return static_cast<int>(mapped_delta) + profile.blanking_code;
-}
-
-int ClampToLegalCodeRange(int mapped_code,
-                          [[maybe_unused]] const QuantizationProfile& profile) {
-  // Preserve sub-black (4-15) and over-white-adjacent (1020-1023 are reserved).
-  // Only clamp reserved/protected values: 0-3 (reserved low) and 1020-1023
-  // (reserved high). Allow excursions in ranges 4-1019 to pass through (legal +
-  // sub-black).
-  constexpr int kReservedLow = 4;
-  constexpr int kReservedHigh = 1020;
-
-  if (mapped_code < kReservedLow) {
-    return kReservedLow;  // Clamp reserved low values (0-3) to first
-                          // non-reserved sub-black (4)
-  }
-  if (mapped_code > kReservedHigh - 1) {
-    return kReservedHigh - 1;  // Clamp reserved high values (1020-1023) to
-                               // maximum non-reserved (1019)
-  }
-  return mapped_code;
-}
 
 bool ResolveOutputEncoding(const std::string& preset,
                            OutputEncoding* output_encoding) {
@@ -229,19 +150,6 @@ bool IsNonstandardMappedCode(int mapped_code,
                              const QuantizationProfile& profile) {
   return mapped_code < (profile.minimum_legal_code - 1) ||
          mapped_code > (profile.maximum_legal_code + 1);
-}
-
-// Maps a chroma sample (oscillates around 0 mV) to a 10-bit code centred at
-// 512, as required by the CVBS spec for dual-file YC output.
-// CVBS file format spec §3.2: chroma zero is at 512 in the 0-1023 domain.
-int MapChromaFixedToCode(SampleFixed chroma_mv_fixed,
-                         const QuantizationProfile& profile) {
-  constexpr int kChromaCentreCode = 512;
-  constexpr int kReciprocalFractionBits = 30;
-  const std::int64_t product = chroma_mv_fixed * profile.reciprocal_q30;
-  const std::int64_t mapped_delta = RoundShiftRightSigned(
-      product, kReciprocalFractionBits + kSampleFractionBits);
-  return static_cast<int>(mapped_delta) + kChromaCentreCode;
 }
 
 std::int16_t EncodeChromaSample(OutputEncoding encoding,

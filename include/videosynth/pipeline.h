@@ -9,12 +9,27 @@
 
 #pragma once
 
+#include <cstddef>
+#include <vector>
+
 #include "videosynth/audio_wav_writer.h"
 #include "videosynth/dropout_injection_stage.h"
 #include "videosynth/interfaces.h"
 #include "videosynth/noise_injection_stage.h"
 
 namespace videosynth {
+
+// Returns, in output order, the disc-frame (schedule) index emitted for each
+// written output frame: forward-skipped disc frames are withheld and
+// backward-skip replays re-emit their source frames immediately after the
+// skip's trigger frame. Mirrors the pipeline's disc-skip emission exactly, so
+// front-ends (for example the GUI preview) can map an output frame index to
+// the disc frame that produces it. With no skips this is the identity
+// sequence [0, total_disc_frames).
+//
+// Thread-safety: thread-safe (pure function).
+std::vector<std::size_t> ComputeDiscOutputFrameOrder(
+    const std::vector<DiscSkip>& disc_skips, std::size_t total_disc_frames);
 
 // Thread-safety: VideoSynthPipeline is NOT thread-safe. A whole pipeline run
 // (Run or RunProject) executes on a single thread, which may be any thread —

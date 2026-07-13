@@ -742,5 +742,32 @@ TEST(PipelineTest, SequentialRunsFromWorkerThreadProduceIdenticalResults) {
   EXPECT_EQ(worker_first, main_thread_samples);
 }
 
+TEST(PipelineTest, DiscOutputFrameOrderWithoutSkipsIsIdentity) {
+  const std::vector<std::size_t> order = ComputeDiscOutputFrameOrder({}, 4U);
+  EXPECT_EQ(order, (std::vector<std::size_t>{0U, 1U, 2U, 3U}));
+}
+
+TEST(PipelineTest, DiscOutputFrameOrderForwardSkipWithholdsFrames) {
+  DiscSkip skip;
+  skip.at_frame = 2;  // 1-based: withholds disc frames 1 and 2 (0-based).
+  skip.direction = DiscSkipDirection::kForward;
+  skip.count = 2;
+
+  const std::vector<std::size_t> order =
+      ComputeDiscOutputFrameOrder({skip}, 5U);
+  EXPECT_EQ(order, (std::vector<std::size_t>{0U, 3U, 4U}));
+}
+
+TEST(PipelineTest, DiscOutputFrameOrderBackwardSkipReplaysFrames) {
+  DiscSkip skip;
+  skip.at_frame = 3;  // 1-based: after disc frame 2 (0-based), replay 1..2.
+  skip.direction = DiscSkipDirection::kBackward;
+  skip.count = 2;
+
+  const std::vector<std::size_t> order =
+      ComputeDiscOutputFrameOrder({skip}, 5U);
+  EXPECT_EQ(order, (std::vector<std::size_t>{0U, 1U, 2U, 1U, 2U, 3U, 4U}));
+}
+
 }  // namespace
 }  // namespace videosynth

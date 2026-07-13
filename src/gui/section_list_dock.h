@@ -42,6 +42,10 @@ class SectionListDock : public QWidget {
  signals:
   void CurrentSectionChanged(int index);
 
+  // "Preview this section": the preview should jump to the section's first
+  // output frame.
+  void PreviewSectionRequested(int index);
+
  private:
   void OnAddProgressive();
   void OnAddLaserdiscLeadIn();
@@ -61,6 +65,7 @@ class SectionListDock : public QWidget {
   QTableView* view_ = nullptr;
   QToolButton* remove_button_ = nullptr;
   QToolButton* duplicate_button_ = nullptr;
+  QToolButton* preview_button_ = nullptr;
   QToolButton* up_button_ = nullptr;
   QToolButton* down_button_ = nullptr;
 };

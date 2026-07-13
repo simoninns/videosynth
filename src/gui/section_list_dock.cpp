@@ -49,6 +49,10 @@ SectionListDock::SectionListDock(ProjectDocument* document, QWidget* parent)
   remove_button_->setText(tr("Remove"));
   duplicate_button_ = new QToolButton(this);
   duplicate_button_->setText(tr("Duplicate"));
+  preview_button_ = new QToolButton(this);
+  preview_button_->setText(tr("Preview"));
+  preview_button_->setToolTip(
+      tr("Show the section's first frame in the preview"));
   up_button_ = new QToolButton(this);
   up_button_->setText(tr("Up"));
   down_button_ = new QToolButton(this);
@@ -57,6 +61,7 @@ SectionListDock::SectionListDock(ProjectDocument* document, QWidget* parent)
   buttons->addWidget(add_button);
   buttons->addWidget(remove_button_);
   buttons->addWidget(duplicate_button_);
+  buttons->addWidget(preview_button_);
   buttons->addStretch();
   buttons->addWidget(up_button_);
   buttons->addWidget(down_button_);
@@ -77,6 +82,12 @@ SectionListDock::SectionListDock(ProjectDocument* document, QWidget* parent)
           &SectionListDock::OnRemove);
   connect(duplicate_button_, &QToolButton::clicked, this,
           &SectionListDock::OnDuplicate);
+  connect(preview_button_, &QToolButton::clicked, this, [this] {
+    const int index = current_section();
+    if (index >= 0) {
+      emit PreviewSectionRequested(index);
+    }
+  });
   connect(up_button_, &QToolButton::clicked, this, &SectionListDock::OnMoveUp);
   connect(down_button_, &QToolButton::clicked, this,
           &SectionListDock::OnMoveDown);
@@ -177,6 +188,7 @@ void SectionListDock::UpdateButtonStates() {
   const int count = model_->rowCount();
   remove_button_->setEnabled(index >= 0);
   duplicate_button_->setEnabled(index >= 0);
+  preview_button_->setEnabled(index >= 0);
   up_button_->setEnabled(index > 0);
   down_button_->setEnabled(index >= 0 && index < count - 1);
 }
