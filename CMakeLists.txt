@@ -73,6 +73,7 @@ add_library(videosynth_core
     src/noise_injection_stage.cpp
     src/dropout_injection_stage.cpp
     src/output_stage.cpp
+    src/path_resolution.cpp
     src/pipeline.cpp
     src/progressive_frame_source_probe.cpp
     src/project_validator.cpp
@@ -90,6 +91,20 @@ target_include_directories(videosynth_core
         ${CMAKE_CURRENT_SOURCE_DIR}/include
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+# Default location of the bundled asset library used by the "{bundled}" logical
+# asset root. For dev builds this is the videosynth-assets submodule; installed
+# builds should override it (e.g. -DVIDEOSYNTH_BUNDLED_ASSET_DIR=<datadir>) or
+# rely on the Phase 8.3 install rules. The VIDEOSYNTH_ASSET_DIR environment
+# variable overrides this at runtime.
+if(NOT DEFINED VIDEOSYNTH_BUNDLED_ASSET_DIR)
+    set(VIDEOSYNTH_BUNDLED_ASSET_DIR
+        "${CMAKE_CURRENT_SOURCE_DIR}/videosynth-assets/assets")
+endif()
+target_compile_definitions(videosynth_core
+    PRIVATE
+        VIDEOSYNTH_BUNDLED_ASSET_DIR="${VIDEOSYNTH_BUNDLED_ASSET_DIR}"
 )
 
 target_link_libraries(videosynth_core
@@ -124,10 +139,14 @@ endif()
 
 if(VIDEOSYNTH_BUILD_GUI)
     add_library(videosynth_gui_lib STATIC
+        src/gui/asset_roots.cpp
+        src/gui/asset_roots.h
         src/gui/disc_skips_editor.cpp
         src/gui/disc_skips_editor.h
         src/gui/disc_skips_model.cpp
         src/gui/disc_skips_model.h
+        src/gui/edit_project_dialog.cpp
+        src/gui/edit_project_dialog.h
         src/gui/forwarding_logger.cpp
         src/gui/forwarding_logger.h
         src/gui/generation_controller.cpp
@@ -142,6 +161,8 @@ if(VIDEOSYNTH_BUILD_GUI)
         src/gui/log_message_model.h
         src/gui/main_window.cpp
         src/gui/main_window.h
+        src/gui/new_project_dialog.cpp
+        src/gui/new_project_dialog.h
         src/gui/picture_view_widget.cpp
         src/gui/picture_view_widget.h
         src/gui/preferences_dialog.cpp
@@ -152,6 +173,8 @@ if(VIDEOSYNTH_BUILD_GUI)
         src/gui/preview_pane.h
         src/gui/preview_render.cpp
         src/gui/preview_render.h
+        src/gui/preview_window.cpp
+        src/gui/preview_window.h
         src/gui/project_document.cpp
         src/gui/project_document.h
         src/gui/project_settings_editor.cpp
@@ -183,6 +206,8 @@ if(VIDEOSYNTH_BUILD_GUI)
         src/gui/waveform_mapping.h
         src/gui/waveform_scope_widget.cpp
         src/gui/waveform_scope_widget.h
+        src/gui/welcome_page.cpp
+        src/gui/welcome_page.h
     )
 
     # Qt code generators are enabled per-target so the core library and CLI
@@ -248,6 +273,7 @@ add_executable(videosynth_tests
     tests/test_fixture_projects.cpp
     tests/test_generation_stage.cpp
     tests/test_output_stage.cpp
+    tests/test_path_resolution.cpp
     tests/test_pipeline.cpp
     tests/test_signal_shaping.cpp
     tests/test_signal_timing_model.cpp
@@ -385,6 +411,7 @@ set(videosynth_unit_test_patterns
     "^PreviewFrameServiceTest\\."
     "^PreviewRenderTest\\."
     "^ProjectDocumentTest\\."
+    "^ProjectDocumentOpenStateTest\\."
     "^ProjectSettingsPresenterTest\\."
     "^ProjectValidatorTest\\."
     "^SectionListModelTest\\."
@@ -408,6 +435,7 @@ set(videosynth_unit_test_patterns
     "^DropoutInjectionTest\\."
     "^OsdRendererTest\\."
     "^OsdTokenResolverTest\\."
+    "^PathResolutionTest\\."
     "^SignalShapingTest\\."
     "^SignalTimingModelTest\\."
     "^TimingConstantsTest\\."

@@ -145,6 +145,7 @@ void ProjectSettingsEditor::BuildUi() {
   output_form->addRow(QString(), video_path_hint_);
   output_form->addRow(tr("Metadata path:"), metadata_row);
   layout->addWidget(output_group);
+
   layout->addStretch();
 
   connect(signal_type_combo_, &QComboBox::activated, this,
@@ -221,9 +222,15 @@ void ProjectSettingsEditor::LoadFromDocument() {
   updating_ = false;
 }
 
+void ProjectSettingsEditor::SetStandardEditable(bool editable) {
+  standard_editable_ = editable;
+  standard_combo_->setEnabled(editable);
+}
+
 void ProjectSettingsEditor::ApplyEnablement() {
   const ProjectSettingsFormState state =
       BuildProjectSettingsFormState(document_->project());
+  standard_combo_->setEnabled(standard_editable_);
   pilot_burst_check_->setEnabled(state.pilot_burst_editable);
   vbi_burst_check_->setEnabled(state.vbi_burst_editable);
   setup_ire_check_->setEnabled(state.setup_ire_editable);

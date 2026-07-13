@@ -12,8 +12,10 @@
 
 #include <QCheckBox>
 #include <QComboBox>
+#include <QDir>
 #include <QDoubleSpinBox>
 #include <QFileDialog>
+#include <QFileInfo>
 #include <QFormLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
@@ -25,9 +27,13 @@
 #include <QSpinBox>
 #include <QTableWidget>
 #include <QVBoxLayout>
+#include <filesystem>
+#include <string>
 
+#include "asset_roots.h"
 #include "section_block_presenters.h"
 #include "section_list_model.h"
+#include "videosynth/path_resolution.h"
 
 namespace videosynth::gui {
 
@@ -125,12 +131,27 @@ QWidget* SectionEditor::BuildGeneralGroup() {
   section_type_combo_->addItem(QStringLiteral("lead_out"));
   form->addRow(tr("Disc section type:"), section_type_combo_);
 
+  source_root_combo_ = new QComboBox(group);
+  source_root_combo_->addItem(tr("Project"), QStringLiteral("project"));
+  source_root_combo_->addItem(tr("Bundled"), QStringLiteral("bundled"));
+  source_root_combo_->addItem(tr("User"), QStringLiteral("user"));
+  source_root_combo_->addItem(tr("Absolute"), QString());
+  source_root_combo_->setToolTip(
+      tr("Logical asset root the source path is relative to. Project = next to "
+         "the project file; Bundled = shipped assets; User = your asset "
+         "library; Absolute = a full path."));
   source_edit_ = new QLineEdit(group);
   auto* browse = new QPushButton(tr("Browse…"), group);
   auto* source_row = new QHBoxLayout();
+  source_row->addWidget(source_root_combo_);
   source_row->addWidget(source_edit_);
   source_row->addWidget(browse);
   form->addRow(tr("Source:"), source_row);
+
+  source_resolved_hint_ = new QLabel(group);
+  source_resolved_hint_->setWordWrap(true);
+  source_resolved_hint_->setEnabled(false);
+  form->addRow(QString(), source_resolved_hint_);
 
   duration_spin_ = new QSpinBox(group);
   duration_spin_->setRange(1, kMaxDurationFrames);
@@ -151,6 +172,14 @@ QWidget* SectionEditor::BuildGeneralGroup() {
   connect(source_edit_, &QLineEdit::editingFinished, this, [this] {
     CommitSection();
     RequestProbe();
+    UpdateSourceResolvedHint();
+  });
+  connect(source_root_combo_, &QComboBox::activated, this, [this] {
+    if (!updating_) {
+      CommitSection();
+      RequestProbe();
+      UpdateSourceResolvedHint();
+    }
   });
   connect(browse, &QPushButton::clicked, this, &SectionEditor::OnBrowseSource);
   connect(duration_spin_, &QSpinBox::valueChanged, this, [this](int) {
@@ -454,7 +483,7 @@ void SectionEditor::LoadFromDocument() {
           ? 0
           : section_type_combo_->findText(QString::fromStdString(
                 SectionTypeToString(section.section_type))));
-  source_edit_->setText(QString::fromStdString(section.source));
+  LoadSourceWidgets(section.source);
   duration_all_check_->setChecked(section.duration_frames_all);
   duration_spin_->setEnabled(!section.duration_frames_all);
   if (section.duration_frames > 0) {
@@ -591,7 +620,7 @@ Section SectionEditor::SectionFromWidgets() const {
           ? SectionType::kUnknown
           : SectionTypeFromString(
                 section_type_combo_->currentText().toStdString());
-  section.source = source_edit_->text().toStdString();
+  section.source = SourceFromWidgets();
   section.duration_frames_all = duration_all_check_->isChecked();
   section.duration_frames =
       section.duration_frames_all ? 0 : duration_spin_->value();
@@ -725,9 +754,15 @@ void SectionEditor::RequestProbe() {
     return;
   }
   const Project& project = document_->project();
+  // Resolve the source path exactly as generation/preview will (asset_bases
+  // and, for saved projects, the project file's directory) so the probe reads
+  // the same file the pipeline would. anchor_unset mirrors the GUI runner.
+  const Project resolved = videosynth::ResolveProjectPaths(
+      project, GuiAssetRoots(), ProjectBaseDir().toStdString(),
+      /*anchor_unset=*/true);
   probe_controller_->RequestProbe(
-      project.sections[static_cast<std::size_t>(section_index_)],
-      project.cvbs_presets.video_standard_preset);
+      resolved.sections[static_cast<std::size_t>(section_index_)],
+      resolved.cvbs_presets.video_standard_preset);
 }
 
 void SectionEditor::UpdateProbeDisplay() {
@@ -760,9 +795,90 @@ void SectionEditor::OnBrowseSource() {
   if (path.isEmpty()) {
     return;
   }
-  source_edit_->setText(path);
+
+  // If the chosen file sits under the currently-selected root, keep the root
+  // and store the remainder; otherwise fall back to an absolute path.
+  const QString root_name = source_root_combo_->currentData().toString();
+  QString stored = path;
+  if (!root_name.isEmpty()) {
+    const QString base = QString::fromStdString(videosynth::ResolveAssetPath(
+        "{" + root_name.toStdString() + "}", GuiAssetRoots(),
+        ProjectBaseDir().toStdString(), /*anchor_unset=*/true));
+    if (!base.isEmpty() && path.startsWith(base + QLatin1Char('/'))) {
+      source_edit_->setText(path.mid(base.length() + 1));
+      CommitSection();
+      RequestProbe();
+      UpdateSourceResolvedHint();
+      return;
+    }
+  }
+  // Not under the selected root: store the absolute path.
+  source_root_combo_->setCurrentIndex(source_root_combo_->findData(QString()));
+  source_edit_->setText(stored);
   CommitSection();
   RequestProbe();
+  UpdateSourceResolvedHint();
+}
+
+std::string SectionEditor::SourceFromWidgets() const {
+  const QString root_name = source_root_combo_->currentData().toString();
+  QString rest = source_edit_->text();
+  if (root_name.isEmpty()) {
+    return rest.toStdString();  // Absolute (or verbatim) path.
+  }
+  while (rest.startsWith(QLatin1Char('/'))) {
+    rest.remove(0, 1);
+  }
+  if (rest.isEmpty()) {
+    return "{" + root_name.toStdString() + "}";
+  }
+  return "{" + root_name.toStdString() + "}/" + rest.toStdString();
+}
+
+void SectionEditor::LoadSourceWidgets(const std::string& source) {
+  QString root_name;  // empty => Absolute
+  QString rest = QString::fromStdString(source);
+
+  if (!source.empty() && source.front() == '{') {
+    const std::size_t close = source.find('}');
+    const std::string name =
+        close == std::string::npos ? "" : source.substr(1, close - 1);
+    if (videosynth::IsBuiltinRootName(name)) {
+      root_name = QString::fromStdString(name);
+      std::string tail =
+          close == std::string::npos ? "" : source.substr(close + 1);
+      if (!tail.empty() && (tail.front() == '/' || tail.front() == '\\')) {
+        tail.erase(0, 1);
+      }
+      rest = QString::fromStdString(tail);
+    }
+    // Unknown root token: leave as Absolute so the string round-trips verbatim.
+  } else if (source.empty() || !std::filesystem::path(source).is_absolute()) {
+    // No token and not absolute: a plain relative path is project-relative.
+    root_name = QStringLiteral("project");
+  }
+
+  const int index = root_name.isEmpty()
+                        ? source_root_combo_->findData(QString())
+                        : source_root_combo_->findData(root_name);
+  source_root_combo_->setCurrentIndex(index >= 0 ? index : 0);
+  source_edit_->setText(rest);
+  UpdateSourceResolvedHint();
+}
+
+void SectionEditor::UpdateSourceResolvedHint() {
+  const std::string resolved = videosynth::ResolveAssetPath(
+      SourceFromWidgets(), GuiAssetRoots(), ProjectBaseDir().toStdString(),
+      /*anchor_unset=*/true);
+  source_resolved_hint_->setText(
+      resolved.empty() ? QString()
+                       : tr("→ %1").arg(QString::fromStdString(resolved)));
+}
+
+QString SectionEditor::ProjectBaseDir() const {
+  return document_->file_path().isEmpty()
+             ? QDir::currentPath()
+             : QFileInfo(document_->file_path()).absolutePath();
 }
 
 void SectionEditor::OnAddOverlay() {

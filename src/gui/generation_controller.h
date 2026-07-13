@@ -23,16 +23,6 @@
 
 namespace videosynth::gui {
 
-// Returns a copy of `project` with relative paths (section sources and
-// output video/metadata targets) resolved against `base_dir`. Absolute paths
-// and empty fields are left unchanged; an empty base_dir returns the project
-// untouched. The pipeline resolves relative paths against the process
-// working directory, so the GUI must anchor them to the project file's
-// directory before starting a worker-thread run.
-//
-// Thread-safety: thread-safe (pure function).
-Project ResolveProjectPaths(Project project, const std::string& base_dir);
-
 // Runs VideoSynthPipeline::RunProject on a dedicated worker thread and
 // bridges IPipelineObserver callbacks to queued Qt signals, so the GUI
 // thread never executes pipeline code. One run may be active at a time;
@@ -76,8 +66,8 @@ class GenerationController : public QObject {
   bool is_running() const { return running_; }
 
   // Starts a run over a snapshot of `project`. Relative paths must already
-  // be resolved (see ResolveProjectPaths). Returns false — without side
-  // effects — when a run is already active.
+  // be resolved (see videosynth::ResolveProjectPaths). Returns false —
+  // without side effects — when a run is already active.
   bool StartGeneration(const Project& project, const RunOptions& options);
 
   // Requests cooperative cancellation of the active run; no-op when idle.

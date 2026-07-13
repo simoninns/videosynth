@@ -26,8 +26,10 @@
 #include <QVBoxLayout>
 #include <algorithm>
 
+#include "asset_roots.h"
 #include "generation_controller.h"
 #include "preview_render.h"
+#include "videosynth/path_resolution.h"
 #include "waveform_mapping.h"
 
 namespace videosynth::gui {
@@ -265,8 +267,9 @@ void PreviewPane::PushProjectToService() {
       document_->file_path().isEmpty()
           ? QDir::currentPath()
           : QFileInfo(document_->file_path()).absolutePath();
-  service_->SetProject(
-      ResolveProjectPaths(document_->project(), base_dir.toStdString()));
+  service_->SetProject(videosynth::ResolveProjectPaths(
+      document_->project(), GuiAssetRoots(), base_dir.toStdString(),
+      /*anchor_unset=*/true));
   RequestCurrentFrame();
 }
 

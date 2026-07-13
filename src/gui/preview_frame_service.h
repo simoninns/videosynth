@@ -91,8 +91,8 @@ struct PreviewFrameData {
 // options) that SetProject invalidates.
 //
 // Relative paths in the project must be resolved before SetProject (see
-// ResolveProjectPaths in generation_controller.h) because synthesis executes
-// on a worker thread.
+// videosynth::ResolveProjectPaths in path_resolution.h) because synthesis
+// executes on a worker thread.
 //
 // Thread-safety: all public members must be called from the owning (GUI)
 // thread, which must run an event loop for results to be delivered. The

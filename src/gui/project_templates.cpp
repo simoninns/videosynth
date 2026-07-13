@@ -63,21 +63,37 @@ void AppendCode(Section* section, const std::string& code_type) {
   section->line_injections.front().codes.push_back(code);
 }
 
+// Bundled colour-bar EXR shipped for the standard's active raster, referenced
+// through the {bundled} logical asset root so a fresh project previews
+// immediately regardless of install location.
+std::string DefaultBundledSource(Standard standard) {
+  const char* raster =
+      standard == Standard::kPal ? "720x576" : "720x486";  // System-M is 525.
+  return std::string("{bundled}/exr/") + raster + "/75_BARS.exr";
+}
+
 }  // namespace
 
-Project MakeDefaultPalProject() {
+Project MakeDefaultProject(Standard standard) {
+  const Standard resolved =
+      standard == Standard::kUnknown ? Standard::kPal : standard;
+
   Project project;
   project.name = "New Project";
   project.version = "1.0";
-  project.cvbs_presets.video_standard_preset = Standard::kPal;
+  project.cvbs_presets.video_standard_preset = resolved;
   project.cvbs_presets.sample_encoding_preset = "CVBS_U10_4FSC";
   project.cvbs_presets.signal_state_preset = "STANDARD_TBC_LOCKED";
   project.output.video_path = "output/new_project.composite";
   project.output.metadata_path = "output/new_project.meta";
 
-  project.sections.push_back(MakeProgressiveSectionTemplate(1));
+  Section section = MakeProgressiveSectionTemplate(1);
+  section.source = DefaultBundledSource(resolved);
+  project.sections.push_back(section);
   return project;
 }
+
+Project MakeDefaultPalProject() { return MakeDefaultProject(Standard::kPal); }
 
 Section MakeProgressiveSectionTemplate(int ordinal) {
   Section section;

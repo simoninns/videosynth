@@ -16,7 +16,6 @@
 #include <QDockWidget>
 #include <QFileDialog>
 #include <QFileInfo>
-#include <QGroupBox>
 #include <QKeySequence>
 #include <QLabel>
 #include <QListView>
@@ -26,20 +25,20 @@
 #include <QPixmap>
 #include <QProgressBar>
 #include <QPushButton>
-#include <QScrollArea>
 #include <QSettings>
+#include <QStackedWidget>
 #include <QStatusBar>
 #include <QStringList>
-#include <QTabWidget>
 #include <QUrl>
-#include <QVBoxLayout>
 
-#include "disc_skips_editor.h"
+#include "asset_roots.h"
+#include "edit_project_dialog.h"
 #include "generation_preferences.h"
+#include "new_project_dialog.h"
 #include "preferences_dialog.h"
-#include "project_templates.h"
 #include "videosynth/audio_wav_writer.h"
 #include "videosynth/dropout_injection_stage.h"
+#include "videosynth/path_resolution.h"
 #include "videosynth/yaml_project_emitter.h"
 #include "videosynth/yaml_project_parser.h"
 #include "videosynth_version.h"
@@ -91,7 +90,7 @@ MainWindow::MainWindow(ThemeController* theme_controller, QWidget* parent)
   setWindowIcon(QIcon(QStringLiteral(":/videosynth-gui/icon.png")));
 
   BuildMenus();
-  BuildCentralEditors();
+  BuildCentralArea();
   BuildSectionsDock();
   BuildIssuesDock();
   BuildLogDock();
@@ -105,7 +104,13 @@ MainWindow::MainWindow(ThemeController* theme_controller, QWidget* parent)
     validation_controller_->RequestValidation(document_->project());
   });
   connect(document_, &ProjectDocument::DocumentReset, this, [this] {
-    validation_controller_->RequestValidation(document_->project());
+    UpdateProjectOpenState();
+    if (document_->is_open()) {
+      validation_controller_->RequestValidation(document_->project());
+    } else {
+      issues_model_->SetIssues({});
+      UpdateValidationStatus();
+    }
     section_editor_->SetCurrentSection(section_list_dock_->current_section());
     UpdateWindowTitle();
   });
@@ -126,11 +131,9 @@ MainWindow::MainWindow(ThemeController* theme_controller, QWidget* parent)
             log_model_->SetDarkTheme(is_dark);
           });
 
-  // Start from the template so the editors show a valid project instead of
-  // an empty document (matches File > New; not marked modified).
-  document_->ResetProject(MakeDefaultPalProject(), QString());
-  section_list_dock_->SelectSection(0);
-
+  // Start with nothing loaded: the welcome page is shown and project-dependent
+  // actions are disabled until the user creates or opens a project.
+  UpdateProjectOpenState();
   UpdateWindowTitle();
   RestoreWindowGeometry();
 }
@@ -162,17 +165,17 @@ void MainWindow::closeEvent(QCloseEvent* event) {
 
 void MainWindow::BuildMenus() {
   QMenu* file_menu = menuBar()->addMenu(tr("&File"));
-  file_menu->addAction(tr("&New Project"), QKeySequence::New, this,
+  file_menu->addAction(tr("&New Project…"), QKeySequence::New, this,
                        &MainWindow::OnNewProject);
   file_menu->addAction(tr("&Open Project…"), QKeySequence::Open, this,
                        &MainWindow::OnOpenProject);
   recent_files_menu_ = file_menu->addMenu(tr("Open &Recent"));
   UpdateRecentFilesMenu();
   file_menu->addSeparator();
-  file_menu->addAction(tr("&Save"), QKeySequence::Save, this,
-                       &MainWindow::OnSave);
-  file_menu->addAction(tr("Save &As…"), QKeySequence::SaveAs, this,
-                       &MainWindow::OnSaveAs);
+  save_action_ = file_menu->addAction(tr("&Save"), QKeySequence::Save, this,
+                                      &MainWindow::OnSave);
+  save_as_action_ = file_menu->addAction(tr("Save &As…"), QKeySequence::SaveAs,
+                                         this, &MainWindow::OnSaveAs);
   file_menu->addSeparator();
   file_menu->addAction(tr("E&xit"), QKeySequence::Quit, this,
                        &MainWindow::close);
@@ -188,14 +191,18 @@ void MainWindow::BuildMenus() {
                        &MainWindow::OnPreferences);
 
   QMenu* project_menu = menuBar()->addMenu(tr("&Project"));
-  project_menu->addAction(tr("&Validate"), this, [this] {
-    validation_controller_->RequestValidation(document_->project());
-  });
+  edit_project_action_ = project_menu->addAction(tr("&Edit Project…"), this,
+                                                 &MainWindow::OnEditProject);
+  project_validate_action_ =
+      project_menu->addAction(tr("&Validate"), this, [this] {
+        validation_controller_->RequestValidation(document_->project());
+      });
 
   QMenu* generate_menu = menuBar()->addMenu(tr("&Generate"));
-  generate_menu->addAction(tr("&Validate"), this, [this] {
-    validation_controller_->RequestValidation(document_->project());
-  });
+  generate_validate_action_ =
+      generate_menu->addAction(tr("&Validate"), this, [this] {
+        validation_controller_->RequestValidation(document_->project());
+      });
   generate_action_ = generate_menu->addAction(
       tr("&Generate"), QKeySequence(Qt::CTRL | Qt::Key_G), this,
       &MainWindow::OnGenerate);
@@ -207,6 +214,11 @@ void MainWindow::BuildMenus() {
   cancel_generation_action_->setEnabled(false);
 
   QMenu* view_menu = menuBar()->addMenu(tr("&View"));
+  preview_action_ = view_menu->addAction(tr("&Preview"));
+  preview_action_->setCheckable(true);
+  connect(preview_action_, &QAction::toggled, this,
+          &MainWindow::OnTogglePreview);
+  view_menu->addSeparator();
   QMenu* theme_menu = view_menu->addMenu(tr("&Theme"));
   auto* theme_group = new QActionGroup(theme_menu);
   theme_group->setExclusive(true);
@@ -234,58 +246,45 @@ void MainWindow::BuildMenus() {
   help_menu->addAction(tr("&About"), this, &MainWindow::OnAbout);
 }
 
-void MainWindow::BuildCentralEditors() {
-  editor_tabs_ = new QTabWidget(this);
+void MainWindow::BuildCentralArea() {
+  central_stack_ = new QStackedWidget(this);
 
-  // Project tab: settings form plus the project-level disc skips table.
-  auto* project_page = new QWidget(editor_tabs_);
-  auto* project_layout = new QVBoxLayout(project_page);
-  project_layout->setContentsMargins(0, 0, 0, 0);
-  auto* project_scroll = new QScrollArea(project_page);
-  project_scroll->setWidgetResizable(true);
-  project_scroll->setFrameShape(QFrame::NoFrame);
-  auto* project_content = new QWidget(project_scroll);
-  auto* project_content_layout = new QVBoxLayout(project_content);
-  project_settings_editor_ =
-      new ProjectSettingsEditor(document_, project_content);
-  project_content_layout->addWidget(project_settings_editor_);
-  auto* disc_skips_group = new QGroupBox(tr("Disc Skips"), project_content);
-  auto* disc_skips_layout = new QVBoxLayout(disc_skips_group);
-  disc_skips_layout->addWidget(
-      new DiscSkipsEditor(document_, disc_skips_group));
-  project_content_layout->addWidget(disc_skips_group);
-  project_content_layout->addStretch();
-  project_scroll->setWidget(project_content);
-  project_layout->addWidget(project_scroll);
-  editor_tabs_->addTab(project_page, tr("Project"));
+  welcome_page_ = new WelcomePage(central_stack_);
+  connect(welcome_page_, &WelcomePage::NewProjectRequested, this,
+          &MainWindow::OnNewProject);
+  connect(welcome_page_, &WelcomePage::OpenProjectRequested, this,
+          &MainWindow::OnOpenProject);
+  connect(welcome_page_, &WelcomePage::RecentFileRequested, this,
+          [this](const QString& path) {
+            if (MaybeSave()) {
+              LoadProjectFromFile(path);
+            }
+          });
+  central_stack_->addWidget(welcome_page_);
 
-  section_editor_ = new SectionEditor(document_, probe_controller_, this);
-  editor_tabs_->addTab(section_editor_, tr("Section"));
+  section_editor_ =
+      new SectionEditor(document_, probe_controller_, central_stack_);
+  central_stack_->addWidget(section_editor_);
 
-  preview_pane_ = new PreviewPane(document_, theme_controller_, this);
-  editor_tabs_->addTab(preview_pane_, tr("Preview"));
-
-  setCentralWidget(editor_tabs_);
+  setCentralWidget(central_stack_);
 }
 
 void MainWindow::BuildSectionsDock() {
-  auto* dock = new QDockWidget(tr("Sections"), this);
-  dock->setObjectName(QStringLiteral("sections_dock"));
-  section_list_dock_ = new SectionListDock(document_, dock);
-  dock->setWidget(section_list_dock_);
-  addDockWidget(Qt::LeftDockWidgetArea, dock);
+  sections_dock_ = new QDockWidget(tr("Sections"), this);
+  sections_dock_->setObjectName(QStringLiteral("sections_dock"));
+  section_list_dock_ = new SectionListDock(document_, sections_dock_);
+  sections_dock_->setWidget(section_list_dock_);
+  addDockWidget(Qt::LeftDockWidgetArea, sections_dock_);
 
   connect(section_list_dock_, &SectionListDock::CurrentSectionChanged, this,
-          [this](int index) {
-            section_editor_->SetCurrentSection(index);
-            if (index >= 0) {
-              editor_tabs_->setCurrentWidget(section_editor_);
-            }
-          });
+          [this](int index) { section_editor_->SetCurrentSection(index); });
   connect(section_list_dock_, &SectionListDock::PreviewSectionRequested, this,
           [this](int index) {
-            editor_tabs_->setCurrentWidget(preview_pane_);
-            preview_pane_->ShowSectionFirstFrame(index);
+            EnsurePreviewWindow();
+            preview_window_->show();
+            preview_window_->raise();
+            preview_window_->activateWindow();
+            preview_window_->ShowSectionFirstFrame(index);
           });
 }
 
@@ -359,6 +358,46 @@ void MainWindow::ConnectGenerationController() {
           &MainWindow::OnGenerationFinished);
 }
 
+void MainWindow::UpdateProjectOpenState() {
+  const bool open = document_->is_open();
+
+  central_stack_->setCurrentWidget(open ? static_cast<QWidget*>(section_editor_)
+                                        : static_cast<QWidget*>(welcome_page_));
+  if (!open) {
+    welcome_page_->SetRecentFiles(RecentFilePaths());
+  }
+
+  save_action_->setEnabled(open);
+  save_as_action_->setEnabled(open);
+  edit_project_action_->setEnabled(open);
+  project_validate_action_->setEnabled(open);
+  generate_validate_action_->setEnabled(open);
+  // Keep Generate disabled while a run is already in progress.
+  generate_action_->setEnabled(open && !generation_controller_->is_running());
+  preview_action_->setEnabled(open);
+  if (sections_dock_ != nullptr) {
+    sections_dock_->setEnabled(open);
+  }
+
+  if (!open && preview_window_ != nullptr) {
+    preview_window_->hide();
+  }
+}
+
+void MainWindow::EnsurePreviewWindow() {
+  if (preview_window_ != nullptr) {
+    return;
+  }
+  preview_window_ = new PreviewWindow(document_, theme_controller_, this);
+  connect(preview_window_, &PreviewWindow::VisibilityChanged, this,
+          [this](bool visible) {
+            if (preview_action_->isChecked() != visible) {
+              const QSignalBlocker blocker(preview_action_);
+              preview_action_->setChecked(visible);
+            }
+          });
+}
+
 void MainWindow::OnPreferences() {
   QSettings settings;
   PreferencesDialog dialog(LoadGenerationPreferences(settings), this);
@@ -403,8 +442,9 @@ void MainWindow::OnGenerate() {
       document_->file_path().isEmpty()
           ? QDir::currentPath()
           : QFileInfo(document_->file_path()).absolutePath();
-  const Project project =
-      ResolveProjectPaths(document_->project(), base_dir.toStdString());
+  const Project project = videosynth::ResolveProjectPaths(
+      document_->project(), GuiAssetRoots(), base_dir.toStdString(),
+      /*anchor_unset=*/true);
 
   last_run_artefacts_.clear();
   last_run_artefacts_.append(QString::fromStdString(project.output.video_path));
@@ -428,7 +468,7 @@ void MainWindow::OnGenerate() {
 }
 
 void MainWindow::OnGenerationFinished(GenerationController::RunStatus status) {
-  generate_action_->setEnabled(true);
+  generate_action_->setEnabled(document_->is_open());
   cancel_generation_action_->setEnabled(false);
   generation_progress_bar_->setVisible(false);
 
@@ -487,7 +527,34 @@ void MainWindow::OnNewProject() {
   if (!MaybeSave()) {
     return;
   }
-  document_->ResetProject(MakeDefaultPalProject(), QString());
+  NewProjectDialog dialog(this);
+  if (dialog.exec() != QDialog::Accepted) {
+    return;
+  }
+
+  // Saving is part of the create flow: a new project is written to disk
+  // immediately so its relative paths always resolve against the project
+  // file's directory (see asset_bases / ResolveProjectPaths).
+  Project project = dialog.project();
+  const QString suggested =
+      QString::fromStdString(project.name.empty() ? "untitled" : project.name) +
+      QStringLiteral(".yaml");
+  const QString path = QFileDialog::getSaveFileName(
+      this, tr("Save New Project"), suggested, ProjectFileFilter());
+  if (path.isEmpty()) {
+    return;
+  }
+
+  YamlProjectEmitter emitter;
+  std::string error;
+  if (!emitter.EmitFile(project, path.toStdString(), &error)) {
+    QMessageBox::critical(this, tr("Save Failed"),
+                          QString::fromStdString(error));
+    return;
+  }
+
+  document_->ResetProject(std::move(project), path);
+  AddToRecentFiles(path);
   section_list_dock_->SelectSection(0);
   statusBar()->showMessage(tr("New project created"), 3000);
 }
@@ -520,6 +587,40 @@ bool MainWindow::OnSaveAs() {
   return SaveToPath(path);
 }
 
+void MainWindow::OnEditProject() {
+  if (!document_->is_open()) {
+    return;
+  }
+  EditProjectDialog dialog(document_->project(), this);
+  if (dialog.exec() != QDialog::Accepted) {
+    return;
+  }
+  const Project edited = dialog.project();
+  // Each setter is a no-op when its slice is unchanged, so only actual edits
+  // mark the document modified.
+  document_->SetProjectInfo(edited.name, edited.version, edited.description);
+  document_->SetCvbsPresets(edited.cvbs_presets);
+  document_->SetOutputTargets(edited.output);
+  document_->SetDiscSkips(edited.disc_skips);
+  statusBar()->showMessage(tr("Project settings updated"), 3000);
+}
+
+void MainWindow::OnTogglePreview(bool checked) {
+  if (checked && !document_->is_open()) {
+    const QSignalBlocker blocker(preview_action_);
+    preview_action_->setChecked(false);
+    return;
+  }
+  EnsurePreviewWindow();
+  if (checked) {
+    preview_window_->show();
+    preview_window_->raise();
+    preview_window_->activateWindow();
+  } else {
+    preview_window_->hide();
+  }
+}
+
 void MainWindow::OnIssueActivated(const QModelIndex& index) {
   if (!index.isValid()) {
     return;
@@ -528,22 +629,21 @@ void MainWindow::OnIssueActivated(const QModelIndex& index) {
       index.data(ValidationIssuesModel::kSectionIndexRole).toInt();
   emit IssueNavigationRequested(section_index);
 
-  // Navigate to the offending editor: section issues focus that section's
-  // editor; project-level issues focus the project settings tab.
+  // Section issues focus that section's editor; project-level issues open the
+  // Edit Project dialog.
   if (section_index >= 0 && section_index < document_->section_count()) {
     section_list_dock_->SelectSection(section_index);
     section_editor_->SetCurrentSection(section_index);
-    editor_tabs_->setCurrentWidget(section_editor_);
     statusBar()->showMessage(
         tr("Issue relates to section %1").arg(section_index + 1), 3000);
   } else {
-    editor_tabs_->setCurrentIndex(0);
     statusBar()->showMessage(tr("Project-level issue"), 3000);
+    OnEditProject();
   }
 }
 
 bool MainWindow::MaybeSave() {
-  if (!document_->is_modified()) {
+  if (!document_->is_open() || !document_->is_modified()) {
     return true;
   }
 
@@ -601,12 +701,21 @@ void MainWindow::LoadProjectFromFile(const QString& path) {
 }
 
 void MainWindow::UpdateWindowTitle() {
+  if (!document_->is_open()) {
+    setWindowTitle(QStringLiteral("videosynth"));
+    setWindowModified(false);
+    return;
+  }
   setWindowTitle(
       QStringLiteral("%1[*] — videosynth").arg(document_->display_name()));
   setWindowModified(document_->is_modified());
 }
 
 void MainWindow::UpdateValidationStatus() {
+  if (!document_->is_open()) {
+    validation_status_label_->clear();
+    return;
+  }
   const int errors = issues_model_->error_count();
   const int warnings = issues_model_->warning_count();
   if (errors == 0 && warnings == 0) {
@@ -617,13 +726,15 @@ void MainWindow::UpdateValidationStatus() {
   }
 }
 
+QStringList MainWindow::RecentFilePaths() const {
+  const QSettings settings;
+  return settings.value(QLatin1String(kRecentFilesSettingsKey)).toStringList();
+}
+
 void MainWindow::UpdateRecentFilesMenu() {
   recent_files_menu_->clear();
 
-  const QSettings settings;
-  const QStringList recent =
-      settings.value(QLatin1String(kRecentFilesSettingsKey)).toStringList();
-
+  const QStringList recent = RecentFilePaths();
   for (const QString& path : recent) {
     QAction* action = recent_files_menu_->addAction(QFileInfo(path).fileName());
     action->setToolTip(path);
@@ -635,6 +746,10 @@ void MainWindow::UpdateRecentFilesMenu() {
     });
   }
   recent_files_menu_->setEnabled(!recent.isEmpty());
+
+  if (welcome_page_ != nullptr) {
+    welcome_page_->SetRecentFiles(recent);
+  }
 }
 
 void MainWindow::AddToRecentFiles(const QString& path) {

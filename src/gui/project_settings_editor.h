@@ -35,6 +35,11 @@ class ProjectSettingsEditor : public QWidget {
   explicit ProjectSettingsEditor(ProjectDocument* document,
                                  QWidget* parent = nullptr);
 
+  // Locks or unlocks the video-standard control. The standard is chosen once
+  // when a project is created (it drives raster/timing); the Edit Project
+  // dialog calls this with `false` so it is shown read-only.
+  void SetStandardEditable(bool editable);
+
  private:
   void BuildUi();
   void LoadFromDocument();
@@ -52,6 +57,7 @@ class ProjectSettingsEditor : public QWidget {
   ProjectDocument* document_;
   bool updating_ = false;
   bool committing_ = false;
+  bool standard_editable_ = true;
 
   QLineEdit* name_edit_ = nullptr;
   QLineEdit* version_edit_ = nullptr;

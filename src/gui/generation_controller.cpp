@@ -9,7 +9,6 @@
 
 #include "generation_controller.h"
 
-#include <filesystem>
 #include <utility>
 
 #include "videosynth/audio_wav_writer.h"
@@ -37,33 +36,7 @@ LogLevel ParseLogLevel(const std::string& log_level) {
   return LogLevel::kInfo;
 }
 
-std::string ResolveAgainst(const std::filesystem::path& base,
-                           const std::string& path) {
-  if (path.empty()) {
-    return path;
-  }
-  const std::filesystem::path candidate(path);
-  if (candidate.is_absolute()) {
-    return path;
-  }
-  return (base / candidate).lexically_normal().string();
-}
-
 }  // namespace
-
-Project ResolveProjectPaths(Project project, const std::string& base_dir) {
-  if (base_dir.empty()) {
-    return project;
-  }
-  const std::filesystem::path base(base_dir);
-  for (Section& section : project.sections) {
-    section.source = ResolveAgainst(base, section.source);
-  }
-  project.output.video_path = ResolveAgainst(base, project.output.video_path);
-  project.output.metadata_path =
-      ResolveAgainst(base, project.output.metadata_path);
-  return project;
-}
 
 // Invoked synchronously on the worker thread by the pipeline; every callback
 // is marshalled to the controller's thread as a queued invocation. If the

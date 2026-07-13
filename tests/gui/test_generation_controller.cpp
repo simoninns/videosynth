@@ -216,43 +216,6 @@ TEST(GenerationControllerTest, ProgressIsMonotonicNonDecreasing) {
   EXPECT_EQ(recorder.progress.back().first, recorder.progress.back().second);
 }
 
-// --- ResolveProjectPaths ---------------------------------------------------
-
-TEST(GenerationControllerTest, ResolveProjectPathsAnchorsRelativePaths) {
-  Project project;
-  project.output.video_path = "out/video.composite";
-  project.output.metadata_path = "out/video.meta";
-  Section section;
-  section.source = "assets/bars.exr";
-  project.sections.push_back(section);
-
-  const Project resolved = ResolveProjectPaths(project, "/projects/demo");
-  EXPECT_EQ(resolved.output.video_path, "/projects/demo/out/video.composite");
-  EXPECT_EQ(resolved.output.metadata_path, "/projects/demo/out/video.meta");
-  EXPECT_EQ(resolved.sections[0].source, "/projects/demo/assets/bars.exr");
-}
-
-TEST(GenerationControllerTest, ResolveProjectPathsLeavesAbsoluteAndEmptyAlone) {
-  Project project;
-  project.output.video_path = "/abs/video.composite";
-  project.output.metadata_path = "";
-  Section section;
-  section.source = "/abs/bars.exr";
-  project.sections.push_back(section);
-
-  const Project resolved = ResolveProjectPaths(project, "/projects/demo");
-  EXPECT_EQ(resolved.output.video_path, "/abs/video.composite");
-  EXPECT_TRUE(resolved.output.metadata_path.empty());
-  EXPECT_EQ(resolved.sections[0].source, "/abs/bars.exr");
-}
-
-TEST(GenerationControllerTest, ResolveProjectPathsWithEmptyBaseIsIdentity) {
-  Project project;
-  project.output.video_path = "out/video.composite";
-  const Project resolved = ResolveProjectPaths(project, "");
-  EXPECT_EQ(resolved.output.video_path, "out/video.composite");
-}
-
 // --- ForwardingLogger -------------------------------------------------------
 
 class RecordingLogger final : public ILogger {

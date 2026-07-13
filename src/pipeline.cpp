@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <filesystem>
 #include <optional>
 #include <unordered_map>
 #include <utility>
@@ -21,6 +22,7 @@
 #include "videosynth/fixed_point.h"
 #include "videosynth/frame_synthesis_pool.h"
 #include "videosynth/noise_injection_stage.h"
+#include "videosynth/path_resolution.h"
 #include "videosynth/timing_constants.h"
 
 namespace videosynth {
@@ -195,7 +197,15 @@ bool VideoSynthPipeline::Run(const RunOptions& options,
     return false;
   }
 
-  return RunProject(parse_result.project, options, observer, cancellation);
+  // Resolve {name}/path logical-root tokens against the run's asset roots.
+  // Plain relative paths keep their historical working-directory-relative
+  // behaviour (anchor_unset = false), so existing projects are unaffected.
+  const std::string project_dir =
+      std::filesystem::path(options.project_path).parent_path().string();
+  const Project resolved =
+      ResolveProjectPaths(parse_result.project, options.asset_roots,
+                          project_dir, /*anchor_unset=*/false);
+  return RunProject(resolved, options, observer, cancellation);
 }
 
 bool VideoSynthPipeline::RunProject(const Project& project,

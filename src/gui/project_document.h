@@ -77,6 +77,9 @@ class ProjectDocument : public QObject {
   const Project& project() const { return project_; }
   QString file_path() const { return file_path_; }
   bool is_modified() const { return modified_; }
+  // True once a project has been created or opened; false at startup and after
+  // CloseProject. The GUI shows its welcome surface while no project is open.
+  bool is_open() const { return open_; }
   int section_count() const {
     return static_cast<int>(project_.sections.size());
   }
@@ -85,9 +88,15 @@ class ProjectDocument : public QObject {
   // else "Untitled".
   QString display_name() const;
 
-  // Replaces the whole document (File > New / Open). Clears the dirty flag
-  // and emits DocumentReset. `file_path` is empty for unsaved templates.
+  // Replaces the whole document (File > New / Open). Marks the document open,
+  // clears the dirty flag, and emits DocumentReset. `file_path` is empty for
+  // unsaved templates.
   void ResetProject(Project project, const QString& file_path);
+
+  // Returns to the "nothing open" state (File > Close): replaces the document
+  // with a default-constructed Project, clears the path and dirty flag, marks
+  // it not open, and emits DocumentReset. A no-op when already closed.
+  void CloseProject();
 
   // Records a successful save to `file_path`: clears the dirty flag and
   // updates the path (Save As may change it).
@@ -140,6 +149,7 @@ class ProjectDocument : public QObject {
   Project project_;
   QString file_path_;
   bool modified_ = false;
+  bool open_ = false;
 };
 
 }  // namespace videosynth::gui

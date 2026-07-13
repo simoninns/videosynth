@@ -67,6 +67,34 @@ TEST(ProjectValidatorTest, AcceptsMvpCompliantProject) {
   EXPECT_TRUE(result.errors.empty());
 }
 
+TEST(ProjectValidatorTest, AcceptsKnownAssetRootTokenSource) {
+  Project project = MakeValidProject();
+  project.sections[0].source = "{bundled}/exr/720x576/75_BARS.exr";
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_TRUE(result.is_valid);
+  EXPECT_TRUE(result.errors.empty());
+}
+
+TEST(ProjectValidatorTest, RejectsUnknownAssetRootTokenSource) {
+  Project project = MakeValidProject();
+  project.sections[0].source = "{nope}/bars.exr";
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_FALSE(result.is_valid);
+  bool mentions_unknown_root = false;
+  for (const std::string& error : result.errors) {
+    if (error.find("unknown asset root 'nope'") != std::string::npos) {
+      mentions_unknown_root = true;
+    }
+  }
+  EXPECT_TRUE(mentions_unknown_root);
+}
+
 TEST(ProjectValidatorTest, AcceptsTpg21SampleEncodingPreset) {
   Project project = MakeValidProject();
   project.cvbs_presets.sample_encoding_preset = "CVBS_TPG21_4FSC";

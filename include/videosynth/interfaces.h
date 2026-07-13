@@ -17,6 +17,7 @@
 
 #include "videosynth/fixed_point.h"
 #include "videosynth/model.h"
+#include "videosynth/path_resolution.h"
 #include "videosynth/results.h"
 
 namespace videosynth {
@@ -35,6 +36,10 @@ struct RunOptions {
   // Output is byte-identical regardless of this value. Projects with
   // disc_skips always run the sequential path.
   int threads = 1;
+  // Logical asset roots for resolving {name}/path source and output tokens.
+  // The CLI populates this from DefaultAssetRoots() plus --asset-root
+  // overrides; empty leaves only the built-in "project" root available.
+  AssetRootMap asset_roots;
 };
 
 // Terminal status of a pipeline run, reported through

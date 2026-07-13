@@ -16,30 +16,33 @@
 
 #include "generation_controller.h"
 #include "log_message_model.h"
-#include "preview_pane.h"
+#include "preview_window.h"
 #include "project_document.h"
-#include "project_settings_editor.h"
 #include "section_editor.h"
 #include "section_list_dock.h"
 #include "source_probe_controller.h"
 #include "theme_controller.h"
 #include "validation_controller.h"
 #include "validation_issues_model.h"
+#include "welcome_page.h"
 
 class QAction;
+class QDockWidget;
 class QLabel;
 class QMenu;
 class QProgressBar;
-class QTabWidget;
+class QStackedWidget;
 
 namespace videosynth::gui {
 
 // Main window shell: menu bar (File / Edit / Project / Generate / View /
-// Help), status bar, issues dock, sections dock, log dock, and the central
-// tabs (project settings, per-section editors, and the signal preview) over
-// a ProjectDocument with file lifecycle (New / Open / Save / Save As /
-// Recent Files). Generation runs in-process on a worker thread through
-// GenerationController with progress, logging, and cancellation.
+// Help), status bar, and docks (sections, issues, log). The central area is a
+// stack that shows a welcome surface when no project is open and the
+// per-section editor once one is. Project creation runs through the New
+// Project dialog and project-level settings through the Edit Project dialog;
+// the signal preview lives in its own top-level PreviewWindow. Generation runs
+// in-process on a worker thread through GenerationController with progress,
+// logging, and cancellation.
 //
 // Thread-safety: NOT thread-safe. GUI (main) thread only.
 class MainWindow : public QMainWindow {
@@ -55,8 +58,7 @@ class MainWindow : public QMainWindow {
 
  signals:
   // Issue-activation hook: emitted when the user double-clicks an issue in
-  // the dock. Section editors (later phase) connect here to focus the
-  // offending editor; -1 means a project-level issue.
+  // the dock. -1 means a project-level issue.
   void IssueNavigationRequested(int section_index);
 
  protected:
@@ -68,6 +70,8 @@ class MainWindow : public QMainWindow {
   void OnOpenProject();
   bool OnSave();
   bool OnSaveAs();
+  void OnEditProject();
+  void OnTogglePreview(bool checked);
   void OnIssueActivated(const QModelIndex& index);
   void OnPreferences();
   void OnGenerate();
@@ -75,7 +79,7 @@ class MainWindow : public QMainWindow {
 
  private:
   void BuildMenus();
-  void BuildCentralEditors();
+  void BuildCentralArea();
   void BuildSectionsDock();
   void BuildIssuesDock();
   void BuildLogDock();
@@ -84,12 +88,19 @@ class MainWindow : public QMainWindow {
   void ShowGenerationSummary();
   void RestoreWindowGeometry();
 
+  // Enables/disables the project-dependent actions and docks and selects the
+  // welcome or section-editor page to match the document's open state.
+  void UpdateProjectOpenState();
+  // Lazily creates the detached preview window bound to the document.
+  void EnsurePreviewWindow();
+
   // Returns false when the user cancels an unsaved-changes prompt.
   bool MaybeSave();
   bool SaveToPath(const QString& path);
   void LoadProjectFromFile(const QString& path);
   void UpdateWindowTitle();
   void UpdateValidationStatus();
+  QStringList RecentFilePaths() const;
   void UpdateRecentFilesMenu();
   void AddToRecentFiles(const QString& path);
 
@@ -103,13 +114,24 @@ class MainWindow : public QMainWindow {
   QMenu* recent_files_menu_ = nullptr;
   QLabel* validation_status_label_ = nullptr;
   QProgressBar* generation_progress_bar_ = nullptr;
+
+  // Project-dependent actions, disabled while no project is open.
+  QAction* save_action_ = nullptr;
+  QAction* save_as_action_ = nullptr;
+  QAction* edit_project_action_ = nullptr;
+  QAction* project_validate_action_ = nullptr;
   QAction* generate_action_ = nullptr;
+  QAction* generate_validate_action_ = nullptr;
   QAction* cancel_generation_action_ = nullptr;
-  QTabWidget* editor_tabs_ = nullptr;
-  ProjectSettingsEditor* project_settings_editor_ = nullptr;
+  QAction* preview_action_ = nullptr;
+
+  QStackedWidget* central_stack_ = nullptr;
+  WelcomePage* welcome_page_ = nullptr;
   SectionEditor* section_editor_ = nullptr;
-  PreviewPane* preview_pane_ = nullptr;
+  PreviewWindow* preview_window_ = nullptr;
   SectionListDock* section_list_dock_ = nullptr;
+  QDockWidget* sections_dock_ = nullptr;
+
   // Output artefacts of the most recently started run, for the completion
   // summary dialog.
   QStringList last_run_artefacts_;

@@ -81,6 +81,28 @@ TEST(YamlProjectEmitterTest, MinimalProjectOmitsUnsetOptionalBlocks) {
   EXPECT_EQ(emitted.find("ntsc_black_setup_ire"), std::string::npos);
 }
 
+TEST(YamlProjectEmitterTest, AssetRootTokenSourceRoundTrips) {
+  const std::string yaml = R"(
+cvbs_presets:
+  video_standard_preset: PAL
+output:
+  video_path: out/video.composite
+  metadata_path: out/metadata.meta
+sections:
+  - name: Bars
+    type: progressive
+    source: "{bundled}/exr/720x576/75_BARS.exr"
+    duration_frames: 10
+)";
+  ExpectRoundTrip(yaml);
+
+  YamlProjectParser parser;
+  const ParseResult parsed = parser.ParseString(yaml);
+  ASSERT_TRUE(parsed.ok);
+  EXPECT_EQ(parsed.project.sections[0].source,
+            "{bundled}/exr/720x576/75_BARS.exr");
+}
+
 TEST(YamlProjectEmitterTest, MinimalProjectKeepsCanonicalTopLevelOrder) {
   YamlProjectParser parser;
   const ParseResult parsed = parser.ParseString(kMinimalPalYaml);

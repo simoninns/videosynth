@@ -295,5 +295,40 @@ TEST_F(ProjectDocumentTest, ModifiedStateChangedFiresOncePerTransition) {
   EXPECT_EQ(counter_->document_changed, 2);
 }
 
+TEST(ProjectDocumentOpenStateTest, StartsClosed) {
+  ProjectDocument document;
+  EXPECT_FALSE(document.is_open());
+}
+
+TEST(ProjectDocumentOpenStateTest, ResetProjectOpensDocument) {
+  ProjectDocument document;
+  document.ResetProject(MakeProject(), QString());
+  EXPECT_TRUE(document.is_open());
+}
+
+TEST(ProjectDocumentOpenStateTest, CloseProjectReturnsToClosedStateAndEmits) {
+  ProjectDocument document;
+  document.ResetProject(MakeProject(), QStringLiteral("/tmp/test.yaml"));
+  SignalCounter counter(&document);
+
+  document.CloseProject();
+
+  EXPECT_FALSE(document.is_open());
+  EXPECT_EQ(counter.document_reset, 1);
+  EXPECT_FALSE(document.is_modified());
+  EXPECT_TRUE(document.file_path().isEmpty());
+  EXPECT_EQ(document.section_count(), 0);
+}
+
+TEST(ProjectDocumentOpenStateTest, CloseWhenAlreadyClosedIsNoOp) {
+  ProjectDocument document;
+  SignalCounter counter(&document);
+
+  document.CloseProject();
+
+  EXPECT_FALSE(document.is_open());
+  EXPECT_EQ(counter.document_reset, 0);
+}
+
 }  // namespace
 }  // namespace videosynth::gui

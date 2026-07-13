@@ -16,9 +16,13 @@ namespace videosynth::gui {
 
 // Thread-safety: all functions in this module are thread-safe pure functions.
 
-// Returns a minimal PAL project that passes structural validation
+// Returns a minimal project for `standard` that passes structural validation
 // (ProjectValidator without a source probe): one progressive section with a
-// placeholder source path the user is expected to replace.
+// placeholder source path the user is expected to replace. This is the
+// starting point File > New / the New Project dialog hands to the editors.
+Project MakeDefaultProject(Standard standard);
+
+// Convenience wrapper for MakeDefaultProject(Standard::kPal).
 Project MakeDefaultPalProject();
 
 // Plain progressive section (no laserdisc VBI codes). `ordinal` seeds the

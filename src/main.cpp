@@ -7,6 +7,7 @@
  * SPDX-FileCopyrightText: 2026 Simon Inns
  */
 
+#include <cstddef>
 #include <cstdlib>
 #include <iostream>
 #include <string>
@@ -17,6 +18,7 @@
 #include "videosynth/logger.h"
 #include "videosynth/noise_injection_stage.h"
 #include "videosynth/output_stage.h"
+#include "videosynth/path_resolution.h"
 #include "videosynth/pipeline.h"
 #include "videosynth/progressive_frame_source_probe.h"
 #include "videosynth/project_validator.h"
@@ -54,7 +56,22 @@ void PrintUsage() {
       << "              Use 1 for the pure sequential path; output is\n"
       << "              byte-identical regardless of the thread count.\n"
       << "  --log-level <level>  Set log level: info, debug, or trace.\n"
-      << "  --log-file <filename>  Write logs to a file as well as stderr.\n";
+      << "  --log-file <filename>  Write logs to a file as well as stderr.\n"
+      << "  --asset-root <name>=<path>  Map the {name}/… logical asset root "
+         "to\n"
+      << "              <path> (repeatable). Overrides the built-in bundled/"
+         "user roots.\n";
+}
+
+// Parses a --asset-root "name=path" argument into the root map. Returns false
+// when the value has no '=' or an empty name.
+bool ParseAssetRoot(const std::string& value, videosynth::AssetRootMap* roots) {
+  const std::size_t eq = value.find('=');
+  if (eq == std::string::npos || eq == 0) {
+    return false;
+  }
+  roots->roots[value.substr(0, eq)] = value.substr(eq + 1);
+  return true;
 }
 
 // Parses the --threads argument: "auto" or a positive integer.
@@ -83,6 +100,8 @@ int main(int argc, char** argv) {
   // CLI default is auto (0); the RunOptions member itself defaults to the
   // sequential path for library callers.
   options.threads = 0;
+  // Built-in bundled/user asset roots; --asset-root overrides individual ones.
+  options.asset_roots = videosynth::DefaultAssetRoots();
 
   for (int i = 1; i < argc; ++i) {
     const std::string arg = argv[i];
@@ -105,6 +124,11 @@ int main(int argc, char** argv) {
       options.log_level = argv[++i];
     } else if (arg == "--log-file" && i + 1 < argc) {
       options.log_file = argv[++i];
+    } else if (arg == "--asset-root" && i + 1 < argc) {
+      if (!ParseAssetRoot(argv[++i], &options.asset_roots)) {
+        PrintUsage();
+        return 2;
+      }
     } else {
       PrintUsage();
       return 2;

@@ -71,6 +71,16 @@ class SectionEditor : public QWidget {
   void OnAddOverlay();
   void OnRemoveOverlay();
 
+  // Reconstructs the stored source string from the root combo + path edit,
+  // splits a stored source into (root, remainder) for display, and refreshes
+  // the "resolves to" hint.
+  std::string SourceFromWidgets() const;
+  void LoadSourceWidgets(const std::string& source);
+  void UpdateSourceResolvedHint();
+  // Base directory relative source paths anchor to: the project file's folder,
+  // or the working directory for a never-saved project.
+  QString ProjectBaseDir() const;
+
   ProjectDocument* document_;
   SourceProbeController* probe_controller_;
   int section_index_ = -1;
@@ -83,7 +93,9 @@ class SectionEditor : public QWidget {
   // General.
   QLineEdit* name_edit_ = nullptr;
   QComboBox* section_type_combo_ = nullptr;
+  QComboBox* source_root_combo_ = nullptr;
   QLineEdit* source_edit_ = nullptr;
+  QLabel* source_resolved_hint_ = nullptr;
   QSpinBox* duration_spin_ = nullptr;
   QCheckBox* duration_all_check_ = nullptr;
   QLabel* start_frame_label_ = nullptr;

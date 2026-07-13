@@ -778,6 +778,27 @@ disc_skips:                       # Optional; simulates disc player tracking fai
     count: 4
 ```
 
+#### **Asset Roots & Path Resolution**
+
+Section `source` and `output` paths may reference a **logical asset root** with a leading `{name}` brace token, resolved to a real directory at runtime. This keeps a project portable: it references *what* an asset is, not *where* it physically lives, so projects survive reinstalls, repackaging, and moving between machines.
+
+Built-in roots:
+
+| Root | Meaning | Resolved location |
+|------|---------|-------------------|
+| `{bundled}` | Read-only assets shipped with the application | `$VIDEOSYNTH_ASSET_DIR`, else the installed `share/videosynth/assets` (found via XDG data dirs / QStandardPaths — includes Flatpak `/app/share`), else the dev `videosynth-assets/assets` submodule. |
+| `{user}` | The user's own writable asset library | `$XDG_DATA_HOME/videosynth/assets`, else `~/.local/share/videosynth/assets`. |
+| `{project}` | The project file's own directory | Directory containing the `.yaml`. |
+
+Resolution rules (shared by CLI and GUI via `ResolveProjectPaths` /
+`ResolveAssetPath` in `path_resolution.h`), for each source/output path:
+
+- **`{name}/rest`** → `rootDir(name) / rest` (a bare `{name}` resolves to the root directory itself). A root directory that is itself relative is anchored to the project file's directory. An **unknown** root name is a validation error.
+- **Absolute or empty** → unchanged.
+- **Plain relative (no token)** → the **CLI** leaves it working-directory-relative (preserving the run-from-a-base-dir convention used by the fixtures and `videosynth-assets`); the **GUI** anchors it to the saved project file's directory so the source probe, preview, and generation resolve identically. Use `{project}/rest` for a plain relative path that must resolve the same under both.
+
+The CLI seeds `{bundled}`/`{user}` from the environment and install prefix and accepts repeatable `--asset-root <name>=<path>` overrides (also usable to register additional named roots). The GUI resolves them via `QStandardPaths`. New GUI projects are saved to disk as part of the create flow so the `{project}` anchor always exists, and their placeholder source uses `{bundled}` so a fresh project previews immediately.
+
 #### **`noise:` Sub-Key (Optional, Per-Section)**
 
 The `noise:` block enables per-section additive Gaussian noise injection targeting orc-gui Black PSNR and White SNR metrics.

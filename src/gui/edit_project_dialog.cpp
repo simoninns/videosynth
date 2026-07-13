@@ -1,0 +1,60 @@
+/*
+ * File:        edit_project_dialog.cpp
+ * Module:      gui
+ * Purpose:     Modal dialog for editing dynamic project-level settings
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ * SPDX-FileCopyrightText: 2026 Simon Inns
+ */
+
+#include "edit_project_dialog.h"
+
+#include <QDialogButtonBox>
+#include <QGroupBox>
+#include <QScrollArea>
+#include <QVBoxLayout>
+
+#include "disc_skips_editor.h"
+
+namespace videosynth::gui {
+
+EditProjectDialog::EditProjectDialog(const Project& project, QWidget* parent)
+    : QDialog(parent), scratch_(new ProjectDocument(this)) {
+  setWindowTitle(tr("Edit Project"));
+  setModal(true);
+
+  // Edit a private copy so Cancel discards cleanly; the standard is fixed at
+  // creation time and shown read-only here.
+  scratch_->ResetProject(project, QString());
+
+  auto* layout = new QVBoxLayout(this);
+
+  auto* scroll = new QScrollArea(this);
+  scroll->setWidgetResizable(true);
+  scroll->setFrameShape(QFrame::NoFrame);
+  auto* content = new QWidget(scroll);
+  auto* content_layout = new QVBoxLayout(content);
+
+  settings_editor_ = new ProjectSettingsEditor(scratch_, content);
+  settings_editor_->SetStandardEditable(false);
+  content_layout->addWidget(settings_editor_);
+
+  auto* disc_skips_group = new QGroupBox(tr("Disc Skips"), content);
+  auto* disc_skips_layout = new QVBoxLayout(disc_skips_group);
+  disc_skips_layout->addWidget(new DiscSkipsEditor(scratch_, disc_skips_group));
+  content_layout->addWidget(disc_skips_group);
+  content_layout->addStretch();
+
+  scroll->setWidget(content);
+  layout->addWidget(scroll);
+
+  auto* buttons = new QDialogButtonBox(
+      QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
+  connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
+  connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
+  layout->addWidget(buttons);
+
+  resize(560, 680);
+}
+
+}  // namespace videosynth::gui

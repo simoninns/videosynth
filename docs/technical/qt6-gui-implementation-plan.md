@@ -19,6 +19,41 @@ front-end**:
   handling (auto/light/dark), overall layout conventions, and the About
   dialog (git commit hash + GPLv3 notice).
 
+## GUI Workflow (as built)
+
+The window flow supersedes the central-tab layout originally sketched in
+Phase 5 (project settings tab) and Phase 7 (preview tab):
+
+- **Empty start.** The application opens with no project loaded and shows a
+  welcome surface (`WelcomePage`: logo, New/Open, recent files). All
+  project-dependent actions are disabled until a project is created or opened.
+- **New Project dialog.** `File > New` opens a modal `NewProjectDialog` that
+  flows the user through creation — the **video standard** (the only static
+  setting, locked afterwards) plus name, description, sample encoding, signal
+  type, output targets, bursts, and optional asset base paths. It edits a
+  private scratch `ProjectDocument` and returns the configured `Project`. On
+  accept the project is **saved to disk as part of the create flow** (a save
+  location is chosen immediately) so its relative paths always have a project
+  directory to resolve against.
+- **Path resolution via logical asset roots.** Section-source and output paths
+  resolve through the shared core `ResolveProjectPaths`/`ResolveAssetPath`,
+  which expand `{bundled}`/`{user}`/`{project}` brace tokens to real
+  directories at runtime (GUI via `QStandardPaths`, CLI via env/`--asset-root`),
+  with plain relative paths anchored to the saved project directory. The source
+  editor exposes a root selector and a "resolves to …" hint; the source probe,
+  preview, and generation share the one resolver so they never disagree. See
+  HLD §7 "Asset Roots & Path Resolution".
+- **Section view is the main window.** Once a project is open the central area
+  is the per-section editor (`SectionEditor`), driven by the Sections dock on
+  the left; there are no central tabs.
+- **Edit Project dialog.** `Project > Edit Project…` opens a modal
+  `EditProjectDialog` for the dynamic project-level settings (everything except
+  the standard, shown read-only) plus the disc-skips table. OK applies the
+  changes to the document; Cancel discards them.
+- **Preview is a separate window.** `View > Preview` toggles a detached
+  top-level `PreviewWindow` hosting the `PreviewPane`, with its own persisted
+  geometry; "preview this section" from the Sections dock opens/raises it.
+
 ## Architectural Decisions
 
 - **In-process backend, not CLI shell-out.** The GUI links `videosynth_core`

@@ -163,7 +163,19 @@ QString ProjectDocument::display_name() const {
 
 void ProjectDocument::ResetProject(Project project, const QString& file_path) {
   project_ = std::move(project);
+  open_ = true;
   SetFilePath(file_path);
+  SetModified(false);
+  emit DocumentReset();
+}
+
+void ProjectDocument::CloseProject() {
+  if (!open_) {
+    return;
+  }
+  project_ = Project{};
+  open_ = false;
+  SetFilePath(QString());
   SetModified(false);
   emit DocumentReset();
 }

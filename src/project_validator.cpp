@@ -19,6 +19,7 @@
 #include "videosynth/biphase_types.h"
 #include "videosynth/dropout_scale.h"
 #include "videosynth/osd_token_resolver.h"
+#include "videosynth/path_resolution.h"
 #include "videosynth/timing_constants.h"
 #include "videosynth/vits_definition_provider.h"
 
@@ -73,6 +74,32 @@ bool EndsWith(const std::string& value, const std::string& suffix) {
   }
   return value.compare(value.size() - suffix.size(), suffix.size(), suffix) ==
          0;
+}
+
+// Rejects a source whose leading "{name}" logical-asset-root token is not a
+// known root, so token typos fail fast with a clear message.
+bool ValidateAssetRootToken(const std::string& source, std::string* error) {
+  if (source.empty() || source.front() != '{') {
+    return true;
+  }
+  const std::size_t close = source.find('}');
+  if (close == std::string::npos) {
+    if (error != nullptr) {
+      *error =
+          "Progressive section validation error: malformed asset root token "
+          "in source (missing '}').";
+    }
+    return false;
+  }
+  const std::string name = source.substr(1, close - 1);
+  if (!videosynth::IsBuiltinRootName(name)) {
+    if (error != nullptr) {
+      *error = "Progressive section validation error: unknown asset root '" +
+               name + "' in source. Known roots: bundled, user, project.";
+    }
+    return false;
+  }
+  return true;
 }
 
 bool ValidateProgressiveSourceFamily(const videosynth::Section& section,
@@ -1324,6 +1351,13 @@ ValidationResult ProjectValidator::Validate(const Project& project) {
         result.is_valid = false;
         result.errors.push_back(
             "Progressive section validation error: source must be set.");
+        break;
+      }
+
+      std::string asset_root_error;
+      if (!ValidateAssetRootToken(section.source, &asset_root_error)) {
+        result.is_valid = false;
+        result.errors.push_back(asset_root_error);
         break;
       }
 
