@@ -11,6 +11,7 @@
 #include <gtest/gtest.h>
 
 #include <string>
+#include <vector>
 
 #include "section_block_presenters.h"
 #include "videosynth/model.h"
@@ -81,26 +82,38 @@ TEST(SectionBlockPresenterTest, DropoutEnableEmitsBlockDisableRemovesIt) {
   EXPECT_EQ(EmitYaml(project).find("dropouts:"), std::string::npos);
 }
 
-TEST(SectionBlockPresenterTest, AudioEnableEmitsBlockDisableRemovesIt) {
+TEST(SectionBlockPresenterTest, AddChannelPairEmitsBlockClearRemovesIt) {
   Project project = MakeValidProject();
   EXPECT_EQ(EmitYaml(project).find("audio:"), std::string::npos);
 
-  SetAudioBlockEnabled(&project.sections[0], true);
+  project.sections[0].audio_channel_pairs.push_back(
+      MakeDefaultAudioChannelPair(0));
   EXPECT_NE(EmitYaml(project).find("audio:"), std::string::npos);
+  EXPECT_NE(EmitYaml(project).find("channel_pairs:"), std::string::npos);
   std::string error;
   EXPECT_TRUE(ProjectIsValid(project, &error)) << error;
 
-  SetAudioBlockEnabled(&project.sections[0], false);
+  project.sections[0].audio_channel_pairs.clear();
   EXPECT_EQ(EmitYaml(project).find("audio:"), std::string::npos);
-  EXPECT_EQ(project.sections[0].audio, AudioParameters{});
 }
 
-TEST(SectionBlockPresenterTest, AudioRampEnableSeedsValidRamp) {
-  Project project = MakeValidProject();
-  SetAudioBlockEnabled(&project.sections[0], true);
-  SetAudioRampEnabled(&project.sections[0], true);
+TEST(SectionBlockPresenterTest, DefaultChannelPairHasActiveLeftSilentRight) {
+  const AudioChannelPair channel_pair = MakeDefaultAudioChannelPair(4);
+  EXPECT_EQ(channel_pair.pair, 4);
+  EXPECT_TRUE(channel_pair.pair_specified);
+  EXPECT_TRUE(channel_pair.left.enabled);
+  EXPECT_EQ(channel_pair.left.waveform, AudioWaveform::kSine);
+  EXPECT_FALSE(channel_pair.right.enabled);
+}
 
-  const AudioParameters& audio = project.sections[0].audio;
+TEST(SectionBlockPresenterTest, ChannelRampEnableSeedsValidRamp) {
+  Project project = MakeValidProject();
+  AudioChannelPair channel_pair = MakeDefaultAudioChannelPair(0);
+  SetAudioChannelRampEnabled(&channel_pair.left, true);
+  project.sections[0].audio_channel_pairs.push_back(channel_pair);
+
+  const AudioParameters& audio =
+      project.sections[0].audio_channel_pairs[0].left;
   EXPECT_TRUE(audio.ramp_enabled);
   EXPECT_TRUE(audio.ramp_start_specified);
   EXPECT_TRUE(audio.ramp_end_specified);
@@ -110,17 +123,29 @@ TEST(SectionBlockPresenterTest, AudioRampEnableSeedsValidRamp) {
   std::string error;
   EXPECT_TRUE(ProjectIsValid(project, &error)) << error;
 
-  SetAudioRampEnabled(&project.sections[0], false);
+  SetAudioChannelRampEnabled(&project.sections[0].audio_channel_pairs[0].left,
+                             false);
   EXPECT_EQ(EmitYaml(project).find("ramp:"), std::string::npos);
   EXPECT_TRUE(ProjectIsValid(project, &error)) << error;
 }
 
-TEST(SectionBlockPresenterTest, SetAudioWaveformKeepsTextAndEnumConsistent) {
-  Section section;
-  SetAudioBlockEnabled(&section, true);
-  SetAudioWaveform(&section, "triangle");
-  EXPECT_EQ(section.audio.waveform, AudioWaveform::kTriangle);
-  EXPECT_EQ(section.audio.waveform_text, "triangle");
+TEST(SectionBlockPresenterTest, SetChannelWaveformKeepsTextAndEnumConsistent) {
+  AudioParameters channel = MakeDefaultAudioChannel();
+  SetAudioChannelWaveform(&channel, "triangle");
+  EXPECT_EQ(channel.waveform, AudioWaveform::kTriangle);
+  EXPECT_EQ(channel.waveform_text, "triangle");
+}
+
+TEST(SectionBlockPresenterTest, NextFreeChannelPairSkipsUsedNumbers) {
+  std::vector<AudioChannelPair> pairs;
+  EXPECT_EQ(NextFreeAudioChannelPair(pairs), 0);
+  pairs.push_back(MakeDefaultAudioChannelPair(0));
+  pairs.push_back(MakeDefaultAudioChannelPair(1));
+  EXPECT_EQ(NextFreeAudioChannelPair(pairs), 2);
+  for (int pair = 2; pair < kMaxAudioChannelPairs; ++pair) {
+    pairs.push_back(MakeDefaultAudioChannelPair(pair));
+  }
+  EXPECT_EQ(NextFreeAudioChannelPair(pairs), -1);  // All eight used.
 }
 
 TEST(SectionBlockPresenterTest, OsdBlockFollowsOverlayList) {
@@ -179,18 +204,19 @@ TEST(SectionBlockPresenterTest, OsdScaleLimitsMirrorValidator) {
 
 TEST(SectionBlockPresenterTest, AudioLimitsMirrorValidator) {
   Project project = MakeValidProject();
-  SetAudioBlockEnabled(&project.sections[0], true);
+  project.sections[0].audio_channel_pairs.push_back(
+      MakeDefaultAudioChannelPair(0));
+  AudioParameters& left = project.sections[0].audio_channel_pairs[0].left;
 
-  project.sections[0].audio.frequency_hz = editor_limits::kAudioFrequencyMaxHz;
+  left.frequency_hz = editor_limits::kAudioFrequencyMaxHz;
   EXPECT_TRUE(ProjectIsValid(project, nullptr));
-  project.sections[0].audio.frequency_hz =
-      editor_limits::kAudioFrequencyMaxHz + 1.0;
+  left.frequency_hz = editor_limits::kAudioFrequencyMaxHz + 1.0;
   EXPECT_FALSE(ProjectIsValid(project, nullptr));
 
-  project.sections[0].audio.frequency_hz = 1000.0;
-  project.sections[0].audio.amplitude = editor_limits::kAudioAmplitudeMax;
+  left.frequency_hz = 1000.0;
+  left.amplitude = editor_limits::kAudioAmplitudeMax;
   EXPECT_TRUE(ProjectIsValid(project, nullptr));
-  project.sections[0].audio.amplitude = editor_limits::kAudioAmplitudeMax + 0.1;
+  left.amplitude = editor_limits::kAudioAmplitudeMax + 0.1;
   EXPECT_FALSE(ProjectIsValid(project, nullptr));
 }
 

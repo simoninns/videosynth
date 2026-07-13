@@ -344,38 +344,48 @@ sections:
 )");
 }
 
-TEST(YamlProjectEmitterTest, AudioBlocksRoundTripFixedToneAndRamp) {
+TEST(YamlProjectEmitterTest, AudioChannelPairsRoundTripToneRampAndSilence) {
   ExpectRoundTrip(R"(
 cvbs_presets:
   video_standard_preset: PAL
 output:
   video_path: out/video.composite
 sections:
-  - name: FixedTone
+  - name: StereoTone
     type: progressive
     source: assets/bars.exr
     duration_frames: 8
     audio:
-      waveform: sine
-      frequency: 997.5
-      amplitude: 0.25
-  - name: DefaultsTone
+      channel_pairs:
+        - pair: 0
+          description: Analogue stereo
+          left:
+            waveform: sine
+            frequency: 997.5
+            amplitude: 0.25
+          right:
+            waveform: sine
+            frequency: 997.5
+            amplitude: 0.25
+  - name: MultiTrack
     type: progressive
     source: assets/bars.exr
     duration_frames: 8
     audio:
-      frequency: 1000.0
-  - name: Sweep
-    type: progressive
-    source: assets/bars.exr
-    duration_frames: 8
-    audio:
-      waveform: sawtooth
-      ramp:
-        start: 200.0
-        end: 4000.0
-        mode: bounce
-        period: 0.5
+      channel_pairs:
+        - pair: 0
+          left:
+            waveform: sawtooth
+            ramp:
+              start: 200.0
+              end: 4000.0
+              mode: bounce
+              period: 0.5
+        - pair: 3
+          description: Commentary
+          left:
+            waveform: square
+            frequency: 440.0
 )");
 }
 

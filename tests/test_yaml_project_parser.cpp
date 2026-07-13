@@ -646,7 +646,7 @@ TEST(YamlProjectParserTest, NoDiscSkipsFieldLeavesListEmpty) {
   EXPECT_TRUE(result.project.disc_skips.empty());
 }
 
-TEST(YamlProjectParserTest, ParsesFixedFrequencyAudioBlock) {
+TEST(YamlProjectParserTest, ParsesFixedFrequencyChannelPair) {
   const std::string yaml =
       "cvbs_presets:\n"
       "  video_standard_preset: PAL\n"
@@ -658,24 +658,38 @@ TEST(YamlProjectParserTest, ParsesFixedFrequencyAudioBlock) {
       "    source: fixture.exr\n"
       "    duration_frames: 10\n"
       "    audio:\n"
-      "      waveform: square\n"
-      "      frequency: 440.0\n"
-      "      amplitude: 0.8\n";
+      "      channel_pairs:\n"
+      "        - pair: 0\n"
+      "          description: Analogue stereo\n"
+      "          left:\n"
+      "            waveform: square\n"
+      "            frequency: 440.0\n"
+      "            amplitude: 0.8\n"
+      "          right:\n"
+      "            waveform: sine\n"
+      "            frequency: 1000.0\n";
 
   YamlProjectParser parser;
   const ParseResult result = parser.ParseString(yaml);
 
   ASSERT_TRUE(result.ok);
   ASSERT_EQ(result.project.sections.size(), 1U);
-  const AudioParameters& audio = result.project.sections[0].audio;
-  EXPECT_TRUE(audio.enabled);
-  EXPECT_EQ(audio.waveform, AudioWaveform::kSquare);
-  EXPECT_DOUBLE_EQ(audio.frequency_hz, 440.0);
-  EXPECT_DOUBLE_EQ(audio.amplitude, 0.8);
-  EXPECT_FALSE(audio.ramp_enabled);
+  ASSERT_EQ(result.project.sections[0].audio_channel_pairs.size(), 1U);
+  const AudioChannelPair& cp =
+      result.project.sections[0].audio_channel_pairs[0];
+  EXPECT_EQ(cp.pair, 0);
+  EXPECT_TRUE(cp.pair_specified);
+  EXPECT_EQ(cp.description, "Analogue stereo");
+  EXPECT_TRUE(cp.left.enabled);
+  EXPECT_EQ(cp.left.waveform, AudioWaveform::kSquare);
+  EXPECT_DOUBLE_EQ(cp.left.frequency_hz, 440.0);
+  EXPECT_DOUBLE_EQ(cp.left.amplitude, 0.8);
+  EXPECT_FALSE(cp.left.ramp_enabled);
+  EXPECT_TRUE(cp.right.enabled);
+  EXPECT_EQ(cp.right.waveform, AudioWaveform::kSine);
 }
 
-TEST(YamlProjectParserTest, AudioBlockDefaultsWhenFieldsOmitted) {
+TEST(YamlProjectParserTest, ChannelWithOmittedChannelIsSilent) {
   const std::string yaml =
       "cvbs_presets:\n"
       "  video_standard_preset: PAL\n"
@@ -686,21 +700,28 @@ TEST(YamlProjectParserTest, AudioBlockDefaultsWhenFieldsOmitted) {
       "    type: progressive\n"
       "    source: fixture.exr\n"
       "    duration_frames: 10\n"
-      "    audio: {}\n";
+      "    audio:\n"
+      "      channel_pairs:\n"
+      "        - pair: 2\n"
+      "          left: {}\n";
 
   YamlProjectParser parser;
   const ParseResult result = parser.ParseString(yaml);
 
   ASSERT_TRUE(result.ok);
-  const AudioParameters& audio = result.project.sections[0].audio;
-  EXPECT_TRUE(audio.enabled);
-  EXPECT_EQ(audio.waveform, AudioWaveform::kSine);
-  EXPECT_DOUBLE_EQ(audio.frequency_hz, 1000.0);
-  EXPECT_DOUBLE_EQ(audio.amplitude, 0.5);
-  EXPECT_FALSE(audio.ramp_enabled);
+  const AudioChannelPair& cp =
+      result.project.sections[0].audio_channel_pairs[0];
+  EXPECT_EQ(cp.pair, 2);
+  // Omitted fields fall back to defaults; the left channel is active.
+  EXPECT_TRUE(cp.left.enabled);
+  EXPECT_EQ(cp.left.waveform, AudioWaveform::kSine);
+  EXPECT_DOUBLE_EQ(cp.left.frequency_hz, 1000.0);
+  EXPECT_DOUBLE_EQ(cp.left.amplitude, 0.5);
+  // The omitted right channel stays silent.
+  EXPECT_FALSE(cp.right.enabled);
 }
 
-TEST(YamlProjectParserTest, ParsesSectionSpanningRampAudioBlock) {
+TEST(YamlProjectParserTest, ParsesSectionSpanningRampChannel) {
   const std::string yaml =
       "cvbs_presets:\n"
       "  video_standard_preset: PAL\n"
@@ -712,17 +733,21 @@ TEST(YamlProjectParserTest, ParsesSectionSpanningRampAudioBlock) {
       "    source: fixture.exr\n"
       "    duration_frames: 10\n"
       "    audio:\n"
-      "      waveform: sine\n"
-      "      ramp:\n"
-      "        start: 100.0\n"
-      "        end: 2000.0\n"
-      "        mode: up\n";
+      "      channel_pairs:\n"
+      "        - pair: 0\n"
+      "          left:\n"
+      "            waveform: sine\n"
+      "            ramp:\n"
+      "              start: 100.0\n"
+      "              end: 2000.0\n"
+      "              mode: up\n";
 
   YamlProjectParser parser;
   const ParseResult result = parser.ParseString(yaml);
 
   ASSERT_TRUE(result.ok);
-  const AudioParameters& audio = result.project.sections[0].audio;
+  const AudioParameters& audio =
+      result.project.sections[0].audio_channel_pairs[0].left;
   EXPECT_TRUE(audio.enabled);
   EXPECT_TRUE(audio.ramp_enabled);
   EXPECT_TRUE(audio.ramp_start_specified);
@@ -733,7 +758,7 @@ TEST(YamlProjectParserTest, ParsesSectionSpanningRampAudioBlock) {
   EXPECT_DOUBLE_EQ(audio.ramp_period_seconds, 0.0);
 }
 
-TEST(YamlProjectParserTest, ParsesPeriodicRampAudioBlock) {
+TEST(YamlProjectParserTest, ParsesPeriodicRampChannel) {
   const std::string yaml =
       "cvbs_presets:\n"
       "  video_standard_preset: PAL\n"
@@ -745,20 +770,54 @@ TEST(YamlProjectParserTest, ParsesPeriodicRampAudioBlock) {
       "    source: fixture.exr\n"
       "    duration_frames: 25\n"
       "    audio:\n"
-      "      ramp:\n"
-      "        start: 500.0\n"
-      "        end: 50.0\n"
-      "        mode: bounce\n"
-      "        period: 0.5\n";
+      "      channel_pairs:\n"
+      "        - pair: 0\n"
+      "          left:\n"
+      "            ramp:\n"
+      "              start: 500.0\n"
+      "              end: 50.0\n"
+      "              mode: bounce\n"
+      "              period: 0.5\n";
 
   YamlProjectParser parser;
   const ParseResult result = parser.ParseString(yaml);
 
   ASSERT_TRUE(result.ok);
-  const AudioParameters& audio = result.project.sections[0].audio;
+  const AudioParameters& audio =
+      result.project.sections[0].audio_channel_pairs[0].left;
   EXPECT_TRUE(audio.ramp_enabled);
   EXPECT_EQ(audio.ramp_mode, AudioRampMode::kBounce);
   EXPECT_DOUBLE_EQ(audio.ramp_period_seconds, 0.5);
+}
+
+TEST(YamlProjectParserTest, ParsesMultipleChannelPairs) {
+  const std::string yaml =
+      "cvbs_presets:\n"
+      "  video_standard_preset: PAL\n"
+      "output:\n"
+      "  video_path: out.composite\n"
+      "sections:\n"
+      "  - name: Tone\n"
+      "    type: progressive\n"
+      "    source: fixture.exr\n"
+      "    duration_frames: 10\n"
+      "    audio:\n"
+      "      channel_pairs:\n"
+      "        - pair: 0\n"
+      "          left: { waveform: sine }\n"
+      "          right: { waveform: sine }\n"
+      "        - pair: 7\n"
+      "          description: Commentary\n"
+      "          left: { waveform: square, frequency: 440.0 }\n";
+
+  YamlProjectParser parser;
+  const ParseResult result = parser.ParseString(yaml);
+
+  ASSERT_TRUE(result.ok);
+  ASSERT_EQ(result.project.sections[0].audio_channel_pairs.size(), 2U);
+  EXPECT_EQ(result.project.sections[0].audio_channel_pairs[0].pair, 0);
+  EXPECT_EQ(result.project.sections[0].audio_channel_pairs[1].pair, 7);
+  EXPECT_FALSE(result.project.sections[0].audio_channel_pairs[1].right.enabled);
 }
 
 TEST(YamlProjectParserTest, RejectsUnknownAudioKey) {
@@ -773,8 +832,7 @@ TEST(YamlProjectParserTest, RejectsUnknownAudioKey) {
       "    source: fixture.exr\n"
       "    duration_frames: 10\n"
       "    audio:\n"
-      "      frequency: 440.0\n"
-      "      gain: 0.8\n";
+      "      waveform: square\n";
 
   YamlProjectParser parser;
   const ParseResult result = parser.ParseString(yaml);
@@ -783,7 +841,32 @@ TEST(YamlProjectParserTest, RejectsUnknownAudioKey) {
   ASSERT_FALSE(result.errors.empty());
 }
 
-TEST(YamlProjectParserTest, RejectsUnknownAudioRampKey) {
+TEST(YamlProjectParserTest, RejectsUnknownChannelKey) {
+  const std::string yaml =
+      "cvbs_presets:\n"
+      "  video_standard_preset: PAL\n"
+      "output:\n"
+      "  video_path: out.composite\n"
+      "sections:\n"
+      "  - name: Tone\n"
+      "    type: progressive\n"
+      "    source: fixture.exr\n"
+      "    duration_frames: 10\n"
+      "    audio:\n"
+      "      channel_pairs:\n"
+      "        - pair: 0\n"
+      "          left:\n"
+      "            frequency: 440.0\n"
+      "            gain: 0.8\n";
+
+  YamlProjectParser parser;
+  const ParseResult result = parser.ParseString(yaml);
+
+  EXPECT_FALSE(result.ok);
+  ASSERT_FALSE(result.errors.empty());
+}
+
+TEST(YamlProjectParserTest, RejectsUnknownChannelRampKey) {
   const std::string yaml =
       "cvbs_presets:\n"
       "  video_standard_preset: PAL\n"
@@ -795,10 +878,13 @@ TEST(YamlProjectParserTest, RejectsUnknownAudioRampKey) {
       "    source: fixture.exr\n"
       "    duration_frames: 10\n"
       "    audio:\n"
-      "      ramp:\n"
-      "        start: 100.0\n"
-      "        end: 200.0\n"
-      "        slope: fast\n";
+      "      channel_pairs:\n"
+      "        - pair: 0\n"
+      "          left:\n"
+      "            ramp:\n"
+      "              start: 100.0\n"
+      "              end: 200.0\n"
+      "              slope: fast\n";
 
   YamlProjectParser parser;
   const ParseResult result = parser.ParseString(yaml);

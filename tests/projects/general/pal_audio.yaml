@@ -1,21 +1,25 @@
 # PAL Audio Example (composite output)
 #
-# Frame-locked synthetic audio generation. Each section declares an optional
-# `audio:` block that synthesises a test-tone waveform for the exact duration
-# (in frames) of that section. The emitted track is written alongside the CVBS
-# output as videosynth_pal_audio_audio_00.wav, sample-locked to the stored
-# video frames (PAL: 44100 Hz, 1764 samples/frame).
+# Frame-locked synthetic multi-track audio. Each section declares an optional
+# `audio:` block containing a `channel_pairs:` list. Each channel pair (0-7)
+# becomes a separate stereo WAV file `<basename>_audio_<pair>.wav`, sample-locked
+# to the stored video frames (PAL: 48000 Hz, 24-bit, 1920 samples/frame). Every
+# declared pair's file spans the whole output; a section that omits a pair emits
+# silence for its frames, and an omitted left/right channel is stored as all
+# zeros (SMPTE 272M §6.4).
 #
 # This fixture exercises, across its four sections:
-#   - Fixed-frequency sine and square tones
-#   - A section-spanning frequency ramp (sawtooth, up)
-#   - A silence gap (a section with no `audio:` block) that still emits the
-#     exact per-frame sample count, proving frame alignment holds.
+#   - Up to 8 channel pairs (multi-track CVBS)
+#   - Distinct left/right tones within a pair
+#   - A silent channel within a declared pair (left-only)
+#   - Per-pair descriptions
+#   - A silence gap (a section with no audio: block)
+#   - Section-spanning and periodic frequency ramps
 
 project:
   name: PalAudio
   version: "1.0"
-  description: PAL frame-locked audio — fixed tones, section-spanning ramp, and a silence gap
+  description: PAL multi-track audio — 8 channel pairs, distinct L/R, silent channels, ramps
 
 cvbs_presets:
   video_standard_preset: PAL
@@ -28,32 +32,61 @@ output:
 sections:
 
   # ---------------------------------------------------------------------------
-  # Section 1: fixed-frequency sine tone (default waveform)
+  # Section 1: a few pairs with distinct L/R and a left-only pair.
   # ---------------------------------------------------------------------------
-  - name: FixedSine
+  - name: StereoBars
     type: progressive
     source: videosynth-assets/assets/exr/720x576/75_BARS.exr
     duration_frames: 8
     audio:
-      waveform: sine
-      frequency: 1000.0
-      amplitude: 0.5
+      channel_pairs:
+        - pair: 0
+          description: Analogue stereo
+          left:  { waveform: sine, frequency: 1000.0, amplitude: 0.5 }
+          right: { waveform: sine, frequency: 1000.0, amplitude: 0.5 }
+        - pair: 1
+          description: Stereo test (L/R differ)
+          left:  { waveform: sine, frequency: 440.0, amplitude: 0.5 }
+          right: { waveform: sine, frequency: 880.0, amplitude: 0.5 }
+        - pair: 2
+          description: Commentary (left only)
+          left:  { waveform: square, frequency: 300.0, amplitude: 0.4 }
+          # right omitted -> silent
 
   # ---------------------------------------------------------------------------
-  # Section 2: fixed-frequency square tone at higher amplitude
+  # Section 2: all eight channel pairs active (exercises max multi-track).
   # ---------------------------------------------------------------------------
-  - name: FixedSquare
+  - name: EightPairs
     type: progressive
     source: videosynth-assets/assets/exr/720x576/75_BARS.exr
     duration_frames: 8
     audio:
-      waveform: square
-      frequency: 440.0
-      amplitude: 0.7
+      channel_pairs:
+        - pair: 0
+          left:  { waveform: sine, frequency: 500.0 }
+          right: { waveform: sine, frequency: 500.0 }
+        - pair: 1
+          left:  { waveform: square, frequency: 600.0 }
+          right: { waveform: square, frequency: 600.0 }
+        - pair: 2
+          left:  { waveform: sawtooth, frequency: 700.0 }
+          right: { waveform: sawtooth, frequency: 700.0 }
+        - pair: 3
+          left:  { waveform: triangle, frequency: 800.0 }
+          right: { waveform: triangle, frequency: 800.0 }
+        - pair: 4
+          left:  { waveform: sine, frequency: 900.0 }
+        - pair: 5
+          left:  { waveform: sine, frequency: 1000.0 }
+        - pair: 6
+          left:  { waveform: sine, frequency: 1100.0 }
+        - pair: 7
+          description: Aux
+          left:  { waveform: sine, frequency: 1200.0 }
 
   # ---------------------------------------------------------------------------
-  # Section 3: silence gap — no `audio:` block. The track still advances by the
-  # exact per-frame sample count so the WAV stays frame-locked.
+  # Section 3: silence gap — no audio: block. All eight pair files still advance
+  # by the exact per-frame sample count so they stay frame-locked.
   # ---------------------------------------------------------------------------
   - name: SilenceGap
     type: progressive
@@ -61,16 +94,22 @@ sections:
     duration_frames: 8
 
   # ---------------------------------------------------------------------------
-  # Section 4: section-spanning sawtooth sweep, 200 Hz -> 4000 Hz (mode: up)
+  # Section 4: ramps — a section-spanning sawtooth sweep (left) and a periodic
+  # bounce (a different pair).
   # ---------------------------------------------------------------------------
-  - name: SweepUp
+  - name: Sweeps
     type: progressive
     source: videosynth-assets/assets/exr/720x576/75_BARS.exr
     duration_frames: 8
     audio:
-      waveform: sawtooth
-      amplitude: 0.5
-      ramp:
-        start: 200.0
-        end: 4000.0
-        mode: up
+      channel_pairs:
+        - pair: 0
+          left:
+            waveform: sawtooth
+            amplitude: 0.5
+            ramp: { start: 200.0, end: 4000.0, mode: up }
+        - pair: 3
+          left:
+            waveform: sine
+            amplitude: 0.5
+            ramp: { start: 300.0, end: 3000.0, mode: bounce, period: 0.1 }

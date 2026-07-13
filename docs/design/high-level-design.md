@@ -168,7 +168,7 @@ VideoSynth currently follows a **four-stage sampled-domain architecture**:
 3. **Dropout Injection Stage** (`DropoutInjectionStage`): Applies optional per-section random and scratch dropout events to the fixed-point mV Y/C buffers after noise, and writes a conformant SQLite dropout sidecar (`<basename>.dropouts.meta`).
 4. **[Output Stage](#output-stage)**: Validates frame-span alignment, combines Y and C, quantises to the active digital interface code space, and formats the final CVBS output files.
 
-Alongside these four stages, an optional **Audio Track Writer** (`AudioWavWriter`) runs when at least one section enables an `audio:` block. It synthesises a per-section test-tone waveform (`AudioSynthesizer`) frame-locked to the video, and streams a single stereo 16-bit PCM RIFF/WAVE track to `<basename>_audio_00.wav`. Per-frame audio buffers are routed through the **same** disc-skip withhold/replay decisions as the Y/C buffers, so the emitted WAV stays sample-accurately aligned to the stored video frames. See [Section 7 `audio:`](#audio-sub-key-optional-per-section).
+Alongside these four stages, an optional **Audio Track Generator** (`AudioTrackGenerator`) runs when at least one section declares an `audio:` channel pair. It synthesises per-channel test-tone waveforms (`AudioSynthesizer`) frame-locked to the video and streams one stereo 24-bit PCM RIFF/WAVE track per declared channel pair (0–7) to `<basename>_audio_<pair>.wav` (each via an `AudioWavWriter`). Audio is a pure function of output position, so the generator is driven with the output-order section sequence and stays sample-accurately aligned to the stored video frames under disc-skip withhold/replay. See [Section 7 `audio:`](#audio-sub-key-optional-per-section).
 
 ### **Key Principles**
 
@@ -874,22 +874,39 @@ sections:
 
 #### **`audio:` Sub-Key (Optional, Per-Section)**
 
-The `audio:` block generates a synthetic test-tone waveform for the exact duration (in frames) of its section. When at least one section enables audio, the pipeline writes a single frame-locked audio track alongside the CVBS/Y-C output as `<basename>_audio_00.wav` (the basename is derived from `output.video_path` by stripping a trailing `.composite` or `.y` suffix).
+The `audio:` block declares a list of **audio channel pairs** for a section, each synthesising an independent stereo test tone for the exact duration (in frames) of that section. Following the CVBS File Format Specification (Audio Data / SMPTE 272M-1994), a project may carry up to **8 channel pairs** (0–7, i.e. up to 16 SMPTE 272M channels). Each declared channel pair is written as its own frame-locked stereo WAV track alongside the CVBS/Y-C output as `<basename>_audio_<pair>.wav` (the basename is derived from `output.video_path` by stripping a trailing `.composite` or `.y` suffix).
 
-Fixed design decisions:
-- **Single track** for the whole project (`_audio_00`); the schema is structured so a future multi-track extension (the format permits up to 16) is additive.
-- **Mono duplicated to L+R** — one waveform is synthesised and written identically to both stereo channels (the format mandates 2-channel PCM).
-- **Phase reset per section** — each section's oscillator starts at phase 0; no phase state is carried across section boundaries.
+Design decisions:
+- **One WAV file per channel pair** — the set of emitted pairs is the union of the pair numbers declared across all sections. Every pair file spans the whole output; a section that omits a pair emits silence for its frames, and an omitted `left`/`right` channel is stored as all-zero silence (SMPTE 272M §6.4).
+- **Independent left/right channels** — each pair has separate `left:` and `right:` tone descriptors, so the two interleaved channels (odd = left, even = right) can differ or one can be silent.
+- **Phase reset per section run** — each contiguous run of output frames sharing one section restarts the oscillators at phase 0; audio is a pure function of output position, so no per-frame caching is needed and the tracks stay correct under disc-skip replay.
 
-**Frame lock** — the track is stereo, 16-bit signed little-endian PCM (RIFF/WAVE, format tag `0x0001`) at a sample rate locked to the video standard, so the total sample count is always `frames × samples_per_frame`:
+**Frame lock** — every track is stereo, 24-bit signed little-endian PCM (RIFF/WAVE, format tag `0x0001`) at 48000 Hz, synchronous with video (SMPTE 272M §1.2). The per-frame sample count follows output position:
 
-| Preset | Audio sample rate (authoritative) | `fmt` `nSamplesPerSec` | Samples/frame |
-|--------|-----------------------------------|------------------------|---------------|
-| `PAL` | 44100 Hz (exact) | 44100 | 1764 |
-| `NTSC` | 44,100,000⁄1001 Hz | 44056 | 1470 |
-| `PAL_M` | 44,100,000⁄1001 Hz | 44056 | 1470 |
+| Preset | `fmt` `nSamplesPerSec` | Samples/frame |
+|--------|------------------------|---------------|
+| `PAL` | 48000 | 1920 (constant) |
+| `NTSC` | 48000 | 1602/1601 (SMPTE 272M §14.3 five-frame sequence: 1602, 1601, 1602, 1601, 1602 → 8008 per 5 frames) |
+| `PAL_M` | 48000 | 1602/1601 (as NTSC) |
 
-**Fields**:
+**`audio:` fields**:
+
+| Key | Type | Required | Description |
+|-----|------|----------|-------------|
+| `channel_pairs` | list | Yes | One entry per channel pair (below). |
+
+**`channel_pairs[]` entry**:
+
+| Key | Type | Required | Range / Values | Description |
+|-----|------|----------|----------------|-------------|
+| `pair` | int | Yes | 0–7 | Channel-pair number; names the `_audio_<pair>.wav` file and the `audio_channel_pair` metadata row. Unique within a section. |
+| `description` | string | No | — | Human-readable label recorded in the `audio_channel_pair` metadata (e.g. `Analogue stereo`, `Commentary`). |
+| `left` | map | No\* | tone descriptor (below) | The odd (first) interleaved channel. Omitted → silent. |
+| `right` | map | No\* | tone descriptor (below) | The even (second) interleaved channel. Omitted → silent. |
+
+\* At least one of `left`/`right` must be present (a pair with no active channel is rejected by validation).
+
+**Channel tone descriptor** (`left:` / `right:`):
 
 | Key | Type | Required | Range / Values | Description |
 |-----|------|----------|----------------|-------------|
@@ -905,24 +922,30 @@ Fixed design decisions:
 | `start` | float | Yes | [0, 22000] Hz | Sweep start frequency. |
 | `end` | float | Yes | [0, 22000] Hz | Sweep end frequency. |
 | `mode` | string | No | `up`, `down`, `bounce` | `up` = start→end, `down` = end→start, `bounce` = start→end→start over the ramp span. Default `up`. |
-| `period` | float | No | [0, section duration s] | `0` (default) sweeps once over the whole section; `> 0` makes one sweep last this many seconds and repeat until the section ends. |
+| `period` | float | No | [0, section duration s] | `0` (default) sweeps once over the whole section run; `> 0` makes one sweep last this many seconds and repeat until the section ends. |
 
-Frequency semantics: instantaneous frequency drives a phase accumulator (`phase += 2π·f(t)/fs`) so swept tones stay continuous within a section. All frequencies (fixed and ramp `start`/`end`) must lie in `[0, 22000]` Hz — safely below the ~22.05 kHz Nyquist limit of the 44.1 kHz-family rates.
+Frequency semantics: instantaneous frequency drives a phase accumulator (`phase += 2π·f(t)/fs`) so swept tones stay continuous within a section run. All frequencies (fixed and ramp `start`/`end`) must lie in `[0, 22000]` Hz — safely below the 24 kHz Nyquist limit of the 48 kHz sampling rate.
 
-**Skip interaction**: audio follows the **output** frame stream, not the raw disc/section stream. Per-frame audio buffers are withheld and replayed by the identical `disc_skips` decisions applied to the Y/C buffers, so forward skips withhold the matching audio and backward skips replay byte-identical audio, preserving `frames × samples_per_frame` alignment. Sections with no `audio:` block (or disabled audio) emit silence for their frame span, keeping every stored frame's sample count exact. When a track is written, `audio_locked` is set `TRUE` in the `.meta` `cvbs_file` table.
+**Skip interaction**: audio follows the **output** frame stream, not the raw disc/section stream. The generator is driven with the output-order section sequence, so forward skips withhold the matching frames and backward-skip replays continue the tone at the replayed output position, preserving each track's sample-count alignment. Sections with no `audio:` block emit silence for their frame span across every pair. When at least one pair is declared, one `audio_channel_pair` row per pair (with its optional `description`) is written to the `.meta` database.
 
 Example YAML:
 
 ```yaml
 sections:
-  - name: "FixedTone"
+  - name: "StereoAndCommentary"
     type: progressive
     source: "assets/bars.exr"
     duration_frames: 8
     audio:
-      waveform: sine
-      frequency: 1000.0
-      amplitude: 0.5
+      channel_pairs:
+        - pair: 0
+          description: Analogue stereo
+          left:  { waveform: sine, frequency: 1000.0, amplitude: 0.5 }
+          right: { waveform: sine, frequency: 1000.0, amplitude: 0.5 }
+        - pair: 1
+          description: Commentary (left only)
+          left:  { waveform: square, frequency: 440.0 }
+          # right omitted -> silent
   - name: "SilenceGap"       # No audio: block — silent, but still frame-locked
     type: progressive
     source: "assets/bars.exr"
@@ -932,12 +955,12 @@ sections:
     source: "assets/bars.exr"
     duration_frames: 8
     audio:
-      waveform: sawtooth
-      amplitude: 0.5
-      ramp:
-        start: 200.0
-        end: 4000.0
-        mode: up
+      channel_pairs:
+        - pair: 0
+          left:
+            waveform: sawtooth
+            amplitude: 0.5
+            ramp: { start: 200.0, end: 4000.0, mode: up }
 ```
 
 ---
@@ -1673,7 +1696,7 @@ The runtime uses a **central pipeline module** to process sections and combine t
 
 - `VideoSynthPipeline::Run(options, observer, cancellation)` parses the YAML project file and delegates to `RunProject`. `VideoSynthPipeline::RunProject(project, options, observer, cancellation)` runs the pipeline for an already-parsed in-memory `Project` (validate → generate → noise → dropout → output); relative paths in the project are used as-is and must be resolved by the caller. The CLI uses `Run`; front-ends that hold an in-memory project (e.g. a GUI) use `RunProject`.
 - `observer` (optional, nullable) is an `IPipelineObserver` receiving stage transitions (`validate`, `generate`, `finalize`), per-batch frame progress (`frames_completed / frames_total`), validation warnings, and a terminal `PipelineRunStatus` (`kSucceeded` / `kCancelled` / `kFailed`) reported exactly once. Callbacks run synchronously on the pipeline's executing thread.
-- `cancellation` (optional, nullable) is a thread-safe one-shot `CancellationToken` polled between frame batches (and per disc frame in the skip-aware loop). On cancellation the pipeline aborts all in-progress artefacts — video/chroma/metadata via `IOutputStage::AbortWrite`, the WAV track via `AudioWavWriter::AbortWrite`, and the dropout sidecar via `DropoutInjectionStage::Abort` — so a cancelled run leaves no partially-written output files, reports `kCancelled` (not an error), and returns `false`.
+- `cancellation` (optional, nullable) is a thread-safe one-shot `CancellationToken` polled between frame batches (and per disc frame in the skip-aware loop). On cancellation the pipeline aborts all in-progress artefacts — video/chroma/metadata via `IOutputStage::AbortWrite`, the WAV tracks via `AudioTrackGenerator::Abort`, and the dropout sidecar via `DropoutInjectionStage::Abort` — so a cancelled run leaves no partially-written output files, reports `kCancelled` (not an error), and returns `false`.
 - A whole pipeline run executes on a single thread, which may be a worker thread; there is no main-thread affinity. `ILogger`, `IProjectParser`, and `IProjectValidator` implementations are thread-safe; the stage collaborators are single-owner and NOT thread-safe, so a pipeline instance must not run concurrently with itself.
 
 ---

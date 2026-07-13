@@ -11,6 +11,7 @@
 
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <stdexcept>
 
 #include "videosynth/model.h"
@@ -173,44 +174,47 @@ inline int SamplesPerFrame4fsc(Standard standard) {
       "Frame sample count requested for unknown standard");
 }
 
-// Audio is frame-locked to the video standard per the CVBS File Format
-// Specification (Audio Data). PAL uses an exact 44100 Hz clock; the System M
-// standards (NTSC, PAL-M) use 44,100,000/1001 Hz. Both yield an exact integer
-// sample count per stored frame.
+// Audio is 48 kHz, clock-locked (synchronous) to video per the CVBS File Format
+// Specification (Audio Data), following SMPTE 272M-1994 §1.2. All Video
+// Standard Presets share the same 48000 Hz sampling clock; only the number of
+// samples carried per video frame differs (SMPTE 272M §3.15, §14.3).
 
-// Authoritative audio sample rate in Hz (may be a non-integer rational).
+// Authoritative audio sample rate in Hz. Fixed at 48000 for every standard
+// (SMPTE 272M §1.2 preferred implementation).
 inline double AudioSampleRateHz(Standard standard) {
-  if (standard == Standard::kPal) {
-    return 44100.0;
-  }
-  if (standard == Standard::kNtsc || standard == Standard::kPalM) {
-    return 44100000.0 / 1001.0;
+  if (standard == Standard::kPal || standard == Standard::kNtsc ||
+      standard == Standard::kPalM) {
+    return 48000.0;
   }
   throw std::invalid_argument(
       "Audio sample rate requested for unknown standard");
 }
 
-// Integer nSamplesPerSec written to the WAV `fmt ` chunk header. PAL is exact
-// (44100); the System M rate is rounded to 44056 for the header field.
+// Integer nSamplesPerSec written to the WAV `fmt ` chunk header. Always 48000
+// (CVBS File Format Specification, WAV File Format).
 inline int AudioHeaderSampleRateHz(Standard standard) {
-  if (standard == Standard::kPal) {
-    return 44100;
-  }
-  if (standard == Standard::kNtsc || standard == Standard::kPalM) {
-    return 44056;
+  if (standard == Standard::kPal || standard == Standard::kNtsc ||
+      standard == Standard::kPalM) {
+    return 48000;
   }
   throw std::invalid_argument(
       "Audio header sample rate requested for unknown standard");
 }
 
-// Exact number of audio samples per stored video frame.
-// PAL: 44100 / 25 = 1764. System M: (44,100,000/1001) / (30000/1001) = 1470.
-inline int AudioSamplesPerFrame(Standard standard) {
+// Number of audio samples carried by stored video frame `frame_index`
+// (zero-based, in output order). PAL is a constant 1920 samples/frame
+// (48000 / 25). NTSC and PAL_M follow the SMPTE 272M §14.3 Table 1 five-frame
+// audio-frame sequence at 48 kHz: 1602 samples in audio frame numbers 1, 3, 5
+// and 1601 in audio frame numbers 2, 4 — i.e. 1601 when (frame_index mod 5)
+// is 1 or 3, otherwise 1602 (8008 samples per five-frame sequence).
+inline int AudioSamplesForFrame(Standard standard, std::int64_t frame_index) {
   if (standard == Standard::kPal) {
-    return 1764;
+    return 1920;
   }
   if (standard == Standard::kNtsc || standard == Standard::kPalM) {
-    return 1470;
+    const std::int64_t position_in_sequence = frame_index % 5;
+    return (position_in_sequence == 1 || position_in_sequence == 3) ? 1601
+                                                                    : 1602;
   }
   throw std::invalid_argument(
       "Audio samples-per-frame requested for unknown standard");

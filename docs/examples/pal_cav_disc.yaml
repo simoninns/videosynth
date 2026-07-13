@@ -92,9 +92,11 @@ sections:
           fg_luma: 1.0
           bg_luma: 0.0
     audio:
-      waveform: sine
-      frequency: 1000.0
-      amplitude: 0.5
+      channel_pairs:
+        - pair: 0
+          description: Analogue stereo
+          left:  { waveform: sine, frequency: 1000.0, amplitude: 0.5 }
+          right: { waveform: sine, frequency: 1000.0, amplitude: 0.5 }
 
   # Chapter 1: fair-quality source noise plus random dropouts, MKV source.
   - name: Chapter1Motion
@@ -146,12 +148,15 @@ sections:
       scratch:
         scale: 6
     audio:
-      waveform: sawtooth
-      amplitude: 0.5
-      ramp:
-        start: 200.0
-        end: 4000.0
-        mode: up
+      channel_pairs:
+        - pair: 0
+          left:
+            waveform: sawtooth
+            amplitude: 0.5
+            ramp: { start: 200.0, end: 4000.0, mode: up }
+        - pair: 1
+          description: Commentary
+          left: { waveform: sine, frequency: 660.0, amplitude: 0.4 }
 
   # Lead-out: lead_out marker plus users_code.
   - name: LeadOut

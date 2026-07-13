@@ -1067,8 +1067,9 @@ void ValidateOsdConfig(const videosynth::Section& section,
   }
 }
 
-// Audio frequency bounds from audio-generation-design.md: [0, 22000] Hz,
-// safely below the ~22.03-22.05 kHz Nyquist limit of the 44.1 kHz-family rates.
+// Audio frequency bounds: [0, 22000] Hz, safely below the 24 kHz Nyquist limit
+// of the 48 kHz audio sampling rate (CVBS File Format Specification, Audio
+// Data).
 constexpr double kAudioFrequencyMinHz = 0.0;
 constexpr double kAudioFrequencyMaxHz = 22000.0;
 
@@ -1076,21 +1077,23 @@ bool IsAudioFrequencyInRange(double hz) {
   return hz >= kAudioFrequencyMinHz && hz <= kAudioFrequencyMaxHz;
 }
 
-void ValidateAudioParameters(const videosynth::Section& section,
-                             videosynth::Standard standard,
-                             videosynth::ValidationResult* result) {
-  if (result == nullptr || !section.audio.enabled) {
+// Validates one active channel (left or right) of a channel pair. `where`
+// identifies the section, pair, and channel for error messages. Silent
+// (disabled) channels carry no parameters and are skipped.
+void ValidateAudioChannel(const videosynth::AudioParameters& audio,
+                          const std::string& where,
+                          const videosynth::Section& section,
+                          videosynth::Standard standard,
+                          videosynth::ValidationResult* result) {
+  if (!audio.enabled) {
     return;
   }
-
-  const videosynth::AudioParameters& audio = section.audio;
 
   // Waveform must be one of the four supported shapes.
   if (audio.waveform == videosynth::AudioWaveform::kUnknown) {
     result->is_valid = false;
     result->errors.push_back(
-        "Audio validation error in section '" + section.name + "': waveform '" +
-        audio.waveform_text +
+        where + ": waveform '" + audio.waveform_text +
         "' is not recognised. Expected one of: sine, square, sawtooth, "
         "triangle.");
     return;
@@ -1099,9 +1102,7 @@ void ValidateAudioParameters(const videosynth::Section& section,
   // Amplitude in [0.0, 1.0].
   if (audio.amplitude < 0.0 || audio.amplitude > 1.0) {
     result->is_valid = false;
-    result->errors.push_back("Audio validation error in section '" +
-                             section.name +
-                             "': amplitude must be in [0.0, 1.0]; got " +
+    result->errors.push_back(where + ": amplitude must be in [0.0, 1.0]; got " +
                              std::to_string(audio.amplitude) + ".");
     return;
   }
@@ -1109,9 +1110,8 @@ void ValidateAudioParameters(const videosynth::Section& section,
   // Fixed frequency must be in range.
   if (!IsAudioFrequencyInRange(audio.frequency_hz)) {
     result->is_valid = false;
-    result->errors.push_back("Audio validation error in section '" +
-                             section.name +
-                             "': frequency must be in [0, 22000] Hz; got " +
+    result->errors.push_back(where +
+                             ": frequency must be in [0, 22000] Hz; got " +
                              std::to_string(audio.frequency_hz) + ".");
     return;
   }
@@ -1124,8 +1124,7 @@ void ValidateAudioParameters(const videosynth::Section& section,
   if (!audio.ramp_start_specified || !audio.ramp_end_specified) {
     result->is_valid = false;
     result->errors.push_back(
-        "Audio validation error in section '" + section.name +
-        "': ramp requires both 'start' and 'end' frequencies.");
+        where + ": ramp requires both 'start' and 'end' frequencies.");
     return;
   }
 
@@ -1133,8 +1132,7 @@ void ValidateAudioParameters(const videosynth::Section& section,
   if (audio.ramp_mode == videosynth::AudioRampMode::kUnknown) {
     result->is_valid = false;
     result->errors.push_back(
-        "Audio validation error in section '" + section.name +
-        "': ramp mode '" + audio.ramp_mode_text +
+        where + ": ramp mode '" + audio.ramp_mode_text +
         "' is not recognised. Expected one of: up, down, bounce.");
     return;
   }
@@ -1144,8 +1142,9 @@ void ValidateAudioParameters(const videosynth::Section& section,
       !IsAudioFrequencyInRange(audio.ramp_end_hz)) {
     result->is_valid = false;
     result->errors.push_back(
-        "Audio validation error in section '" + section.name +
-        "': ramp start/end frequencies must be in [0, 22000] Hz; got start=" +
+        where +
+        ": ramp start/end frequencies must be in [0, 22000] Hz; got "
+        "start=" +
         std::to_string(audio.ramp_start_hz) +
         ", end=" + std::to_string(audio.ramp_end_hz) + ".");
     return;
@@ -1154,9 +1153,7 @@ void ValidateAudioParameters(const videosynth::Section& section,
   // Ramp period must be non-negative.
   if (audio.ramp_period_seconds < 0.0) {
     result->is_valid = false;
-    result->errors.push_back("Audio validation error in section '" +
-                             section.name +
-                             "': ramp period must be >= 0; got " +
+    result->errors.push_back(where + ": ramp period must be >= 0; got " +
                              std::to_string(audio.ramp_period_seconds) + ".");
     return;
   }
@@ -1174,13 +1171,68 @@ void ValidateAudioParameters(const videosynth::Section& section,
             : 0.0;
     if (audio.ramp_period_seconds > section_seconds) {
       result->is_valid = false;
-      result->errors.push_back("Audio validation error in section '" +
-                               section.name + "': ramp period (" +
+      result->errors.push_back(where + ": ramp period (" +
                                std::to_string(audio.ramp_period_seconds) +
                                " s) exceeds section duration (" +
                                std::to_string(section_seconds) + " s).");
-      return;
     }
+  }
+}
+
+void ValidateAudioParameters(const videosynth::Section& section,
+                             videosynth::Standard standard,
+                             videosynth::ValidationResult* result) {
+  if (result == nullptr) {
+    return;
+  }
+
+  std::set<int> seen_pairs;
+  for (const videosynth::AudioChannelPair& channel_pair :
+       section.audio_channel_pairs) {
+    const std::string pair_label =
+        "Audio validation error in section '" + section.name +
+        "' channel pair " +
+        (channel_pair.pair_specified ? std::to_string(channel_pair.pair)
+                                     : std::string("(unspecified)"));
+
+    // The channel-pair number must be present and within the 0–7 range.
+    if (!channel_pair.pair_specified) {
+      result->is_valid = false;
+      result->errors.push_back(pair_label +
+                               ": each channel pair must specify 'pair'.");
+      continue;
+    }
+    if (channel_pair.pair < 0 ||
+        channel_pair.pair >= videosynth::kMaxAudioChannelPairs) {
+      result->is_valid = false;
+      result->errors.push_back(
+          pair_label + ": 'pair' must be in [0, " +
+          std::to_string(videosynth::kMaxAudioChannelPairs - 1) + "]; got " +
+          std::to_string(channel_pair.pair) + ".");
+      continue;
+    }
+
+    // Channel-pair numbers must be unique within a section.
+    if (!seen_pairs.insert(channel_pair.pair).second) {
+      result->is_valid = false;
+      result->errors.push_back(pair_label +
+                               ": duplicate channel pair number in section.");
+      continue;
+    }
+
+    // A declared pair must carry at least one active channel.
+    if (!videosynth::AudioChannelPairIsActive(channel_pair)) {
+      result->is_valid = false;
+      result->errors.push_back(
+          pair_label +
+          ": must define at least one active channel ('left' or 'right').");
+      continue;
+    }
+
+    ValidateAudioChannel(channel_pair.left, pair_label + " left", section,
+                         standard, result);
+    ValidateAudioChannel(channel_pair.right, pair_label + " right", section,
+                         standard, result);
   }
 }
 

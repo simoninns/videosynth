@@ -56,6 +56,7 @@ find_package(OpenEXR REQUIRED)
 
 add_library(videosynth_core
     src/audio_synthesizer.cpp
+    src/audio_track_generator.cpp
     src/audio_wav_writer.cpp
     src/biphase_encoder.cpp
     src/biphase_injection_manager.cpp
@@ -147,6 +148,8 @@ if(VIDEOSYNTH_BUILD_GUI)
         src/gui/disc_skips_model.h
         src/gui/edit_project_dialog.cpp
         src/gui/edit_project_dialog.h
+        src/gui/audio_channel_pairs_editor.cpp
+        src/gui/audio_channel_pairs_editor.h
         src/gui/forwarding_logger.cpp
         src/gui/forwarding_logger.h
         src/gui/generation_controller.cpp
@@ -255,6 +258,7 @@ add_executable(videosynth_tests
     tests/test_audio_fixture_projects.cpp
     tests/test_audio_pipeline.cpp
     tests/test_audio_synthesizer.cpp
+    tests/test_audio_track_generator.cpp
     tests/test_audio_wav_writer.cpp
     tests/test_biphase_encoder.cpp
     tests/test_cav_code_generators.cpp
@@ -361,6 +365,7 @@ endif()
 set(videosynth_functional_test_patterns
     "^AudioFixtureProjectsTest\\."
     "^AudioPipelineTest\\."
+    "^AudioTrackGeneratorTest\\."
     "^AudioWavWriterTest\\."
     "^FrameSourceTest\\."
     "^ProjectFixturesTest\\."

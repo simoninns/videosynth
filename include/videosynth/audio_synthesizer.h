@@ -2,7 +2,7 @@
  * File:        audio_synthesizer.h
  * Module:      audio_synthesizer
  * Purpose:     Synthesises per-section test-tone waveforms as frame-locked
- *              int16 mono PCM samples from AudioParameters.
+ *              24-bit mono PCM samples from AudioParameters.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Simon Inns
@@ -17,8 +17,8 @@
 
 namespace videosynth {
 
-// Generates synthetic test-tone audio for a single section as 16-bit signed
-// mono PCM samples.
+// Generates synthetic test-tone audio for a single channel of a single section
+// as 24-bit signed mono PCM samples (carried in the low 24 bits of int32).
 //
 // The oscillator uses an instantaneous-frequency model: for each output sample
 // the current phase is read, then advanced by 2*pi*f(t)/fs, where f(t) is the
@@ -59,10 +59,10 @@ class AudioSynthesizer {
                     std::int64_t total_section_samples);
 
   // Produce the next sample_count mono samples for the current section,
-  // advancing the internal phase and elapsed-sample offset. Returns int16
-  // samples in [-kFullScale, +kFullScale]. When params.enabled == false the
-  // returned samples are all zero (silence).
-  std::vector<std::int16_t> Synthesize(int sample_count);
+  // advancing the internal phase and elapsed-sample offset. Returns 24-bit
+  // samples (in int32) in [-kFullScale, +kFullScale]. When params.enabled ==
+  // false the returned samples are all zero (silence).
+  std::vector<std::int32_t> Synthesize(int sample_count);
 
   // Restart the current section's trajectory: phase and elapsed-sample offset
   // return to 0 without changing the configured parameters.
@@ -73,9 +73,10 @@ class AudioSynthesizer {
   // testing the frequency trajectories independently of phase accumulation.
   double InstantaneousFrequencyHz(std::int64_t elapsed_sample) const;
 
-  // Full-scale peak used to map a normalised [-1, 1] waveform to int16. Chosen
-  // symmetric (32767) so positive and negative peaks map to equal magnitudes.
-  static constexpr std::int16_t kFullScale = 32767;
+  // Full-scale peak used to map a normalised [-1, 1] waveform to 24-bit PCM.
+  // Chosen symmetric (2^23 - 1 = 8388607) so positive and negative peaks map to
+  // equal magnitudes.
+  static constexpr std::int32_t kFullScale = 8388607;
 
  private:
   // Evaluate the naive waveform for the current shape at phase in [0, 2*pi),

@@ -1,8 +1,8 @@
 /*
  * File:        audio_wav_writer.h
  * Module:      audio_wav_writer
- * Purpose:     Streams frame-locked stereo 16-bit PCM audio to a RIFF/WAVE file
- *              alongside the generated CVBS output.
+ * Purpose:     Streams one frame-locked stereo 24-bit PCM channel pair to a
+ *              RIFF/WAVE file alongside the generated CVBS output.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Simon Inns
@@ -20,22 +20,21 @@
 
 namespace videosynth {
 
-// Writes a single frame-locked audio track as a RIFF/WAVE file next to the
-// CVBS output. The waveform is synthesised mono per frame and duplicated to
-// both stereo channels; the file is always 2-channel, 16-bit signed
-// little-endian PCM (format tag 0x0001) per the CVBS File Format Specification
-// (Audio Data).
+// Writes a single audio channel pair as a RIFF/WAVE file next to the CVBS
+// output. Each channel pair is two independent channels (left = SMPTE 272M odd
+// channel, right = even channel); the file is always 2-channel, 24-bit signed
+// little-endian PCM (format tag 0x0001) at 48000 Hz per the CVBS File Format
+// Specification (Audio Data / WAV File Format).
 //
-// The header sample rate (nSamplesPerSec) is taken from the video standard:
-// 44100 for PAL, 44056 for the System M standards (NTSC, PAL-M). The first
-// appended sample is synchronous with the first stored video frame; callers
-// must append exactly samples_per_frame mono samples per stored output frame so
-// the emitted track stays sample-accurately frame-locked.
+// The first appended sample is synchronous with the first stored video frame;
+// callers must append exactly the per-frame sample count (AudioSamplesForFrame)
+// per stored output frame so the emitted track stays sample-accurately
+// frame-locked. Left and right buffers must be the same length.
 //
 // Streaming contract: BeginWrite (reserves the 44-byte header) -> repeated
 // AppendFrameAudio -> FinalizeWrite (back-patches the RIFF and data chunk
 // sizes). The output path is derived from output.video_path by stripping a
-// trailing ".composite" or ".y" suffix and appending "_audio_00.wav".
+// trailing ".composite" or ".y" suffix and appending "_audio_<pair>.wav".
 //
 // Thread-safety: AudioWavWriter is NOT thread-safe. Its file stream and byte
 // counters are mutated by AppendFrameAudio; it must not be called concurrently
@@ -44,15 +43,19 @@ class AudioWavWriter {
  public:
   explicit AudioWavWriter(ILogger* logger = nullptr);
 
-  // Opens the derived WAV path, reserves the header, and records the standard's
-  // integer sample rate for the fmt chunk. Creates parent directories as
-  // needed. Returns false and appends a message to errors on any failure.
-  bool BeginWrite(const Project& project, std::vector<std::string>* errors);
+  // Opens the derived WAV path for channel pair `channel_pair` (0–7), reserves
+  // the header, and records the 48000 Hz rate for the fmt chunk. Creates parent
+  // directories as needed. Returns false and appends a message to errors on any
+  // failure.
+  bool BeginWrite(const Project& project, int channel_pair,
+                  std::vector<std::string>* errors);
 
-  // Duplicates mono_samples to left/right and appends the interleaved stereo
-  // frame to the data chunk. Returns false and appends a message to errors if
-  // the session is not open or the stream fails.
-  bool AppendFrameAudio(const std::vector<std::int16_t>& mono_samples,
+  // Appends one interleaved stereo frame (left/right 24-bit samples) to the
+  // data chunk. left and right must be the same length. Returns false and
+  // appends a message to errors if the session is not open, the buffers differ
+  // in length, or the stream fails.
+  bool AppendFrameAudio(const std::vector<std::int32_t>& left,
+                        const std::vector<std::int32_t>& right,
                         std::vector<std::string>* errors);
 
   // Back-patches the RIFF and data chunk sizes and closes the file. Returns
@@ -63,9 +66,11 @@ class AudioWavWriter {
   // partially-written WAV file. No-op when no session is open.
   void AbortWrite();
 
-  // Derives the audio track path from a CVBS output path. Strips a trailing
-  // ".composite" or ".y" suffix (if present) and appends "_audio_00.wav".
-  static std::string DeriveAudioPath(const std::string& video_path);
+  // Derives the audio track path for `channel_pair` from a CVBS output path.
+  // Strips a trailing ".composite" or ".y" suffix (if present) and appends
+  // "_audio_<pair>.wav".
+  static std::string DeriveAudioPath(const std::string& video_path,
+                                     int channel_pair);
 
  private:
   ILogger* logger_;

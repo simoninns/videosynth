@@ -70,51 +70,76 @@ void SetScratchDropoutsEnabled(Section* section, bool enabled) {
   section->dropouts.scratch.scale = editor_limits::kDropoutScaleMin;
 }
 
-void SetAudioBlockEnabled(Section* section, bool enabled) {
-  if (!enabled) {
-    section->audio = AudioParameters{};
-    return;
-  }
-  if (section->audio.enabled) {
-    return;
-  }
-  section->audio = AudioParameters{};
-  section->audio.enabled = true;
+AudioParameters MakeDefaultAudioChannel() {
+  AudioParameters channel;
+  channel.enabled = true;
   // waveform_text mirrors what the YAML will carry; the emitter only writes
   // the key when the text is non-empty.
-  section->audio.waveform = AudioWaveform::kSine;
-  section->audio.waveform_text = "sine";
+  channel.waveform = AudioWaveform::kSine;
+  channel.waveform_text = "sine";
+  return channel;
 }
 
-void SetAudioRampEnabled(Section* section, bool enabled) {
-  AudioParameters& audio = section->audio;
+AudioChannelPair MakeDefaultAudioChannelPair(int pair) {
+  AudioChannelPair channel_pair;
+  channel_pair.pair = pair;
+  channel_pair.pair_specified = true;
+  channel_pair.left = MakeDefaultAudioChannel();
+  // Right channel stays disabled (silent) until the user enables it.
+  return channel_pair;
+}
+
+void SetAudioChannelRampEnabled(AudioParameters* channel, bool enabled) {
+  if (channel == nullptr) {
+    return;
+  }
   if (!enabled) {
-    audio.ramp_enabled = false;
-    audio.ramp_start_hz = 0.0;
-    audio.ramp_end_hz = 0.0;
-    audio.ramp_start_specified = false;
-    audio.ramp_end_specified = false;
-    audio.ramp_mode = AudioRampMode::kUp;
-    audio.ramp_mode_text.clear();
-    audio.ramp_period_seconds = 0.0;
+    channel->ramp_enabled = false;
+    channel->ramp_start_hz = 0.0;
+    channel->ramp_end_hz = 0.0;
+    channel->ramp_start_specified = false;
+    channel->ramp_end_specified = false;
+    channel->ramp_mode = AudioRampMode::kUp;
+    channel->ramp_mode_text.clear();
+    channel->ramp_period_seconds = 0.0;
     return;
   }
-  if (audio.ramp_enabled) {
+  if (channel->ramp_enabled) {
     return;
   }
-  audio.ramp_enabled = true;
-  audio.ramp_start_hz = kDefaultRampStartHz;
-  audio.ramp_end_hz = kDefaultRampEndHz;
-  audio.ramp_start_specified = true;
-  audio.ramp_end_specified = true;
-  audio.ramp_mode = AudioRampMode::kUp;
-  audio.ramp_mode_text = "up";
-  audio.ramp_period_seconds = 0.0;
+  channel->ramp_enabled = true;
+  channel->ramp_start_hz = kDefaultRampStartHz;
+  channel->ramp_end_hz = kDefaultRampEndHz;
+  channel->ramp_start_specified = true;
+  channel->ramp_end_specified = true;
+  channel->ramp_mode = AudioRampMode::kUp;
+  channel->ramp_mode_text = "up";
+  channel->ramp_period_seconds = 0.0;
 }
 
-void SetAudioWaveform(Section* section, const std::string& waveform_name) {
-  section->audio.waveform = AudioWaveformFromString(waveform_name);
-  section->audio.waveform_text = waveform_name;
+void SetAudioChannelWaveform(AudioParameters* channel,
+                             const std::string& waveform_name) {
+  if (channel == nullptr) {
+    return;
+  }
+  channel->waveform = AudioWaveformFromString(waveform_name);
+  channel->waveform_text = waveform_name;
+}
+
+int NextFreeAudioChannelPair(const std::vector<AudioChannelPair>& pairs) {
+  for (int candidate = 0; candidate < kMaxAudioChannelPairs; ++candidate) {
+    bool used = false;
+    for (const AudioChannelPair& channel_pair : pairs) {
+      if (channel_pair.pair == candidate) {
+        used = true;
+        break;
+      }
+    }
+    if (!used) {
+      return candidate;
+    }
+  }
+  return -1;
 }
 
 bool OsdBlockEnabled(const Section& section) {

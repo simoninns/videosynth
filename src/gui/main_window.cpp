@@ -57,15 +57,6 @@ QString ProjectFileFilter() {
 
 // True when at least one section enables the given optional capability, so
 // the completion summary only lists artefacts the run actually produced.
-bool AnySectionEnablesAudio(const Project& project) {
-  for (const Section& section : project.sections) {
-    if (section.audio.enabled) {
-      return true;
-    }
-  }
-  return false;
-}
-
 bool AnySectionEnablesDropouts(const Project& project) {
   for (const Section& section : project.sections) {
     if (section.dropouts.random.enabled || section.dropouts.scratch.enabled) {
@@ -450,9 +441,9 @@ void MainWindow::OnGenerate() {
   last_run_artefacts_.append(QString::fromStdString(project.output.video_path));
   last_run_artefacts_.append(
       QString::fromStdString(project.output.metadata_path));
-  if (AnySectionEnablesAudio(project)) {
+  for (const int pair : ProjectAudioChannelPairs(project)) {
     last_run_artefacts_.append(QString::fromStdString(
-        AudioWavWriter::DeriveAudioPath(project.output.video_path)));
+        AudioWavWriter::DeriveAudioPath(project.output.video_path, pair)));
   }
   if (AnySectionEnablesDropouts(project)) {
     last_run_artefacts_.append(

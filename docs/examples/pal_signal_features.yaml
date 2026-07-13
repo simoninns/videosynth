@@ -68,9 +68,14 @@ sections:
         vits_type: uk-national
         target_lines: [19]
     audio:
-      waveform: sine
-      frequency: 1000.0
-      amplitude: 0.5
+      channel_pairs:
+        - pair: 0
+          description: Analogue stereo
+          left:  { waveform: sine, frequency: 1000.0, amplitude: 0.5 }
+          right: { waveform: sine, frequency: 1000.0, amplitude: 0.5 }
+        - pair: 1
+          description: Commentary (left only)
+          left:  { waveform: square, frequency: 660.0, amplitude: 0.4 }
 
   # Poor-quality source with random dropouts and an OSD label.
   - name: PoorSourceRandomDropouts
@@ -122,9 +127,9 @@ sections:
     source: "{bundled}/mkv/720x576/MOVING_ZONE_2H.mkv"
     duration_frames: 8
     audio:
-      waveform: sawtooth
-      amplitude: 0.5
-      ramp:
-        start: 200.0
-        end: 4000.0
-        mode: up
+      channel_pairs:
+        - pair: 0
+          left:
+            waveform: sawtooth
+            amplitude: 0.5
+            ramp: { start: 200.0, end: 4000.0, mode: up }

@@ -72,7 +72,6 @@ class ProjectSettingsEditor : public QWidget {
 
   QComboBox* signal_type_combo_ = nullptr;
   QLineEdit* video_path_edit_ = nullptr;
-  QLineEdit* metadata_path_edit_ = nullptr;
   QLabel* video_path_hint_ = nullptr;
   QLabel* outputs_note_ = nullptr;
 };

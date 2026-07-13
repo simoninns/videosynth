@@ -132,13 +132,8 @@ void ProjectSettingsEditor::BuildUi() {
 
   // The metadata path is not independently settable: metadata, audio, and any
   // sidecar files are always written to the same folder as the video output,
-  // sharing its base name. Show the derived path read-only for reference.
-  metadata_path_edit_ = new QLineEdit(output_group);
-  metadata_path_edit_->setReadOnly(true);
-  metadata_path_edit_->setToolTip(
-      tr("Derived automatically from the video path — all outputs share the "
-         "video's folder and base name."));
-
+  // sharing its base name. It is therefore not presented as a separate field;
+  // the note below documents where those files are written.
   video_path_hint_ = new QLabel(output_group);
   video_path_hint_->setWordWrap(true);
 
@@ -151,7 +146,6 @@ void ProjectSettingsEditor::BuildUi() {
   output_form->addRow(tr("Signal type:"), signal_type_combo_);
   output_form->addRow(tr("Video path:"), video_row);
   output_form->addRow(QString(), video_path_hint_);
-  output_form->addRow(tr("Metadata path:"), metadata_path_edit_);
   output_form->addRow(QString(), outputs_note_);
   layout->addWidget(output_group);
 
@@ -220,8 +214,6 @@ void ProjectSettingsEditor::LoadFromDocument() {
       project.cvbs_presets.ntsc_black_setup_ire_specified);
 
   video_path_edit_->setText(QString::fromStdString(project.output.video_path));
-  metadata_path_edit_->setText(
-      QString::fromStdString(project.output.metadata_path));
 
   ApplyEnablement();
   updating_ = false;

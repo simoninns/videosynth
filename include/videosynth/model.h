@@ -9,6 +9,7 @@
 
 #pragma once
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <string>
@@ -238,6 +239,27 @@ struct AudioParameters {
   double amplitude = 0.5;
 };
 
+// Maximum number of audio channel pairs permitted by the CVBS File Format
+// Specification (Audio Data): up to 16 SMPTE 272M channels in 8 channel pairs.
+inline constexpr int kMaxAudioChannelPairs = 8;
+
+// Thread-safety: AudioChannelPair is a plain data container with no mutable
+// state. It may be read concurrently from multiple threads.
+//
+// One stereo channel pair (SMPTE 272M §3.11) synthesised for a section. `pair`
+// is the channel-pair number 0–7 that names the emitted `_audio_<pair>.wav`
+// file and the `audio_channel_pair` metadata row. `left` and `right` describe
+// the two interleaved channels independently; a channel with `enabled == false`
+// is stored as all-zero silence per SMPTE 272M §6.4. `description` is an
+// optional human-readable label recorded in the metadata (may be empty → NULL).
+struct AudioChannelPair {
+  int pair = 0;
+  bool pair_specified = false;
+  std::string description;
+  AudioParameters left = {};
+  AudioParameters right = {};
+};
+
 struct Section {
   struct LineInjectionCode {
     std::string code_type;
@@ -270,7 +292,7 @@ struct Section {
   NoiseParameters noise = {};
   DropoutParameters dropouts = {};
   OsdConfig osd = {};
-  AudioParameters audio = {};
+  std::vector<AudioChannelPair> audio_channel_pairs = {};
 };
 
 struct OutputTargets {
@@ -379,6 +401,12 @@ inline bool operator==(const AudioParameters& a, const AudioParameters& b) {
          a.amplitude == b.amplitude;
 }
 
+inline bool operator==(const AudioChannelPair& a, const AudioChannelPair& b) {
+  return a.pair == b.pair && a.pair_specified == b.pair_specified &&
+         a.description == b.description && a.left == b.left &&
+         a.right == b.right;
+}
+
 inline bool operator==(const Section::LineInjectionCode& a,
                        const Section::LineInjectionCode& b) {
   return a.code_type == b.code_type && a.start_value == b.start_value &&
@@ -404,7 +432,8 @@ inline bool operator==(const Section& a, const Section& b) {
          a.duration_frames_all == b.duration_frames_all &&
          a.duration_frames == b.duration_frames &&
          a.start_frame == b.start_frame && a.noise == b.noise &&
-         a.dropouts == b.dropouts && a.osd == b.osd && a.audio == b.audio;
+         a.dropouts == b.dropouts && a.osd == b.osd &&
+         a.audio_channel_pairs == b.audio_channel_pairs;
 }
 
 inline bool operator==(const OutputTargets& a, const OutputTargets& b) {
@@ -426,15 +455,50 @@ inline bool operator==(const Project& a, const Project& b) {
 
 inline bool operator!=(const Project& a, const Project& b) { return !(a == b); }
 
-// True if any section requests synthetic audio. When false the pipeline emits
-// no WAV track and the metadata audio_locked field stays NULL.
+// True if a channel pair carries any active (non-silent) channel.
+inline bool AudioChannelPairIsActive(const AudioChannelPair& pair) {
+  return pair.left.enabled || pair.right.enabled;
+}
+
+// True if any section declares an audio channel pair. When false the pipeline
+// emits no WAV tracks and no audio_channel_pair metadata rows.
 inline bool ProjectEnablesAudio(const Project& project) {
   for (const Section& section : project.sections) {
-    if (section.audio.enabled) {
+    if (!section.audio_channel_pairs.empty()) {
       return true;
     }
   }
   return false;
+}
+
+// Sorted, de-duplicated list of channel-pair numbers declared across all
+// sections. One WAV file and one audio_channel_pair metadata row is emitted per
+// entry; every file spans the whole output (silent where a section omits it).
+inline std::vector<int> ProjectAudioChannelPairs(const Project& project) {
+  std::vector<int> pairs;
+  for (const Section& section : project.sections) {
+    for (const AudioChannelPair& cp : section.audio_channel_pairs) {
+      if (std::find(pairs.begin(), pairs.end(), cp.pair) == pairs.end()) {
+        pairs.push_back(cp.pair);
+      }
+    }
+  }
+  std::sort(pairs.begin(), pairs.end());
+  return pairs;
+}
+
+// First non-empty description recorded for `pair` in section order, or an empty
+// string when none is set (→ NULL in the metadata).
+inline std::string AudioChannelPairDescription(const Project& project,
+                                               int pair) {
+  for (const Section& section : project.sections) {
+    for (const AudioChannelPair& cp : section.audio_channel_pairs) {
+      if (cp.pair == pair && !cp.description.empty()) {
+        return cp.description;
+      }
+    }
+  }
+  return {};
 }
 
 }  // namespace videosynth

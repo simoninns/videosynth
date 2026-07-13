@@ -208,87 +208,18 @@ QWidget* SectionEditor::BuildProbeGroup() {
 }
 
 QWidget* SectionEditor::BuildAudioGroup() {
-  audio_group_ = new QGroupBox(tr("Audio test tone"), content_);
-  audio_group_->setCheckable(true);
-  auto* form = new QFormLayout(audio_group_);
+  audio_group_ = new QGroupBox(tr("Audio channel pairs"), content_);
+  auto* layout = new QVBoxLayout(audio_group_);
+  audio_editor_ = new AudioChannelPairsEditor(audio_group_);
+  audio_editor_->setMinimumHeight(260);
+  layout->addWidget(audio_editor_);
 
-  waveform_combo_ = new QComboBox(audio_group_);
-  for (const std::string& waveform : AudioWaveformOptions()) {
-    waveform_combo_->addItem(QString::fromStdString(waveform));
-  }
-  form->addRow(tr("Waveform:"), waveform_combo_);
-
-  frequency_spin_ = new QDoubleSpinBox(audio_group_);
-  frequency_spin_->setRange(editor_limits::kAudioFrequencyMinHz,
-                            editor_limits::kAudioFrequencyMaxHz);
-  frequency_spin_->setSuffix(tr(" Hz"));
-  frequency_spin_->setDecimals(1);
-  frequency_spin_->setValue(1000.0);
-  form->addRow(tr("Frequency:"), frequency_spin_);
-
-  amplitude_spin_ = new QDoubleSpinBox(audio_group_);
-  amplitude_spin_->setRange(editor_limits::kAudioAmplitudeMin,
-                            editor_limits::kAudioAmplitudeMax);
-  amplitude_spin_->setSingleStep(0.05);
-  amplitude_spin_->setDecimals(2);
-  amplitude_spin_->setValue(0.5);
-  form->addRow(tr("Amplitude:"), amplitude_spin_);
-
-  ramp_group_ = new QGroupBox(tr("Frequency ramp"), audio_group_);
-  ramp_group_->setCheckable(true);
-  auto* ramp_form = new QFormLayout(ramp_group_);
-  ramp_start_spin_ = new QDoubleSpinBox(ramp_group_);
-  ramp_start_spin_->setRange(editor_limits::kAudioFrequencyMinHz,
-                             editor_limits::kAudioFrequencyMaxHz);
-  ramp_start_spin_->setSuffix(tr(" Hz"));
-  ramp_start_spin_->setDecimals(1);
-  ramp_end_spin_ = new QDoubleSpinBox(ramp_group_);
-  ramp_end_spin_->setRange(editor_limits::kAudioFrequencyMinHz,
-                           editor_limits::kAudioFrequencyMaxHz);
-  ramp_end_spin_->setSuffix(tr(" Hz"));
-  ramp_end_spin_->setDecimals(1);
-  ramp_mode_combo_ = new QComboBox(ramp_group_);
-  for (const std::string& mode : AudioRampModeOptions()) {
-    ramp_mode_combo_->addItem(QString::fromStdString(mode));
-  }
-  ramp_period_spin_ = new QDoubleSpinBox(ramp_group_);
-  ramp_period_spin_->setRange(0.0, 86400.0);
-  ramp_period_spin_->setDecimals(3);
-  ramp_period_spin_->setSuffix(tr(" s"));
-  ramp_period_spin_->setSpecialValueText(tr("whole section"));
-  ramp_form->addRow(tr("Start:"), ramp_start_spin_);
-  ramp_form->addRow(tr("End:"), ramp_end_spin_);
-  ramp_form->addRow(tr("Mode:"), ramp_mode_combo_);
-  ramp_form->addRow(tr("Period:"), ramp_period_spin_);
-  form->addRow(ramp_group_);
-
-  const auto commit = [this] {
-    if (!updating_) {
-      CommitSection();
-    }
-  };
-  connect(audio_group_, &QGroupBox::toggled, this, commit);
-  connect(ramp_group_, &QGroupBox::toggled, this, [this](bool checked) {
-    if (updating_) {
-      return;
-    }
-    if (checked && ramp_start_spin_->value() == 0.0 &&
-        ramp_end_spin_->value() == 0.0) {
-      // Seed an audible default sweep instead of a degenerate 0→0 Hz ramp.
-      updating_ = true;
-      ramp_start_spin_->setValue(200.0);
-      ramp_end_spin_->setValue(4000.0);
-      updating_ = false;
-    }
-    CommitSection();
-  });
-  connect(waveform_combo_, &QComboBox::activated, this, commit);
-  connect(frequency_spin_, &QDoubleSpinBox::valueChanged, this, commit);
-  connect(amplitude_spin_, &QDoubleSpinBox::valueChanged, this, commit);
-  connect(ramp_start_spin_, &QDoubleSpinBox::valueChanged, this, commit);
-  connect(ramp_end_spin_, &QDoubleSpinBox::valueChanged, this, commit);
-  connect(ramp_mode_combo_, &QComboBox::activated, this, commit);
-  connect(ramp_period_spin_, &QDoubleSpinBox::valueChanged, this, commit);
+  connect(audio_editor_, &AudioChannelPairsEditor::ChannelPairsEdited, this,
+          [this] {
+            if (!updating_) {
+              CommitSection();
+            }
+          });
   return audio_group_;
 }
 
@@ -495,24 +426,7 @@ void SectionEditor::LoadFromDocument() {
       rows[static_cast<std::size_t>(section_index_)].start_frame));
 
   // Audio.
-  const AudioParameters& audio = section.audio;
-  audio_group_->setChecked(audio.enabled);
-  waveform_combo_->setCurrentIndex(
-      qMax(0, waveform_combo_->findText(
-                  audio.waveform_text.empty()
-                      ? QStringLiteral("sine")
-                      : QString::fromStdString(audio.waveform_text))));
-  frequency_spin_->setValue(audio.frequency_hz);
-  amplitude_spin_->setValue(audio.amplitude);
-  ramp_group_->setChecked(audio.ramp_enabled);
-  ramp_start_spin_->setValue(audio.ramp_start_hz);
-  ramp_end_spin_->setValue(audio.ramp_end_hz);
-  ramp_mode_combo_->setCurrentIndex(
-      qMax(0, ramp_mode_combo_->findText(
-                  audio.ramp_mode_text.empty()
-                      ? QStringLiteral("up")
-                      : QString::fromStdString(audio.ramp_mode_text))));
-  ramp_period_spin_->setValue(audio.ramp_period_seconds);
+  audio_editor_->SetChannelPairs(section.audio_channel_pairs);
 
   // Noise.
   noise_group_->setChecked(section.noise.enabled);
@@ -626,43 +540,7 @@ Section SectionEditor::SectionFromWidgets() const {
       section.duration_frames_all ? 0 : duration_spin_->value();
 
   // Audio block.
-  if (audio_group_->isChecked()) {
-    const bool was_enabled = section.audio.enabled;
-    if (!was_enabled) {
-      SetAudioBlockEnabled(&section, true);
-    }
-    const std::string waveform_name =
-        waveform_combo_->currentText().toStdString();
-    // Preserve an omitted waveform key when the selection matches the
-    // parsed default (keeps round-trips byte-stable).
-    if (!(section.audio.waveform_text.empty() &&
-          AudioWaveformFromString(waveform_name) == section.audio.waveform)) {
-      SetAudioWaveform(&section, waveform_name);
-    }
-    section.audio.frequency_hz = frequency_spin_->value();
-    section.audio.amplitude = amplitude_spin_->value();
-    if (ramp_group_->isChecked()) {
-      if (!section.audio.ramp_enabled) {
-        SetAudioRampEnabled(&section, true);
-      }
-      section.audio.ramp_start_hz = ramp_start_spin_->value();
-      section.audio.ramp_end_hz = ramp_end_spin_->value();
-      section.audio.ramp_start_specified = true;
-      section.audio.ramp_end_specified = true;
-      const std::string mode_name =
-          ramp_mode_combo_->currentText().toStdString();
-      if (!(section.audio.ramp_mode_text.empty() &&
-            AudioRampModeFromString(mode_name) == section.audio.ramp_mode)) {
-        section.audio.ramp_mode = AudioRampModeFromString(mode_name);
-        section.audio.ramp_mode_text = mode_name;
-      }
-      section.audio.ramp_period_seconds = ramp_period_spin_->value();
-    } else {
-      SetAudioRampEnabled(&section, false);
-    }
-  } else {
-    SetAudioBlockEnabled(&section, false);
-  }
+  section.audio_channel_pairs = audio_editor_->channel_pairs();
 
   // Noise block.
   if (noise_group_->isChecked()) {

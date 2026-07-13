@@ -1204,11 +1204,23 @@ TEST(ProjectValidatorTest, AcceptsMultipleValidDiscSkips) {
   EXPECT_TRUE(result.is_valid);
 }
 
+// Installs a single channel pair (number `pair`) on section 0 and returns a
+// mutable reference to its (active) left channel for the audio-validation
+// tests.
+AudioParameters& InstallLeftChannel(Project& project, int pair = 0) {
+  project.sections[0].audio_channel_pairs.clear();
+  AudioChannelPair channel_pair;
+  channel_pair.pair = pair;
+  channel_pair.pair_specified = true;
+  channel_pair.left.enabled = true;
+  project.sections[0].audio_channel_pairs.push_back(channel_pair);
+  return project.sections[0].audio_channel_pairs.back().left;
+}
+
 TEST(ProjectValidatorTest, AcceptsValidFixedAudio) {
   Project project = MakeValidProject();
   project.sections[0].duration_frames = 25;
-  AudioParameters& audio = project.sections[0].audio;
-  audio.enabled = true;
+  AudioParameters& audio = InstallLeftChannel(project);
   audio.waveform = AudioWaveform::kSine;
   audio.frequency_hz = 1000.0;
   audio.amplitude = 0.5;
@@ -1220,11 +1232,31 @@ TEST(ProjectValidatorTest, AcceptsValidFixedAudio) {
   EXPECT_TRUE(result.errors.empty());
 }
 
+TEST(ProjectValidatorTest, AcceptsMultipleChannelPairs) {
+  Project project = MakeValidProject();
+  project.sections[0].duration_frames = 25;
+  AudioChannelPair pair0;
+  pair0.pair = 0;
+  pair0.pair_specified = true;
+  pair0.left.enabled = true;
+  pair0.right.enabled = true;
+  AudioChannelPair pair7;
+  pair7.pair = 7;
+  pair7.pair_specified = true;
+  pair7.left.enabled = true;  // Right stays silent.
+  project.sections[0].audio_channel_pairs = {pair0, pair7};
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_TRUE(result.is_valid);
+  EXPECT_TRUE(result.errors.empty());
+}
+
 TEST(ProjectValidatorTest, AcceptsValidPeriodicRampAudio) {
   Project project = MakeValidProject();
   project.sections[0].duration_frames = 25;  // 1.0 s at 25 fps.
-  AudioParameters& audio = project.sections[0].audio;
-  audio.enabled = true;
+  AudioParameters& audio = InstallLeftChannel(project);
   audio.ramp_enabled = true;
   audio.ramp_start_specified = true;
   audio.ramp_end_specified = true;
@@ -1240,11 +1272,69 @@ TEST(ProjectValidatorTest, AcceptsValidPeriodicRampAudio) {
   EXPECT_TRUE(result.errors.empty());
 }
 
+TEST(ProjectValidatorTest, RejectsUnspecifiedPairNumber) {
+  Project project = MakeValidProject();
+  AudioChannelPair channel_pair;  // pair_specified stays false.
+  channel_pair.left.enabled = true;
+  project.sections[0].audio_channel_pairs.push_back(channel_pair);
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_FALSE(result.is_valid);
+  ASSERT_FALSE(result.errors.empty());
+}
+
+TEST(ProjectValidatorTest, RejectsPairNumberOutOfRange) {
+  Project project = MakeValidProject();
+  InstallLeftChannel(project, /*pair=*/8);  // Only 0–7 permitted.
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_FALSE(result.is_valid);
+  ASSERT_FALSE(result.errors.empty());
+}
+
+TEST(ProjectValidatorTest, RejectsDuplicatePairNumberInSection) {
+  Project project = MakeValidProject();
+  AudioChannelPair first;
+  first.pair = 0;
+  first.pair_specified = true;
+  first.left.enabled = true;
+  AudioChannelPair second;
+  second.pair = 0;  // Duplicate within the same section.
+  second.pair_specified = true;
+  second.left.enabled = true;
+  project.sections[0].audio_channel_pairs = {first, second};
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_FALSE(result.is_valid);
+  ASSERT_FALSE(result.errors.empty());
+}
+
+TEST(ProjectValidatorTest, RejectsChannelPairWithNoActiveChannel) {
+  Project project = MakeValidProject();
+  AudioChannelPair channel_pair;
+  channel_pair.pair = 0;
+  channel_pair.pair_specified = true;
+  // Neither left nor right is enabled.
+  project.sections[0].audio_channel_pairs.push_back(channel_pair);
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_FALSE(result.is_valid);
+  ASSERT_FALSE(result.errors.empty());
+}
+
 TEST(ProjectValidatorTest, RejectsUnknownAudioWaveform) {
   Project project = MakeValidProject();
-  project.sections[0].audio.enabled = true;
-  project.sections[0].audio.waveform = AudioWaveform::kUnknown;
-  project.sections[0].audio.waveform_text = "noise";
+  AudioParameters& audio = InstallLeftChannel(project);
+  audio.waveform = AudioWaveform::kUnknown;
+  audio.waveform_text = "noise";
 
   ProjectValidator validator;
   const ValidationResult result = validator.Validate(project);
@@ -1255,8 +1345,8 @@ TEST(ProjectValidatorTest, RejectsUnknownAudioWaveform) {
 
 TEST(ProjectValidatorTest, RejectsAudioAmplitudeOutOfRange) {
   Project project = MakeValidProject();
-  project.sections[0].audio.enabled = true;
-  project.sections[0].audio.amplitude = 1.5;
+  AudioParameters& audio = InstallLeftChannel(project);
+  audio.amplitude = 1.5;
 
   ProjectValidator validator;
   const ValidationResult result = validator.Validate(project);
@@ -1267,8 +1357,8 @@ TEST(ProjectValidatorTest, RejectsAudioAmplitudeOutOfRange) {
 
 TEST(ProjectValidatorTest, RejectsAudioFrequencyOutOfRange) {
   Project project = MakeValidProject();
-  project.sections[0].audio.enabled = true;
-  project.sections[0].audio.frequency_hz = 30000.0;
+  AudioParameters& audio = InstallLeftChannel(project);
+  audio.frequency_hz = 30000.0;
 
   ProjectValidator validator;
   const ValidationResult result = validator.Validate(project);
@@ -1279,8 +1369,7 @@ TEST(ProjectValidatorTest, RejectsAudioFrequencyOutOfRange) {
 
 TEST(ProjectValidatorTest, RejectsRampMissingEndFrequency) {
   Project project = MakeValidProject();
-  AudioParameters& audio = project.sections[0].audio;
-  audio.enabled = true;
+  AudioParameters& audio = InstallLeftChannel(project);
   audio.ramp_enabled = true;
   audio.ramp_start_specified = true;
   audio.ramp_start_hz = 100.0;
@@ -1295,8 +1384,7 @@ TEST(ProjectValidatorTest, RejectsRampMissingEndFrequency) {
 
 TEST(ProjectValidatorTest, RejectsUnknownRampMode) {
   Project project = MakeValidProject();
-  AudioParameters& audio = project.sections[0].audio;
-  audio.enabled = true;
+  AudioParameters& audio = InstallLeftChannel(project);
   audio.ramp_enabled = true;
   audio.ramp_start_specified = true;
   audio.ramp_end_specified = true;
@@ -1314,8 +1402,7 @@ TEST(ProjectValidatorTest, RejectsUnknownRampMode) {
 
 TEST(ProjectValidatorTest, RejectsRampFrequencyOutOfRange) {
   Project project = MakeValidProject();
-  AudioParameters& audio = project.sections[0].audio;
-  audio.enabled = true;
+  AudioParameters& audio = InstallLeftChannel(project);
   audio.ramp_enabled = true;
   audio.ramp_start_specified = true;
   audio.ramp_end_specified = true;
@@ -1333,8 +1420,7 @@ TEST(ProjectValidatorTest, RejectsRampFrequencyOutOfRange) {
 TEST(ProjectValidatorTest, RejectsRampPeriodExceedingSectionDuration) {
   Project project = MakeValidProject();
   project.sections[0].duration_frames = 25;  // 1.0 s at 25 fps.
-  AudioParameters& audio = project.sections[0].audio;
-  audio.enabled = true;
+  AudioParameters& audio = InstallLeftChannel(project);
   audio.ramp_enabled = true;
   audio.ramp_start_specified = true;
   audio.ramp_end_specified = true;
@@ -1352,8 +1438,7 @@ TEST(ProjectValidatorTest, RejectsRampPeriodExceedingSectionDuration) {
 
 TEST(ProjectValidatorTest, RejectsNegativeRampPeriod) {
   Project project = MakeValidProject();
-  AudioParameters& audio = project.sections[0].audio;
-  audio.enabled = true;
+  AudioParameters& audio = InstallLeftChannel(project);
   audio.ramp_enabled = true;
   audio.ramp_start_specified = true;
   audio.ramp_end_specified = true;

@@ -55,14 +55,24 @@ void SetNoiseSeedSpecified(Section* section, bool specified);
 void SetRandomDropoutsEnabled(Section* section, bool enabled);
 void SetScratchDropoutsEnabled(Section* section, bool enabled);
 
-void SetAudioBlockEnabled(Section* section, bool enabled);
-// Switching to ramp mode seeds a validator-clean up-ramp; switching back
-// clears every ramp field so the emitted block returns to fixed-frequency
+// A freshly-enabled audio channel (validator-clean fixed-frequency sine).
+AudioParameters MakeDefaultAudioChannel();
+
+// A freshly-added channel pair carrying `pair` with an active left channel and
+// a silent right channel.
+AudioChannelPair MakeDefaultAudioChannelPair(int pair);
+
+// Switching a channel to ramp mode seeds a validator-clean up-ramp; switching
+// back clears every ramp field so the emitted block returns to fixed-frequency
 // form.
-void SetAudioRampEnabled(Section* section, bool enabled);
+void SetAudioChannelRampEnabled(AudioParameters* channel, bool enabled);
 // Keeps waveform and waveform_text consistent; `waveform_name` must be one
 // of "sine", "square", "sawtooth", "triangle".
-void SetAudioWaveform(Section* section, const std::string& waveform_name);
+void SetAudioChannelWaveform(AudioParameters* channel,
+                             const std::string& waveform_name);
+// The lowest channel-pair number 0–7 not already used by `pairs`, or -1 when
+// all eight are taken.
+int NextFreeAudioChannelPair(const std::vector<AudioChannelPair>& pairs);
 
 // The OSD block exists exactly when the overlay list is non-empty.
 bool OsdBlockEnabled(const Section& section);

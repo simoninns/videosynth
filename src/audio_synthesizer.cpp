@@ -2,7 +2,7 @@
  * File:        audio_synthesizer.cpp
  * Module:      audio_synthesizer
  * Purpose:     Synthesises per-section test-tone waveforms as frame-locked
- *              int16 mono PCM samples from AudioParameters.
+ *              24-bit mono PCM samples from AudioParameters.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Simon Inns
@@ -116,15 +116,15 @@ double AudioSynthesizer::WaveformSample(double phase) const {
   return 0.0;
 }
 
-std::vector<std::int16_t> AudioSynthesizer::Synthesize(int sample_count) {
-  std::vector<std::int16_t> out;
+std::vector<std::int32_t> AudioSynthesizer::Synthesize(int sample_count) {
+  std::vector<std::int32_t> out;
   if (sample_count <= 0) {
     return out;
   }
   out.reserve(static_cast<std::size_t>(sample_count));
 
   if (!params_.enabled) {
-    // Disabled sections emit silence but still advance the elapsed offset so
+    // Disabled channels emit silence but still advance the elapsed offset so
     // downstream frame-lock accounting stays exact.
     out.assign(static_cast<std::size_t>(sample_count), 0);
     elapsed_sample_ += sample_count;
@@ -136,7 +136,7 @@ std::vector<std::int16_t> AudioSynthesizer::Synthesize(int sample_count) {
     const std::int64_t scaled = std::llround(value * kFullScale);
     const std::int64_t clamped =
         std::clamp<std::int64_t>(scaled, -kFullScale, kFullScale);
-    out.push_back(static_cast<std::int16_t>(clamped));
+    out.push_back(static_cast<std::int32_t>(clamped));
 
     // Advance phase using the frequency at this sample position.
     const double freq = InstantaneousFrequencyHz(elapsed_sample_);

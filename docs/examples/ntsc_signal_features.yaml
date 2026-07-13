@@ -63,9 +63,14 @@ sections:
         vits_type: virs
         target_lines: [21]
     audio:
-      waveform: sine
-      frequency: 1000.0
-      amplitude: 0.5
+      channel_pairs:
+        - pair: 0
+          description: Analogue stereo
+          left:  { waveform: sine, frequency: 1000.0, amplitude: 0.5 }
+          right: { waveform: sine, frequency: 1000.0, amplitude: 0.5 }
+        - pair: 1
+          description: Commentary (left only)
+          left:  { waveform: square, frequency: 660.0, amplitude: 0.4 }
 
   # Poor-quality source with random dropouts and an OSD label.
   - name: PoorSourceRandomDropouts
@@ -104,9 +109,10 @@ sections:
         vits_type: virs
         target_lines: [21]
     audio:
-      waveform: square
-      frequency: 440.0
-      amplitude: 0.7
+      channel_pairs:
+        - pair: 0
+          left:  { waveform: square, frequency: 440.0, amplitude: 0.7 }
+          right: { waveform: square, frequency: 440.0, amplitude: 0.7 }
 
   # Silence gap: no audio: block, but the WAV stays frame-locked.
   - name: SilenceGap

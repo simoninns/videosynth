@@ -12,6 +12,7 @@
 
 #include <QWidget>
 
+#include "audio_channel_pairs_editor.h"
 #include "line_injections_editor.h"
 #include "project_document.h"
 #include "source_probe_controller.h"
@@ -106,14 +107,7 @@ class SectionEditor : public QWidget {
 
   // Audio.
   QGroupBox* audio_group_ = nullptr;
-  QComboBox* waveform_combo_ = nullptr;
-  QDoubleSpinBox* frequency_spin_ = nullptr;
-  QDoubleSpinBox* amplitude_spin_ = nullptr;
-  QGroupBox* ramp_group_ = nullptr;
-  QDoubleSpinBox* ramp_start_spin_ = nullptr;
-  QDoubleSpinBox* ramp_end_spin_ = nullptr;
-  QComboBox* ramp_mode_combo_ = nullptr;
-  QDoubleSpinBox* ramp_period_spin_ = nullptr;
+  AudioChannelPairsEditor* audio_editor_ = nullptr;
 
   // Noise.
   QGroupBox* noise_group_ = nullptr;

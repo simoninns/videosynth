@@ -201,6 +201,69 @@ bool ParseLineInjections(const YAML::Node& section_node, Section* section,
   return true;
 }
 
+// Parses one audio channel (left or right) tone descriptor: waveform,
+// frequency, amplitude, and an optional frequency ramp. Sets out->enabled on
+// success. Appends to errors and returns false on a structural error.
+bool ParseAudioChannel(const YAML::Node& node, const std::string& context,
+                       AudioParameters* out, std::vector<std::string>* errors) {
+  if (!node.IsMap()) {
+    errors->push_back(context + " must be a map/object.");
+    return false;
+  }
+  const std::set<std::string> channel_keys = {"waveform", "frequency",
+                                              "amplitude", "ramp"};
+  ValidateAllowedKeys(node, channel_keys, context, errors);
+  if (!errors->empty()) {
+    return false;
+  }
+
+  AudioParameters audio;
+  audio.enabled = true;
+  if (node["waveform"]) {
+    audio.waveform_text = node["waveform"].as<std::string>("");
+    audio.waveform = AudioWaveformFromString(audio.waveform_text);
+  }
+  if (node["frequency"]) {
+    audio.frequency_hz = node["frequency"].as<double>();
+  }
+  if (node["amplitude"]) {
+    audio.amplitude = node["amplitude"].as<double>();
+  }
+
+  if (node["ramp"]) {
+    const YAML::Node ramp_node = node["ramp"];
+    if (!ramp_node.IsMap()) {
+      errors->push_back(context + ".ramp must be a map/object.");
+      return false;
+    }
+    const std::set<std::string> ramp_keys = {"start", "end", "mode", "period"};
+    ValidateAllowedKeys(ramp_node, ramp_keys, context + ".ramp", errors);
+    if (!errors->empty()) {
+      return false;
+    }
+
+    audio.ramp_enabled = true;
+    if (ramp_node["start"]) {
+      audio.ramp_start_hz = ramp_node["start"].as<double>();
+      audio.ramp_start_specified = true;
+    }
+    if (ramp_node["end"]) {
+      audio.ramp_end_hz = ramp_node["end"].as<double>();
+      audio.ramp_end_specified = true;
+    }
+    if (ramp_node["mode"]) {
+      audio.ramp_mode_text = ramp_node["mode"].as<std::string>("");
+      audio.ramp_mode = AudioRampModeFromString(audio.ramp_mode_text);
+    }
+    if (ramp_node["period"]) {
+      audio.ramp_period_seconds = ramp_node["period"].as<double>();
+    }
+  }
+
+  *out = audio;
+  return true;
+}
+
 // Helper function to parse a YAML node into a Project structure.
 // This is shared between ParseFile and ParseString.
 ParseResult ParseYamlNode(const YAML::Node& root, ILogger* logger) {
@@ -491,60 +554,57 @@ ParseResult ParseYamlNode(const YAML::Node& root, ILogger* logger) {
               "section field 'audio' must be a map/object.");
           return result;
         }
-        const std::set<std::string> audio_keys = {"waveform", "frequency",
-                                                  "amplitude", "ramp"};
+        const std::set<std::string> audio_keys = {"channel_pairs"};
         ValidateAllowedKeys(audio_node, audio_keys, "section.audio",
                             &result.errors);
         if (!result.errors.empty()) {
           return result;
         }
 
-        AudioParameters audio;
-        audio.enabled = true;
-        if (audio_node["waveform"]) {
-          audio.waveform_text = audio_node["waveform"].as<std::string>("");
-          audio.waveform = AudioWaveformFromString(audio.waveform_text);
-        }
-        if (audio_node["frequency"]) {
-          audio.frequency_hz = audio_node["frequency"].as<double>();
-        }
-        if (audio_node["amplitude"]) {
-          audio.amplitude = audio_node["amplitude"].as<double>();
+        const YAML::Node pairs_node = audio_node["channel_pairs"];
+        if (!pairs_node || !pairs_node.IsSequence()) {
+          result.errors.push_back(
+              "section.audio.channel_pairs must be a sequence.");
+          return result;
         }
 
-        if (audio_node["ramp"]) {
-          const YAML::Node ramp_node = audio_node["ramp"];
-          if (!ramp_node.IsMap()) {
-            result.errors.push_back("section.audio.ramp must be a map/object.");
+        for (const YAML::Node& pair_node : pairs_node) {
+          if (!pair_node.IsMap()) {
+            result.errors.push_back(
+                "section.audio.channel_pairs[] must be a map/object.");
             return result;
           }
-          const std::set<std::string> ramp_keys = {"start", "end", "mode",
-                                                   "period"};
-          ValidateAllowedKeys(ramp_node, ramp_keys, "section.audio.ramp",
-                              &result.errors);
+          const std::set<std::string> pair_keys = {"pair", "description",
+                                                   "left", "right"};
+          ValidateAllowedKeys(pair_node, pair_keys,
+                              "section.audio.channel_pairs[]", &result.errors);
           if (!result.errors.empty()) {
             return result;
           }
 
-          audio.ramp_enabled = true;
-          if (ramp_node["start"]) {
-            audio.ramp_start_hz = ramp_node["start"].as<double>();
-            audio.ramp_start_specified = true;
+          AudioChannelPair channel_pair;
+          if (pair_node["pair"]) {
+            channel_pair.pair = pair_node["pair"].as<int>();
+            channel_pair.pair_specified = true;
           }
-          if (ramp_node["end"]) {
-            audio.ramp_end_hz = ramp_node["end"].as<double>();
-            audio.ramp_end_specified = true;
+          if (pair_node["description"]) {
+            channel_pair.description =
+                pair_node["description"].as<std::string>("");
           }
-          if (ramp_node["mode"]) {
-            audio.ramp_mode_text = ramp_node["mode"].as<std::string>("");
-            audio.ramp_mode = AudioRampModeFromString(audio.ramp_mode_text);
+          if (pair_node["left"] &&
+              !ParseAudioChannel(pair_node["left"],
+                                 "section.audio.channel_pairs[].left",
+                                 &channel_pair.left, &result.errors)) {
+            return result;
           }
-          if (ramp_node["period"]) {
-            audio.ramp_period_seconds = ramp_node["period"].as<double>();
+          if (pair_node["right"] &&
+              !ParseAudioChannel(pair_node["right"],
+                                 "section.audio.channel_pairs[].right",
+                                 &channel_pair.right, &result.errors)) {
+            return result;
           }
+          section.audio_channel_pairs.push_back(channel_pair);
         }
-
-        section.audio = audio;
       }
 
       result.project.sections.push_back(section);

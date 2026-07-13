@@ -224,7 +224,7 @@ bool WriteMetadataDatabase(const Project& project, std::size_t frame_count,
   }
 
   char* error_msg = nullptr;
-  if (sqlite3_exec(db, "PRAGMA user_version = 8;", nullptr, nullptr,
+  if (sqlite3_exec(db, "PRAGMA user_version = 10;", nullptr, nullptr,
                    &error_msg) != SQLITE_OK) {
     errors->push_back(std::string("Failed to set PRAGMA user_version: ") +
                       error_msg);
@@ -261,7 +261,6 @@ bool WriteMetadataDatabase(const Project& project, std::size_t frame_count,
       "number_of_sequential_frames >= 1),"
       "    black_level                 INTEGER,"
       "    has_nonstandard_values      BOOLEAN,"
-      "    audio_locked                BOOLEAN,"
       "    capture_notes               TEXT"
       ");";
 
@@ -269,6 +268,24 @@ bool WriteMetadataDatabase(const Project& project, std::size_t frame_count,
       SQLITE_OK) {
     errors->push_back(std::string("Failed to create cvbs_file table: ") +
                       error_msg);
+    sqlite3_free(error_msg);
+    sqlite3_close(db);
+    return false;
+  }
+
+  // Per-channel-pair audio metadata (CVBS File Format Specification,
+  // audio_channel_pair table): one row per emitted `_audio_<pair>.wav` file.
+  const char* create_audio_table_sql =
+      "CREATE TABLE audio_channel_pair ("
+      "    channel_pair                INTEGER PRIMARY KEY"
+      "        CHECK (channel_pair BETWEEN 0 AND 7),"
+      "    description                 TEXT"
+      ");";
+
+  if (sqlite3_exec(db, create_audio_table_sql, nullptr, nullptr, &error_msg) !=
+      SQLITE_OK) {
+    errors->push_back(
+        std::string("Failed to create audio_channel_pair table: ") + error_msg);
     sqlite3_free(error_msg);
     sqlite3_close(db);
     return false;
@@ -295,9 +312,8 @@ bool WriteMetadataDatabase(const Project& project, std::size_t frame_count,
       "    number_of_sequential_frames,"
       "    black_level,"
       "    has_nonstandard_values,"
-      "    audio_locked,"
       "    capture_notes"
-      ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
+      ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
 
   if (sqlite3_prepare_v2(db, insert_sql, -1, &insert_stmt, nullptr) !=
       SQLITE_OK) {
@@ -334,14 +350,7 @@ bool WriteMetadataDatabase(const Project& project, std::size_t frame_count,
   }
 
   sqlite3_bind_int(insert_stmt, 10, has_nonstandard ? 1 : 0);
-  // audio_locked: TRUE when a frame-locked audio track is written (i.e. at
-  // least one section enables audio), NULL otherwise.
-  if (ProjectEnablesAudio(project)) {
-    sqlite3_bind_int(insert_stmt, 11, 1);
-  } else {
-    sqlite3_bind_null(insert_stmt, 11);
-  }
-  sqlite3_bind_null(insert_stmt, 12);  // capture_notes
+  sqlite3_bind_null(insert_stmt, 11);  // capture_notes
 
   if (sqlite3_step(insert_stmt) != SQLITE_DONE) {
     errors->push_back("Failed to insert metadata row");
@@ -351,6 +360,43 @@ bool WriteMetadataDatabase(const Project& project, std::size_t frame_count,
   }
 
   sqlite3_finalize(insert_stmt);
+
+  // One audio_channel_pair row per emitted channel-pair WAV file. Channel-pair
+  // numbers are the union of those declared across sections; the description is
+  // the first non-empty label recorded for that pair (NULL when none).
+  const std::vector<int> channel_pairs = ProjectAudioChannelPairs(project);
+  if (!channel_pairs.empty()) {
+    sqlite3_stmt* audio_stmt = nullptr;
+    const char* audio_insert_sql =
+        "INSERT INTO audio_channel_pair (channel_pair, description) "
+        "VALUES (?, ?);";
+    if (sqlite3_prepare_v2(db, audio_insert_sql, -1, &audio_stmt, nullptr) !=
+        SQLITE_OK) {
+      errors->push_back("Failed to prepare audio_channel_pair insert");
+      sqlite3_close(db);
+      return false;
+    }
+    for (const int pair : channel_pairs) {
+      sqlite3_reset(audio_stmt);
+      sqlite3_bind_int(audio_stmt, 1, pair);
+      const std::string description =
+          AudioChannelPairDescription(project, pair);
+      if (description.empty()) {
+        sqlite3_bind_null(audio_stmt, 2);
+      } else {
+        sqlite3_bind_text(audio_stmt, 2, description.c_str(), -1,
+                          SQLITE_TRANSIENT);
+      }
+      if (sqlite3_step(audio_stmt) != SQLITE_DONE) {
+        errors->push_back("Failed to insert audio_channel_pair row");
+        sqlite3_finalize(audio_stmt);
+        sqlite3_close(db);
+        return false;
+      }
+    }
+    sqlite3_finalize(audio_stmt);
+  }
+
   sqlite3_close(db);
   return true;
 }

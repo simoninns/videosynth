@@ -12,7 +12,7 @@
 #include <cstddef>
 #include <vector>
 
-#include "videosynth/audio_wav_writer.h"
+#include "videosynth/audio_track_generator.h"
 #include "videosynth/dropout_injection_stage.h"
 #include "videosynth/interfaces.h"
 #include "videosynth/noise_injection_stage.h"
@@ -38,6 +38,7 @@ std::vector<std::size_t> ComputeDiscOutputFrameOrder(
 // because the injected single-owner stage collaborators (IOutputStage,
 // DropoutInjectionStage's sidecar session, AudioWavWriter) are accessed
 // without synchronization. ILogger, IProjectParser, and IProjectValidator
+// (and AudioTrackGenerator)
 // implementations must remain thread-safe per their interface contracts.
 //
 // When RunOptions::threads resolves to more than one worker, the pipeline
@@ -53,16 +54,16 @@ std::vector<std::size_t> ComputeDiscOutputFrameOrder(
 // worker threads must pass already-resolved paths.
 class VideoSynthPipeline {
  public:
-  // audio_writer is an optional collaborator (nullable, like noise_injection
-  // and dropout_injection). When non-null and the project enables audio on at
-  // least one section, a single frame-locked WAV track is emitted alongside the
-  // CVBS output.
+  // audio_generator is an optional collaborator (nullable, like noise_injection
+  // and dropout_injection). When non-null and the project declares audio
+  // channel pairs, one frame-locked stereo WAV track per channel pair is
+  // emitted alongside the CVBS output.
   VideoSynthPipeline(IProjectParser* parser, IProjectValidator* validator,
                      IGenerationStage* generation,
                      NoiseInjectionStage* noise_injection,
                      DropoutInjectionStage* dropout_injection,
                      IOutputStage* output, ILogger* logger,
-                     AudioWavWriter* audio_writer = nullptr);
+                     AudioTrackGenerator* audio_generator = nullptr);
 
   // Orchestrates the full pipeline from a project file:
   //   parse -> RunProject (validate -> generate -> noise -> dropout ->
@@ -114,7 +115,7 @@ class VideoSynthPipeline {
   DropoutInjectionStage* dropout_injection_;
   IOutputStage* output_;
   ILogger* logger_;
-  AudioWavWriter* audio_writer_;
+  AudioTrackGenerator* audio_generator_;
 };
 
 }  // namespace videosynth

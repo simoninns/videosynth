@@ -1,8 +1,8 @@
 /*
  * File:        audio_wav_writer.cpp
  * Module:      audio_wav_writer
- * Purpose:     Streams frame-locked stereo 16-bit PCM audio to a RIFF/WAVE file
- *              alongside the generated CVBS output.
+ * Purpose:     Streams one frame-locked stereo 24-bit PCM channel pair to a
+ *              RIFF/WAVE file alongside the generated CVBS output.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Simon Inns
@@ -14,6 +14,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <limits>
+#include <string>
 #include <string_view>
 
 #include "videosynth/timing_constants.h"
@@ -22,10 +23,10 @@ namespace videosynth {
 
 namespace {
 
-// RIFF/WAVE constants for stereo 16-bit signed PCM. WAVEFORMAT PCM tag 0x0001.
+// RIFF/WAVE constants for stereo 24-bit signed PCM. WAVEFORMAT PCM tag 0x0001.
 constexpr std::uint16_t kPcmFormatTag = 0x0001;
 constexpr std::uint16_t kChannelCount = 2;
-constexpr std::uint16_t kBitsPerSample = 16;
+constexpr std::uint16_t kBitsPerSample = 24;
 constexpr std::uint16_t kBytesPerSample = kBitsPerSample / 8;
 // 44-byte canonical header: RIFF (12) + fmt (24) + data chunk header (8).
 constexpr std::size_t kHeaderBytes = 44;
@@ -35,6 +36,13 @@ constexpr std::size_t kDataSizeOffset = 40;
 void AppendLittleEndian16(std::vector<char>* out, std::uint16_t value) {
   out->push_back(static_cast<char>(value & 0xFF));
   out->push_back(static_cast<char>((value >> 8) & 0xFF));
+}
+
+void AppendLittleEndian24(std::vector<char>* out, std::int32_t value) {
+  const std::uint32_t bits = static_cast<std::uint32_t>(value);
+  out->push_back(static_cast<char>(bits & 0xFF));
+  out->push_back(static_cast<char>((bits >> 8) & 0xFF));
+  out->push_back(static_cast<char>((bits >> 16) & 0xFF));
 }
 
 void AppendLittleEndian32(std::vector<char>* out, std::uint32_t value) {
@@ -79,10 +87,10 @@ std::vector<char> BuildHeader(int sample_rate_hz, std::uint32_t riff_size,
 
 AudioWavWriter::AudioWavWriter(ILogger* logger) : logger_(logger) {}
 
-std::string AudioWavWriter::DeriveAudioPath(const std::string& video_path) {
+std::string AudioWavWriter::DeriveAudioPath(const std::string& video_path,
+                                            int channel_pair) {
   constexpr std::string_view kCompositeSuffix = ".composite";
   constexpr std::string_view kLumaSuffix = ".y";
-  constexpr std::string_view kAudioSuffix = "_audio_00.wav";
 
   std::string base = video_path;
   auto ends_with = [&](std::string_view suffix) {
@@ -96,10 +104,10 @@ std::string AudioWavWriter::DeriveAudioPath(const std::string& video_path) {
   } else if (ends_with(kLumaSuffix)) {
     base.resize(base.size() - kLumaSuffix.size());
   }
-  return base + std::string(kAudioSuffix);
+  return base + "_audio_" + std::to_string(channel_pair) + ".wav";
 }
 
-bool AudioWavWriter::BeginWrite(const Project& project,
+bool AudioWavWriter::BeginWrite(const Project& project, int channel_pair,
                                 std::vector<std::string>* errors) {
   if (errors == nullptr) {
     return false;
@@ -120,7 +128,8 @@ bool AudioWavWriter::BeginWrite(const Project& project,
     return false;
   }
 
-  const std::string audio_path = DeriveAudioPath(project.output.video_path);
+  const std::string audio_path =
+      DeriveAudioPath(project.output.video_path, channel_pair);
   if (audio_path.empty()) {
     errors->push_back(
         "Audio output path could not be derived from video_path.");
@@ -162,9 +171,9 @@ bool AudioWavWriter::BeginWrite(const Project& project,
   return true;
 }
 
-bool AudioWavWriter::AppendFrameAudio(
-    const std::vector<std::int16_t>& mono_samples,
-    std::vector<std::string>* errors) {
+bool AudioWavWriter::AppendFrameAudio(const std::vector<std::int32_t>& left,
+                                      const std::vector<std::int32_t>& right,
+                                      std::vector<std::string>* errors) {
   if (errors == nullptr) {
     return false;
   }
@@ -172,10 +181,16 @@ bool AudioWavWriter::AppendFrameAudio(
     errors->push_back("Audio write session is not open.");
     return false;
   }
+  if (left.size() != right.size()) {
+    errors->push_back(
+        "Audio left/right channel buffers differ in length for: " +
+        audio_path_);
+    return false;
+  }
 
-  // Each mono sample becomes an L+R stereo pair of 16-bit samples.
-  const std::uint64_t frame_bytes = static_cast<std::uint64_t>(
-      mono_samples.size() * kChannelCount * kBytesPerSample);
+  // Each sample position becomes an interleaved L+R pair of 24-bit samples.
+  const std::uint64_t frame_bytes =
+      static_cast<std::uint64_t>(left.size() * kChannelCount * kBytesPerSample);
   if (data_bytes_ + frame_bytes + (kHeaderBytes - 8) >
       std::numeric_limits<std::uint32_t>::max()) {
     errors->push_back("Audio track exceeds the 4 GB RIFF/WAVE size limit.");
@@ -183,12 +198,10 @@ bool AudioWavWriter::AppendFrameAudio(
   }
 
   std::vector<char> interleaved;
-  interleaved.reserve(mono_samples.size() * kChannelCount * kBytesPerSample);
-  for (const std::int16_t sample : mono_samples) {
-    AppendLittleEndian16(&interleaved,
-                         static_cast<std::uint16_t>(sample));  // Left.
-    AppendLittleEndian16(&interleaved,
-                         static_cast<std::uint16_t>(sample));  // Right.
+  interleaved.reserve(left.size() * kChannelCount * kBytesPerSample);
+  for (std::size_t i = 0; i < left.size(); ++i) {
+    AppendLittleEndian24(&interleaved, left[i]);   // Left  (odd channel).
+    AppendLittleEndian24(&interleaved, right[i]);  // Right (even channel).
   }
 
   stream_.write(interleaved.data(),

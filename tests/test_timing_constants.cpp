@@ -80,21 +80,37 @@ TEST(TimingConstantsTest,
 }
 
 TEST(TimingConstantsTest, ProvidesPalAudioRateAndSamplesPerFrame) {
-  EXPECT_DOUBLE_EQ(AudioSampleRateHz(Standard::kPal), 44100.0);
-  EXPECT_EQ(AudioHeaderSampleRateHz(Standard::kPal), 44100);
-  EXPECT_EQ(AudioSamplesPerFrame(Standard::kPal), 1764);
+  EXPECT_DOUBLE_EQ(AudioSampleRateHz(Standard::kPal), 48000.0);
+  EXPECT_EQ(AudioHeaderSampleRateHz(Standard::kPal), 48000);
+  // PAL carries a constant 1920 samples in every frame (48000 / 25).
+  for (int frame = 0; frame < 10; ++frame) {
+    EXPECT_EQ(AudioSamplesForFrame(Standard::kPal, frame), 1920);
+  }
 }
 
 TEST(TimingConstantsTest, ProvidesNtscAudioRateAndSamplesPerFrame) {
-  EXPECT_DOUBLE_EQ(AudioSampleRateHz(Standard::kNtsc), 44100000.0 / 1001.0);
-  EXPECT_EQ(AudioHeaderSampleRateHz(Standard::kNtsc), 44056);
-  EXPECT_EQ(AudioSamplesPerFrame(Standard::kNtsc), 1470);
+  EXPECT_DOUBLE_EQ(AudioSampleRateHz(Standard::kNtsc), 48000.0);
+  EXPECT_EQ(AudioHeaderSampleRateHz(Standard::kNtsc), 48000);
+  // SMPTE 272M §14.3 five-frame sequence: 1602, 1601, 1602, 1601, 1602.
+  const int expected[5] = {1602, 1601, 1602, 1601, 1602};
+  int sequence_total = 0;
+  for (int frame = 0; frame < 5; ++frame) {
+    EXPECT_EQ(AudioSamplesForFrame(Standard::kNtsc, frame), expected[frame]);
+    // The sequence repeats every five frames.
+    EXPECT_EQ(AudioSamplesForFrame(Standard::kNtsc, frame + 5),
+              expected[frame]);
+    sequence_total += expected[frame];
+  }
+  EXPECT_EQ(sequence_total, 8008);
 }
 
 TEST(TimingConstantsTest, ProvidesPalMAudioRateAndSamplesPerFrame) {
-  EXPECT_DOUBLE_EQ(AudioSampleRateHz(Standard::kPalM), 44100000.0 / 1001.0);
-  EXPECT_EQ(AudioHeaderSampleRateHz(Standard::kPalM), 44056);
-  EXPECT_EQ(AudioSamplesPerFrame(Standard::kPalM), 1470);
+  EXPECT_DOUBLE_EQ(AudioSampleRateHz(Standard::kPalM), 48000.0);
+  EXPECT_EQ(AudioHeaderSampleRateHz(Standard::kPalM), 48000);
+  const int expected[5] = {1602, 1601, 1602, 1601, 1602};
+  for (int frame = 0; frame < 5; ++frame) {
+    EXPECT_EQ(AudioSamplesForFrame(Standard::kPalM, frame), expected[frame]);
+  }
 }
 
 }  // namespace

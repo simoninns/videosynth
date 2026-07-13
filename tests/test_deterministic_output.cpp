@@ -17,6 +17,7 @@
 #include <string>
 #include <vector>
 
+#include "videosynth/audio_track_generator.h"
 #include "videosynth/audio_wav_writer.h"
 #include "videosynth/dropout_injection_stage.h"
 #include "videosynth/generation_stage.h"
@@ -103,10 +104,21 @@ Project MakeDeterministicProject(const std::filesystem::path& output_dir,
   lead_in.noise.noise_spread_db = 4.0;
   lead_in.noise.noise_seed = 1001;
   lead_in.noise.noise_seed_specified = true;
-  lead_in.audio.enabled = true;
-  lead_in.audio.waveform = AudioWaveform::kSine;
-  lead_in.audio.frequency_hz = 1000.0;
-  lead_in.audio.amplitude = 0.4;
+  {
+    AudioChannelPair pair0;
+    pair0.pair = 0;
+    pair0.pair_specified = true;
+    pair0.description = "Analogue stereo";
+    pair0.left.enabled = true;
+    pair0.left.waveform = AudioWaveform::kSine;
+    pair0.left.frequency_hz = 1000.0;
+    pair0.left.amplitude = 0.4;
+    pair0.right.enabled = true;
+    pair0.right.waveform = AudioWaveform::kSine;
+    pair0.right.frequency_hz = 1000.0;
+    pair0.right.amplitude = 0.4;
+    lead_in.audio_channel_pairs.push_back(pair0);
+  }
   project.sections.push_back(lead_in);
 
   Section programme;
@@ -146,15 +158,37 @@ Project MakeDeterministicProject(const std::filesystem::path& output_dir,
   programme.dropouts.scratch.scale = 8;
   programme.dropouts.scratch.seed_specified = true;
   programme.dropouts.scratch.seed = 2003;
-  programme.audio.enabled = true;
-  programme.audio.waveform = AudioWaveform::kTriangle;
-  programme.audio.ramp_enabled = true;
-  programme.audio.ramp_start_hz = 400.0;
-  programme.audio.ramp_end_hz = 2000.0;
-  programme.audio.ramp_start_specified = true;
-  programme.audio.ramp_end_specified = true;
-  programme.audio.ramp_mode = AudioRampMode::kUp;
-  programme.audio.amplitude = 0.5;
+  {
+    // Pair 0: left is a ramped triangle, right is silent (all zeros).
+    AudioChannelPair pair0;
+    pair0.pair = 0;
+    pair0.pair_specified = true;
+    pair0.left.enabled = true;
+    pair0.left.waveform = AudioWaveform::kTriangle;
+    pair0.left.ramp_enabled = true;
+    pair0.left.ramp_start_hz = 400.0;
+    pair0.left.ramp_end_hz = 2000.0;
+    pair0.left.ramp_start_specified = true;
+    pair0.left.ramp_end_specified = true;
+    pair0.left.ramp_mode = AudioRampMode::kUp;
+    pair0.left.amplitude = 0.5;
+    programme.audio_channel_pairs.push_back(pair0);
+
+    // Pair 1: a distinct stereo commentary tone (exercises multi-track).
+    AudioChannelPair pair1;
+    pair1.pair = 1;
+    pair1.pair_specified = true;
+    pair1.description = "Commentary";
+    pair1.left.enabled = true;
+    pair1.left.waveform = AudioWaveform::kSine;
+    pair1.left.frequency_hz = 1000.0;
+    pair1.left.amplitude = 0.5;
+    pair1.right.enabled = true;
+    pair1.right.waveform = AudioWaveform::kSquare;
+    pair1.right.frequency_hz = 500.0;
+    pair1.right.amplitude = 0.5;
+    programme.audio_channel_pairs.push_back(pair1);
+  }
   project.sections.push_back(programme);
 
   return project;
@@ -172,11 +206,11 @@ bool RunPipelineOnce(const Project& project, int threads = 1) {
   NoiseInjectionStage noise_injection(&logger);
   DropoutInjectionStage dropout_injection(&logger);
   OutputStage output(&logger);
-  AudioWavWriter audio_writer(&logger);
+  AudioTrackGenerator audio_generator(&logger);
 
   VideoSynthPipeline pipeline(&parser, &validator, &generation,
                               &noise_injection, &dropout_injection, &output,
-                              &logger, &audio_writer);
+                              &logger, &audio_generator);
   RunOptions options;
   options.threads = threads;
   return pipeline.RunProject(project, options);
@@ -185,7 +219,7 @@ bool RunPipelineOnce(const Project& project, int threads = 1) {
 struct RunArtefacts {
   std::filesystem::path composite;
   std::filesystem::path metadata;
-  std::filesystem::path audio;
+  std::vector<std::filesystem::path> audio_pairs;
   std::filesystem::path dropout_sidecar;
 };
 
@@ -193,7 +227,10 @@ RunArtefacts ArtefactPaths(const Project& project) {
   RunArtefacts artefacts;
   artefacts.composite = project.output.video_path;
   artefacts.metadata = project.output.metadata_path;
-  artefacts.audio = AudioWavWriter::DeriveAudioPath(project.output.video_path);
+  for (const int pair : ProjectAudioChannelPairs(project)) {
+    artefacts.audio_pairs.push_back(
+        AudioWavWriter::DeriveAudioPath(project.output.video_path, pair));
+  }
   const std::string metadata = project.output.metadata_path;
   artefacts.dropout_sidecar =
       metadata.substr(0, metadata.size() - std::string(".meta").size()) +
@@ -231,7 +268,6 @@ TEST(DeterministicOutputTest,
 
   ASSERT_TRUE(std::filesystem::exists(first.composite));
   ASSERT_TRUE(std::filesystem::exists(first.metadata));
-  ASSERT_TRUE(std::filesystem::exists(first.audio));
   ASSERT_TRUE(std::filesystem::exists(first.dropout_sidecar));
 
   const std::vector<char> first_composite = ReadFileBytes(first.composite);
@@ -242,10 +278,15 @@ TEST(DeterministicOutputTest,
   EXPECT_EQ(ReadFileBytes(first.metadata), ReadFileBytes(second.metadata))
       << "Metadata database is not byte-identical across runs.";
 
-  const std::vector<char> first_audio = ReadFileBytes(first.audio);
-  ASSERT_FALSE(first_audio.empty());
-  EXPECT_EQ(first_audio, ReadFileBytes(second.audio))
-      << "Audio track is not byte-identical across runs.";
+  ASSERT_EQ(first.audio_pairs.size(), second.audio_pairs.size());
+  ASSERT_GE(first.audio_pairs.size(), 2U);  // Multi-track fixture.
+  for (std::size_t i = 0; i < first.audio_pairs.size(); ++i) {
+    ASSERT_TRUE(std::filesystem::exists(first.audio_pairs[i]));
+    const std::vector<char> first_audio = ReadFileBytes(first.audio_pairs[i]);
+    ASSERT_FALSE(first_audio.empty());
+    EXPECT_EQ(first_audio, ReadFileBytes(second.audio_pairs[i]))
+        << "Audio track " << i << " is not byte-identical across runs.";
+  }
 
   EXPECT_EQ(ReadFileBytes(first.dropout_sidecar),
             ReadFileBytes(second.dropout_sidecar))
@@ -281,10 +322,14 @@ TEST(DeterministicOutputTest, SingleAndMultiThreadRunsAreByteIdentical) {
             ReadFileBytes(parallel.metadata))
       << "Metadata database differs between 1-thread and 4-thread runs.";
 
-  const std::vector<char> sequential_audio = ReadFileBytes(sequential.audio);
-  ASSERT_FALSE(sequential_audio.empty());
-  EXPECT_EQ(sequential_audio, ReadFileBytes(parallel.audio))
-      << "Audio track differs between 1-thread and 4-thread runs.";
+  ASSERT_EQ(sequential.audio_pairs.size(), parallel.audio_pairs.size());
+  for (std::size_t i = 0; i < sequential.audio_pairs.size(); ++i) {
+    const std::vector<char> sequential_audio =
+        ReadFileBytes(sequential.audio_pairs[i]);
+    ASSERT_FALSE(sequential_audio.empty());
+    EXPECT_EQ(sequential_audio, ReadFileBytes(parallel.audio_pairs[i]))
+        << "Audio track " << i << " differs between 1- and 4-thread runs.";
+  }
 
   EXPECT_EQ(ReadFileBytes(sequential.dropout_sidecar),
             ReadFileBytes(parallel.dropout_sidecar))

@@ -2,8 +2,8 @@
  * File:        test_audio_fixture_projects.cpp
  * Module:      audio_fixture_project_tests
  * Purpose:     Runs the PAL/NTSC composite and Y/C audio fixtures end-to-end
- *              through the full pipeline and verifies the frame-locked WAV
- *              track name, format, and data length.
+ *              through the full pipeline and verifies each frame-locked channel
+ *              pair WAV track name, format, and data length.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Simon Inns
@@ -18,6 +18,7 @@
 #include <string>
 #include <vector>
 
+#include "videosynth/audio_track_generator.h"
 #include "videosynth/audio_wav_writer.h"
 #include "videosynth/dropout_injection_stage.h"
 #include "videosynth/generation_stage.h"
@@ -97,15 +98,24 @@ struct AudioFixture {
   Standard standard;
 };
 
-// Runs one audio fixture through the full pipeline and asserts that exactly one
-// frame-locked WAV track is written with the expected name, format, and data
-// length (frames x samples_per_frame x 4 bytes).
+// Total audio sample positions carried by `total_frames` stored frames of
+// `standard`, summing the SMPTE 272M per-frame counts.
+std::uint64_t ExpectedSamplePositions(Standard standard, int total_frames) {
+  std::uint64_t positions = 0;
+  for (int frame = 0; frame < total_frames; ++frame) {
+    positions +=
+        static_cast<std::uint64_t>(AudioSamplesForFrame(standard, frame));
+  }
+  return positions;
+}
+
+// Runs one audio fixture through the full pipeline and asserts that one
+// frame-locked WAV track per declared channel pair is written with the expected
+// name, 24-bit stereo format at 48 kHz, and data length.
 void RunAudioFixtureProject(const AudioFixture& fixture) {
   const std::filesystem::path repo_root(VIDEOSYNTH_SOURCE_DIR);
   const ScopedCurrentPath cwd_guard(repo_root);
 
-  // Parse the fixture up front to derive expected paths and frame count. This
-  // mirrors the Project the pipeline will build from the same file.
   SilentLogger logger;
   YamlProjectParser parser(&logger);
   const ParseResult parsed = parser.ParseFile(fixture.fixture_path);
@@ -117,16 +127,24 @@ void RunAudioFixtureProject(const AudioFixture& fixture) {
   }
   ASSERT_GT(total_frames, 0) << fixture.fixture_path;
 
+  const std::vector<int> channel_pairs =
+      ProjectAudioChannelPairs(parsed.project);
+  ASSERT_FALSE(channel_pairs.empty())
+      << fixture.fixture_path << " declares no audio channel pairs";
+  // The fixtures are meant to exercise multi-track output.
+  EXPECT_GE(channel_pairs.size(), 2U) << fixture.fixture_path;
+
   const std::filesystem::path video_path = parsed.project.output.video_path;
   const std::filesystem::path metadata_path =
       parsed.project.output.metadata_path;
-  const std::filesystem::path audio_path =
-      AudioWavWriter::DeriveAudioPath(parsed.project.output.video_path);
 
   std::filesystem::create_directories(video_path.parent_path());
   std::filesystem::remove(video_path);
   std::filesystem::remove(metadata_path);
-  std::filesystem::remove(audio_path);
+  for (const int pair : channel_pairs) {
+    std::filesystem::remove(AudioWavWriter::DeriveAudioPath(
+        parsed.project.output.video_path, pair));
+  }
 
   // Wire the pipeline exactly as main.cpp does.
   ProgressiveFrameSourceProbe progressive_frame_source_probe;
@@ -135,46 +153,49 @@ void RunAudioFixtureProject(const AudioFixture& fixture) {
   NoiseInjectionStage noise_injection(&logger);
   DropoutInjectionStage dropout_injection(&logger);
   OutputStage output(&logger);
-  AudioWavWriter audio_writer(&logger);
+  AudioTrackGenerator audio_generator(&logger);
 
   VideoSynthPipeline pipeline(&parser, &validator, &generation,
                               &noise_injection, &dropout_injection, &output,
-                              &logger, &audio_writer);
+                              &logger, &audio_generator);
   RunOptions options;
   options.project_path = fixture.fixture_path;
   ASSERT_TRUE(pipeline.Run(options)) << fixture.fixture_path;
 
-  // Exactly one WAV track, named from the composite/.y basename.
-  ASSERT_TRUE(std::filesystem::exists(audio_path))
-      << fixture.fixture_path << " -> " << audio_path;
-  EXPECT_EQ(audio_path.filename().string(),
-            video_path.stem().string() + "_audio_00.wav")
-      << fixture.fixture_path;
-
-  const std::vector<char> bytes = ReadFileBytes(audio_path);
-  ASSERT_GE(bytes.size(), 44U) << fixture.fixture_path;
-
-  // Valid RIFF/WAVE, 2-channel 16-bit PCM at the preset's header rate.
-  EXPECT_EQ(FourCc(bytes, 0), "RIFF") << fixture.fixture_path;
-  EXPECT_EQ(FourCc(bytes, 8), "WAVE") << fixture.fixture_path;
-  EXPECT_EQ(FourCc(bytes, 36), "data") << fixture.fixture_path;
-  EXPECT_EQ(ReadLe16(bytes, 20), 1U) << fixture.fixture_path;   // PCM tag.
-  EXPECT_EQ(ReadLe16(bytes, 22), 2U) << fixture.fixture_path;   // Stereo.
-  EXPECT_EQ(ReadLe16(bytes, 34), 16U) << fixture.fixture_path;  // Bits/sample.
-  EXPECT_EQ(ReadLe32(bytes, 24), static_cast<std::uint32_t>(
-                                     AudioHeaderSampleRateHz(fixture.standard)))
-      << fixture.fixture_path;
-
-  // data length == frames x samples_per_frame x 2ch x 2bytes.
+  const std::uint64_t positions =
+      ExpectedSamplePositions(fixture.standard, total_frames);
   const std::uint32_t expected_data_bytes =
-      static_cast<std::uint32_t>(total_frames) *
-      static_cast<std::uint32_t>(AudioSamplesPerFrame(fixture.standard)) * 4U;
-  EXPECT_EQ(ReadLe32(bytes, 40), expected_data_bytes) << fixture.fixture_path;
-  EXPECT_EQ(bytes.size(), 44U + expected_data_bytes) << fixture.fixture_path;
+      static_cast<std::uint32_t>(positions * 2U * 3U);  // stereo, 24-bit.
+
+  for (const int pair : channel_pairs) {
+    const std::filesystem::path audio_path =
+        AudioWavWriter::DeriveAudioPath(parsed.project.output.video_path, pair);
+    ASSERT_TRUE(std::filesystem::exists(audio_path))
+        << fixture.fixture_path << " -> " << audio_path;
+    EXPECT_EQ(
+        audio_path.filename().string(),
+        video_path.stem().string() + "_audio_" + std::to_string(pair) + ".wav")
+        << fixture.fixture_path;
+
+    const std::vector<char> bytes = ReadFileBytes(audio_path);
+    ASSERT_GE(bytes.size(), 44U) << fixture.fixture_path;
+
+    // Valid RIFF/WAVE, 2-channel 24-bit PCM at 48 kHz.
+    EXPECT_EQ(FourCc(bytes, 0), "RIFF") << fixture.fixture_path;
+    EXPECT_EQ(FourCc(bytes, 8), "WAVE") << fixture.fixture_path;
+    EXPECT_EQ(FourCc(bytes, 36), "data") << fixture.fixture_path;
+    EXPECT_EQ(ReadLe16(bytes, 20), 1U) << fixture.fixture_path;   // PCM tag.
+    EXPECT_EQ(ReadLe16(bytes, 22), 2U) << fixture.fixture_path;   // Stereo.
+    EXPECT_EQ(ReadLe16(bytes, 34), 24U) << fixture.fixture_path;  // Bits.
+    EXPECT_EQ(ReadLe32(bytes, 24), 48000U) << fixture.fixture_path;
+    EXPECT_EQ(ReadLe32(bytes, 40), expected_data_bytes) << fixture.fixture_path;
+    EXPECT_EQ(bytes.size(), 44U + expected_data_bytes) << fixture.fixture_path;
+
+    std::filesystem::remove(audio_path);
+  }
 
   std::filesystem::remove(video_path);
   std::filesystem::remove(metadata_path);
-  std::filesystem::remove(audio_path);
 }
 
 TEST(AudioFixtureProjectsTest, PalCompositeFixtureEmitsFrameLockedWav) {

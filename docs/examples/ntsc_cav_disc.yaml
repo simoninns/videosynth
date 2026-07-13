@@ -87,9 +87,11 @@ sections:
           fg_luma: 1.0
           bg_luma: 0.0
     audio:
-      waveform: sine
-      frequency: 1000.0
-      amplitude: 0.5
+      channel_pairs:
+        - pair: 0
+          description: Analogue stereo
+          left:  { waveform: sine, frequency: 1000.0, amplitude: 0.5 }
+          right: { waveform: sine, frequency: 1000.0, amplitude: 0.5 }
 
   - name: Chapter1Motion
     type: progressive

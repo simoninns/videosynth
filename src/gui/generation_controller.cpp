@@ -11,7 +11,7 @@
 
 #include <utility>
 
-#include "videosynth/audio_wav_writer.h"
+#include "videosynth/audio_track_generator.h"
 #include "videosynth/dropout_injection_stage.h"
 #include "videosynth/generation_stage.h"
 #include "videosynth/logger.h"
@@ -164,11 +164,11 @@ void GenerationController::RunDefaultPipeline(const Project& project,
   NoiseInjectionStage noise_injection(&logger);
   DropoutInjectionStage dropout_injection(&logger);
   OutputStage output(&logger);
-  AudioWavWriter audio_writer(&logger);
+  AudioTrackGenerator audio_generator(&logger);
 
   VideoSynthPipeline pipeline(&parser, &validator, &generation,
                               &noise_injection, &dropout_injection, &output,
-                              &logger, &audio_writer);
+                              &logger, &audio_generator);
   pipeline.RunProject(project, options, observer, cancellation);
 }
 

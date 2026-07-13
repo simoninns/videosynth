@@ -12,7 +12,7 @@
 #include <iostream>
 #include <string>
 
-#include "videosynth/audio_wav_writer.h"
+#include "videosynth/audio_track_generator.h"
 #include "videosynth/dropout_injection_stage.h"
 #include "videosynth/generation_stage.h"
 #include "videosynth/logger.h"
@@ -160,12 +160,12 @@ int main(int argc, char** argv) {
   videosynth::NoiseInjectionStage noise_injection(&logger);
   videosynth::DropoutInjectionStage dropout_injection(&logger);
   videosynth::OutputStage output(&logger);
-  // Passed unconditionally; the pipeline only emits a WAV when the project
-  // enables audio on at least one section.
-  videosynth::AudioWavWriter audio_writer(&logger);
+  // Passed unconditionally; the pipeline only emits WAV tracks when the project
+  // declares audio channel pairs.
+  videosynth::AudioTrackGenerator audio_generator(&logger);
 
   videosynth::VideoSynthPipeline pipeline(&parser, &validator, &generation,
                                           &noise_injection, &dropout_injection,
-                                          &output, &logger, &audio_writer);
+                                          &output, &logger, &audio_generator);
   return pipeline.Run(options) ? 0 : 1;
 }

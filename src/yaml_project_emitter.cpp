@@ -213,12 +213,15 @@ void EmitOsd(YAML::Emitter& out, const OsdConfig& osd) {
   out << YAML::EndMap;
 }
 
-void EmitAudio(YAML::Emitter& out, const AudioParameters& audio) {
+// Emits one channel (left or right) tone sub-map when active. A disabled
+// channel is omitted entirely, which re-parses back to a silent channel.
+void EmitAudioChannel(YAML::Emitter& out, const char* key,
+                      const AudioParameters& audio) {
   if (!audio.enabled) {
     return;
   }
 
-  out << YAML::Key << "audio" << YAML::Value << YAML::BeginMap;
+  out << YAML::Key << key << YAML::Value << YAML::BeginMap;
   // waveform_text is non-empty exactly when the source file specified the
   // key; emitting it unconditionally would break round-trip equality.
   if (!audio.waveform_text.empty()) {
@@ -249,6 +252,30 @@ void EmitAudio(YAML::Emitter& out, const AudioParameters& audio) {
   out << YAML::EndMap;
 }
 
+void EmitAudio(YAML::Emitter& out, const Section& section) {
+  if (section.audio_channel_pairs.empty()) {
+    return;
+  }
+
+  out << YAML::Key << "audio" << YAML::Value << YAML::BeginMap;
+  out << YAML::Key << "channel_pairs" << YAML::Value << YAML::BeginSeq;
+  for (const AudioChannelPair& channel_pair : section.audio_channel_pairs) {
+    out << YAML::BeginMap;
+    if (channel_pair.pair_specified) {
+      out << YAML::Key << "pair" << YAML::Value << channel_pair.pair;
+    }
+    if (!channel_pair.description.empty()) {
+      out << YAML::Key << "description" << YAML::Value
+          << channel_pair.description;
+    }
+    EmitAudioChannel(out, "left", channel_pair.left);
+    EmitAudioChannel(out, "right", channel_pair.right);
+    out << YAML::EndMap;
+  }
+  out << YAML::EndSeq;
+  out << YAML::EndMap;
+}
+
 void EmitSection(YAML::Emitter& out, const Section& section) {
   out << YAML::BeginMap;
   out << YAML::Key << "name" << YAML::Value << section.name;
@@ -273,7 +300,7 @@ void EmitSection(YAML::Emitter& out, const Section& section) {
   EmitNoise(out, section.noise);
   EmitDropouts(out, section.dropouts);
   EmitOsd(out, section.osd);
-  EmitAudio(out, section.audio);
+  EmitAudio(out, section);
   out << YAML::EndMap;
 }
 

@@ -12,12 +12,11 @@
 #include <algorithm>
 #include <cstdint>
 #include <filesystem>
-#include <optional>
 #include <unordered_map>
 #include <utility>
 #include <vector>
 
-#include "videosynth/audio_synthesizer.h"
+#include "videosynth/audio_track_generator.h"
 #include "videosynth/dropout_injection_stage.h"
 #include "videosynth/fixed_point.h"
 #include "videosynth/frame_synthesis_pool.h"
@@ -97,42 +96,6 @@ std::size_t ComputeBatchFrameCount(const Project& project) {
   return std::min<std::size_t>(computed, 64U);
 }
 
-// Per-disc-frame audio scheduling derived from the frame schedule. Consecutive
-// frames that share the same Section* form one section run; the oscillator
-// resets to phase 0 at the run's first frame and accumulates phase across the
-// run. section_total_samples holds the run's total audio sample count so a
-// section-spanning ramp can normalise its sweep.
-struct AudioSectionPlan {
-  std::vector<char> is_section_start;
-  std::vector<std::int64_t> section_total_samples;
-};
-
-AudioSectionPlan BuildAudioSectionPlan(
-    const std::vector<IGenerationStage::FrameScheduleItem>& schedule,
-    int samples_per_frame) {
-  AudioSectionPlan plan;
-  const std::size_t frame_count = schedule.size();
-  plan.is_section_start.assign(frame_count, 0);
-  plan.section_total_samples.assign(frame_count, 0);
-
-  std::size_t run_start = 0;
-  while (run_start < frame_count) {
-    const Section* section = schedule[run_start].section;
-    std::size_t run_end = run_start;
-    while (run_end < frame_count && schedule[run_end].section == section) {
-      ++run_end;
-    }
-    const std::int64_t total =
-        static_cast<std::int64_t>(run_end - run_start) * samples_per_frame;
-    plan.is_section_start[run_start] = 1;
-    for (std::size_t i = run_start; i < run_end; ++i) {
-      plan.section_total_samples[i] = total;
-    }
-    run_start = run_end;
-  }
-  return plan;
-}
-
 std::size_t ComputeProgressInterval(std::size_t total_frames) {
   if (total_frames <= 120U) {
     return 1U;
@@ -171,7 +134,7 @@ VideoSynthPipeline::VideoSynthPipeline(IProjectParser* parser,
                                        NoiseInjectionStage* noise_injection,
                                        DropoutInjectionStage* dropout_injection,
                                        IOutputStage* output, ILogger* logger,
-                                       AudioWavWriter* audio_writer)
+                                       AudioTrackGenerator* audio_generator)
     : parser_(parser),
       validator_(validator),
       generation_(generation),
@@ -179,7 +142,7 @@ VideoSynthPipeline::VideoSynthPipeline(IProjectParser* parser,
       dropout_injection_(dropout_injection),
       output_(output),
       logger_(logger),
-      audio_writer_(audio_writer) {}
+      audio_generator_(audio_generator) {}
 
 bool VideoSynthPipeline::Run(const RunOptions& options,
                              IPipelineObserver* observer,
@@ -314,25 +277,40 @@ bool VideoSynthPipeline::RunProject(const Project& project,
   };
 
   // -------------------------------------------------------------------
-  // Optional frame-locked audio track. Only active when an audio writer is
-  // supplied and at least one section enables audio. Audio is generated per
-  // disc frame and routed through the identical DiscFrameAction write/cache/
-  // replay path as the Y/C buffers so it stays sample-accurately frame-locked
-  // to the output frame stream.
+  // Optional frame-locked audio tracks. Active when an audio generator is
+  // supplied and at least one section declares an audio channel pair. Audio is
+  // a pure function of output position: the generator is driven with the
+  // output-order section sequence so every stored frame carries the correct
+  // per-frame sample count and each channel pair stays sample-accurately
+  // frame-locked to the output stream (including under disc-skip replay).
   // -------------------------------------------------------------------
   const bool audio_enabled =
-      audio_writer_ != nullptr && ProjectEnablesAudio(project);
-  std::optional<AudioSynthesizer> audio_synth;
-  AudioSectionPlan audio_plan;
-  int audio_samples_per_frame = 0;
+      audio_generator_ != nullptr && ProjectEnablesAudio(project);
   if (audio_enabled) {
-    const Standard standard = project.cvbs_presets.video_standard_preset;
-    audio_samples_per_frame = AudioSamplesPerFrame(standard);
-    audio_synth.emplace(AudioSampleRateHz(standard));
-    audio_plan = BuildAudioSectionPlan(schedule, audio_samples_per_frame);
+    // The section shown by each stored output frame, in output order. Mirrors
+    // the disc-skip withhold/replay emission below exactly.
+    std::vector<const Section*> output_frame_sections;
+    output_frame_sections.reserve(total_output_frames);
+    if (has_skips) {
+      for (std::size_t disc_frame = 0U; disc_frame < total_disc_frames;
+           ++disc_frame) {
+        const DiscFrameAction& a = skip_plan[disc_frame];
+        if (a.write_to_output) {
+          output_frame_sections.push_back(schedule[disc_frame].section);
+        }
+        for (const std::size_t src : a.replay_disc_frames) {
+          output_frame_sections.push_back(schedule[src].section);
+        }
+      }
+    } else {
+      for (const IGenerationStage::FrameScheduleItem& item : schedule) {
+        output_frame_sections.push_back(item.section);
+      }
+    }
 
     std::vector<std::string> audio_errors;
-    if (!audio_writer_->BeginWrite(project, &audio_errors)) {
+    if (!audio_generator_->Begin(project, output_frame_sections,
+                                 &audio_errors)) {
       for (const std::string& error : audio_errors) {
         logger_->Error(error);
       }
@@ -341,13 +319,17 @@ bool VideoSynthPipeline::RunProject(const Project& project,
     }
   }
 
+  // Monotonic output-frame counter driving audio emission. Incremented for
+  // every stored output frame in output order (fresh writes and skip replays).
+  std::size_t audio_output_index = 0U;
+
   // Aborts all in-progress output artefacts after a cancellation request:
-  // video/chroma/metadata via the output stage, the WAV track, and the
+  // video/chroma/metadata via the output stage, the WAV tracks, and the
   // dropout sidecar. Each abort is a no-op when its session is not open.
   auto CancelRun = [&]() {
     output_->AbortWrite();
     if (audio_enabled) {
-      audio_writer_->AbortWrite();
+      audio_generator_->Abort();
     }
     if (dropout_injection_ != nullptr) {
       dropout_injection_->Abort();
@@ -363,16 +345,18 @@ bool VideoSynthPipeline::RunProject(const Project& project,
     }
   };
 
-  // Synthesises one disc frame of mono audio, resetting oscillator phase at
-  // section boundaries. Must be called exactly once per disc frame in
-  // increasing disc-frame order so per-section phase accumulation stays exact.
-  auto SynthesizeDiscFrame =
-      [&](std::size_t disc_frame) -> std::vector<std::int16_t> {
-    if (audio_plan.is_section_start[disc_frame] != 0) {
-      audio_synth->BeginSection(schedule[disc_frame].section->audio,
-                                audio_plan.section_total_samples[disc_frame]);
+  // Emits the next output frame's audio across all channel pairs, in output
+  // order. Returns false and logs on failure.
+  auto EmitAudioFrame = [&]() -> bool {
+    std::vector<std::string> audio_errors;
+    if (!audio_generator_->EmitFrame(audio_output_index, &audio_errors)) {
+      for (const std::string& error : audio_errors) {
+        logger_->Error(error);
+      }
+      return false;
     }
-    return audio_synth->Synthesize(audio_samples_per_frame);
+    ++audio_output_index;
+    return true;
   };
 
   // Resolve the frame synthesis worker count. Disc-skip projects always use
@@ -404,10 +388,6 @@ bool VideoSynthPipeline::RunProject(const Project& project,
                                               std::vector<SampleFixed>>>
         frame_cache;
     frame_cache.reserve(total_disc_frames);
-
-    // Audio cache mirrors frame_cache so backward-skip replays re-emit
-    // byte-identical audio for the same disc frames.
-    std::unordered_map<std::size_t, std::vector<std::int16_t>> audio_cache;
 
     const std::size_t progress_interval =
         ComputeProgressInterval(total_disc_frames);
@@ -444,18 +424,8 @@ bool VideoSynthPipeline::RunProject(const Project& project,
 
       const DiscFrameAction& action = skip_plan[disc_frame];
 
-      // Synthesise this disc frame's audio once, in order, so oscillator phase
-      // advances even for withheld (forward-skipped) frames.
-      std::vector<std::int16_t> audio_frame;
-      if (audio_enabled) {
-        audio_frame = SynthesizeDiscFrame(disc_frame);
-      }
-
       if (action.cache_samples) {
         frame_cache[disc_frame] = {y_mv, c_mv};
-        if (audio_enabled) {
-          audio_cache[disc_frame] = audio_frame;
-        }
       }
 
       if (action.write_to_output) {
@@ -467,15 +437,9 @@ bool VideoSynthPipeline::RunProject(const Project& project,
           }
           return FinishRun(PipelineRunStatus::kFailed);
         }
-        if (audio_enabled) {
-          std::vector<std::string> audio_errors;
-          if (!audio_writer_->AppendFrameAudio(audio_frame, &audio_errors)) {
-            CloseOutputSessionOnFailure();
-            for (const std::string& error : audio_errors) {
-              logger_->Error(error);
-            }
-            return FinishRun(PipelineRunStatus::kFailed);
-          }
+        if (audio_enabled && !EmitAudioFrame()) {
+          CloseOutputSessionOnFailure();
+          return FinishRun(PipelineRunStatus::kFailed);
         }
       }
 
@@ -496,24 +460,9 @@ bool VideoSynthPipeline::RunProject(const Project& project,
           }
           return FinishRun(PipelineRunStatus::kFailed);
         }
-        if (audio_enabled) {
-          const auto audio_it = audio_cache.find(src);
-          if (audio_it == audio_cache.end()) {
-            CloseOutputSessionOnFailure();
-            logger_->Error(
-                "Disc skip internal error: audio cache miss for frame " +
-                std::to_string(src) + ".");
-            return FinishRun(PipelineRunStatus::kFailed);
-          }
-          std::vector<std::string> audio_errors;
-          if (!audio_writer_->AppendFrameAudio(audio_it->second,
-                                               &audio_errors)) {
-            CloseOutputSessionOnFailure();
-            for (const std::string& error : audio_errors) {
-              logger_->Error(error);
-            }
-            return FinishRun(PipelineRunStatus::kFailed);
-          }
+        if (audio_enabled && !EmitAudioFrame()) {
+          CloseOutputSessionOnFailure();
+          return FinishRun(PipelineRunStatus::kFailed);
         }
       }
 
@@ -580,17 +529,9 @@ bool VideoSynthPipeline::RunProject(const Project& project,
         dropout_injection_->CommitSidecarRows(frame.dropout_rows);
       }
 
-      if (audio_enabled) {
-        const std::vector<std::int16_t> audio_frame =
-            SynthesizeDiscFrame(disc_frame);
-        std::vector<std::string> audio_errors;
-        if (!audio_writer_->AppendFrameAudio(audio_frame, &audio_errors)) {
-          for (const std::string& error : audio_errors) {
-            logger_->Error(error);
-          }
-          consumer_failed = true;
-          return false;
-        }
+      if (audio_enabled && !EmitAudioFrame()) {
+        consumer_failed = true;
+        return false;
       }
 
       NotifyProgress(disc_frame + 1U);
@@ -676,16 +617,9 @@ bool VideoSynthPipeline::RunProject(const Project& project,
       }
 
       if (audio_enabled) {
-        for (std::size_t disc_frame = processed_frames;
-             disc_frame < processed_frames + frames_this_batch; ++disc_frame) {
-          const std::vector<std::int16_t> audio_frame =
-              SynthesizeDiscFrame(disc_frame);
-          std::vector<std::string> audio_errors;
-          if (!audio_writer_->AppendFrameAudio(audio_frame, &audio_errors)) {
+        for (std::size_t i = 0U; i < frames_this_batch; ++i) {
+          if (!EmitAudioFrame()) {
             CloseOutputSessionOnFailure();
-            for (const std::string& error : audio_errors) {
-              logger_->Error(error);
-            }
             return FinishRun(PipelineRunStatus::kFailed);
           }
         }
@@ -714,7 +648,7 @@ bool VideoSynthPipeline::RunProject(const Project& project,
 
   if (audio_enabled) {
     std::vector<std::string> audio_errors;
-    if (!audio_writer_->FinalizeWrite(&audio_errors)) {
+    if (!audio_generator_->Finalize(&audio_errors)) {
       for (const std::string& error : audio_errors) {
         logger_->Error(error);
       }

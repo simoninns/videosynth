@@ -24,6 +24,7 @@
 #include <vector>
 
 #include "generation_controller.h"
+#include "videosynth/audio_track_generator.h"
 #include "videosynth/audio_wav_writer.h"
 #include "videosynth/dropout_injection_stage.h"
 #include "videosynth/generation_stage.h"
@@ -112,10 +113,28 @@ Project MakeFixedSeedProject(const std::filesystem::path& output_dir,
   programme.dropouts.random.scale = 8;
   programme.dropouts.random.seed_specified = true;
   programme.dropouts.random.seed = 5002;
-  programme.audio.enabled = true;
-  programme.audio.waveform = AudioWaveform::kSine;
-  programme.audio.frequency_hz = 1000.0;
-  programme.audio.amplitude = 0.4;
+  {
+    AudioChannelPair pair0;
+    pair0.pair = 0;
+    pair0.pair_specified = true;
+    pair0.left.enabled = true;
+    pair0.left.waveform = AudioWaveform::kSine;
+    pair0.left.frequency_hz = 1000.0;
+    pair0.left.amplitude = 0.4;
+    pair0.right.enabled = true;
+    pair0.right.waveform = AudioWaveform::kSine;
+    pair0.right.frequency_hz = 1000.0;
+    pair0.right.amplitude = 0.4;
+    // Second pair exercises multi-track output.
+    AudioChannelPair pair1;
+    pair1.pair = 1;
+    pair1.pair_specified = true;
+    pair1.left.enabled = true;
+    pair1.left.waveform = AudioWaveform::kSquare;
+    pair1.left.frequency_hz = 500.0;
+    pair1.left.amplitude = 0.3;
+    programme.audio_channel_pairs = {pair0, pair1};
+  }
   project.sections.push_back(programme);
 
   return project;
@@ -124,7 +143,7 @@ Project MakeFixedSeedProject(const std::filesystem::path& output_dir,
 struct RunArtefacts {
   std::filesystem::path composite;
   std::filesystem::path metadata;
-  std::filesystem::path audio;
+  std::vector<std::filesystem::path> audio_pairs;
   std::filesystem::path dropout_sidecar;
 };
 
@@ -132,7 +151,10 @@ RunArtefacts ArtefactPaths(const Project& project) {
   RunArtefacts artefacts;
   artefacts.composite = project.output.video_path;
   artefacts.metadata = project.output.metadata_path;
-  artefacts.audio = AudioWavWriter::DeriveAudioPath(project.output.video_path);
+  for (const int pair : ProjectAudioChannelPairs(project)) {
+    artefacts.audio_pairs.push_back(
+        AudioWavWriter::DeriveAudioPath(project.output.video_path, pair));
+  }
   artefacts.dropout_sidecar =
       DropoutInjectionStage::DeriveSidecarPath(project.output.metadata_path);
   return artefacts;
@@ -149,11 +171,11 @@ bool RunCliPipeline(const std::string& yaml_path) {
   NoiseInjectionStage noise_injection(&logger);
   DropoutInjectionStage dropout_injection(&logger);
   OutputStage output(&logger);
-  AudioWavWriter audio_writer(&logger);
+  AudioTrackGenerator audio_generator(&logger);
 
   VideoSynthPipeline pipeline(&parser, &validator, &generation,
                               &noise_injection, &dropout_injection, &output,
-                              &logger, &audio_writer);
+                              &logger, &audio_generator);
   RunOptions options;
   options.project_path = yaml_path;
   options.threads = 1;
@@ -213,8 +235,13 @@ TEST(GenerationParityTest, GuiControllerOutputMatchesCliRunOfSameYaml) {
       << "GUI CVBS sample stream differs from the CLI run.";
   EXPECT_EQ(ReadFileBytes(cli.metadata), ReadFileBytes(gui.metadata))
       << "GUI metadata database differs from the CLI run.";
-  EXPECT_EQ(ReadFileBytes(cli.audio), ReadFileBytes(gui.audio))
-      << "GUI audio track differs from the CLI run.";
+  ASSERT_EQ(cli.audio_pairs.size(), gui.audio_pairs.size());
+  ASSERT_GE(cli.audio_pairs.size(), 2U);  // Multi-track fixture.
+  for (std::size_t i = 0; i < cli.audio_pairs.size(); ++i) {
+    EXPECT_EQ(ReadFileBytes(cli.audio_pairs[i]),
+              ReadFileBytes(gui.audio_pairs[i]))
+        << "GUI audio track " << i << " differs from the CLI run.";
+  }
   EXPECT_EQ(ReadFileBytes(cli.dropout_sidecar),
             ReadFileBytes(gui.dropout_sidecar))
       << "GUI dropout sidecar differs from the CLI run.";
@@ -255,7 +282,9 @@ TEST(GenerationParityTest, CancelledRunLeavesNoPartialOutputFiles) {
   const RunArtefacts artefacts = ArtefactPaths(project);
   EXPECT_FALSE(std::filesystem::exists(artefacts.composite));
   EXPECT_FALSE(std::filesystem::exists(artefacts.metadata));
-  EXPECT_FALSE(std::filesystem::exists(artefacts.audio));
+  for (const std::filesystem::path& audio_path : artefacts.audio_pairs) {
+    EXPECT_FALSE(std::filesystem::exists(audio_path));
+  }
   EXPECT_FALSE(std::filesystem::exists(artefacts.dropout_sidecar));
 
   std::error_code ec;

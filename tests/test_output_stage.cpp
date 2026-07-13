@@ -65,8 +65,12 @@ struct CvbsMetadata {
   int32_t black_level = 0;
   bool has_black_level = false;
   bool has_nonstandard_values = false;
-  bool audio_locked_is_null = true;
-  bool audio_locked = false;
+};
+
+struct AudioChannelPairRow {
+  int channel_pair = 0;
+  bool description_is_null = true;
+  std::string description;
 };
 
 bool ReadCvbsMetadata(const std::filesystem::path& path,
@@ -84,7 +88,7 @@ bool ReadCvbsMetadata(const std::filesystem::path& path,
   const char* query_sql =
       "SELECT preset, sample_encoding_preset, signal_state_preset, "
       "signal_type, decoder, number_of_sequential_frames, black_level, "
-      "has_nonstandard_values, audio_locked FROM cvbs_file LIMIT 1;";
+      "has_nonstandard_values FROM cvbs_file LIMIT 1;";
   sqlite3_stmt* stmt = nullptr;
 
   if (sqlite3_prepare_v2(db, query_sql, -1, &stmt, nullptr) != SQLITE_OK) {
@@ -111,17 +115,42 @@ bool ReadCvbsMetadata(const std::filesystem::path& path,
       metadata->black_level = sqlite3_column_int(stmt, 6);
     }
     metadata->has_nonstandard_values = sqlite3_column_int(stmt, 7) != 0;
-    metadata->audio_locked_is_null =
-        sqlite3_column_type(stmt, 8) == SQLITE_NULL;
-    if (!metadata->audio_locked_is_null) {
-      metadata->audio_locked = sqlite3_column_int(stmt, 8) != 0;
-    }
     result = true;
   }
 
   sqlite3_finalize(stmt);
   sqlite3_close(db);
   return result;
+}
+
+// Reads every audio_channel_pair row, ordered by channel_pair.
+std::vector<AudioChannelPairRow> ReadAudioChannelPairs(
+    const std::filesystem::path& path) {
+  std::vector<AudioChannelPairRow> rows;
+  sqlite3* db = nullptr;
+  if (sqlite3_open(path.c_str(), &db) != SQLITE_OK) {
+    sqlite3_close(db);
+    return rows;
+  }
+  const char* query_sql =
+      "SELECT channel_pair, description FROM audio_channel_pair "
+      "ORDER BY channel_pair;";
+  sqlite3_stmt* stmt = nullptr;
+  if (sqlite3_prepare_v2(db, query_sql, -1, &stmt, nullptr) == SQLITE_OK) {
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+      AudioChannelPairRow row;
+      row.channel_pair = sqlite3_column_int(stmt, 0);
+      row.description_is_null = sqlite3_column_type(stmt, 1) == SQLITE_NULL;
+      if (!row.description_is_null) {
+        row.description = std::string(
+            reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1)));
+      }
+      rows.push_back(row);
+    }
+  }
+  sqlite3_finalize(stmt);
+  sqlite3_close(db);
+  return rows;
 }
 
 TEST(OutputStageTest, WritesCompositeSamplesUsingPalQuantizationProfile) {
@@ -503,7 +532,7 @@ TEST(OutputStageTest, ClampsOutOfRangeValuesToLegalCodeSpace) {
   std::filesystem::remove(metadata_path);
 }
 
-TEST(OutputStageTest, WritesSchemaVersion8WithNullAudioLocked) {
+TEST(OutputStageTest, WritesSchemaVersion10) {
   OutputStage output;
   Project project = MakeProject(Standard::kPal);
   const std::size_t frame_span =
@@ -514,10 +543,10 @@ TEST(OutputStageTest, WritesSchemaVersion8WithNullAudioLocked) {
 
   const std::filesystem::path video_path =
       std::filesystem::temp_directory_path() /
-      "videosynth_output_stage_schema_v8.composite";
+      "videosynth_output_stage_schema_v10.composite";
   const std::filesystem::path metadata_path =
       std::filesystem::temp_directory_path() /
-      "videosynth_output_stage_schema_v8.meta";
+      "videosynth_output_stage_schema_v10.meta";
   project.output.video_path = video_path.string();
   project.output.metadata_path = metadata_path.string();
   std::filesystem::remove(video_path);
@@ -526,7 +555,7 @@ TEST(OutputStageTest, WritesSchemaVersion8WithNullAudioLocked) {
   std::vector<std::string> errors;
   ASSERT_TRUE(output.Write(project, y, c, &errors));
 
-  // Verify PRAGMA user_version = 8 per CVBS specification v8.
+  // Verify PRAGMA user_version = 10 per the CVBS specification.
   sqlite3* db = nullptr;
   ASSERT_EQ(sqlite3_open(metadata_path.c_str(), &db), SQLITE_OK);
   int user_version = 0;
@@ -538,11 +567,10 @@ TEST(OutputStageTest, WritesSchemaVersion8WithNullAudioLocked) {
   }
   sqlite3_finalize(stmt);
   sqlite3_close(db);
-  EXPECT_EQ(user_version, 8);
+  EXPECT_EQ(user_version, 10);
 
-  CvbsMetadata metadata;
-  ASSERT_TRUE(ReadCvbsMetadata(metadata_path, &metadata));
-  EXPECT_TRUE(metadata.audio_locked_is_null);
+  // No audio declared → no audio_channel_pair rows.
+  EXPECT_TRUE(ReadAudioChannelPairs(metadata_path).empty());
 
   std::filesystem::remove(video_path);
   std::filesystem::remove(metadata_path);
@@ -635,7 +663,7 @@ TEST(OutputStageTest, KeepsFixedPointQuantizationEquivalentToReferenceProfile) {
   std::filesystem::remove(metadata_path);
 }
 
-TEST(OutputStageTest, AudioLockedIsNullWhenNoSectionEnablesAudio) {
+TEST(OutputStageTest, NoAudioChannelPairRowsWhenNoAudio) {
   OutputStage output;
   Project project = MakeProject(Standard::kPal);
   const std::size_t frame_span =
@@ -657,20 +685,28 @@ TEST(OutputStageTest, AudioLockedIsNullWhenNoSectionEnablesAudio) {
   std::vector<std::string> errors;
   ASSERT_TRUE(output.Write(project, y, c, &errors));
 
-  CvbsMetadata metadata;
-  ASSERT_TRUE(ReadCvbsMetadata(metadata_path, &metadata));
-  EXPECT_TRUE(metadata.audio_locked_is_null);
+  EXPECT_TRUE(ReadAudioChannelPairs(metadata_path).empty());
 
   std::filesystem::remove(video_path);
   std::filesystem::remove(metadata_path);
 }
 
-TEST(OutputStageTest, AudioLockedIsTrueWhenSectionEnablesAudio) {
+TEST(OutputStageTest, WritesAudioChannelPairRowsForDeclaredPairs) {
   OutputStage output;
   Project project = MakeProject(Standard::kPal);
   Section section;
   section.name = "Tone";
-  section.audio.enabled = true;
+  AudioChannelPair pair0;
+  pair0.pair = 0;
+  pair0.pair_specified = true;
+  pair0.description = "Analogue stereo";
+  pair0.left.enabled = true;
+  AudioChannelPair pair3;
+  pair3.pair = 3;
+  pair3.pair_specified = true;
+  // No description → NULL in the metadata.
+  pair3.left.enabled = true;
+  section.audio_channel_pairs = {pair0, pair3};
   project.sections.push_back(section);
 
   const std::size_t frame_span =
@@ -680,10 +716,10 @@ TEST(OutputStageTest, AudioLockedIsTrueWhenSectionEnablesAudio) {
 
   const std::filesystem::path video_path =
       std::filesystem::temp_directory_path() /
-      "videosynth_output_stage_audio_locked.composite";
+      "videosynth_output_stage_audio_pairs.composite";
   const std::filesystem::path metadata_path =
       std::filesystem::temp_directory_path() /
-      "videosynth_output_stage_audio_locked.meta";
+      "videosynth_output_stage_audio_pairs.meta";
   project.output.video_path = video_path.string();
   project.output.metadata_path = metadata_path.string();
   std::filesystem::remove(video_path);
@@ -692,10 +728,14 @@ TEST(OutputStageTest, AudioLockedIsTrueWhenSectionEnablesAudio) {
   std::vector<std::string> errors;
   ASSERT_TRUE(output.Write(project, y, c, &errors));
 
-  CvbsMetadata metadata;
-  ASSERT_TRUE(ReadCvbsMetadata(metadata_path, &metadata));
-  EXPECT_FALSE(metadata.audio_locked_is_null);
-  EXPECT_TRUE(metadata.audio_locked);
+  const std::vector<AudioChannelPairRow> rows =
+      ReadAudioChannelPairs(metadata_path);
+  ASSERT_EQ(rows.size(), 2U);
+  EXPECT_EQ(rows[0].channel_pair, 0);
+  EXPECT_FALSE(rows[0].description_is_null);
+  EXPECT_EQ(rows[0].description, "Analogue stereo");
+  EXPECT_EQ(rows[1].channel_pair, 3);
+  EXPECT_TRUE(rows[1].description_is_null);
 
   std::filesystem::remove(video_path);
   std::filesystem::remove(metadata_path);

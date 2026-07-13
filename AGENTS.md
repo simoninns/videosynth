@@ -147,23 +147,23 @@
 - Do **not** modify `flake.nix` or `default.nix` solely for temporary dependencies.
 - Always provide the Nix-based equivalent alongside plain shell commands.
 
-## 7. Post-Session Nix Cleanup
-After completing a development session or task, perform the following steps to clean up the Nix store:
-
-1. **Garbage Collection**:
-   Run `nix-collect-garbage -d` to remove unreachable store paths.
-   - `-d`: Deletes unreachable paths (not just listing them).
-
-2. **Optimize Store**:
-   Run `nix-store --optimise` to deduplicate and compress store paths.
-
-3. **Optional: Limit Generations**:
-   If the agent has access to `nix-env` or `nix profile`, run `nix-env --delete-generations old`
-
-## 8. Pre-Session Nix Setup
+## 7. Pre-Session Nix Setup
 Before starting a session:
 - Check available disk space using `df -h /nix/store`.
-- If space is critically low (< 10% free), run the cleanup steps above immediately.
+- If space is critically low (< 20% free), warn the user before proceeding.
+- Create a temporary profile:
+  ```bash
+  export AI_AGENT_PROFILE=\$(mktemp -d)/nix-profile
+  export NIX_USER_PROFILE_DIR=\$AI_AGENT_PROFILE
+  ```
+
+## 8. Post-Session Nix Cleanup
+After completing a development session or task, perform the following steps to clean up the Nix store in the temporary profile:
+
+  ```bash
+  nix-collect-garbage -d -p \$AI_AGENT_PROFILE
+  rm -rf \$AI_AGENT_PROFILE
+  ```
 
 ---
 

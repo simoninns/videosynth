@@ -1,8 +1,9 @@
 /*
  * File:        test_audio_pipeline.cpp
  * Module:      audio_pipeline_tests
- * Purpose:     Verifies frame-locked audio generation and disc-skip routing of
- *              the WAV track through the pipeline using deterministic mocks.
+ * Purpose:     Verifies frame-locked multi-pair audio generation and disc-skip
+ *              routing of the WAV tracks through the pipeline using
+ *              deterministic mocks.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Simon Inns
@@ -14,9 +15,10 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <utility>
 #include <vector>
 
-#include "videosynth/audio_wav_writer.h"
+#include "videosynth/audio_track_generator.h"
 #include "videosynth/pipeline.h"
 #include "videosynth/timing_constants.h"
 
@@ -128,10 +130,34 @@ std::uint32_t ReadLe32(const std::vector<char>& bytes, std::size_t offset) {
           << 24);
 }
 
-Project MakeProject(int duration_frames, bool enable_audio,
+std::int32_t ReadLe24Signed(const std::vector<char>& bytes,
+                            std::size_t offset) {
+  std::uint32_t raw =
+      static_cast<std::uint32_t>(static_cast<unsigned char>(bytes[offset])) |
+      (static_cast<std::uint32_t>(static_cast<unsigned char>(bytes[offset + 1]))
+       << 8) |
+      (static_cast<std::uint32_t>(static_cast<unsigned char>(bytes[offset + 2]))
+       << 16);
+  if ((raw & 0x800000U) != 0U) {
+    raw |= 0xFF000000U;
+  }
+  return static_cast<std::int32_t>(raw);
+}
+
+AudioParameters Tone(AudioWaveform waveform, double frequency_hz) {
+  AudioParameters channel;
+  channel.enabled = true;
+  channel.waveform = waveform;
+  channel.frequency_hz = frequency_hz;
+  channel.amplitude = 0.5;
+  return channel;
+}
+
+Project MakeProject(Standard standard, int duration_frames,
+                    std::vector<AudioChannelPair> pairs,
                     const std::filesystem::path& video_path) {
   Project project;
-  project.cvbs_presets.video_standard_preset = Standard::kPal;
+  project.cvbs_presets.video_standard_preset = standard;
   project.cvbs_presets.sample_encoding_preset = "CVBS_U10_4FSC";
   project.cvbs_presets.signal_state_preset = "STANDARD_TBC_LOCKED";
   project.output.video_path = video_path.string();
@@ -139,15 +165,22 @@ Project MakeProject(int duration_frames, bool enable_audio,
   section.name = "Tone";
   section.type = "progressive";
   section.duration_frames = duration_frames;
-  section.audio.enabled = enable_audio;
-  section.audio.waveform = AudioWaveform::kSine;
-  section.audio.frequency_hz = 1000.0;
-  section.audio.amplitude = 0.5;
+  section.audio_channel_pairs = std::move(pairs);
   project.sections.push_back(section);
   return project;
 }
 
-bool RunPipeline(Project project, AudioWavWriter* audio_writer) {
+// A single stereo pair 0 carrying a 1 kHz sine on both channels.
+std::vector<AudioChannelPair> SinglePair() {
+  AudioChannelPair pair;
+  pair.pair = 0;
+  pair.pair_specified = true;
+  pair.left = Tone(AudioWaveform::kSine, 1000.0);
+  pair.right = Tone(AudioWaveform::kSine, 1000.0);
+  return {pair};
+}
+
+bool RunPipeline(Project project, AudioTrackGenerator* audio_generator) {
   MockParser parser;
   parser.result.ok = true;
   parser.result.project = std::move(project);
@@ -158,121 +191,181 @@ bool RunPipeline(Project project, AudioWavWriter* audio_writer) {
   SilentLogger logger;
 
   VideoSynthPipeline pipeline(&parser, &validator, &generation, nullptr,
-                              nullptr, &output, &logger, audio_writer);
+                              nullptr, &output, &logger, audio_generator);
   RunOptions options;
   options.project_path = "project.yaml";
   return pipeline.Run(options);
 }
 
-constexpr std::size_t kPalSamplesPerFrame = 1764;
-constexpr std::size_t kStereo16BytesPerSample = 4;
-constexpr std::size_t kFrameBytes =
-    kPalSamplesPerFrame * kStereo16BytesPerSample;
+constexpr std::size_t kPalSamplesPerFrame = 1920;
+constexpr std::size_t kStereo24BytesPerSample = 6;  // 2 channels × 3 bytes.
+constexpr std::size_t kPalFrameBytes =
+    kPalSamplesPerFrame * kStereo24BytesPerSample;
+
+std::filesystem::path TempPath(const std::string& name) {
+  return std::filesystem::temp_directory_path() / name;
+}
 
 TEST(AudioPipelineTest, NoAudioSectionProducesNoWavFile) {
   const std::filesystem::path video_path =
-      std::filesystem::temp_directory_path() /
-      "videosynth_audio_pipeline_none.composite";
+      TempPath("videosynth_audio_pipeline_none.composite");
   const std::filesystem::path audio_path =
-      std::filesystem::temp_directory_path() /
-      "videosynth_audio_pipeline_none_audio_00.wav";
+      TempPath("videosynth_audio_pipeline_none_audio_0.wav");
   std::filesystem::remove(audio_path);
 
-  AudioWavWriter writer;
+  AudioTrackGenerator generator;
   ASSERT_TRUE(
-      RunPipeline(MakeProject(3, /*enable_audio=*/false, video_path), &writer));
+      RunPipeline(MakeProject(Standard::kPal, 3, {}, video_path), &generator));
   EXPECT_FALSE(std::filesystem::exists(audio_path));
 }
 
 TEST(AudioPipelineTest, FrameLockedSampleCountMatchesFrameCount) {
   const std::filesystem::path video_path =
-      std::filesystem::temp_directory_path() /
-      "videosynth_audio_pipeline_locked.composite";
+      TempPath("videosynth_audio_pipeline_locked.composite");
   const std::filesystem::path audio_path =
-      std::filesystem::temp_directory_path() /
-      "videosynth_audio_pipeline_locked_audio_00.wav";
+      TempPath("videosynth_audio_pipeline_locked_audio_0.wav");
   std::filesystem::remove(audio_path);
 
   constexpr int kFrames = 4;
-  AudioWavWriter writer;
+  AudioTrackGenerator generator;
   ASSERT_TRUE(RunPipeline(
-      MakeProject(kFrames, /*enable_audio=*/true, video_path), &writer));
+      MakeProject(Standard::kPal, kFrames, SinglePair(), video_path),
+      &generator));
 
   ASSERT_TRUE(std::filesystem::exists(audio_path));
   const std::vector<char> bytes = ReadFileBytes(audio_path);
   ASSERT_GE(bytes.size(), 44U);
-  const std::uint32_t data_bytes = ReadLe32(bytes, 40);
-  EXPECT_EQ(data_bytes, kFrames * kFrameBytes);
-  EXPECT_EQ(bytes.size(), 44U + kFrames * kFrameBytes);
+  EXPECT_EQ(ReadLe32(bytes, 40), kFrames * kPalFrameBytes);
+  EXPECT_EQ(bytes.size(), 44U + kFrames * kPalFrameBytes);
 
   std::filesystem::remove(audio_path);
 }
 
 TEST(AudioPipelineTest, ForwardSkipWithholdsAudioFrames) {
   const std::filesystem::path video_path =
-      std::filesystem::temp_directory_path() /
-      "videosynth_audio_pipeline_fwd.composite";
+      TempPath("videosynth_audio_pipeline_fwd.composite");
   const std::filesystem::path audio_path =
-      std::filesystem::temp_directory_path() /
-      "videosynth_audio_pipeline_fwd_audio_00.wav";
+      TempPath("videosynth_audio_pipeline_fwd_audio_0.wav");
   std::filesystem::remove(audio_path);
 
   // 6 disc frames, forward skip of 2 at frame 3 (1-based) → 4 output frames.
-  Project project = MakeProject(6, /*enable_audio=*/true, video_path);
+  Project project = MakeProject(Standard::kPal, 6, SinglePair(), video_path);
   DiscSkip fwd;
   fwd.at_frame = 3;
   fwd.direction = DiscSkipDirection::kForward;
   fwd.count = 2;
   project.disc_skips.push_back(fwd);
 
-  AudioWavWriter writer;
-  ASSERT_TRUE(RunPipeline(std::move(project), &writer));
+  AudioTrackGenerator generator;
+  ASSERT_TRUE(RunPipeline(std::move(project), &generator));
 
   ASSERT_TRUE(std::filesystem::exists(audio_path));
   const std::vector<char> bytes = ReadFileBytes(audio_path);
   ASSERT_GE(bytes.size(), 44U);
-  EXPECT_EQ(ReadLe32(bytes, 40), 4U * kFrameBytes);
+  EXPECT_EQ(ReadLe32(bytes, 40), 4U * kPalFrameBytes);
 
   std::filesystem::remove(audio_path);
 }
 
-TEST(AudioPipelineTest, BackwardSkipReplaysByteIdenticalAudio) {
+TEST(AudioPipelineTest, BackwardSkipExtendsOutputSampleCount) {
   const std::filesystem::path video_path =
-      std::filesystem::temp_directory_path() /
-      "videosynth_audio_pipeline_bwd.composite";
+      TempPath("videosynth_audio_pipeline_bwd.composite");
   const std::filesystem::path audio_path =
-      std::filesystem::temp_directory_path() /
-      "videosynth_audio_pipeline_bwd_audio_00.wav";
+      TempPath("videosynth_audio_pipeline_bwd_audio_0.wav");
   std::filesystem::remove(audio_path);
 
   // 5 disc frames, backward skip of 2 at frame 3 (1-based). Output order:
-  // 0,1,2, copy(1), copy(2), 3,4 → 7 output frames.
-  Project project = MakeProject(5, /*enable_audio=*/true, video_path);
+  // 0,1,2, copy(1), copy(2), 3,4 → 7 output frames. Audio follows the output
+  // stream: a continuous tone sample-locked to all 7 stored frames.
+  Project project = MakeProject(Standard::kPal, 5, SinglePair(), video_path);
   DiscSkip bwd;
   bwd.at_frame = 3;
   bwd.direction = DiscSkipDirection::kBackward;
   bwd.count = 2;
   project.disc_skips.push_back(bwd);
 
-  AudioWavWriter writer;
-  ASSERT_TRUE(RunPipeline(std::move(project), &writer));
+  AudioTrackGenerator generator;
+  ASSERT_TRUE(RunPipeline(std::move(project), &generator));
 
   ASSERT_TRUE(std::filesystem::exists(audio_path));
   const std::vector<char> bytes = ReadFileBytes(audio_path);
-  ASSERT_EQ(bytes.size(), 44U + 7U * kFrameBytes);
-  EXPECT_EQ(ReadLe32(bytes, 40), 7U * kFrameBytes);
+  ASSERT_EQ(bytes.size(), 44U + 7U * kPalFrameBytes);
+  EXPECT_EQ(ReadLe32(bytes, 40), 7U * kPalFrameBytes);
 
-  auto frame_range = [&](std::size_t frame_index) {
-    const std::size_t start = 44U + frame_index * kFrameBytes;
-    return std::vector<char>(
-        bytes.begin() + static_cast<std::ptrdiff_t>(start),
-        bytes.begin() + static_cast<std::ptrdiff_t>(start + kFrameBytes));
-  };
+  std::filesystem::remove(audio_path);
+}
 
-  // Output frame 3 replays disc frame 1 (output frame 1); frame 4 replays
-  // disc frame 2 (output frame 2).
-  EXPECT_EQ(frame_range(3), frame_range(1));
-  EXPECT_EQ(frame_range(4), frame_range(2));
+TEST(AudioPipelineTest, MultiplePairsWriteSeparateFilesWithSilentChannel) {
+  const std::filesystem::path video_path =
+      TempPath("videosynth_audio_pipeline_multi.composite");
+  const std::filesystem::path audio0 =
+      TempPath("videosynth_audio_pipeline_multi_audio_0.wav");
+  const std::filesystem::path audio3 =
+      TempPath("videosynth_audio_pipeline_multi_audio_3.wav");
+  std::filesystem::remove(audio0);
+  std::filesystem::remove(audio3);
+
+  // Pair 0: stereo sine. Pair 3: square left, silent right (right stored as
+  // all zeros per SMPTE 272M §6.4).
+  AudioChannelPair pair0;
+  pair0.pair = 0;
+  pair0.pair_specified = true;
+  pair0.left = Tone(AudioWaveform::kSine, 1000.0);
+  pair0.right = Tone(AudioWaveform::kSine, 1000.0);
+  AudioChannelPair pair3;
+  pair3.pair = 3;
+  pair3.pair_specified = true;
+  pair3.left = Tone(AudioWaveform::kSquare, 440.0);
+  // pair3.right left disabled → silent.
+
+  constexpr int kFrames = 2;
+  AudioTrackGenerator generator;
+  ASSERT_TRUE(RunPipeline(
+      MakeProject(Standard::kPal, kFrames, {pair0, pair3}, video_path),
+      &generator));
+
+  ASSERT_TRUE(std::filesystem::exists(audio0));
+  ASSERT_TRUE(std::filesystem::exists(audio3));
+
+  const std::vector<char> bytes0 = ReadFileBytes(audio0);
+  const std::vector<char> bytes3 = ReadFileBytes(audio3);
+  EXPECT_EQ(ReadLe32(bytes0, 40), kFrames * kPalFrameBytes);
+  EXPECT_EQ(ReadLe32(bytes3, 40), kFrames * kPalFrameBytes);
+
+  // Pair 3's right channel is silent: every second (odd) 24-bit sample is 0.
+  const std::size_t total_positions = kFrames * kPalSamplesPerFrame;
+  for (std::size_t i = 0; i < total_positions; ++i) {
+    const std::size_t right_offset = 44U + i * kStereo24BytesPerSample + 3U;
+    EXPECT_EQ(ReadLe24Signed(bytes3, right_offset), 0)
+        << "right channel not silent at position " << i;
+  }
+
+  // Different waveforms → the two files' left channels differ.
+  EXPECT_NE(bytes0, bytes3);
+
+  std::filesystem::remove(audio0);
+  std::filesystem::remove(audio3);
+}
+
+TEST(AudioPipelineTest, NtscUsesVariablePerFrameSampleCounts) {
+  const std::filesystem::path video_path =
+      TempPath("videosynth_audio_pipeline_ntsc.composite");
+  const std::filesystem::path audio_path =
+      TempPath("videosynth_audio_pipeline_ntsc_audio_0.wav");
+  std::filesystem::remove(audio_path);
+
+  // One full 5-frame NTSC audio-frame sequence: 1602+1601+1602+1601+1602 =
+  // 8008 sample positions.
+  constexpr int kFrames = 5;
+  AudioTrackGenerator generator;
+  ASSERT_TRUE(RunPipeline(
+      MakeProject(Standard::kNtsc, kFrames, SinglePair(), video_path),
+      &generator));
+
+  ASSERT_TRUE(std::filesystem::exists(audio_path));
+  const std::vector<char> bytes = ReadFileBytes(audio_path);
+  const std::uint32_t expected_positions = 8008U;
+  EXPECT_EQ(ReadLe32(bytes, 40), expected_positions * kStereo24BytesPerSample);
 
   std::filesystem::remove(audio_path);
 }
