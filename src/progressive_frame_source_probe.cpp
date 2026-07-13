@@ -31,6 +31,7 @@
 #include <map>
 #include <sstream>
 #include <string>
+#include <system_error>
 
 namespace videosynth {
 namespace {
@@ -371,6 +372,18 @@ bool ProgressiveFrameSourceProbe::Probe(
     if (error != nullptr) {
       *error =
           "Progressive source probe output profile pointer must not be null.";
+    }
+    return false;
+  }
+
+  // Reject a missing source before handing it to OpenEXR/ffprobe: those
+  // libraries write their own open-failure diagnostics straight to stderr,
+  // which bypasses the logger. A cheap existence check keeps the failure on
+  // the logged path and yields one clear message.
+  std::error_code exists_ec;
+  if (!std::filesystem::exists(section.source, exists_ec)) {
+    if (error != nullptr) {
+      *error = "Progressive source not found: " + section.source;
     }
     return false;
   }

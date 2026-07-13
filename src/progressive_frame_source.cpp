@@ -29,10 +29,12 @@
 #include <cstdio>
 #include <cstdlib>
 #include <exception>
+#include <filesystem>
 #include <fstream>
 #include <map>
 #include <mutex>
 #include <sstream>
+#include <system_error>
 #include <utility>
 #include <vector>
 
@@ -941,6 +943,17 @@ bool LoadExrFrame(const std::string& source, Standard standard,
   if (out_image == nullptr) {
     if (error != nullptr) {
       *error = "Frame source output image pointer must not be null.";
+    }
+    return false;
+  }
+
+  // Guard against a missing file before OpenEXR opens it: its C core writes an
+  // "Unable to open file for read" line directly to stderr that never reaches
+  // the logger. A cheap existence check keeps the failure logged and clean.
+  std::error_code exists_ec;
+  if (!std::filesystem::exists(source, exists_ec)) {
+    if (error != nullptr) {
+      *error = "Progressive EXR source not found: " + source;
     }
     return false;
   }

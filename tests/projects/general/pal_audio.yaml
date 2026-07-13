@@ -36,7 +36,7 @@ sections:
   # ---------------------------------------------------------------------------
   - name: StereoBars
     type: progressive
-    source: videosynth-assets/assets/exr/720x576/75_BARS.exr
+    source: "{bundled}/exr/720x576/75_BARS.exr"
     duration_frames: 8
     audio:
       channel_pairs:
@@ -58,7 +58,7 @@ sections:
   # ---------------------------------------------------------------------------
   - name: EightPairs
     type: progressive
-    source: videosynth-assets/assets/exr/720x576/75_BARS.exr
+    source: "{bundled}/exr/720x576/75_BARS.exr"
     duration_frames: 8
     audio:
       channel_pairs:
@@ -90,7 +90,7 @@ sections:
   # ---------------------------------------------------------------------------
   - name: SilenceGap
     type: progressive
-    source: videosynth-assets/assets/exr/720x576/75_BARS.exr
+    source: "{bundled}/exr/720x576/75_BARS.exr"
     duration_frames: 8
 
   # ---------------------------------------------------------------------------
@@ -99,7 +99,7 @@ sections:
   # ---------------------------------------------------------------------------
   - name: Sweeps
     type: progressive
-    source: videosynth-assets/assets/exr/720x576/75_BARS.exr
+    source: "{bundled}/exr/720x576/75_BARS.exr"
     duration_frames: 8
     audio:
       channel_pairs:

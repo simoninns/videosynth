@@ -21,6 +21,7 @@
 #include "videosynth/fixed_point.h"
 #include "videosynth/generation_stage.h"
 #include "videosynth/output_stage.h"
+#include "videosynth/path_resolution.h"
 #include "videosynth/progressive_frame_source.h"
 #include "videosynth/progressive_frame_source_probe.h"
 #include "videosynth/project_validator.h"
@@ -49,16 +50,15 @@ void ResolveProgressiveSourcePaths(Project* project) {
     return;
   }
 
+  // Resolve {bundled}/... tokens (and any bare relative path) exactly as the
+  // application does, anchoring to the repo root so fixtures run from any CWD.
+  const AssetRootMap roots = DefaultAssetRoots();
   for (Section& section : project->sections) {
     if (section.type != "progressive" || section.source.empty()) {
       continue;
     }
-
-    const std::filesystem::path source_path(section.source);
-    if (!source_path.is_absolute()) {
-      section.source =
-          (std::filesystem::path(VIDEOSYNTH_SOURCE_DIR) / source_path).string();
-    }
+    section.source = videosynth::ResolveAssetPath(
+        section.source, roots, VIDEOSYNTH_SOURCE_DIR, /*anchor_unset=*/true);
   }
 }
 

@@ -186,6 +186,8 @@ if(VIDEOSYNTH_BUILD_GUI)
         src/gui/project_settings_presenter.h
         src/gui/project_templates.cpp
         src/gui/project_templates.h
+        src/gui/qt_message_bridge.cpp
+        src/gui/qt_message_bridge.h
         src/gui/section_block_presenters.cpp
         src/gui/section_block_presenters.h
         src/gui/section_editor.cpp
@@ -334,6 +336,7 @@ if(VIDEOSYNTH_BUILD_GUI)
         tests/gui/test_preview_functional.cpp
         tests/gui/test_preview_render.cpp
         tests/gui/test_project_document.cpp
+        tests/gui/test_qt_message_bridge.cpp
         tests/gui/test_project_file_lifecycle.cpp
         tests/gui/test_project_settings_presenter.cpp
         tests/gui/test_section_block_presenters.cpp
@@ -419,6 +422,7 @@ set(videosynth_unit_test_patterns
     "^ProjectDocumentOpenStateTest\\."
     "^ProjectSettingsPresenterTest\\."
     "^ProjectValidatorTest\\."
+    "^QtMessageBridgeTest\\."
     "^SectionListModelTest\\."
     "^SectionBlockPresenterTest\\."
     "^LineInjectionPresenterTest\\."

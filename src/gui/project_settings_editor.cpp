@@ -11,7 +11,9 @@
 
 #include <QCheckBox>
 #include <QComboBox>
+#include <QDir>
 #include <QFileDialog>
+#include <QFileInfo>
 #include <QFormLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
@@ -21,6 +23,7 @@
 #include <QPushButton>
 #include <QVBoxLayout>
 
+#include "asset_roots.h"
 #include "project_settings_presenter.h"
 
 namespace videosynth::gui {
@@ -305,8 +308,21 @@ void ProjectSettingsEditor::OnBrowseVideoPath() {
   const QString filter =
       yc ? tr("Y/C luma files (*.y);;All files (*)")
          : tr("Composite files (*.composite);;All files (*)");
-  const QString path = QFileDialog::getSaveFileName(
-      this, tr("Output Video"), video_path_edit_->text(), filter);
+  // Open the dialog at the output path's *resolved* location. A relative
+  // output path is project-relative, so anchor it to the project directory
+  // rather than the process working directory.
+  const QString project_dir =
+      document_->file_path().isEmpty()
+          ? QDir::currentPath()
+          : QFileInfo(document_->file_path()).absolutePath();
+  QString start = QString::fromStdString(videosynth::ResolveAssetPath(
+      video_path_edit_->text().toStdString(), GuiAssetRoots(),
+      project_dir.toStdString(), /*anchor_unset=*/true));
+  if (start.isEmpty()) {
+    start = project_dir;
+  }
+  const QString path =
+      QFileDialog::getSaveFileName(this, tr("Output Video"), start, filter);
   if (path.isEmpty()) {
     return;
   }

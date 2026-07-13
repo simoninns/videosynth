@@ -32,7 +32,10 @@ namespace videosynth::gui {
 // Editor for one section of the project. Widgets stage edits into a copy of
 // the section and commit through ProjectDocument::SetSection; optional YAML
 // blocks are toggled through the section_block_presenters helpers so
-// disabled blocks never emit defaults. Source probing runs on the
+// disabled blocks never emit defaults. Every optional block (audio, noise,
+// dropouts, OSD, line injections) sits in a checkable group whose contents
+// are hidden until the box is ticked, so an unused block collapses to a
+// single title row instead of cluttering the form. Source probing runs on the
 // SourceProbeController worker and never blocks the UI.
 //
 // Thread-safety: NOT thread-safe. GUI (main) thread only.
@@ -132,6 +135,7 @@ class SectionEditor : public QWidget {
   QPushButton* remove_overlay_button_ = nullptr;
 
   // Line injections.
+  QGroupBox* injections_group_ = nullptr;
   LineInjectionsEditor* injections_editor_ = nullptr;
 };
 

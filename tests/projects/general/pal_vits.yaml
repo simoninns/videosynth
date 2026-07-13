@@ -14,7 +14,7 @@ output:
 sections:
   - name: PalVits
     type: progressive
-    source: videosynth-assets/assets/exr/720x576/100_BARS.exr
+    source: "{bundled}/exr/720x576/100_BARS.exr"
     duration_frames: 1
     line_injections:
       - type: vits

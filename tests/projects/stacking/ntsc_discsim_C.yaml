@@ -37,7 +37,7 @@ sections:
   # ---------------------------------------------------------------------------
   - name: Bars_C
     type: progressive
-    source: videosynth-assets/assets/exr/720x486/100_BARS.exr
+    source: "{bundled}/exr/720x486/100_BARS.exr"
     duration_frames: 6
     section_type: programme_area
     noise:
@@ -78,7 +78,7 @@ sections:
   # ---------------------------------------------------------------------------
   - name: Testcard_PreSkip_C
     type: progressive
-    source: videosynth-assets/assets/exr/720x486/SMPTE_BARS_001.exr
+    source: "{bundled}/exr/720x486/SMPTE_BARS_001.exr"
     duration_frames: 4
     section_type: programme_area
     noise:
@@ -119,7 +119,7 @@ sections:
   # ---------------------------------------------------------------------------
   - name: Testcard_Replay_C
     type: progressive
-    source: videosynth-assets/assets/exr/720x486/SMPTE_BARS_001.exr
+    source: "{bundled}/exr/720x486/SMPTE_BARS_001.exr"
     duration_frames: 8
     section_type: programme_area
     noise:
@@ -160,7 +160,7 @@ sections:
   # ---------------------------------------------------------------------------
   - name: MultiBurst_C
     type: progressive
-    source: videosynth-assets/assets/exr/720x486/MULTIBURST.exr
+    source: "{bundled}/exr/720x486/MULTIBURST.exr"
     duration_frames: 8
     section_type: programme_area
     noise:
@@ -201,7 +201,7 @@ sections:
   # ---------------------------------------------------------------------------
   - name: Tartan_PreGap_C
     type: progressive
-    source: videosynth-assets/assets/exr/720x486/TARTAN.exr
+    source: "{bundled}/exr/720x486/TARTAN.exr"
     duration_frames: 4
     section_type: programme_area
     noise:
@@ -242,7 +242,7 @@ sections:
   # ---------------------------------------------------------------------------
   - name: Tartan_PostGap_C
     type: progressive
-    source: videosynth-assets/assets/exr/720x486/TARTAN.exr
+    source: "{bundled}/exr/720x486/TARTAN.exr"
     duration_frames: 2
     section_type: programme_area
     noise:
@@ -283,7 +283,7 @@ sections:
   # ---------------------------------------------------------------------------
   - name: Ramps_C
     type: progressive
-    source: videosynth-assets/assets/exr/720x486/Y_CB_CR_RAMPS.exr
+    source: "{bundled}/exr/720x486/Y_CB_CR_RAMPS.exr"
     duration_frames: 8
     section_type: programme_area
     noise:

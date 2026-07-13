@@ -35,7 +35,7 @@ sections:
   # ---------------------------------------------------------------------------
   - name: CleanSource
     type: progressive
-    source: videosynth-assets/assets/exr/720x486/TARTAN.exr
+    source: "{bundled}/exr/720x486/TARTAN.exr"
     duration_frames: 8
     section_type: programme_area
     line_injections:
@@ -57,7 +57,7 @@ sections:
   # ---------------------------------------------------------------------------
   - name: NearQuantisation
     type: progressive
-    source: videosynth-assets/assets/exr/720x486/TARTAN.exr
+    source: "{bundled}/exr/720x486/TARTAN.exr"
     duration_frames: 8
     section_type: programme_area
     noise:
@@ -90,7 +90,7 @@ sections:
   # ---------------------------------------------------------------------------
   - name: ExcellentSource
     type: progressive
-    source: videosynth-assets/assets/exr/720x486/TARTAN.exr
+    source: "{bundled}/exr/720x486/TARTAN.exr"
     duration_frames: 8
     section_type: programme_area
     noise:
@@ -123,7 +123,7 @@ sections:
   # ---------------------------------------------------------------------------
   - name: GoodSource
     type: progressive
-    source: videosynth-assets/assets/exr/720x486/TARTAN.exr
+    source: "{bundled}/exr/720x486/TARTAN.exr"
     duration_frames: 8
     section_type: programme_area
     noise:
@@ -156,7 +156,7 @@ sections:
   # ---------------------------------------------------------------------------
   - name: FairSource
     type: progressive
-    source: videosynth-assets/assets/exr/720x486/TARTAN.exr
+    source: "{bundled}/exr/720x486/TARTAN.exr"
     duration_frames: 8
     section_type: programme_area
     noise:
@@ -189,7 +189,7 @@ sections:
   # ---------------------------------------------------------------------------
   - name: TypicalVhs
     type: progressive
-    source: videosynth-assets/assets/exr/720x486/TARTAN.exr
+    source: "{bundled}/exr/720x486/TARTAN.exr"
     duration_frames: 8
     section_type: programme_area
     noise:
@@ -222,7 +222,7 @@ sections:
   # ---------------------------------------------------------------------------
   - name: PoorTape
     type: progressive
-    source: videosynth-assets/assets/exr/720x486/TARTAN.exr
+    source: "{bundled}/exr/720x486/TARTAN.exr"
     duration_frames: 8
     section_type: programme_area
     noise:
@@ -255,7 +255,7 @@ sections:
   # ---------------------------------------------------------------------------
   - name: VeryPoor
     type: progressive
-    source: videosynth-assets/assets/exr/720x486/TARTAN.exr
+    source: "{bundled}/exr/720x486/TARTAN.exr"
     duration_frames: 8
     section_type: programme_area
     noise:
@@ -288,7 +288,7 @@ sections:
   # ---------------------------------------------------------------------------
   - name: BarelyWatchable
     type: progressive
-    source: videosynth-assets/assets/exr/720x486/TARTAN.exr
+    source: "{bundled}/exr/720x486/TARTAN.exr"
     duration_frames: 8
     section_type: programme_area
     noise:
@@ -321,7 +321,7 @@ sections:
   # ---------------------------------------------------------------------------
   - name: SyncBorderline
     type: progressive
-    source: videosynth-assets/assets/exr/720x486/TARTAN.exr
+    source: "{bundled}/exr/720x486/TARTAN.exr"
     duration_frames: 8
     section_type: programme_area
     noise:

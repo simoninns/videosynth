@@ -15,30 +15,30 @@ output:
 sections:
   - name: PalPilotBurst100Bars
     type: progressive
-    source: videosynth-assets/assets/exr/720x576/100_BARS.exr
+    source: "{bundled}/exr/720x576/100_BARS.exr"
     duration_frames: 4
 
   - name: PalPilotBurst75Bars
     type: progressive
-    source: videosynth-assets/assets/exr/720x576/75_BARS.exr
+    source: "{bundled}/exr/720x576/75_BARS.exr"
     duration_frames: 4
 
   - name: PalPilotBurstLumaRamp
     type: progressive
-    source: videosynth-assets/assets/exr/720x576/LUMA_RAMP.exr
+    source: "{bundled}/exr/720x576/LUMA_RAMP.exr"
     duration_frames: 4
 
   - name: PalPilotBurstChromaRamp
     type: progressive
-    source: videosynth-assets/assets/exr/720x576/CHROMA_RAMP.exr
+    source: "{bundled}/exr/720x576/CHROMA_RAMP.exr"
     duration_frames: 4
 
   - name: PalPilotBurstTestcardF
     type: progressive
-    source: videosynth-assets/assets/exr/720x576/TESTCARD-F.exr
+    source: "{bundled}/exr/720x576/TESTCARD-F.exr"
     duration_frames: 4
 
   - name: PalPilotBurstTartan
     type: progressive
-    source: videosynth-assets/assets/exr/720x576/TARTAN.exr
+    source: "{bundled}/exr/720x576/TARTAN.exr"
     duration_frames: 4

@@ -209,6 +209,7 @@ QWidget* SectionEditor::BuildProbeGroup() {
 
 QWidget* SectionEditor::BuildAudioGroup() {
   audio_group_ = new QGroupBox(tr("Audio channel pairs"), content_);
+  audio_group_->setCheckable(true);
   auto* layout = new QVBoxLayout(audio_group_);
   audio_editor_ = new AudioChannelPairsEditor(audio_group_);
   audio_editor_->setMinimumHeight(260);
@@ -220,22 +221,44 @@ QWidget* SectionEditor::BuildAudioGroup() {
               CommitSection();
             }
           });
+  // The block exists exactly when at least one channel pair exists; ticking the
+  // box seeds the first one, unticking clears them (SectionFromWidgets).
+  connect(audio_group_, &QGroupBox::toggled, this, [this](bool checked) {
+    audio_editor_->setVisible(checked);
+    if (updating_) {
+      return;
+    }
+    if (checked && audio_editor_->channel_pairs().empty()) {
+      Section section = SectionFromWidgets();
+      section.audio_channel_pairs.push_back(MakeDefaultAudioChannelPair(0));
+      committing_ = true;
+      document_->SetSection(section_index_, section);
+      committing_ = false;
+      LoadFromDocument();
+      return;
+    }
+    CommitSection();
+  });
+  audio_editor_->setVisible(audio_group_->isChecked());
   return audio_group_;
 }
 
 QWidget* SectionEditor::BuildNoiseGroup() {
   noise_group_ = new QGroupBox(tr("Noise injection"), content_);
   noise_group_->setCheckable(true);
-  auto* form = new QFormLayout(noise_group_);
+  auto* outer = new QVBoxLayout(noise_group_);
+  outer->setContentsMargins(0, 0, 0, 0);
+  auto* body = new QWidget(noise_group_);
+  auto* form = new QFormLayout(body);
 
-  noise_db_spin_ = new QDoubleSpinBox(noise_group_);
+  noise_db_spin_ = new QDoubleSpinBox(body);
   noise_db_spin_->setRange(editor_limits::kNoiseDbMin,
                            editor_limits::kNoiseDbMax);
   noise_db_spin_->setDecimals(1);
   noise_db_spin_->setSuffix(tr(" dB"));
   form->addRow(tr("Noise floor (Black PSNR):"), noise_db_spin_);
 
-  noise_spread_spin_ = new QDoubleSpinBox(noise_group_);
+  noise_spread_spin_ = new QDoubleSpinBox(body);
   // noise_db − spread must stay ≥ the 20 dB floor (validator rule).
   noise_spread_spin_->setRange(
       0.0, editor_limits::kNoiseDbMax - editor_limits::kNoiseDbMin);
@@ -243,19 +266,22 @@ QWidget* SectionEditor::BuildNoiseGroup() {
   noise_spread_spin_->setSuffix(tr(" dB"));
   form->addRow(tr("White spread:"), noise_spread_spin_);
 
-  noise_seed_check_ = new QCheckBox(tr("Fixed seed"), noise_group_);
-  noise_seed_edit_ = new QLineEdit(noise_group_);
+  noise_seed_check_ = new QCheckBox(tr("Fixed seed"), body);
+  noise_seed_edit_ = new QLineEdit(body);
   auto* seed_row = new QHBoxLayout();
   seed_row->addWidget(noise_seed_check_);
   seed_row->addWidget(noise_seed_edit_);
   form->addRow(seed_row);
+  outer->addWidget(body);
 
   const auto commit = [this] {
     if (!updating_) {
       CommitSection();
     }
   };
+  connect(noise_group_, &QGroupBox::toggled, body, &QWidget::setVisible);
   connect(noise_group_, &QGroupBox::toggled, this, commit);
+  body->setVisible(noise_group_->isChecked());
   connect(noise_db_spin_, &QDoubleSpinBox::valueChanged, this, commit);
   connect(noise_spread_spin_, &QDoubleSpinBox::valueChanged, this, commit);
   connect(noise_seed_check_, &QCheckBox::toggled, this, [this](bool checked) {
@@ -283,19 +309,25 @@ QWidget* SectionEditor::BuildDropoutsGroup() {
                                QLineEdit** out_edit) {
     auto* block = new QGroupBox(title, group);
     block->setCheckable(true);
-    auto* form = new QFormLayout(block);
-    auto* scale = new QSpinBox(block);
+    auto* outer = new QVBoxLayout(block);
+    outer->setContentsMargins(0, 0, 0, 0);
+    auto* body = new QWidget(block);
+    auto* form = new QFormLayout(body);
+    auto* scale = new QSpinBox(body);
     scale->setRange(editor_limits::kDropoutScaleMin,
                     editor_limits::kDropoutScaleMax);
     form->addRow(tr("Scale:"), scale);
-    auto* check = new QCheckBox(tr("Fixed seed"), block);
-    auto* edit = new QLineEdit(block);
+    auto* check = new QCheckBox(tr("Fixed seed"), body);
+    auto* edit = new QLineEdit(body);
     auto* seed_row = new QHBoxLayout();
     seed_row->addWidget(check);
     seed_row->addWidget(edit);
     form->addRow(seed_row);
+    outer->addWidget(body);
 
+    connect(block, &QGroupBox::toggled, body, &QWidget::setVisible);
     connect(block, &QGroupBox::toggled, this, commit);
+    body->setVisible(block->isChecked());
     connect(scale, &QSpinBox::valueChanged, this, commit);
     connect(check, &QCheckBox::toggled, this, [this, edit](bool checked) {
       edit->setEnabled(checked);
@@ -322,9 +354,12 @@ QWidget* SectionEditor::BuildDropoutsGroup() {
 QWidget* SectionEditor::BuildOsdGroup() {
   osd_group_ = new QGroupBox(tr("On-screen display"), content_);
   osd_group_->setCheckable(true);
-  auto* layout = new QVBoxLayout(osd_group_);
+  auto* outer = new QVBoxLayout(osd_group_);
+  outer->setContentsMargins(0, 0, 0, 0);
+  auto* body = new QWidget(osd_group_);
+  auto* layout = new QVBoxLayout(body);
 
-  osd_table_ = new QTableWidget(0, kOsdColumnCount, osd_group_);
+  osd_table_ = new QTableWidget(0, kOsdColumnCount, body);
   osd_table_->setHorizontalHeaderLabels({tr("Text"), tr("X"), tr("Y"),
                                          tr("Scale"), tr("Fg luma"),
                                          tr("Bg luma")});
@@ -336,8 +371,8 @@ QWidget* SectionEditor::BuildOsdGroup() {
   layout->addWidget(osd_table_);
 
   auto* buttons = new QHBoxLayout();
-  auto* add_button = new QPushButton(tr("Add overlay"), osd_group_);
-  remove_overlay_button_ = new QPushButton(tr("Remove overlay"), osd_group_);
+  auto* add_button = new QPushButton(tr("Add overlay"), body);
+  remove_overlay_button_ = new QPushButton(tr("Remove overlay"), body);
   buttons->addWidget(add_button);
   buttons->addWidget(remove_overlay_button_);
   buttons->addStretch();
@@ -349,10 +384,12 @@ QWidget* SectionEditor::BuildOsdGroup() {
                       .arg(QString::fromStdString(help.token),
                            QString::fromStdString(help.description));
   }
-  auto* token_label = new QLabel(token_help, osd_group_);
+  auto* token_label = new QLabel(token_help, body);
   token_label->setWordWrap(true);
   layout->addWidget(token_label);
+  outer->addWidget(body);
 
+  connect(osd_group_, &QGroupBox::toggled, body, &QWidget::setVisible);
   connect(osd_group_, &QGroupBox::toggled, this, [this](bool checked) {
     if (updating_) {
       return;
@@ -368,13 +405,15 @@ QWidget* SectionEditor::BuildOsdGroup() {
           &SectionEditor::OnAddOverlay);
   connect(remove_overlay_button_, &QPushButton::clicked, this,
           &SectionEditor::OnRemoveOverlay);
+  body->setVisible(osd_group_->isChecked());
   return osd_group_;
 }
 
 QWidget* SectionEditor::BuildInjectionsGroup() {
-  auto* group = new QGroupBox(tr("Line injections"), content_);
-  auto* layout = new QVBoxLayout(group);
-  injections_editor_ = new LineInjectionsEditor(group);
+  injections_group_ = new QGroupBox(tr("Line injections"), content_);
+  injections_group_->setCheckable(true);
+  auto* layout = new QVBoxLayout(injections_group_);
+  injections_editor_ = new LineInjectionsEditor(injections_group_);
   injections_editor_->setMinimumHeight(220);
   layout->addWidget(injections_editor_);
 
@@ -384,7 +423,24 @@ QWidget* SectionEditor::BuildInjectionsGroup() {
               CommitSection();
             }
           });
-  return group;
+  // The block exists exactly when at least one injection exists; ticking the
+  // box seeds a default one, unticking clears them (SectionFromWidgets).
+  connect(injections_group_, &QGroupBox::toggled, this, [this](bool checked) {
+    injections_editor_->setVisible(checked);
+    if (updating_) {
+      return;
+    }
+    if (checked) {
+      if (injections_editor_->injections().empty()) {
+        // Emits InjectionsEdited, which commits the now-non-empty block.
+        injections_editor_->AddDefaultInjection();
+      }
+    } else {
+      CommitSection();
+    }
+  });
+  injections_editor_->setVisible(injections_group_->isChecked());
+  return injections_group_;
 }
 
 void SectionEditor::SetCurrentSection(int index) {
@@ -425,7 +481,8 @@ void SectionEditor::LoadFromDocument() {
   start_frame_label_->setText(QStringLiteral("%1").arg(
       rows[static_cast<std::size_t>(section_index_)].start_frame));
 
-  // Audio.
+  // Audio (block present exactly when it carries channel pairs).
+  audio_group_->setChecked(!section.audio_channel_pairs.empty());
   audio_editor_->SetChannelPairs(section.audio_channel_pairs);
 
   // Noise.
@@ -464,7 +521,8 @@ void SectionEditor::LoadFromDocument() {
   osd_group_->setChecked(OsdBlockEnabled(section));
   LoadOsdTable(section);
 
-  // Line injections.
+  // Line injections (block present exactly when it carries injections).
+  injections_group_->setChecked(!section.line_injections.empty());
   injections_editor_->SetContext(project.cvbs_presets.video_standard_preset,
                                  section.section_type);
   injections_editor_->SetInjections(section.line_injections);
@@ -539,8 +597,10 @@ Section SectionEditor::SectionFromWidgets() const {
   section.duration_frames =
       section.duration_frames_all ? 0 : duration_spin_->value();
 
-  // Audio block.
-  section.audio_channel_pairs = audio_editor_->channel_pairs();
+  // Audio block (unticking excludes it entirely).
+  section.audio_channel_pairs = audio_group_->isChecked()
+                                    ? audio_editor_->channel_pairs()
+                                    : std::vector<AudioChannelPair>{};
 
   // Noise block.
   if (noise_group_->isChecked()) {
@@ -605,8 +665,10 @@ Section SectionEditor::SectionFromWidgets() const {
     }
   }
 
-  // Line injections.
-  section.line_injections = injections_editor_->injections();
+  // Line injections (unticking excludes them entirely).
+  section.line_injections = injections_group_->isChecked()
+                                ? injections_editor_->injections()
+                                : std::vector<Section::LineInjection>{};
 
   return section;
 }
@@ -667,8 +729,18 @@ void SectionEditor::UpdateProbeDisplay() {
 }
 
 void SectionEditor::OnBrowseSource() {
+  // Open the dialog at the current source's *resolved* location so that a
+  // logical root (e.g. Bundled) opens where those assets actually live rather
+  // than the process working directory. An empty field under a root resolves
+  // to that root's base directory; fall back to the project directory.
+  QString start = QString::fromStdString(videosynth::ResolveAssetPath(
+      SourceFromWidgets(), GuiAssetRoots(), ProjectBaseDir().toStdString(),
+      /*anchor_unset=*/true));
+  if (start.isEmpty()) {
+    start = ProjectBaseDir();
+  }
   const QString path = QFileDialog::getOpenFileName(
-      this, tr("Section Source"), source_edit_->text(),
+      this, tr("Section Source"), start,
       tr("Progressive sources (*.mkv *.exr);;All files (*)"));
   if (path.isEmpty()) {
     return;

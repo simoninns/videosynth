@@ -25,6 +25,7 @@
 #include "videosynth/interfaces.h"
 #include "videosynth/noise_injection_stage.h"
 #include "videosynth/output_stage.h"
+#include "videosynth/path_resolution.h"
 #include "videosynth/pipeline.h"
 #include "videosynth/progressive_frame_source_probe.h"
 #include "videosynth/project_validator.h"
@@ -160,6 +161,9 @@ void RunAudioFixtureProject(const AudioFixture& fixture) {
                               &logger, &audio_generator);
   RunOptions options;
   options.project_path = fixture.fixture_path;
+  // Mirror the CLI: {bundled}/... source tokens resolve via the default
+  // asset roots (compile-time VIDEOSYNTH_BUNDLED_ASSET_DIR).
+  options.asset_roots = DefaultAssetRoots();
   ASSERT_TRUE(pipeline.Run(options)) << fixture.fixture_path;
 
   const std::uint64_t positions =

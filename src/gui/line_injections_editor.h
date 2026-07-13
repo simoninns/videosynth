@@ -49,6 +49,11 @@ class LineInjectionsEditor : public QWidget {
     return injections_;
   }
 
+  // Appends a validator-clean default injection (identical to the Add button)
+  // and emits InjectionsEdited. The section editor uses this to seed the block
+  // when its "include" checkbox is switched on so the block is never empty.
+  void AddDefaultInjection();
+
  signals:
   // The working copy changed through user interaction.
   void InjectionsEdited();

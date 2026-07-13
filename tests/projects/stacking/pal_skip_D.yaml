@@ -37,7 +37,7 @@ sections:
 
   - name: Bars_D
     type: progressive
-    source: videosynth-assets/assets/exr/720x576/75_BARS.exr
+    source: "{bundled}/exr/720x576/75_BARS.exr"
     duration_frames: 8
     section_type: programme_area
     noise:
@@ -73,7 +73,7 @@ sections:
 
   - name: Testcard_D
     type: progressive
-    source: videosynth-assets/assets/exr/720x576/TESTCARD-F.exr
+    source: "{bundled}/exr/720x576/TESTCARD-F.exr"
     duration_frames: 8
     section_type: programme_area
     noise:
@@ -109,7 +109,7 @@ sections:
 
   - name: MultiBurst_D
     type: progressive
-    source: videosynth-assets/assets/exr/720x576/MULTIBURST.exr
+    source: "{bundled}/exr/720x576/MULTIBURST.exr"
     duration_frames: 8
     section_type: programme_area
     noise:
@@ -145,7 +145,7 @@ sections:
 
   - name: Tartan_D
     type: progressive
-    source: videosynth-assets/assets/exr/720x576/TARTAN.exr
+    source: "{bundled}/exr/720x576/TARTAN.exr"
     duration_frames: 8
     section_type: programme_area
     noise:
@@ -181,7 +181,7 @@ sections:
 
   - name: Ramps_D
     type: progressive
-    source: videosynth-assets/assets/exr/720x576/Y_CB_CR_RAMPS.exr
+    source: "{bundled}/exr/720x576/Y_CB_CR_RAMPS.exr"
     duration_frames: 8
     section_type: programme_area
     noise:

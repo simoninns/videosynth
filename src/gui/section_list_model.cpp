@@ -52,7 +52,10 @@ SectionListModel::SectionListModel(ProjectDocument* document, QObject* parent)
   connect(document_, &ProjectDocument::SectionAdded, this, reload);
   connect(document_, &ProjectDocument::SectionRemoved, this, reload);
   connect(document_, &ProjectDocument::SectionMoved, this, reload);
-  connect(document_, &ProjectDocument::SectionEdited, this, reload);
+  // An edit changes cells but not the row set, so refresh in place to keep the
+  // dock's selection (a reset would deselect and close the section editor).
+  connect(document_, &ProjectDocument::SectionEdited, this,
+          [this] { RefreshRows(); });
 }
 
 // NOLINTNEXTLINE(google-default-arguments): base-signature default argument
@@ -116,6 +119,22 @@ void SectionListModel::Reload() {
   beginResetModel();
   rows_ = BuildSectionListRows(document_->project());
   endResetModel();
+}
+
+void SectionListModel::RefreshRows() {
+  std::vector<SectionListRow> rebuilt =
+      BuildSectionListRows(document_->project());
+  // A section edit cannot change the row count; if it somehow does, fall back
+  // to a full reset to keep the model and view structurally consistent.
+  if (rebuilt.size() != rows_.size()) {
+    Reload();
+    return;
+  }
+  rows_ = std::move(rebuilt);
+  if (rows_.empty()) {
+    return;
+  }
+  emit dataChanged(index(0, 0), index(rowCount() - 1, kColumnCount - 1));
 }
 
 }  // namespace videosynth::gui

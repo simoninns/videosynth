@@ -71,7 +71,15 @@ class SectionListModel : public QAbstractTableModel {
                       int role) const override;
 
  private:
+  // Structural change (add/remove/move/reset): rebuild rows and reset the
+  // model. Resets clear the view's selection, so this is reserved for changes
+  // that alter the row set.
   void Reload();
+  // In-place edit of an existing section: rebuild rows and emit dataChanged
+  // without a model reset, so the view keeps its current selection. The row
+  // count is unchanged by a section edit (only its cells, and the derived
+  // start frames of the rows below it).
+  void RefreshRows();
 
   ProjectDocument* document_;
   std::vector<SectionListRow> rows_;

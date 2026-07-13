@@ -10,6 +10,7 @@
 
 #include <gtest/gtest.h>
 
+#include <QItemSelectionModel>
 #include <string>
 
 #include "project_document.h"
@@ -103,6 +104,31 @@ TEST(SectionListModelTest, ModelTracksDocumentMutations) {
 
   document.ResetProject(MakeProject(), QString());
   EXPECT_EQ(model.rowCount(), 3);
+}
+
+// Editing a section must not reset the model: a reset clears the dock's
+// selection, which in turn closes the section editor (the newly-ticked block
+// disappears until the section is re-selected).
+TEST(SectionListModelTest, EditKeepsSelectionAndDoesNotReset) {
+  ProjectDocument document;
+  document.ResetProject(MakeProject(), QString());
+  SectionListModel model(&document);
+
+  QItemSelectionModel selection(&model);
+  selection.setCurrentIndex(
+      model.index(1, SectionListModel::kNameColumn),
+      QItemSelectionModel::SelectCurrent | QItemSelectionModel::Rows);
+  ASSERT_EQ(selection.currentIndex().row(), 1);
+
+  Section edited = document.project().sections[1];
+  edited.noise.enabled = true;
+  edited.noise.noise_db = 48.0;
+  document.SetSection(1, edited);
+
+  // A model reset would invalidate the current index; an in-place refresh keeps
+  // it, so the section editor stays open on the row just edited.
+  EXPECT_TRUE(selection.currentIndex().isValid());
+  EXPECT_EQ(selection.currentIndex().row(), 1);
 }
 
 // Reordering through the document must emit YAML identical to a hand-written

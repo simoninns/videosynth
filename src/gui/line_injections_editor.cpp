@@ -215,8 +215,18 @@ void LineInjectionsEditor::SetContext(Standard standard,
 
 void LineInjectionsEditor::SetInjections(
     std::vector<Section::LineInjection> injections) {
+  // Preserve the selected row across a refresh: editing an injection
+  // round-trips through the owning section editor, which calls this to reload,
+  // and resetting to row 0 would yank the user off the injection they are
+  // editing. Injections never reorder on edit, so the row index stays valid
+  // (clamped for a shorter list).
+  const int previous_row = injection_list_->currentRow();
   injections_ = std::move(injections);
-  RebuildInjectionList(injections_.empty() ? -1 : 0);
+  const int select_row =
+      injections_.empty()
+          ? -1
+          : qBound(0, previous_row, static_cast<int>(injections_.size()) - 1);
+  RebuildInjectionList(select_row);
 }
 
 void LineInjectionsEditor::RebuildInjectionList(int select_row) {
@@ -331,6 +341,8 @@ void LineInjectionsEditor::AnnounceEdit() {
     emit InjectionsEdited();
   }
 }
+
+void LineInjectionsEditor::AddDefaultInjection() { OnAddInjection(); }
 
 void LineInjectionsEditor::OnAddInjection() {
   Section::LineInjection injection;

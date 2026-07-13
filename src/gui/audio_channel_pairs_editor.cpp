@@ -177,8 +177,17 @@ QWidget* AudioChannelPairsEditor::BuildChannelEditor(const QString& title,
 
 void AudioChannelPairsEditor::SetChannelPairs(
     std::vector<AudioChannelPair> pairs) {
+  // Preserve the selected row across a refresh. Editing a channel round-trips
+  // through the owning section editor, which calls this to reload; resetting to
+  // row 0 would yank the user off the pair they are editing. Pairs never
+  // reorder on edit, so the row index stays valid (clamped for a shorter list).
+  const int previous_row = pair_list_->currentRow();
   pairs_ = std::move(pairs);
-  RebuildList(pairs_.empty() ? -1 : 0);
+  const int select_row =
+      pairs_.empty()
+          ? -1
+          : qBound(0, previous_row, static_cast<int>(pairs_.size()) - 1);
+  RebuildList(select_row);
 }
 
 void AudioChannelPairsEditor::RebuildList(int select_row) {

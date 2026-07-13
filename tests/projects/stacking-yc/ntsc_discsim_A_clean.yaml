@@ -37,7 +37,7 @@ sections:
   # ---------------------------------------------------------------------------
   - name: Bars_A
     type: progressive
-    source: videosynth-assets/assets/exr/720x486/100_BARS.exr
+    source: "{bundled}/exr/720x486/100_BARS.exr"
     duration_frames: 8
     section_type: programme_area
     line_injections:
@@ -58,7 +58,7 @@ sections:
   # ---------------------------------------------------------------------------
   - name: Testcard_A
     type: progressive
-    source: videosynth-assets/assets/exr/720x486/SMPTE_BARS_001.exr
+    source: "{bundled}/exr/720x486/SMPTE_BARS_001.exr"
     duration_frames: 8
     section_type: programme_area
     line_injections:
@@ -79,7 +79,7 @@ sections:
   # ---------------------------------------------------------------------------
   - name: MultiBurst_PreSkip_A
     type: progressive
-    source: videosynth-assets/assets/exr/720x486/MULTIBURST.exr
+    source: "{bundled}/exr/720x486/MULTIBURST.exr"
     duration_frames: 4
     section_type: programme_area
     line_injections:
@@ -100,7 +100,7 @@ sections:
   # ---------------------------------------------------------------------------
   - name: MultiBurst_Replay_A
     type: progressive
-    source: videosynth-assets/assets/exr/720x486/MULTIBURST.exr
+    source: "{bundled}/exr/720x486/MULTIBURST.exr"
     duration_frames: 8
     section_type: programme_area
     line_injections:
@@ -121,7 +121,7 @@ sections:
   # ---------------------------------------------------------------------------
   - name: Tartan_A
     type: progressive
-    source: videosynth-assets/assets/exr/720x486/TARTAN.exr
+    source: "{bundled}/exr/720x486/TARTAN.exr"
     duration_frames: 8
     section_type: programme_area
     line_injections:
@@ -142,7 +142,7 @@ sections:
   # ---------------------------------------------------------------------------
   - name: Ramps_A
     type: progressive
-    source: videosynth-assets/assets/exr/720x486/Y_CB_CR_RAMPS.exr
+    source: "{bundled}/exr/720x486/Y_CB_CR_RAMPS.exr"
     duration_frames: 8
     section_type: programme_area
     line_injections:
