@@ -43,6 +43,26 @@ void PictureViewWidget::SetZoomMode(ZoomMode mode) {
   update();
 }
 
+void PictureViewWidget::SetCrosshairEnabled(bool enabled) {
+  if (crosshair_enabled_ == enabled) {
+    return;
+  }
+  crosshair_enabled_ = enabled;
+  update();
+}
+
+void PictureViewWidget::SetCrosshairRow(int row) {
+  if (image_.isNull()) {
+    return;
+  }
+  const int clamped = std::clamp(row, 0, image_.height() - 1);
+  if (crosshair_row_ == clamped) {
+    return;
+  }
+  crosshair_row_ = clamped;
+  update();
+}
+
 QSize PictureViewWidget::sizeHint() const {
   if (image_.isNull()) {
     return QSize(kMinimumSideHint, kMinimumSideHint / 2);
@@ -97,20 +117,71 @@ void PictureViewWidget::paintEvent(QPaintEvent* event) {
   // Nearest-neighbour scaling keeps sample and line boundaries crisp, which
   // matters more than smoothing for signal inspection.
   painter.drawImage(target, image_);
+
+  if (!crosshair_enabled_ || crosshair_row_ < 0) {
+    return;
+  }
+  // The crosshair marks the selected line (horizontal) and the picked sample
+  // column (vertical) in high-contrast so it reads over any picture content.
+  const double row_fraction =
+      (crosshair_row_ + 0.5) / static_cast<double>(image_.height());
+  const int y = target.top() + static_cast<int>(row_fraction * target.height());
+  painter.setPen(QPen(QColor(0, 200, 255), 1.0));
+  painter.drawLine(target.left(), y, target.right(), y);
+  if (crosshair_column_ >= 0) {
+    const double col_fraction =
+        (crosshair_column_ + 0.5) / static_cast<double>(image_.width());
+    const int x =
+        target.left() + static_cast<int>(col_fraction * target.width());
+    painter.drawLine(x, target.top(), x, target.bottom());
+  }
+}
+
+bool PictureViewWidget::PickImagePoint(const QPoint& pos, int* row,
+                                       int* column) const {
+  const QRect target = TargetRect();
+  if (image_.isNull() || target.isEmpty()) {
+    return false;
+  }
+  const double relative_y = static_cast<double>(pos.y() - target.top()) /
+                            static_cast<double>(target.height());
+  const double relative_x = static_cast<double>(pos.x() - target.left()) /
+                            static_cast<double>(target.width());
+  *row = std::clamp(static_cast<int>(relative_y * image_.height()), 0,
+                    image_.height() - 1);
+  *column = std::clamp(static_cast<int>(relative_x * image_.width()), 0,
+                       image_.width() - 1);
+  return true;
 }
 
 void PictureViewWidget::mousePressEvent(QMouseEvent* event) {
-  const QRect target = TargetRect();
-  if (image_.isNull() || target.isEmpty() || !target.contains(event->pos())) {
+  int row = 0;
+  int column = 0;
+  if (!PickImagePoint(event->pos(), &row, &column)) {
     QWidget::mousePressEvent(event);
     return;
   }
+  if (crosshair_enabled_) {
+    crosshair_row_ = row;
+    crosshair_column_ = column;
+    update();
+  }
+  emit RowClicked(row);
+}
 
-  const double relative_y =
-      static_cast<double>(event->pos().y() - target.top()) /
-      static_cast<double>(target.height());
-  const int row = std::clamp(static_cast<int>(relative_y * image_.height()), 0,
-                             image_.height() - 1);
+void PictureViewWidget::mouseMoveEvent(QMouseEvent* event) {
+  if (!crosshair_enabled_ || (event->buttons() & Qt::LeftButton) == 0) {
+    QWidget::mouseMoveEvent(event);
+    return;
+  }
+  int row = 0;
+  int column = 0;
+  if (!PickImagePoint(event->pos(), &row, &column)) {
+    return;
+  }
+  crosshair_row_ = row;
+  crosshair_column_ = column;
+  update();
   emit RowClicked(row);
 }
 

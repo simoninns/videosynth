@@ -45,6 +45,17 @@ int PictureRowToLineNumber(Standard standard, int field_1based, int row);
 int LineNumberToPictureRow(Standard standard, int line_1based);
 int LineNumberToField(Standard standard, int line_1based);
 
+// Spatial (interlaced) display order of the frame's lines: element `row`
+// holds the 1-based frame line drawn at display row `row`. Field 1 and field
+// 2 lines are woven so the raster reads as the broadcast picture rather than
+// the two fields stacked. Length equals the standard's lines_per_frame.
+std::vector<int> InterlacedLineOrder(Standard standard);
+
+// Maps a woven full-frame picture row (0-based) to its frame line number and
+// back. Rows/lines out of range clamp to the frame's edges.
+int FrameRowToLineNumber(Standard standard, int row);
+int LineNumberToFrameRow(Standard standard, int line_1based);
+
 // Renders one field of the synthesised frame as a grayscale raster: each
 // sample is quantised to the 10-bit CVBS code space exactly as the output
 // stage writes it, then mapped to 8-bit grayscale (code >> 2). The image is
@@ -56,6 +67,14 @@ QImage RenderEncodedFieldImage(const std::vector<SampleFixed>& y_mv,
                                const std::vector<SampleFixed>& c_mv,
                                Standard standard, int field_1based,
                                EncodedImageMode mode);
+
+// Renders the complete interlaced frame: every line quantised as the output
+// stage writes it, woven into spatial display order (InterlacedLineOrder).
+// The image is samples_per_line wide and lines_per_frame tall. Returns a null
+// image for empty buffers or an unknown standard.
+QImage RenderEncodedFrameImage(const std::vector<SampleFixed>& y_mv,
+                               const std::vector<SampleFixed>& c_mv,
+                               Standard standard, EncodedImageMode mode);
 
 // Converts a decoded 10-bit YCbCr 4:4:4 source frame (active area) to a
 // display RGB image via BT.601. Returns a null image when the source has no

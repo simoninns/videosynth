@@ -77,6 +77,73 @@ int LineNumberToField(Standard standard, int line_1based) {
       std::clamp(line_1based, 1, GetTimingConstants(standard).lines_per_frame));
 }
 
+std::vector<int> InterlacedLineOrder(Standard standard) {
+  const int total = GetTimingConstants(standard).lines_per_frame;
+  const int field1_lines = Field1LineCount(standard);
+  std::vector<int> order;
+  order.reserve(static_cast<std::size_t>(std::max(0, total)));
+
+  // Weave field 1 (lines 1..field1_lines) and field 2 (the remainder),
+  // starting with field 1. Any leftover from the longer field is appended.
+  int a = 1;                 // next field-1 line
+  int b = field1_lines + 1;  // next field-2 line
+  bool prefer_a = true;
+  while (static_cast<int>(order.size()) < total) {
+    const bool take_a = (prefer_a && a <= field1_lines) || b > total;
+    if (take_a) {
+      order.push_back(a++);
+    } else {
+      order.push_back(b++);
+    }
+    prefer_a = !prefer_a;
+  }
+  return order;
+}
+
+int FrameRowToLineNumber(Standard standard, int row) {
+  const std::vector<int> order = InterlacedLineOrder(standard);
+  if (order.empty()) {
+    return 1;
+  }
+  return order[static_cast<std::size_t>(
+      std::clamp(row, 0, static_cast<int>(order.size()) - 1))];
+}
+
+int LineNumberToFrameRow(Standard standard, int line_1based) {
+  const std::vector<int> order = InterlacedLineOrder(standard);
+  for (std::size_t row = 0; row < order.size(); ++row) {
+    if (order[row] == line_1based) {
+      return static_cast<int>(row);
+    }
+  }
+  return 0;
+}
+
+namespace {
+
+// Quantises one full-frame sample to the 8-bit grayscale the views display,
+// matching the output stage's 10-bit code mapping for the given mode.
+uchar EncodedSampleToGray(const std::vector<SampleFixed>& y_mv,
+                          const std::vector<SampleFixed>& c_mv,
+                          std::size_t sample, EncodedImageMode mode,
+                          const QuantizationProfile& profile) {
+  int code = 0;
+  switch (mode) {
+    case EncodedImageMode::kComposite:
+      code = MapCompositeFixedToCode(y_mv[sample] + c_mv[sample], profile);
+      break;
+    case EncodedImageMode::kLuma:
+      code = MapCompositeFixedToCode(y_mv[sample], profile);
+      break;
+    case EncodedImageMode::kChroma:
+      code = MapChromaFixedToCode(c_mv[sample], profile);
+      break;
+  }
+  return static_cast<uchar>(CodeToGray(ClampToLegalCodeRange(code, profile)));
+}
+
+}  // namespace
+
 QImage RenderEncodedFieldImage(const std::vector<SampleFixed>& y_mv,
                                const std::vector<SampleFixed>& c_mv,
                                Standard standard, int field_1based,
@@ -109,21 +176,46 @@ QImage RenderEncodedFieldImage(const std::vector<SampleFixed>& y_mv,
         static_cast<std::size_t>(line_offsets[line_index]);
     uchar* scanline = image.scanLine(row);
     for (int x = 0; x < width; ++x) {
-      const std::size_t sample = line_start + static_cast<std::size_t>(x);
-      int code = 0;
-      switch (mode) {
-        case EncodedImageMode::kComposite:
-          code = MapCompositeFixedToCode(y_mv[sample] + c_mv[sample], profile);
-          break;
-        case EncodedImageMode::kLuma:
-          code = MapCompositeFixedToCode(y_mv[sample], profile);
-          break;
-        case EncodedImageMode::kChroma:
-          code = MapChromaFixedToCode(c_mv[sample], profile);
-          break;
-      }
-      scanline[x] =
-          static_cast<uchar>(CodeToGray(ClampToLegalCodeRange(code, profile)));
+      scanline[x] = EncodedSampleToGray(
+          y_mv, c_mv, line_start + static_cast<std::size_t>(x), mode, profile);
+    }
+  }
+  return image;
+}
+
+QImage RenderEncodedFrameImage(const std::vector<SampleFixed>& y_mv,
+                               const std::vector<SampleFixed>& c_mv,
+                               Standard standard, EncodedImageMode mode) {
+  QuantizationProfile profile;
+  if (!BuildQuantizationProfile(standard, &profile)) {
+    return QImage();
+  }
+
+  const TimingConstants timing = GetTimingConstants(standard);
+  const std::vector<int> line_counts = BuildLineSampleCounts(
+      standard, timing.lines_per_frame, timing.samples_per_line_4fsc);
+  const std::vector<int> line_offsets = BuildLineSampleOffsets(line_counts);
+  const std::vector<int> line_order = InterlacedLineOrder(standard);
+
+  const int width = timing.samples_per_line_4fsc;
+  const int height = static_cast<int>(line_order.size());
+  const std::size_t frame_samples =
+      static_cast<std::size_t>(line_offsets.back()) +
+      static_cast<std::size_t>(line_counts.back());
+  if (y_mv.size() < frame_samples || c_mv.size() < frame_samples ||
+      width <= 0 || height <= 0) {
+    return QImage();
+  }
+
+  QImage image(width, height, QImage::Format_Grayscale8);
+  for (int row = 0; row < height; ++row) {
+    const int line_index = line_order[static_cast<std::size_t>(row)] - 1;
+    const std::size_t line_start =
+        static_cast<std::size_t>(line_offsets[line_index]);
+    uchar* scanline = image.scanLine(row);
+    for (int x = 0; x < width; ++x) {
+      scanline[x] = EncodedSampleToGray(
+          y_mv, c_mv, line_start + static_cast<std::size_t>(x), mode, profile);
     }
   }
   return image;

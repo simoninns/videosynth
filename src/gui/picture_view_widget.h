@@ -41,6 +41,15 @@ class PictureViewWidget : public QWidget {
   void SetZoomMode(ZoomMode mode);
   ZoomMode zoom_mode() const { return zoom_mode_; }
 
+  // Enables the draggable line crosshair overlay. When on, clicking (and
+  // dragging) inside the image places a crosshair and streams the picked row
+  // through RowClicked; a horizontal guide marks the selected line.
+  void SetCrosshairEnabled(bool enabled);
+
+  // Positions the crosshair on `row` without emitting RowClicked, so the
+  // overlay can follow an external line selection (e.g. the line spinbox).
+  void SetCrosshairRow(int row);
+
   QSize sizeHint() const override;
 
   // Fixed zooms report the zoomed image size so a resizable QScrollArea
@@ -48,21 +57,28 @@ class PictureViewWidget : public QWidget {
   QSize minimumSizeHint() const override;
 
  signals:
-  // Emitted when the user clicks inside the image; `row` is the 0-based
-  // image row (field line row for encoded rasters).
+  // Emitted when the user clicks or drags inside the image; `row` is the
+  // 0-based image row (frame line row for encoded rasters).
   void RowClicked(int row);
 
  protected:
   void paintEvent(QPaintEvent* event) override;
   void mousePressEvent(QMouseEvent* event) override;
+  void mouseMoveEvent(QMouseEvent* event) override;
 
  private:
   // Rectangle the image is painted into for the current zoom mode.
   QRect TargetRect() const;
+  // Picks the 0-based image row/column under a widget-space point, clamped to
+  // the image; returns false when there is no image to pick from.
+  bool PickImagePoint(const QPoint& pos, int* row, int* column) const;
 
   QImage image_;
   bool double_vertically_ = false;
   ZoomMode zoom_mode_ = ZoomMode::kFit;
+  bool crosshair_enabled_ = false;
+  int crosshair_row_ = -1;
+  int crosshair_column_ = -1;
 };
 
 }  // namespace videosynth::gui

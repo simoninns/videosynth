@@ -12,6 +12,7 @@
 #include <gtest/gtest.h>
 
 #include <QImage>
+#include <algorithm>
 #include <vector>
 
 #include "preview_render.h"
@@ -59,6 +60,62 @@ TEST(PreviewRenderTest, PictureRowLineMappingRoundTrips) {
   EXPECT_EQ(LineNumberToField(Standard::kPal, 313), 2);
   EXPECT_EQ(LineNumberToPictureRow(Standard::kPal, 313), 0);
   EXPECT_EQ(LineNumberToPictureRow(Standard::kNtsc, 22), 21);
+}
+
+TEST(PreviewRenderTest, InterlacedLineOrderWeavesBothFieldsOnce) {
+  const std::vector<int> pal = InterlacedLineOrder(Standard::kPal);
+  ASSERT_EQ(pal.size(), 625U);
+  // Woven, field 1 first: line 1, then field 2's first line (313), line 2, ...
+  EXPECT_EQ(pal[0], 1);
+  EXPECT_EQ(pal[1], 313);
+  EXPECT_EQ(pal[2], 2);
+  EXPECT_EQ(pal[3], 314);
+  // Every frame line appears exactly once.
+  std::vector<int> sorted = pal;
+  std::sort(sorted.begin(), sorted.end());
+  sorted.erase(std::unique(sorted.begin(), sorted.end()), sorted.end());
+  EXPECT_EQ(sorted.size(), 625U);
+  EXPECT_EQ(sorted.front(), 1);
+  EXPECT_EQ(sorted.back(), 625);
+
+  const std::vector<int> ntsc = InterlacedLineOrder(Standard::kNtsc);
+  ASSERT_EQ(ntsc.size(), 525U);
+  EXPECT_EQ(ntsc[0], 1);
+  EXPECT_EQ(ntsc[1], 263);
+}
+
+TEST(PreviewRenderTest, FrameRowLineMappingRoundTrips) {
+  for (int line : {1, 2, 312, 313, 314, 625}) {
+    const int row = LineNumberToFrameRow(Standard::kPal, line);
+    EXPECT_EQ(FrameRowToLineNumber(Standard::kPal, row), line)
+        << "line " << line;
+  }
+  // Out-of-range rows clamp to the frame edges rather than crashing.
+  EXPECT_EQ(FrameRowToLineNumber(Standard::kPal, -5), 1);
+  EXPECT_EQ(FrameRowToLineNumber(Standard::kPal, 100000), 625);
+}
+
+TEST(PreviewRenderTest, EncodedFrameImageCoversWholeFrame) {
+  const std::vector<SampleFixed> y_mv = MakeFrameBuffer(Standard::kPal, 0.0);
+  const std::vector<SampleFixed> c_mv = MakeFrameBuffer(Standard::kPal, 0.0);
+  const QImage frame = RenderEncodedFrameImage(y_mv, c_mv, Standard::kPal,
+                                               EncodedImageMode::kComposite);
+  ASSERT_FALSE(frame.isNull());
+  EXPECT_EQ(frame.width(), 1135);
+  EXPECT_EQ(frame.height(), 625);
+
+  const std::vector<SampleFixed> ntsc = MakeFrameBuffer(Standard::kNtsc, 0.0);
+  const QImage ntsc_frame = RenderEncodedFrameImage(
+      ntsc, ntsc, Standard::kNtsc, EncodedImageMode::kComposite);
+  ASSERT_FALSE(ntsc_frame.isNull());
+  EXPECT_EQ(ntsc_frame.height(), 525);
+}
+
+TEST(PreviewRenderTest, EncodedFrameImageIsNullForUndersizedBuffers) {
+  const std::vector<SampleFixed> too_small(100, 0);
+  const QImage frame = RenderEncodedFrameImage(
+      too_small, too_small, Standard::kPal, EncodedImageMode::kComposite);
+  EXPECT_TRUE(frame.isNull());
 }
 
 TEST(PreviewRenderTest, EncodedPalFieldImagesHaveCorrectGeometry) {

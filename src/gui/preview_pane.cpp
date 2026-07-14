@@ -10,7 +10,6 @@
 
 #include "preview_pane.h"
 
-#include <QCheckBox>
 #include <QComboBox>
 #include <QDir>
 #include <QFileInfo>
@@ -20,7 +19,6 @@
 #include <QScrollArea>
 #include <QSlider>
 #include <QSpinBox>
-#include <QSplitter>
 #include <QStackedLayout>
 #include <QTabWidget>
 #include <QVBoxLayout>
@@ -106,14 +104,6 @@ void PreviewPane::BuildUi() {
   navigator_layout->addWidget(frame_spinbox_);
   frame_total_label_ = new QLabel(tr("of 0"), this);
   navigator_layout->addWidget(frame_total_label_);
-  field_combo_ = new QComboBox(this);
-  field_combo_->addItem(tr("Field 1"));
-  field_combo_->addItem(tr("Field 2"));
-  navigator_layout->addWidget(field_combo_);
-  noise_checkbox_ = new QCheckBox(tr("Noise"), this);
-  navigator_layout->addWidget(noise_checkbox_);
-  dropouts_checkbox_ = new QCheckBox(tr("Dropouts"), this);
-  navigator_layout->addWidget(dropouts_checkbox_);
   layout->addLayout(navigator_layout);
 
   connect(frame_slider_, &QSlider::valueChanged, frame_spinbox_,
@@ -122,12 +112,6 @@ void PreviewPane::BuildUi() {
           &QSlider::setValue);
   connect(frame_slider_, &QSlider::valueChanged, this,
           &PreviewPane::OnFrameIndexChanged);
-  connect(field_combo_, &QComboBox::currentIndexChanged, this,
-          &PreviewPane::OnFieldOrModeChanged);
-  connect(noise_checkbox_, &QCheckBox::toggled, this,
-          &PreviewPane::OnDegradationToggled);
-  connect(dropouts_checkbox_, &QCheckBox::toggled, this,
-          &PreviewPane::OnDegradationToggled);
 
   // Picture views.
   view_tabs_ = new QTabWidget(this);
@@ -152,7 +136,8 @@ void PreviewPane::BuildUi() {
   encoded_controls->addWidget(new QLabel(tr("Mode:"), encoded_page));
   encoded_mode_combo_ = new QComboBox(encoded_page);
   encoded_mode_combo_->addItem(tr("Composite"));
-  encoded_mode_combo_->addItem(tr("Y/C"));
+  encoded_mode_combo_->addItem(tr("Y"));
+  encoded_mode_combo_->addItem(tr("C"));
   encoded_controls->addWidget(encoded_mode_combo_);
   encoded_controls->addWidget(new QLabel(tr("Zoom:"), encoded_page));
   zoom_combo_ = new QComboBox(encoded_page);
@@ -163,32 +148,27 @@ void PreviewPane::BuildUi() {
   encoded_controls->addStretch();
   encoded_layout->addLayout(encoded_controls);
 
-  encoded_splitter_ = new QSplitter(Qt::Vertical, encoded_page);
-  encoded_primary_view_ = new PictureViewWidget(encoded_splitter_);
-  encoded_secondary_view_ = new PictureViewWidget(encoded_splitter_);
-  encoded_splitter_->addWidget(
-      WrapInScrollArea(encoded_primary_view_, encoded_splitter_));
-  encoded_splitter_->addWidget(
-      WrapInScrollArea(encoded_secondary_view_, encoded_splitter_));
-  encoded_layout->addWidget(encoded_splitter_, 1);
+  encoded_view_ = new PictureViewWidget(encoded_page);
+  encoded_view_->SetCrosshairEnabled(true);
+  encoded_layout->addWidget(WrapInScrollArea(encoded_view_, encoded_page), 1);
   view_tabs_->addTab(encoded_page, tr("Encoded"));
 
   layout->addWidget(view_tabs_, 1);
 
+  // The encoded signal is the primary inspection surface; open on it.
+  view_tabs_->setCurrentWidget(encoded_page);
+
   connect(encoded_mode_combo_, &QComboBox::currentIndexChanged, this,
-          &PreviewPane::OnFieldOrModeChanged);
+          &PreviewPane::OnEncodedModeChanged);
   connect(
       zoom_combo_, &QComboBox::currentIndexChanged, this, [this](int index) {
         const auto mode = index == 1 ? PictureViewWidget::ZoomMode::k100Percent
                           : index == 2
                               ? PictureViewWidget::ZoomMode::k200Percent
                               : PictureViewWidget::ZoomMode::kFit;
-        encoded_primary_view_->SetZoomMode(mode);
-        encoded_secondary_view_->SetZoomMode(mode);
+        encoded_view_->SetZoomMode(mode);
       });
-  connect(encoded_primary_view_, &PictureViewWidget::RowClicked, this,
-          &PreviewPane::OnEncodedRowClicked);
-  connect(encoded_secondary_view_, &PictureViewWidget::RowClicked, this,
+  connect(encoded_view_, &PictureViewWidget::RowClicked, this,
           &PreviewPane::OnEncodedRowClicked);
 
   frame_info_label_ = new QLabel(this);
@@ -279,9 +259,12 @@ void PreviewPane::RequestCurrentFrame() {
 }
 
 PreviewOptions PreviewPane::CurrentOptions() const {
+  // Noise and dropouts are always applied so the preview matches what the
+  // pipeline writes; the injection stages are per-section gated, so sections
+  // without degradation stay clean.
   PreviewOptions options;
-  options.apply_noise = noise_checkbox_->isChecked();
-  options.apply_dropouts = dropouts_checkbox_->isChecked();
+  options.apply_noise = true;
+  options.apply_dropouts = true;
   return options;
 }
 
@@ -299,13 +282,6 @@ void PreviewPane::OnScheduleInfoChanged() {
   frame_spinbox_->setRange(0, last_frame);
   frame_total_label_->setText(tr("of %1").arg(info->output_frame_count));
   line_spinbox_->setRange(1, std::max(1, info->lines_per_frame));
-
-  // Honour the project's signal_type as the default encoded mode while
-  // preserving a manual override across unrelated edits.
-  if (applied_signal_type_ != info->signal_type) {
-    applied_signal_type_ = info->signal_type;
-    encoded_mode_combo_->setCurrentIndex(info->signal_type == "yc" ? 1 : 0);
-  }
 
   if (pending_section_jump_ >= 0) {
     const int section_index = pending_section_jump_;
@@ -341,25 +317,28 @@ void PreviewPane::OnFrameIndexChanged(int output_frame_index) {
   RequestCurrentFrame();
 }
 
-void PreviewPane::OnFieldOrModeChanged() {
-  // Field and composite/Y-C switches re-render from the cached buffers; no
-  // synthesis is re-run.
+void PreviewPane::OnEncodedModeChanged() {
+  // Composite/Y/C switches re-render from the cached buffers; no synthesis is
+  // re-run.
   UpdatePictures();
 }
-
-void PreviewPane::OnDegradationToggled() { RequestCurrentFrame(); }
 
 void PreviewPane::OnEncodedRowClicked(int row) {
   const std::optional<PreviewScheduleInfo>& info = service_->schedule_info();
   if (!info.has_value() || info->standard == Standard::kUnknown) {
     return;
   }
-  const int field = field_combo_->currentIndex() + 1;
-  line_spinbox_->setValue(PictureRowToLineNumber(info->standard, field, row));
+  line_spinbox_->setValue(FrameRowToLineNumber(info->standard, row));
 }
 
 void PreviewPane::OnScopeLineChanged(int line_number) {
-  Q_UNUSED(line_number);
+  // Keep the picture crosshair in step with the selected line (both when the
+  // spinbox is edited directly and when a crosshair drag drives it).
+  const std::optional<PreviewScheduleInfo>& info = service_->schedule_info();
+  if (info.has_value() && info->standard != Standard::kUnknown) {
+    encoded_view_->SetCrosshairRow(
+        LineNumberToFrameRow(info->standard, line_number));
+  }
   UpdateScope();
 }
 
@@ -398,27 +377,25 @@ void PreviewPane::UpdatePictures() {
     source_placeholder_->setVisible(true);
   }
 
-  // Encoded views.
-  const int field = field_combo_->currentIndex() + 1;
-  const bool yc_mode = encoded_mode_combo_->currentIndex() == 1;
-  if (yc_mode) {
-    encoded_primary_view_->SetImage(
-        RenderEncodedFieldImage(current_frame_->y_mv, current_frame_->c_mv,
-                                info->standard, field, EncodedImageMode::kLuma),
-        true);
-    encoded_secondary_view_->SetImage(
-        RenderEncodedFieldImage(current_frame_->y_mv, current_frame_->c_mv,
-                                info->standard, field,
-                                EncodedImageMode::kChroma),
-        true);
-  } else {
-    encoded_primary_view_->SetImage(
-        RenderEncodedFieldImage(current_frame_->y_mv, current_frame_->c_mv,
-                                info->standard, field,
-                                EncodedImageMode::kComposite),
-        true);
+  // Encoded view: the full woven interlaced frame in the selected channel.
+  EncodedImageMode mode = EncodedImageMode::kComposite;
+  switch (encoded_mode_combo_->currentIndex()) {
+    case 1:
+      mode = EncodedImageMode::kLuma;
+      break;
+    case 2:
+      mode = EncodedImageMode::kChroma;
+      break;
+    default:
+      mode = EncodedImageMode::kComposite;
+      break;
   }
-  encoded_splitter_->widget(1)->setVisible(yc_mode);
+  encoded_view_->SetImage(
+      RenderEncodedFrameImage(current_frame_->y_mv, current_frame_->c_mv,
+                              info->standard, mode),
+      false);
+  encoded_view_->SetCrosshairRow(
+      LineNumberToFrameRow(info->standard, line_spinbox_->value()));
 }
 
 void PreviewPane::UpdateScope() {

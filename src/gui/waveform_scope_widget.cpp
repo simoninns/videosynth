@@ -26,7 +26,9 @@ namespace {
 
 constexpr int kLabelMarginLeft = 64;
 constexpr int kPlotMargin = 8;
-constexpr int kMinimumPlotHeight = 120;
+// Doubled from the original 120 px so the line waveform reads at a glance in
+// the preview dialog.
+constexpr int kMinimumPlotHeight = 240;
 
 }  // namespace
 
