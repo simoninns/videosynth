@@ -28,8 +28,9 @@ struct SectionListRow {
   int start_frame = 0;
   int duration_frames = 0;
   bool duration_all = false;
+  int duration_repeat = 1;
 
-  // "500 frames" or "all frames".
+  // "500 frames", "all frames", or "all frames x3".
   QString DurationText() const;
 };
 

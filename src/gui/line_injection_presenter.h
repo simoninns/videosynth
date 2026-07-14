@@ -43,11 +43,39 @@ std::vector<std::string> AvailableLaserdiscCodeTypes(DiscType disc_type,
                                                      SectionType section_type,
                                                      Standard standard);
 
+// The "expected" codes for a section — the subset of
+// AvailableLaserdiscCodeTypes an editor should pre-tick so a section of this
+// type starts with the codes it normally carries (lead-in → lead_in,
+// CAV programme → picture_number + chapter_number, CLV programme →
+// programme_time_code + clv_code + chapter_number, lead-out → lead_out, plus
+// the System-M FM codes where applicable). Returned in AvailableLaserdiscCode-
+// Types order.
+std::vector<std::string> RecommendedLaserdiscCodeTypes(DiscType disc_type,
+                                                       SectionType section_type,
+                                                       Standard standard);
+
+// True when a VITS type has a fixed placement line (the validator forbids any
+// other line), so its target line is not user-editable.
+bool VitsHasFixedLine(Standard standard, const std::string& vits_type);
+
+// Default target lines when a VITS type is first selected: its fixed
+// recommended line, or the conventional both-field virs lines (System-M
+// 19/282) for the free-placement virs colour reference.
+std::vector<int> DefaultVitsLines(Standard standard,
+                                  const std::string& vits_type);
+
 // Which optional parameter each code type carries (biphase-design.md §10).
 bool CodeTypeUsesStartValue(const std::string& code_type);
 bool CodeTypeUsesChapter(const std::string& code_type);
 bool CodeTypeUsesProgrammeStatus(const std::string& code_type);
 bool CodeTypeUsesUsersCode(const std::string& code_type);
+
+// One-sentence description of what a code type does at generation time —
+// shown in the editor so the effect of adding a code (and of its value, if
+// any) is visible. Explains the disc-global auto-progressing clocks (CLV
+// picture number / time code) and the continue-across-sections behaviour of
+// the CAV picture number. Empty for an unknown code type.
+std::string CodeTypeHelp(const std::string& code_type);
 
 // Parses a comma/space-separated list of 1-based frame lines ("19, 282").
 // Returns false on any non-numeric token; the output holds the values parsed

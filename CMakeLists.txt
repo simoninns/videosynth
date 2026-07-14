@@ -339,6 +339,7 @@ if(VIDEOSYNTH_BUILD_GUI)
         tests/gui/test_qt_message_bridge.cpp
         tests/gui/test_project_file_lifecycle.cpp
         tests/gui/test_project_settings_presenter.cpp
+        tests/gui/test_project_templates.cpp
         tests/gui/test_section_block_presenters.cpp
         tests/gui/test_section_editing_roundtrip.cpp
         tests/gui/test_section_list_model.cpp
@@ -421,6 +422,7 @@ set(videosynth_unit_test_patterns
     "^ProjectDocumentTest\\."
     "^ProjectDocumentOpenStateTest\\."
     "^ProjectSettingsPresenterTest\\."
+    "^ProjectTemplatesTest\\."
     "^ProjectValidatorTest\\."
     "^QtMessageBridgeTest\\."
     "^SectionListModelTest\\."

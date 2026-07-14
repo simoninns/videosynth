@@ -26,18 +26,9 @@ bool IsSystemM(Standard standard) {
   return standard == Standard::kNtsc || standard == Standard::kPalM;
 }
 
-// NTSC/PAL-M laserdisc sections require a virs VITS colour reference
-// (IEC 60857 §9.1.3); lines 19/282 follow docs/examples/ntsc_cav_disc.yaml.
-Section::LineInjection MakeVirsInjection() {
-  Section::LineInjection virs;
-  virs.type = "vits";
-  virs.target_lines = {19, 282};
-  virs.vits_type = "virs";
-  return virs;
-}
-
 Section MakeLaserdiscSectionBase(Standard standard, SectionType section_type,
                                  const std::string& name, int duration_frames) {
+  (void)standard;
   Section section;
   section.name = name;
   section.type = "progressive";
@@ -46,14 +37,11 @@ Section MakeLaserdiscSectionBase(Standard standard, SectionType section_type,
   section.source = "assets/source.exr";
   section.duration_frames = duration_frames;
 
+  // The disc format (CAV/CLV) and the VITS set are project-wide; a section
+  // carries only its laserdisc code injection.
   Section::LineInjection laserdisc;
   laserdisc.type = "laserdisc";
-  laserdisc.disc_type = "CAV";
   section.line_injections.push_back(laserdisc);
-
-  if (IsSystemM(standard)) {
-    section.line_injections.push_back(MakeVirsInjection());
-  }
   return section;
 }
 
@@ -62,6 +50,8 @@ void AppendCode(Section* section, const std::string& code_type) {
   code.code_type = code_type;
   section->line_injections.front().codes.push_back(code);
 }
+
+}  // namespace
 
 // Bundled colour-bar EXR shipped for the standard's active raster, referenced
 // through the {bundled} logical asset root so a fresh project previews
@@ -72,7 +62,41 @@ std::string DefaultBundledSource(Standard standard) {
   return std::string("{bundled}/exr/") + raster + "/75_BARS.exr";
 }
 
-}  // namespace
+int RemapBundledDefaultSources(Project* project, Standard standard) {
+  if (project == nullptr) {
+    return 0;
+  }
+  const std::string target = DefaultBundledSource(standard);
+  // A source counts as a remappable default only if it is the bundled
+  // colour-bar for one of the supported rasters; anything else is a source the
+  // user selected and must be preserved.
+  const auto is_bundled_default = [](const std::string& source) {
+    return source == DefaultBundledSource(Standard::kPal) ||
+           source == DefaultBundledSource(Standard::kNtsc);
+  };
+  int changed = 0;
+  for (Section& section : project->sections) {
+    if (section.source != target && is_bundled_default(section.source)) {
+      section.source = target;
+      ++changed;
+    }
+  }
+  return changed;
+}
+
+ProjectLineInjections MakeLaserdiscLineInjections(Standard standard) {
+  ProjectLineInjections li;
+  li.disc_type = "CAV";
+  // NTSC/PAL-M laserdisc discs require a virs VITS colour reference
+  // (IEC 60857 §9.1.3); lines 19/282 follow docs/examples/ntsc_cav_disc.yaml.
+  if (IsSystemM(standard)) {
+    VitsInjection virs;
+    virs.vits_type = "virs";
+    virs.target_lines = {19, 282};
+    li.vits.push_back(std::move(virs));
+  }
+  return li;
+}
 
 Project MakeDefaultProject(Standard standard) {
   const Standard resolved =

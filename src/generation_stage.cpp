@@ -214,9 +214,17 @@ bool BuildFramePatternSchedule(
           return false;
         }
 
-        for (int i = 0; i < resolved_frame_count; ++i) {
-          out_frame_sections->push_back(
-              std::make_pair(&section, i + section.start_frame));
+        // Replay the whole resolved source duration_frames_repeat times. Each
+        // pass re-emits source frames 0..N-1 (a loop), so the source frame
+        // index never exceeds the source length regardless of the multiplier.
+        const int repeat = section.duration_frames_repeat > 0
+                               ? section.duration_frames_repeat
+                               : 1;
+        for (int pass = 0; pass < repeat; ++pass) {
+          for (int i = 0; i < resolved_frame_count; ++i) {
+            out_frame_sections->push_back(
+                std::make_pair(&section, i + section.start_frame));
+          }
         }
         continue;
       }
@@ -525,11 +533,13 @@ bool PalInvertVAxisForLine(std::size_t frame_index,
 }
 
 using SectionVitsPlanMap = std::unordered_map<std::string, VitsSynthesisPlan>;
-using SectionVitsLineMap =
-    std::unordered_map<int, const Section::LineInjection*>;
+using SectionVitsLineMap = std::unordered_map<int, const VitsInjection*>;
 
-bool BuildSectionVitsState(
-    const Section& section, Standard standard,
+// Builds the project-wide VITS render state: a plan per distinct vits_type and
+// a target-line -> VITS map. VITS are a project-level setting, so the same set
+// is applied to every frame regardless of section.
+bool BuildProjectVitsState(
+    const std::vector<VitsInjection>& vits_set, Standard standard,
     const IVitsDefinitionProvider& vits_definition_provider,
     const IVitsGenerator& vits_generator, SectionVitsLineMap* out_line_map,
     SectionVitsPlanMap* out_plan_map, std::string* error) {
@@ -543,11 +553,7 @@ bool BuildSectionVitsState(
   out_line_map->clear();
   out_plan_map->clear();
 
-  for (const Section::LineInjection& injection : section.line_injections) {
-    if (Lowercase(injection.type) != "vits") {
-      continue;
-    }
-
+  for (const VitsInjection& injection : vits_set) {
     VitsSynthesisPlan* cached_plan = nullptr;
     const auto existing_plan = out_plan_map->find(injection.vits_type);
     if (existing_plan == out_plan_map->end()) {
@@ -618,6 +624,8 @@ bool GenerationStage::BuildFrameSchedule(
   out_schedule->clear();
   progressive_source_.ClearCache();
   biphase_manager_.Reset();
+  biphase_manager_.SetProjectDiscType(
+      DiscTypeFromString(project.line_injections.disc_type));
 
   // Compute disc_frame_offset = (first_PN - 1) from the first CAV
   // picture_number code. This offset is added to global_frame_index when
@@ -908,10 +916,11 @@ bool GenerationStage::GenerateFrameBatch(
     SectionVitsLineMap section_vits_lines;
     SectionVitsPlanMap section_vits_plans;
     std::string vits_state_error;
-    if (!BuildSectionVitsState(
-            *section, project.cvbs_presets.video_standard_preset,
-            *vits_definition_provider_, *vits_generator_, &section_vits_lines,
-            &section_vits_plans, &vits_state_error)) {
+    if (!BuildProjectVitsState(project.line_injections.vits,
+                               project.cvbs_presets.video_standard_preset,
+                               *vits_definition_provider_, *vits_generator_,
+                               &section_vits_lines, &section_vits_plans,
+                               &vits_state_error)) {
       errors->push_back(vits_state_error.empty()
                             ? "Unable to prepare section VITS state."
                             : vits_state_error);

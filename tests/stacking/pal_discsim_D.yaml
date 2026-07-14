@@ -32,6 +32,12 @@ cvbs_presets:
 output:
   video_path: "{project}/../stacking-output/videosynth_pal_discsim_D.composite"
 
+line_injections:
+  disc_type: CAV
+  vits:
+    - vits_type: uk-national
+      target_lines: [19]
+
 sections:
 
   # ---------------------------------------------------------------------------
@@ -55,15 +61,11 @@ sections:
         seed: 4004
     line_injections:
       - type: laserdisc
-        disc_type: CAV
         codes:
           - code_type: picture_number
             start_value: 8
           - code_type: programme_status
             programme_status: "0x8DC000"
-      - type: vits
-        vits_type: uk-national
-        target_lines: [19]
     osd:
       overlays:
         - text: "PN:{picture_number} HEX:{biphase_hex} PHASE:{phase_id}"
@@ -94,15 +96,11 @@ sections:
         seed: 4004
     line_injections:
       - type: laserdisc
-        disc_type: CAV
         codes:
           - code_type: picture_number
             start_value: 9
           - code_type: programme_status
             programme_status: "0x8DC000"
-      - type: vits
-        vits_type: uk-national
-        target_lines: [19]
     osd:
       overlays:
         - text: "PN:{picture_number} HEX:{biphase_hex} PHASE:{phase_id}"
@@ -133,15 +131,11 @@ sections:
         seed: 4004
     line_injections:
       - type: laserdisc
-        disc_type: CAV
         codes:
           - code_type: picture_number
             start_value: 17
           - code_type: programme_status
             programme_status: "0x8DC000"
-      - type: vits
-        vits_type: uk-national
-        target_lines: [19]
     osd:
       overlays:
         - text: "PN:{picture_number} HEX:{biphase_hex} PHASE:{phase_id}"
@@ -172,15 +166,11 @@ sections:
         seed: 4004
     line_injections:
       - type: laserdisc
-        disc_type: CAV
         codes:
           - code_type: picture_number
             start_value: 25
           - code_type: programme_status
             programme_status: "0x8DC000"
-      - type: vits
-        vits_type: uk-national
-        target_lines: [19]
     osd:
       overlays:
         - text: "PN:{picture_number} HEX:{biphase_hex} PHASE:{phase_id}"
@@ -211,15 +201,11 @@ sections:
         seed: 4004
     line_injections:
       - type: laserdisc
-        disc_type: CAV
         codes:
           - code_type: picture_number
             start_value: 25
           - code_type: programme_status
             programme_status: "0x8DC000"
-      - type: vits
-        vits_type: uk-national
-        target_lines: [19]
     osd:
       overlays:
         - text: "PN:{picture_number} HEX:{biphase_hex} PHASE:{phase_id}"
@@ -250,15 +236,11 @@ sections:
         seed: 4004
     line_injections:
       - type: laserdisc
-        disc_type: CAV
         codes:
           - code_type: picture_number
             start_value: 33
           - code_type: programme_status
             programme_status: "0x8DC000"
-      - type: vits
-        vits_type: uk-national
-        target_lines: [19]
     osd:
       overlays:
         - text: "PN:{picture_number} HEX:{biphase_hex} PHASE:{phase_id}"
@@ -289,15 +271,11 @@ sections:
         seed: 4004
     line_injections:
       - type: laserdisc
-        disc_type: CAV
         codes:
           - code_type: picture_number
             start_value: 37
           - code_type: programme_status
             programme_status: "0x8DC000"
-      - type: vits
-        vits_type: uk-national
-        target_lines: [19]
     osd:
       overlays:
         - text: "PN:{picture_number} HEX:{biphase_hex} PHASE:{phase_id}"

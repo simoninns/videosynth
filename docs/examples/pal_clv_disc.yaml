@@ -28,6 +28,12 @@ cvbs_presets:
 output:
   video_path: "{project}/output/pal_clv_showcase.composite"
 
+line_injections:
+  disc_type: CLV
+  vits:
+    - vits_type: uk-national
+      target_lines: [19]
+
 sections:
 
   - name: LeadIn
@@ -37,7 +43,6 @@ sections:
     section_type: lead_in
     line_injections:
       - type: laserdisc
-        disc_type: CLV
         codes:
           - code_type: lead_in
           - code_type: users_code
@@ -50,7 +55,6 @@ sections:
     section_type: programme_area
     line_injections:
       - type: laserdisc
-        disc_type: CLV
         codes:
           - code_type: programme_time_code
           - code_type: clv_code
@@ -59,9 +63,6 @@ sections:
             chapter: 0
           - code_type: programme_status
             programme_status: "0x8DC001"
-      - type: vits
-        vits_type: uk-national
-        target_lines: [19]
     osd:
       overlays:
         - text: "PAL CLV Chapter0"
@@ -78,7 +79,6 @@ sections:
     section_type: programme_area
     line_injections:
       - type: laserdisc
-        disc_type: CLV
         codes:
           - code_type: programme_time_code
           - code_type: clv_code
@@ -87,9 +87,6 @@ sections:
             chapter: 1
           - code_type: programme_status
             programme_status: "0x8DC002"
-      - type: vits
-        vits_type: uk-national
-        target_lines: [19]
     noise:
       noise_db: 48.0
       noise_spread_db: 4.0
@@ -101,7 +98,6 @@ sections:
     section_type: lead_out
     line_injections:
       - type: laserdisc
-        disc_type: CLV
         codes:
           - code_type: lead_out
           - code_type: users_code

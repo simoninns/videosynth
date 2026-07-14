@@ -13,7 +13,9 @@ namespace videosynth::gui {
 
 QString SectionListRow::DurationText() const {
   if (duration_all) {
-    return QStringLiteral("all frames");
+    return duration_repeat > 1
+               ? QStringLiteral("all frames x%1").arg(duration_repeat)
+               : QStringLiteral("all frames");
   }
   return QStringLiteral("%1 frames").arg(duration_frames);
 }
@@ -31,6 +33,7 @@ std::vector<SectionListRow> BuildSectionListRows(const Project& project) {
     row.start_frame = next_start_frame;
     row.duration_frames = section.duration_frames;
     row.duration_all = section.duration_frames_all;
+    row.duration_repeat = section.duration_frames_repeat;
     rows.push_back(row);
 
     // 'all' resolves to the probed source length at generation time; the

@@ -118,6 +118,13 @@ class BiphaseInjectionManager {
   // Has no effect if called before Reset() (Reset() overwrites frame_count_).
   void SetInitialFrameCount(int initial_count);
 
+  // Sets the project-wide laserdisc disc format (CAV/CLV). The disc_type is a
+  // project-level decision shared by every section, so it is supplied once per
+  // generation pass (after Reset()) rather than derived per section. A section
+  // that carries laserdisc code injections only produces biphase output when a
+  // known disc_type has been set here.
+  void SetProjectDiscType(DiscType disc_type);
+
   // Resolves the VBI injection payload for one frame without writing samples.
   //
   // This is the sequential half of frame processing: it detects section
@@ -210,6 +217,9 @@ class BiphaseInjectionManager {
   std::unique_ptr<BiphaseEncoder> biphase_encoder_;
   std::unique_ptr<FmEncoder> fm_encoder_;
 
+  // Project-wide disc format, set once per generation pass via
+  // SetProjectDiscType. disc_type_ mirrors it for the active section.
+  DiscType project_disc_type_ = DiscType::kUnknown;
   DiscType disc_type_ = DiscType::kUnknown;
   SectionType section_type_ = SectionType::kUnknown;
   bool has_laserdisc_ = false;

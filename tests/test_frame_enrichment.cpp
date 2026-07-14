@@ -85,9 +85,12 @@ Section MakeLaserdiscSection(
   section.section_type = section_type;
   section.duration_frames = 1;
 
+  // disc_type is now a project-level decision applied to the manager via
+  // SetProjectDiscType(); the section injection only carries codes. The
+  // argument is retained so call sites still document the intended disc format.
+  (void)disc_type;
   Section::LineInjection injection;
   injection.type = "laserdisc";
-  injection.disc_type = DiscTypeToString(disc_type);
   injection.codes = codes;
   section.line_injections.push_back(injection);
 
@@ -110,7 +113,8 @@ Section::LineInjectionCode MakeCode(const std::string& code_type,
 // frame buffers are identical sample-for-sample, and returns the resolved
 // enrichments for further value assertions.
 std::vector<FrameEnrichment> AssertTwoPassMatchesSequential(
-    Standard standard, const std::vector<const Section*>& frame_sections) {
+    Standard standard, DiscType disc_type,
+    const std::vector<const Section*>& frame_sections) {
   const TimingConstants timing = GetTimingConstants(standard);
   std::vector<int> offsets;
   std::vector<int> counts;
@@ -122,6 +126,10 @@ std::vector<FrameEnrichment> AssertTwoPassMatchesSequential(
 
   BiphaseInjectionManager sequential_manager;
   BiphaseInjectionManager two_pass_manager;
+  // disc_type is now a project-level input supplied to the manager once per
+  // generation pass rather than derived from each section.
+  sequential_manager.SetProjectDiscType(disc_type);
+  two_pass_manager.SetProjectDiscType(disc_type);
   std::vector<FrameEnrichment> enrichments;
   enrichments.reserve(frame_sections.size());
 
@@ -179,7 +187,7 @@ TEST(FrameEnrichmentTest, TwoPassMatchesSequentialForPalCavProgramme) {
       "Programme", SectionType::kProgrammeArea, DiscType::kCAV,
       {MakeCode("picture_number", 1, true), MakeCode("picture_stop"), chapter});
   std::vector<const Section*> frames(8, &programme);
-  AssertTwoPassMatchesSequential(Standard::kPal, frames);
+  AssertTwoPassMatchesSequential(Standard::kPal, DiscType::kCAV, frames);
 }
 
 TEST(FrameEnrichmentTest, TwoPassMatchesSequentialForPalClvProgramme) {
@@ -187,7 +195,7 @@ TEST(FrameEnrichmentTest, TwoPassMatchesSequentialForPalClvProgramme) {
       "Programme", SectionType::kProgrammeArea, DiscType::kCLV,
       {MakeCode("programme_time_code"), MakeCode("clv_picture_number")});
   std::vector<const Section*> frames(6, &programme);
-  AssertTwoPassMatchesSequential(Standard::kPal, frames);
+  AssertTwoPassMatchesSequential(Standard::kPal, DiscType::kCLV, frames);
 }
 
 TEST(FrameEnrichmentTest, TwoPassMatchesSequentialForNtscCavWithFmCodes) {
@@ -196,7 +204,7 @@ TEST(FrameEnrichmentTest, TwoPassMatchesSequentialForNtscCavWithFmCodes) {
       {MakeCode("picture_number", 1, true),
        MakeCode("fm_picture_number", 1, true), MakeCode("fm_white_flag")});
   std::vector<const Section*> frames(6, &programme);
-  AssertTwoPassMatchesSequential(Standard::kNtsc, frames);
+  AssertTwoPassMatchesSequential(Standard::kNtsc, DiscType::kCAV, frames);
 }
 
 TEST(FrameEnrichmentTest, TwoPassMatchesSequentialAcrossSectionTransitions) {
@@ -211,7 +219,7 @@ TEST(FrameEnrichmentTest, TwoPassMatchesSequentialAcrossSectionTransitions) {
   for (int i = 0; i < 3; ++i) frames.push_back(&lead_in);
   for (int i = 0; i < 4; ++i) frames.push_back(&programme);
   for (int i = 0; i < 3; ++i) frames.push_back(&lead_out);
-  AssertTwoPassMatchesSequential(Standard::kPal, frames);
+  AssertTwoPassMatchesSequential(Standard::kPal, DiscType::kCAV, frames);
 }
 
 TEST(FrameEnrichmentTest, TwoPassMatchesSequentialWithoutLaserdisc) {
@@ -223,7 +231,8 @@ TEST(FrameEnrichmentTest, TwoPassMatchesSequentialWithoutLaserdisc) {
 
   std::vector<const Section*> frames(5, &plain);
   const std::vector<FrameEnrichment> enrichments =
-      AssertTwoPassMatchesSequential(Standard::kPal, frames);
+      AssertTwoPassMatchesSequential(Standard::kPal, DiscType::kUnknown,
+                                     frames);
 
   for (std::size_t frame = 0; frame < enrichments.size(); ++frame) {
     EXPECT_TRUE(enrichments[frame].vbi_lines.empty());
@@ -243,7 +252,7 @@ TEST(FrameEnrichmentTest, EnrichedPictureNumbersAdvanceSequentially) {
   std::vector<const Section*> frames(5, &programme);
 
   const std::vector<FrameEnrichment> enrichments =
-      AssertTwoPassMatchesSequential(Standard::kPal, frames);
+      AssertTwoPassMatchesSequential(Standard::kPal, DiscType::kCAV, frames);
 
   for (std::size_t frame = 0; frame < enrichments.size(); ++frame) {
     const int expected_pn = 100 + static_cast<int>(frame);
@@ -261,7 +270,7 @@ TEST(FrameEnrichmentTest, EnrichedClvTimecodesMatchGeneratorSequence) {
   std::vector<const Section*> frames(4, &programme);
 
   const std::vector<FrameEnrichment> enrichments =
-      AssertTwoPassMatchesSequential(Standard::kPal, frames);
+      AssertTwoPassMatchesSequential(Standard::kPal, DiscType::kCLV, frames);
 
   // An independent reference generator reproduces the expected timecode words.
   ProgrammeTimeCodeGenerator reference(0, 0, Standard::kPal);
@@ -289,7 +298,7 @@ TEST(FrameEnrichmentTest, NtscColourFrameIndexAlternates) {
   std::vector<const Section*> frames(4, &programme);
 
   const std::vector<FrameEnrichment> enrichments =
-      AssertTwoPassMatchesSequential(Standard::kNtsc, frames);
+      AssertTwoPassMatchesSequential(Standard::kNtsc, DiscType::kCAV, frames);
 
   for (std::size_t frame = 0; frame < enrichments.size(); ++frame) {
     EXPECT_EQ(enrichments[frame].context.colour_frame_index,

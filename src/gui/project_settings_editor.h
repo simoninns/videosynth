@@ -10,14 +10,18 @@
 #pragma once
 
 #include <QWidget>
+#include <string>
+#include <vector>
 
 #include "project_document.h"
 
 class QCheckBox;
 class QComboBox;
+class QGridLayout;
 class QLabel;
 class QLineEdit;
 class QPlainTextEdit;
+class QPushButton;
 
 namespace videosynth::gui {
 
@@ -47,11 +51,19 @@ class ProjectSettingsEditor : public QWidget {
 
   void CommitProjectInfo();
   void CommitCvbsPresets();
+  void CommitLineInjections();
   void CommitOutputTargets();
+
+  // Rebuilds the VITS checklist from the standard's catalogue and the current
+  // model. Called only on external/standard changes (never from a VITS widget's
+  // own signal), so widgets are not destroyed mid-signal.
+  void RebuildVitsChecklist();
 
   void OnStandardChanged();
   void OnSignalTypeChanged();
   void OnBrowseVideoPath();
+  void OnVitsRowToggled(int row);
+  void OnVitsLineEdited(int row);
 
   ProjectDocument* document_;
   bool updating_ = false;
@@ -69,6 +81,20 @@ class ProjectSettingsEditor : public QWidget {
   QCheckBox* vbi_burst_check_ = nullptr;
   QCheckBox* setup_ire_check_ = nullptr;
   QComboBox* setup_ire_combo_ = nullptr;
+
+  // One VITS checklist row: the type, its tick box, and the target-line editor
+  // (read-only for fixed-placement types, editable for the free-placement virs
+  // colour reference).
+  struct VitsRow {
+    std::string vits_type;
+    QCheckBox* check = nullptr;
+    QLineEdit* lines = nullptr;
+  };
+
+  // Project-wide line injections (laserdisc disc format + VITS set).
+  QComboBox* disc_type_combo_ = nullptr;
+  QGridLayout* vits_checklist_layout_ = nullptr;
+  std::vector<VitsRow> vits_rows_;
 
   QComboBox* signal_type_combo_ = nullptr;
   QLineEdit* video_path_edit_ = nullptr;

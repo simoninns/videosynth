@@ -198,21 +198,58 @@ sections:
 )");
 }
 
-TEST(YamlProjectEmitterTest, VitsInjectionRoundTripsTargetLines) {
+TEST(YamlProjectEmitterTest, DurationRepeatRoundTripsWithAllSourceFrames) {
   ExpectRoundTrip(R"(
 cvbs_presets:
   video_standard_preset: PAL
 output:
   video_path: out/video.composite
 sections:
+  - name: WholeSource
+    type: progressive
+    source: assets/clip.mkv
+    duration_frames: all
+    duration_repeat: 3
+)");
+}
+
+TEST(YamlProjectEmitterTest, DurationRepeatDefaultOfOneIsOmitted) {
+  YamlProjectParser parser;
+  YamlProjectEmitter emitter;
+  const ParseResult parsed = parser.ParseString(R"(
+cvbs_presets:
+  video_standard_preset: PAL
+output:
+  video_path: out/video.composite
+sections:
+  - name: WholeSource
+    type: progressive
+    source: assets/clip.mkv
+    duration_frames: all
+    duration_repeat: 1
+)");
+  ASSERT_TRUE(parsed.ok);
+  const std::string emitted = emitter.EmitString(parsed.project);
+  EXPECT_EQ(emitted.find("duration_repeat"), std::string::npos)
+      << "A repeat of 1 must not be serialised:\n"
+      << emitted;
+}
+
+TEST(YamlProjectEmitterTest, VitsInjectionRoundTripsTargetLines) {
+  ExpectRoundTrip(R"(
+cvbs_presets:
+  video_standard_preset: PAL
+output:
+  video_path: out/video.composite
+line_injections:
+  vits:
+    - vits_type: "pal_ccir330"
+      target_lines: [19, 332]
+sections:
   - name: Vits
     type: progressive
     source: assets/bars.exr
     duration_frames: 10
-    line_injections:
-      - type: vits
-        target_lines: [19, 332]
-        vits_type: "pal_ccir330"
 )");
 }
 
@@ -222,6 +259,8 @@ cvbs_presets:
   video_standard_preset: PAL
 output:
   video_path: out/video.composite
+line_injections:
+  disc_type: CAV
 sections:
   - name: Chapter0
     type: progressive
@@ -230,7 +269,6 @@ sections:
     section_type: programme_area
     line_injections:
       - type: laserdisc
-        disc_type: CAV
         codes:
           - code_type: picture_number
             start_value: 1

@@ -33,6 +33,12 @@ output:
   video_path: "{project}/../stacking-yc-output/videosynth_pal_discsim_D_clean.y"
   signal_type: yc
 
+line_injections:
+  disc_type: CAV
+  vits:
+    - vits_type: uk-national
+      target_lines: [19]
+
 sections:
 
   # ---------------------------------------------------------------------------
@@ -45,15 +51,11 @@ sections:
     section_type: programme_area
     line_injections:
       - type: laserdisc
-        disc_type: CAV
         codes:
           - code_type: picture_number
             start_value: 8
           - code_type: programme_status
             programme_status: "0x8DC000"
-      - type: vits
-        vits_type: uk-national
-        target_lines: [19]
   # ---------------------------------------------------------------------------
   # PNs 9–16: UK test card F
   # ---------------------------------------------------------------------------
@@ -64,15 +66,11 @@ sections:
     section_type: programme_area
     line_injections:
       - type: laserdisc
-        disc_type: CAV
         codes:
           - code_type: picture_number
             start_value: 9
           - code_type: programme_status
             programme_status: "0x8DC000"
-      - type: vits
-        vits_type: uk-national
-        target_lines: [19]
   # ---------------------------------------------------------------------------
   # PNs 17–24: multi-burst
   # ---------------------------------------------------------------------------
@@ -83,15 +81,11 @@ sections:
     section_type: programme_area
     line_injections:
       - type: laserdisc
-        disc_type: CAV
         codes:
           - code_type: picture_number
             start_value: 17
           - code_type: programme_status
             programme_status: "0x8DC000"
-      - type: vits
-        vits_type: uk-national
-        target_lines: [19]
   # ---------------------------------------------------------------------------
   # PNs 25–27: tartan (first play; player rewinds after PN 27)
   # ---------------------------------------------------------------------------
@@ -102,15 +96,11 @@ sections:
     section_type: programme_area
     line_injections:
       - type: laserdisc
-        disc_type: CAV
         codes:
           - code_type: picture_number
             start_value: 25
           - code_type: programme_status
             programme_status: "0x8DC000"
-      - type: vits
-        vits_type: uk-national
-        target_lines: [19]
   # ---------------------------------------------------------------------------
   # PNs 25–32: tartan replay (backward skip — same start_value, fresh noise)
   # ---------------------------------------------------------------------------
@@ -121,15 +111,11 @@ sections:
     section_type: programme_area
     line_injections:
       - type: laserdisc
-        disc_type: CAV
         codes:
           - code_type: picture_number
             start_value: 25
           - code_type: programme_status
             programme_status: "0x8DC000"
-      - type: vits
-        vits_type: uk-national
-        target_lines: [19]
   # ---------------------------------------------------------------------------
   # PNs 33–34: YCbCr ramps (player skips forward after PN 34)
   # ---------------------------------------------------------------------------
@@ -140,15 +126,11 @@ sections:
     section_type: programme_area
     line_injections:
       - type: laserdisc
-        disc_type: CAV
         codes:
           - code_type: picture_number
             start_value: 33
           - code_type: programme_status
             programme_status: "0x8DC000"
-      - type: vits
-        vits_type: uk-national
-        target_lines: [19]
   # ---------------------------------------------------------------------------
   # PNs 37–40: YCbCr ramps resumed after forward skip (gap of 2: PNs 35–36 absent)
   # ---------------------------------------------------------------------------
@@ -159,12 +141,8 @@ sections:
     section_type: programme_area
     line_injections:
       - type: laserdisc
-        disc_type: CAV
         codes:
           - code_type: picture_number
             start_value: 37
           - code_type: programme_status
             programme_status: "0x8DC000"
-      - type: vits
-        vits_type: uk-national
-        target_lines: [19]

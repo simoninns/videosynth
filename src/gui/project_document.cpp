@@ -235,6 +235,18 @@ bool ProjectDocument::SetCvbsPresets(const CvbsPresets& presets) {
       QStringLiteral("Edit CVBS presets")));
 }
 
+bool ProjectDocument::SetProjectLineInjections(ProjectLineInjections li) {
+  if (project_.line_injections == li) {
+    return false;
+  }
+  return ApplyCommand(std::make_unique<SwapValueCommand<ProjectLineInjections>>(
+      +[](Project& project) -> ProjectLineInjections& {
+        return project.line_injections;
+      },
+      std::move(li), DocumentChange::Kind::kProjectSettings,
+      QStringLiteral("Edit line injections")));
+}
+
 bool ProjectDocument::SetOutputTargets(const OutputTargets& output) {
   if (project_.output == output) {
     return false;

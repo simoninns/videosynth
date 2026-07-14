@@ -10,6 +10,7 @@
 
 #include "line_injection_presenter.h"
 
+#include <algorithm>
 #include <cctype>
 #include <cstddef>
 
@@ -19,7 +20,9 @@
 namespace videosynth::gui {
 
 std::vector<std::string> AvailableInjectionTypes() {
-  return {"vits", "laserdisc"};
+  // VITS moved to the project-wide line_injections block; section-level
+  // injections carry only laserdisc biphase codes.
+  return {"laserdisc"};
 }
 
 std::vector<std::string> AvailableVitsTypes(Standard standard) {
@@ -64,6 +67,75 @@ std::vector<std::string> AvailableLaserdiscCodeTypes(DiscType disc_type,
   return code_types;
 }
 
+std::vector<std::string> RecommendedLaserdiscCodeTypes(DiscType disc_type,
+                                                       SectionType section_type,
+                                                       Standard standard) {
+  const bool system_m =
+      standard == Standard::kNtsc || standard == Standard::kPalM;
+
+  std::vector<std::string> recommended;
+  switch (section_type) {
+    case SectionType::kLeadIn:
+      recommended.push_back("lead_in");
+      break;
+    case SectionType::kLeadOut:
+      recommended.push_back("lead_out");
+      break;
+    case SectionType::kProgrammeArea:
+      if (disc_type == DiscType::kCAV) {
+        recommended.push_back("picture_number");
+        recommended.push_back("chapter_number");
+        if (system_m) {
+          recommended.push_back("fm_picture_number");
+        }
+      } else if (disc_type == DiscType::kCLV) {
+        recommended.push_back("programme_time_code");
+        recommended.push_back("clv_code");
+        recommended.push_back("chapter_number");
+        if (system_m) {
+          recommended.push_back("fm_programme_time");
+        }
+      }
+      break;
+    case SectionType::kUnknown:
+    default:
+      return {};
+  }
+  if (system_m) {
+    recommended.push_back("fm_white_flag");
+  }
+
+  // Return the intersection with the offered catalogue, in catalogue order, so
+  // the pre-ticked set is always a valid subset the editor can render.
+  std::vector<std::string> result;
+  for (const std::string& code_type :
+       AvailableLaserdiscCodeTypes(disc_type, section_type, standard)) {
+    if (std::find(recommended.begin(), recommended.end(), code_type) !=
+        recommended.end()) {
+      result.push_back(code_type);
+    }
+  }
+  return result;
+}
+
+bool VitsHasFixedLine(Standard standard, const std::string& vits_type) {
+  return RecommendedVitsLine(standard, vits_type) > 0;
+}
+
+std::vector<int> DefaultVitsLines(Standard standard,
+                                  const std::string& vits_type) {
+  const int recommended = RecommendedVitsLine(standard, vits_type);
+  if (recommended > 0) {
+    return {recommended};
+  }
+  // The virs colour reference has no fixed placement line; it is conventionally
+  // carried in both fields (IEC 60857 §9.1.3), matching the built-in template.
+  if (vits_type == "virs") {
+    return {19, 282};
+  }
+  return {};
+}
+
 bool CodeTypeUsesStartValue(const std::string& code_type) {
   // The validator range-checks start_value for exactly these two counters.
   return code_type == "picture_number" || code_type == "fm_picture_number";
@@ -79,6 +151,58 @@ bool CodeTypeUsesProgrammeStatus(const std::string& code_type) {
 
 bool CodeTypeUsesUsersCode(const std::string& code_type) {
   return code_type == "users_code";
+}
+
+std::string CodeTypeHelp(const std::string& code_type) {
+  if (code_type == "lead_in") {
+    return "Marks the disc lead-in area. Carries no value.";
+  }
+  if (code_type == "lead_out") {
+    return "Marks the disc lead-out area. Carries no value.";
+  }
+  if (code_type == "picture_number") {
+    return "CAV frame number, incrementing once per frame. Leave the value "
+           "blank to continue numbering from the previous section; set "
+           "start_value to re-anchor this section's first frame.";
+  }
+  if (code_type == "fm_picture_number") {
+    return "40-bit FM frame number (System M), incrementing once per frame. "
+           "Leave blank to continue from the previous section; set start_value "
+           "to re-anchor this section's first frame.";
+  }
+  if (code_type == "picture_stop") {
+    return "Flags a still/stop frame in this section. Carries no value.";
+  }
+  if (code_type == "chapter_number") {
+    return "Chapter number (0–79) stamped on this section's frames.";
+  }
+  if (code_type == "programme_status") {
+    return "24-bit programme status word, entered as hex (e.g. 0x8DC000).";
+  }
+  if (code_type == "users_code") {
+    return "24-bit user code, entered as hex (e.g. 0x80D000).";
+  }
+  if (code_type == "clv_code") {
+    return "CLV identification code. Carries no value.";
+  }
+  if (code_type == "clv_picture_number") {
+    return "CLV picture number (seconds:frame), derived automatically from "
+           "elapsed disc time — it progresses across all sections on its own, "
+           "so there is no value to set.";
+  }
+  if (code_type == "programme_time_code") {
+    return "CLV elapsed time (hours:minutes:seconds), counted automatically "
+           "from disc start across all sections. No value to set.";
+  }
+  if (code_type == "fm_programme_time") {
+    return "40-bit FM elapsed time (System M), counted automatically across "
+           "all sections. No value to set.";
+  }
+  if (code_type == "fm_white_flag") {
+    return "White flag on the picture-number line (System M). Carries no "
+           "value.";
+  }
+  return {};
 }
 
 bool ParseTargetLines(const std::string& text, std::vector<int>* out_lines) {

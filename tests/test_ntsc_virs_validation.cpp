@@ -1,9 +1,9 @@
 /*
  * File:        test_ntsc_virs_validation.cpp
  * Module:      project_validator_tests
- * Purpose:     Validates that NTSC laserdisc sections include the mandatory
+ * Purpose:     Validates that NTSC laserdisc projects include the mandatory
  *              VIR signal injection for colour (IEC 60857 §9.1.3 and §§ 5.13,
- *              5.16).
+ *              5.16). VITS and disc_type are now project-wide settings.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Simon Inns
@@ -41,6 +41,7 @@ Section MakeSection(int frames = 100) {
   Section s;
   s.name = "Section";
   s.type = "progressive";
+  s.section_type = SectionType::kProgrammeArea;
   s.source = "fixture.exr";
   s.duration_frames = frames;
   return s;
@@ -52,23 +53,16 @@ Section::LineInjection MakeLaserdiscInjection() {
   return inj;
 }
 
-Section::LineInjection MakeVirsInjection() {
-  Section::LineInjection inj;
-  inj.type = "vits";
-  inj.vits_type = "virs";
-  inj.target_lines = {19, 282};
-  return inj;
-}
+// ─── Task 5.13: NTSC VIRS mandatory presence (now project-wide)
+// ──────────────
 
-// ─── Task 5.13: NTSC VIRS mandatory presence
-// ──────────────────────────────────
-
-TEST(NtscVirsValidationTest, RejectsNtscLaserdiscSectionWithoutVirs) {
+TEST(NtscVirsValidationTest, RejectsNtscLaserdiscProjectWithoutVirs) {
   // IEC 60857 §9.1.3: VIR signal is mandatory for colour on NTSC laserdisc.
   Project p = MakeBaseNtscProject();
+  p.line_injections.disc_type = "CAV";
   Section s = MakeSection();
   s.line_injections.push_back(MakeLaserdiscInjection());
-  // Deliberately omit the virs injection.
+  // Deliberately omit the project virs.
   p.sections.push_back(s);
 
   ProjectValidator v;
@@ -79,11 +73,12 @@ TEST(NtscVirsValidationTest, RejectsNtscLaserdiscSectionWithoutVirs) {
   EXPECT_NE(r.errors[0].find("9.1.3"), std::string::npos);
 }
 
-TEST(NtscVirsValidationTest, AcceptsNtscLaserdiscSectionWithVirs) {
+TEST(NtscVirsValidationTest, AcceptsNtscLaserdiscProjectWithVirs) {
   Project p = MakeBaseNtscProject();
+  p.line_injections.disc_type = "CAV";
+  p.line_injections.vits.push_back(VitsInjection{"virs", {19, 282}});
   Section s = MakeSection();
   s.line_injections.push_back(MakeLaserdiscInjection());
-  s.line_injections.push_back(MakeVirsInjection());
   p.sections.push_back(s);
 
   ProjectValidator v;
@@ -91,8 +86,8 @@ TEST(NtscVirsValidationTest, AcceptsNtscLaserdiscSectionWithVirs) {
   EXPECT_TRUE(r.is_valid) << (!r.errors.empty() ? r.errors[0] : "");
 }
 
-TEST(NtscVirsValidationTest, AcceptsNtscSectionWithoutLaserdiscAndWithoutVirs) {
-  // No laserdisc injection → no VIRS requirement.
+TEST(NtscVirsValidationTest, AcceptsNtscProjectWithoutLaserdiscAndWithoutVirs) {
+  // No laserdisc disc_type → not a laserdisc project → no VIRS requirement.
   Project p = MakeBaseNtscProject();
   Section s = MakeSection();
   // No injections at all.
@@ -103,9 +98,10 @@ TEST(NtscVirsValidationTest, AcceptsNtscSectionWithoutLaserdiscAndWithoutVirs) {
   EXPECT_TRUE(r.is_valid) << (!r.errors.empty() ? r.errors[0] : "");
 }
 
-TEST(NtscVirsValidationTest, AcceptsPalLaserdiscSectionWithoutVirs) {
-  // PAL laserdisc sections do not require virs (IEC 60856 only).
+TEST(NtscVirsValidationTest, AcceptsPalLaserdiscProjectWithoutVirs) {
+  // PAL laserdisc projects do not require virs (IEC 60856 only).
   Project p = MakeBasePalProject();
+  p.line_injections.disc_type = "CAV";
   Section s = MakeSection();
   s.line_injections.push_back(MakeLaserdiscInjection());
   p.sections.push_back(s);
@@ -116,18 +112,18 @@ TEST(NtscVirsValidationTest, AcceptsPalLaserdiscSectionWithoutVirs) {
 }
 
 TEST(NtscVirsValidationTest,
-     RejectsNtscMultipleSectionsWhenOnlyOneMissingVirs) {
-  // Each section that has a laserdisc injection must independently have virs.
+     RejectsNtscMultipleLaserdiscSectionsWithoutProjectVirs) {
+  // The VIRS requirement is project-wide; multiple laserdisc sections with no
+  // project virs are rejected once.
   Project p = MakeBaseNtscProject();
+  p.line_injections.disc_type = "CAV";
 
   Section s1 = MakeSection();
   s1.line_injections.push_back(MakeLaserdiscInjection());
-  s1.line_injections.push_back(MakeVirsInjection());  // OK
   p.sections.push_back(s1);
 
   Section s2 = MakeSection();
   s2.line_injections.push_back(MakeLaserdiscInjection());
-  // Omit virs for s2.
   p.sections.push_back(s2);
 
   ProjectValidator v;
@@ -137,17 +133,18 @@ TEST(NtscVirsValidationTest,
   EXPECT_NE(r.errors[0].find("virs"), std::string::npos);
 }
 
-TEST(NtscVirsValidationTest, AcceptsNtscMultipleSectionsEachWithVirs) {
+TEST(NtscVirsValidationTest,
+     AcceptsNtscMultipleLaserdiscSectionsWithProjectVirs) {
   Project p = MakeBaseNtscProject();
+  p.line_injections.disc_type = "CAV";
+  p.line_injections.vits.push_back(VitsInjection{"virs", {19, 282}});
 
   Section s1 = MakeSection();
   s1.line_injections.push_back(MakeLaserdiscInjection());
-  s1.line_injections.push_back(MakeVirsInjection());
   p.sections.push_back(s1);
 
   Section s2 = MakeSection();
   s2.line_injections.push_back(MakeLaserdiscInjection());
-  s2.line_injections.push_back(MakeVirsInjection());
   p.sections.push_back(s2);
 
   ProjectValidator v;
@@ -155,39 +152,29 @@ TEST(NtscVirsValidationTest, AcceptsNtscMultipleSectionsEachWithVirs) {
   EXPECT_TRUE(r.is_valid) << (!r.errors.empty() ? r.errors[0] : "");
 }
 
-TEST(NtscVirsValidationTest,
-     AcceptsNtscSectionWithLaserdiscAndVirsOnLine19Only) {
+TEST(NtscVirsValidationTest, AcceptsNtscLaserdiscProjectWithVirsOnLine19Only) {
   // VIRS may target line 19 (field 1) only; line 282 is optional.
   Project p = MakeBaseNtscProject();
+  p.line_injections.disc_type = "CAV";
+  p.line_injections.vits.push_back(VitsInjection{"virs", {19}});
   Section s = MakeSection();
   s.line_injections.push_back(MakeLaserdiscInjection());
-
-  Section::LineInjection virs;
-  virs.type = "vits";
-  virs.vits_type = "virs";
-  virs.target_lines = {19};  // field 1 only
-  s.line_injections.push_back(virs);
-
   p.sections.push_back(s);
+
   ProjectValidator v;
   const auto r = v.Validate(p);
   EXPECT_TRUE(r.is_valid) << (!r.errors.empty() ? r.errors[0] : "");
 }
 
-TEST(NtscVirsValidationTest,
-     AcceptsNtscSectionWithLaserdiscAndVirsOnLine282Only) {
+TEST(NtscVirsValidationTest, AcceptsNtscLaserdiscProjectWithVirsOnLine282Only) {
   // VIRS may target line 282 (field 2) only.
   Project p = MakeBaseNtscProject();
+  p.line_injections.disc_type = "CAV";
+  p.line_injections.vits.push_back(VitsInjection{"virs", {282}});
   Section s = MakeSection();
   s.line_injections.push_back(MakeLaserdiscInjection());
-
-  Section::LineInjection virs;
-  virs.type = "vits";
-  virs.vits_type = "virs";
-  virs.target_lines = {282};  // field 2 only
-  s.line_injections.push_back(virs);
-
   p.sections.push_back(s);
+
   ProjectValidator v;
   const auto r = v.Validate(p);
   EXPECT_TRUE(r.is_valid) << (!r.errors.empty() ? r.errors[0] : "");
@@ -195,6 +182,7 @@ TEST(NtscVirsValidationTest,
 
 TEST(NtscVirsValidationTest, VirsMissingErrorMessageContainsIecReference) {
   Project p = MakeBaseNtscProject();
+  p.line_injections.disc_type = "CAV";
   Section s = MakeSection();
   s.line_injections.push_back(MakeLaserdiscInjection());
   p.sections.push_back(s);
@@ -211,15 +199,10 @@ TEST(NtscVirsValidationTest, VirsMissingDoesNotBlockAfterReservedLineError) {
   // When an incompatible VITS type is on a reserved line, the reserved-line
   // error fires first (before the VIRS check).
   Project p = MakeBaseNtscProject();
+  p.line_injections.disc_type = "CAV";
+  p.line_injections.vits.push_back(VitsInjection{"ntc7-composite", {17}});
   Section s = MakeSection();
   s.line_injections.push_back(MakeLaserdiscInjection());
-
-  Section::LineInjection bad_vits;
-  bad_vits.type = "vits";
-  bad_vits.vits_type = "ntc7-composite";
-  bad_vits.target_lines = {17};  // reserved line
-  s.line_injections.push_back(bad_vits);
-  // No virs.
   p.sections.push_back(s);
 
   ProjectValidator v;

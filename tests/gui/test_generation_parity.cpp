@@ -85,6 +85,7 @@ Project MakeFixedSeedProject(const std::filesystem::path& output_dir,
       (output_dir / ("gui_parity_" + run_tag + ".composite")).string();
   project.output.metadata_path =
       (output_dir / ("gui_parity_" + run_tag + ".meta")).string();
+  project.line_injections.disc_type = "CAV";
 
   Section programme;
   programme.name = "Programme";
@@ -96,7 +97,6 @@ Project MakeFixedSeedProject(const std::filesystem::path& output_dir,
   {
     Section::LineInjection laserdisc;
     laserdisc.type = "laserdisc";
-    laserdisc.disc_type = "CAV";
     Section::LineInjectionCode picture_number;
     picture_number.code_type = "picture_number";
     picture_number.start_value = 1;

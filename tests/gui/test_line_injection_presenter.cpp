@@ -36,6 +36,12 @@ Project MakeLaserdiscProject(Standard standard, DiscType disc_type,
   project.cvbs_presets.video_standard_preset = standard;
   project.output.video_path = "out/video.composite";
   project.output.metadata_path = "out/video.meta";
+  // disc_type and the VITS set are project-wide.
+  project.line_injections.disc_type = DiscTypeToString(disc_type);
+  if (standard == Standard::kNtsc || standard == Standard::kPalM) {
+    // IEC 60857 §9.1.3: System M laserdisc discs need a virs reference.
+    project.line_injections.vits.push_back(VitsInjection{"virs", {19, 282}});
+  }
 
   Section section;
   section.name = "Disc";
@@ -46,20 +52,10 @@ Project MakeLaserdiscProject(Standard standard, DiscType disc_type,
 
   Section::LineInjection laserdisc;
   laserdisc.type = "laserdisc";
-  laserdisc.disc_type = DiscTypeToString(disc_type);
   Section::LineInjectionCode code;
   code.code_type = code_type;
   laserdisc.codes.push_back(code);
   section.line_injections.push_back(laserdisc);
-
-  if (standard == Standard::kNtsc || standard == Standard::kPalM) {
-    // IEC 60857 §9.1.3: System M laserdisc sections need a virs reference.
-    Section::LineInjection virs;
-    virs.type = "vits";
-    virs.target_lines = {19, 282};
-    virs.vits_type = "virs";
-    section.line_injections.push_back(virs);
-  }
 
   project.sections.push_back(section);
   return project;
@@ -67,10 +63,10 @@ Project MakeLaserdiscProject(Standard standard, DiscType disc_type,
 
 TEST(LineInjectionPresenterTest, InjectionTypesAreGeneratable) {
   const std::vector<std::string> types = AvailableInjectionTypes();
-  EXPECT_TRUE(Contains(types, "vits"));
+  // VITS moved to the project-wide block; section-level injections carry only
+  // laserdisc biphase codes.
   EXPECT_TRUE(Contains(types, "laserdisc"));
-  // vitc/line_content parse but are rejected by the runtime as
-  // unimplemented, so the editor must not offer them.
+  EXPECT_FALSE(Contains(types, "vits"));
   EXPECT_FALSE(Contains(types, "vitc"));
   EXPECT_FALSE(Contains(types, "line_content"));
 }
@@ -134,6 +130,104 @@ TEST(LineInjectionPresenterTest, CodeParameterMappingFollowsSchema) {
   EXPECT_TRUE(CodeTypeUsesProgrammeStatus("programme_status"));
   EXPECT_TRUE(CodeTypeUsesUsersCode("users_code"));
   EXPECT_FALSE(CodeTypeUsesUsersCode("lead_in"));
+}
+
+TEST(LineInjectionPresenterTest, CodeTypeHelpDescribesEveryKnownCodeType) {
+  // Every code type the editor can offer must have help text, so the effect of
+  // adding a code is never blank in the GUI.
+  for (const std::string& code_type : AllLaserdiscCodeTypes()) {
+    EXPECT_FALSE(CodeTypeHelp(code_type).empty()) << code_type;
+  }
+  EXPECT_TRUE(CodeTypeHelp("not_a_code_type").empty());
+}
+
+TEST(LineInjectionPresenterTest, CodeTypeHelpFlagsAutoProgressingClocks) {
+  // The disc-global CLV clocks progress on their own; their help must say so
+  // (this is the behaviour a user cannot otherwise discover from the GUI).
+  EXPECT_NE(CodeTypeHelp("clv_picture_number").find("automatically"),
+            std::string::npos);
+  EXPECT_NE(CodeTypeHelp("programme_time_code").find("automatically"),
+            std::string::npos);
+  // CAV picture number continues across sections; help must mention it.
+  EXPECT_NE(CodeTypeHelp("picture_number").find("continue"), std::string::npos);
+}
+
+TEST(LineInjectionPresenterTest, RecommendedCodesAreExpectedPerSectionType) {
+  using std::vector;
+  // Lead-in / lead-out: just the marker code (PAL, no System-M FM codes).
+  EXPECT_EQ(RecommendedLaserdiscCodeTypes(DiscType::kCAV, SectionType::kLeadIn,
+                                          Standard::kPal),
+            (vector<std::string>{"lead_in"}));
+  EXPECT_EQ(RecommendedLaserdiscCodeTypes(DiscType::kCLV, SectionType::kLeadOut,
+                                          Standard::kPal),
+            (vector<std::string>{"lead_out"}));
+
+  // CAV programme area → picture_number + chapter_number.
+  const auto cav = RecommendedLaserdiscCodeTypes(
+      DiscType::kCAV, SectionType::kProgrammeArea, Standard::kPal);
+  EXPECT_TRUE(Contains(cav, "picture_number"));
+  EXPECT_TRUE(Contains(cav, "chapter_number"));
+  EXPECT_FALSE(Contains(cav, "programme_time_code"));
+
+  // CLV programme area → programme_time_code + clv_code + chapter_number.
+  const auto clv = RecommendedLaserdiscCodeTypes(
+      DiscType::kCLV, SectionType::kProgrammeArea, Standard::kPal);
+  EXPECT_TRUE(Contains(clv, "programme_time_code"));
+  EXPECT_TRUE(Contains(clv, "clv_code"));
+  EXPECT_TRUE(Contains(clv, "chapter_number"));
+  EXPECT_FALSE(Contains(clv, "picture_number"));
+
+  // Unknown section type → nothing recommended.
+  EXPECT_TRUE(RecommendedLaserdiscCodeTypes(
+                  DiscType::kCAV, SectionType::kUnknown, Standard::kPal)
+                  .empty());
+}
+
+TEST(LineInjectionPresenterTest, RecommendedCodesAddSystemMFmCodes) {
+  const auto ntsc = RecommendedLaserdiscCodeTypes(
+      DiscType::kCAV, SectionType::kProgrammeArea, Standard::kNtsc);
+  EXPECT_TRUE(Contains(ntsc, "fm_picture_number"));
+  EXPECT_TRUE(Contains(ntsc, "fm_white_flag"));
+  // PAL (not System-M) gets no FM codes.
+  const auto pal = RecommendedLaserdiscCodeTypes(
+      DiscType::kCAV, SectionType::kProgrammeArea, Standard::kPal);
+  EXPECT_FALSE(Contains(pal, "fm_picture_number"));
+  EXPECT_FALSE(Contains(pal, "fm_white_flag"));
+}
+
+TEST(LineInjectionPresenterTest, RecommendedCodesAreAlwaysAValidSubset) {
+  // Every recommended code must be offered by the availability catalogue for
+  // the same context, so an editor can always render the pre-ticked set.
+  const DiscType discs[] = {DiscType::kCAV, DiscType::kCLV};
+  const SectionType sections[] = {
+      SectionType::kLeadIn, SectionType::kProgrammeArea, SectionType::kLeadOut};
+  const Standard standards[] = {Standard::kPal, Standard::kNtsc};
+  for (DiscType disc : discs) {
+    for (SectionType section : sections) {
+      for (Standard standard : standards) {
+        const auto available =
+            AvailableLaserdiscCodeTypes(disc, section, standard);
+        for (const std::string& code :
+             RecommendedLaserdiscCodeTypes(disc, section, standard)) {
+          EXPECT_TRUE(Contains(available, code))
+              << code << " not offered for the context";
+        }
+      }
+    }
+  }
+}
+
+TEST(LineInjectionPresenterTest, VitsFixedLineAndDefaultLines) {
+  // Fixed-placement PAL type: has a fixed line, defaults to exactly that line.
+  EXPECT_TRUE(VitsHasFixedLine(Standard::kPal, "uk-national"));
+  EXPECT_EQ(DefaultVitsLines(Standard::kPal, "uk-national"),
+            (std::vector<int>{19}));
+
+  // virs (System-M colour reference) is free-placement; defaults to both
+  // fields, matching the built-in laserdisc template.
+  EXPECT_FALSE(VitsHasFixedLine(Standard::kNtsc, "virs"));
+  EXPECT_EQ(DefaultVitsLines(Standard::kNtsc, "virs"),
+            (std::vector<int>{19, 282}));
 }
 
 TEST(LineInjectionPresenterTest, ParseTargetLinesAcceptsListsRejectsGarbage) {

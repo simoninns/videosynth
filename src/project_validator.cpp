@@ -443,11 +443,6 @@ void ValidateDeferredLineInjectionSupport(
   }
 }
 
-bool IsKnownLineInjectionType(const std::string& type) {
-  return type == "vits" || type == "laserdisc" || type == "vitc" ||
-         type == "line_content";
-}
-
 bool IsValidFrameLineForStandard(int line_1based,
                                  videosynth::Standard standard) {
   if (standard == videosynth::Standard::kPal) {
@@ -473,35 +468,38 @@ bool IsLaserdiscReservedLine(int line_1based, videosynth::Standard standard) {
   return false;
 }
 
-// Validates structural correctness of laserdisc injection fields when present.
-// When disc_type is specified it must be CAV or CLV; code_types must be valid
-// for the specified disc_type.  disc_type is optional in Phase 1 — it will be
-// enforced when laserdisc injection is fully implemented.
+// True when the section carries at least one laserdisc code injection.
+bool SectionHasLaserdiscInjection(const videosynth::Section& section) {
+  for (const videosynth::Section::LineInjection& injection :
+       section.line_injections) {
+    if (Lowercase(injection.type) == "laserdisc") {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Validates that each laserdisc code_type in the section is valid for the
+// project-wide disc_type (CAV/CLV). disc_type itself is validated once at the
+// project level (ValidateProjectLineInjections); this skips when it is not a
+// recognised value so the error is reported only once.
 bool ValidateLaserdiscInjectionStructure(const videosynth::Section& section,
+                                         const std::string& project_disc_type,
                                          videosynth::ValidationResult* result) {
   if (result == nullptr) {
     return false;
+  }
+
+  const videosynth::DiscType disc_type =
+      videosynth::DiscTypeFromString(project_disc_type);
+  if (disc_type == videosynth::DiscType::kUnknown) {
+    return true;
   }
 
   for (const videosynth::Section::LineInjection& injection :
        section.line_injections) {
     if (Lowercase(injection.type) != "laserdisc") {
       continue;
-    }
-
-    if (injection.disc_type.empty()) {
-      continue;
-    }
-
-    const videosynth::DiscType disc_type =
-        videosynth::DiscTypeFromString(injection.disc_type);
-    if (disc_type == videosynth::DiscType::kUnknown) {
-      result->is_valid = false;
-      result->errors.push_back(
-          "Laserdisc injection validation error: disc_type '" +
-          injection.disc_type +
-          "' is not recognised. Expected 'CAV' or 'CLV'.");
-      return false;
     }
 
     for (const videosynth::Section::LineInjectionCode& code : injection.codes) {
@@ -537,14 +535,21 @@ bool ValidateLaserdiscInjectionStructure(const videosynth::Section& section,
 }
 
 // Validates IEC section-type compatibility, standard restrictions, minimum
-// durations, and code-parameter value ranges for laserdisc injections.
-// Only runs when disc_type is present on an injection (Phase-1 injections
-// without disc_type pass through without error).
+// durations, and code-parameter value ranges for laserdisc injections against
+// the project-wide disc_type. Skips when disc_type is not a recognised value
+// (already reported at the project level).
 bool ValidateLaserdiscSectionTypeAndCodes(
     const videosynth::Section& section, videosynth::Standard standard,
+    const std::string& project_disc_type,
     videosynth::ValidationResult* result) {
   if (result == nullptr) {
     return false;
+  }
+
+  const videosynth::DiscType disc_type =
+      videosynth::DiscTypeFromString(project_disc_type);
+  if (disc_type == videosynth::DiscType::kUnknown) {
+    return true;
   }
 
   for (const videosynth::Section::LineInjection& injection :
@@ -552,14 +557,8 @@ bool ValidateLaserdiscSectionTypeAndCodes(
     if (Lowercase(injection.type) != "laserdisc") {
       continue;
     }
-    if (injection.disc_type.empty()) {
-      continue;
-    }
 
-    const videosynth::DiscType disc_type =
-        videosynth::DiscTypeFromString(injection.disc_type);
-
-    // 5.4: section_type must be set when disc_type is specified.
+    // 5.4: section_type must be set for laserdisc sections.
     if (section.section_type == videosynth::SectionType::kUnknown) {
       result->is_valid = false;
       result->errors.push_back(
@@ -703,6 +702,9 @@ bool ValidateLaserdiscSectionTypeAndCodes(
   return true;
 }
 
+// Validates the section-level line injections, which now carry only laserdisc
+// code injections and vitc. The VITS set and disc_type are project-wide and
+// validated in ValidateProjectLineInjections.
 bool ValidateLineInjectionsForSection(const videosynth::Section& section,
                                       videosynth::Standard standard,
                                       videosynth::ValidationResult* result) {
@@ -710,7 +712,6 @@ bool ValidateLineInjectionsForSection(const videosynth::Section& section,
     return false;
   }
 
-  videosynth::VitsDefinitionProvider vits_definition_provider;
   std::set<int> claimed_target_lines;
   bool has_laserdisc_injection = false;
   bool has_vitc_injection = false;
@@ -719,7 +720,16 @@ bool ValidateLineInjectionsForSection(const videosynth::Section& section,
        section.line_injections) {
     const std::string injection_type = Lowercase(injection.type);
 
-    if (!IsKnownLineInjectionType(injection_type)) {
+    if (injection_type == "vits") {
+      result->is_valid = false;
+      result->errors.push_back(
+          "Line injection validation error: VITS injections are now "
+          "configured project-wide in the top-level 'line_injections.vits' "
+          "block, not per section.");
+      return false;
+    }
+
+    if (injection_type != "laserdisc" && injection_type != "vitc") {
       result->is_valid = false;
       result->errors.push_back(
           "Line injection validation error: unsupported injection type '" +
@@ -737,6 +747,7 @@ bool ValidateLineInjectionsForSection(const videosynth::Section& section,
         return false;
       }
     } else {
+      has_vitc_injection = true;
       if (injection.target_lines.empty()) {
         result->is_valid = false;
         result->errors.push_back(
@@ -766,46 +777,6 @@ bool ValidateLineInjectionsForSection(const videosynth::Section& section,
         }
       }
     }
-
-    if (injection_type == "vitc") {
-      has_vitc_injection = true;
-    }
-
-    if (injection_type == "vits") {
-      if (injection.vits_type.empty()) {
-        result->is_valid = false;
-        result->errors.push_back(
-            "Line injection validation error: vits injections require a "
-            "non-empty vits_type.");
-        return false;
-      }
-
-      videosynth::VitsDefinition vits_definition;
-      std::string vits_error;
-      if (!vits_definition_provider.TryGetDefinition(
-              standard, injection.vits_type, &vits_definition, &vits_error)) {
-        result->is_valid = false;
-        result->errors.push_back("Line injection validation error: " +
-                                 vits_error);
-        return false;
-      }
-
-      // Strict policy: vits types with a defined placement line must target
-      // only that line.
-      if (vits_definition.recommended_frame_line > 0) {
-        for (int line_1based : injection.target_lines) {
-          if (line_1based != vits_definition.recommended_frame_line) {
-            result->is_valid = false;
-            result->errors.push_back(
-                "Line injection validation error: vits_type '" +
-                injection.vits_type + "' must target frame line " +
-                std::to_string(vits_definition.recommended_frame_line) +
-                " for " + videosynth::StandardToString(standard) + ".");
-            return false;
-          }
-        }
-      }
-    }
   }
 
   if (has_laserdisc_injection && has_vitc_injection) {
@@ -816,50 +787,152 @@ bool ValidateLineInjectionsForSection(const videosynth::Section& section,
     return false;
   }
 
-  if (has_laserdisc_injection) {
-    // 5.11/5.12: All non-laserdisc injections must not target laserdisc
-    // reserved VBI lines.
-    for (const videosynth::Section::LineInjection& injection :
-         section.line_injections) {
-      if (Lowercase(injection.type) == "laserdisc") {
-        continue;
+  return true;
+}
+
+// Validates the project-wide line_injections block: the laserdisc disc_type
+// selection and the VITS test-signal set. Cross-references the sections to
+// require disc_type whenever any section declares laserdisc codes, and applies
+// the reserved-line and NTSC/PAL-M VIRS rules to the project VITS set.
+bool ValidateProjectLineInjections(const videosynth::Project& project,
+                                   videosynth::ValidationResult* result) {
+  if (result == nullptr) {
+    return false;
+  }
+
+  const videosynth::Standard standard =
+      project.cvbs_presets.video_standard_preset;
+  const videosynth::ProjectLineInjections& li = project.line_injections;
+
+  bool any_laserdisc_section = false;
+  for (const videosynth::Section& section : project.sections) {
+    if (SectionHasLaserdiscInjection(section)) {
+      any_laserdisc_section = true;
+      break;
+    }
+  }
+
+  // disc_type: required when any section declares laserdisc codes; when set it
+  // must be a recognised value.
+  videosynth::DiscType disc_type = videosynth::DiscType::kUnknown;
+  if (li.disc_type.empty()) {
+    if (any_laserdisc_section) {
+      result->is_valid = false;
+      result->errors.push_back(
+          "Line injection validation error: a section declares laserdisc "
+          "codes but line_injections.disc_type is not set. Set disc_type to "
+          "'CAV' or 'CLV' at the project level.");
+      return false;
+    }
+  } else {
+    disc_type = videosynth::DiscTypeFromString(li.disc_type);
+    if (disc_type == videosynth::DiscType::kUnknown) {
+      result->is_valid = false;
+      result->errors.push_back("Line injection validation error: disc_type '" +
+                               li.disc_type +
+                               "' is not recognised. Expected 'CAV' or 'CLV'.");
+      return false;
+    }
+  }
+
+  const bool project_is_laserdisc = disc_type != videosynth::DiscType::kUnknown;
+
+  // Validate the VITS set: resolvable types, strict placement, no overlaps,
+  // and (for laserdisc projects) reserved-VBI-line avoidance.
+  videosynth::VitsDefinitionProvider vits_definition_provider;
+  std::set<int> claimed_target_lines;
+  bool has_virs = false;
+  for (const videosynth::VitsInjection& vits : li.vits) {
+    if (vits.vits_type.empty()) {
+      result->is_valid = false;
+      result->errors.push_back(
+          "Line injection validation error: VITS injections require a "
+          "non-empty vits_type.");
+      return false;
+    }
+    if (vits.vits_type == "virs") {
+      has_virs = true;
+    }
+
+    if (vits.target_lines.empty()) {
+      result->is_valid = false;
+      result->errors.push_back(
+          "Line injection validation error: VITS injection '" + vits.vits_type +
+          "' must provide at least one target line.");
+      return false;
+    }
+
+    videosynth::VitsDefinition vits_definition;
+    std::string vits_error;
+    if (!vits_definition_provider.TryGetDefinition(
+            standard, vits.vits_type, &vits_definition, &vits_error)) {
+      result->is_valid = false;
+      result->errors.push_back("Line injection validation error: " +
+                               vits_error);
+      return false;
+    }
+
+    for (int line_1based : vits.target_lines) {
+      if (!IsValidFrameLineForStandard(line_1based, standard)) {
+        result->is_valid = false;
+        result->errors.push_back(
+            "Line injection validation error: VITS target line " +
+            std::to_string(line_1based) +
+            " is outside the valid frame-line range for " +
+            videosynth::StandardToString(standard) + ".");
+        return false;
       }
 
-      for (int line_1based : injection.target_lines) {
-        if (IsLaserdiscReservedLine(line_1based, standard)) {
+      if (!claimed_target_lines.insert(line_1based).second) {
+        result->is_valid = false;
+        result->errors.push_back(
+            "Line injection validation error: overlapping VITS target line " +
+            std::to_string(line_1based) + " within the project VITS set.");
+        return false;
+      }
+
+      // Reserved-line conflict only applies when the disc carries biphase
+      // codes (a laserdisc project); otherwise the VBI is free for VITS.
+      if (project_is_laserdisc &&
+          IsLaserdiscReservedLine(line_1based, standard)) {
+        result->is_valid = false;
+        result->errors.push_back(
+            "Line injection validation error: VITS target line " +
+            std::to_string(line_1based) +
+            " conflicts with laserdisc reserved VBI ranges for " +
+            videosynth::StandardToString(standard) + ".");
+        return false;
+      }
+    }
+
+    // Strict policy: VITS types with a defined placement line must target
+    // only that line.
+    if (vits_definition.recommended_frame_line > 0) {
+      for (int line_1based : vits.target_lines) {
+        if (line_1based != vits_definition.recommended_frame_line) {
           result->is_valid = false;
           result->errors.push_back(
-              "Line injection validation error: target line " +
-              std::to_string(line_1based) +
-              " conflicts with laserdisc reserved VBI ranges for " +
+              "Line injection validation error: vits_type '" + vits.vits_type +
+              "' must target frame line " +
+              std::to_string(vits_definition.recommended_frame_line) + " for " +
               videosynth::StandardToString(standard) + ".");
           return false;
         }
       }
     }
+  }
 
-    // 5.13: NTSC and PAL-M laserdisc sections require a virs VITS injection
-    // for colour (IEC 60857 §9.1.3).
-    if (standard == videosynth::Standard::kNtsc ||
-        standard == videosynth::Standard::kPalM) {
-      bool has_virs = false;
-      for (const videosynth::Section::LineInjection& injection :
-           section.line_injections) {
-        if (Lowercase(injection.type) == "vits" &&
-            injection.vits_type == "virs") {
-          has_virs = true;
-          break;
-        }
-      }
-      if (!has_virs) {
-        result->is_valid = false;
-        result->errors.push_back(
-            "Line injection validation error: NTSC and PAL-M laserdisc "
-            "sections require a virs VITS injection for colour "
-            "(IEC 60857 §9.1.3).");
-        return false;
-      }
-    }
+  // NTSC and PAL-M laserdisc discs require a virs VITS for colour
+  // (IEC 60857 §9.1.3). The requirement is project-wide now that VITS are.
+  if (project_is_laserdisc &&
+      (standard == videosynth::Standard::kNtsc ||
+       standard == videosynth::Standard::kPalM) &&
+      !has_virs) {
+    result->is_valid = false;
+    result->errors.push_back(
+        "Line injection validation error: NTSC and PAL-M laserdisc projects "
+        "require a virs VITS injection for colour (IEC 60857 §9.1.3).");
+    return false;
   }
 
   return true;
@@ -873,6 +946,7 @@ constexpr int kOrcGuiWhiteSNRLineNtsc = 20;
 
 void ValidateNoiseParameters(const videosynth::Section& section,
                              videosynth::Standard standard,
+                             const std::set<int>& project_vits_lines,
                              videosynth::ValidationResult* result) {
   if (result == nullptr || !section.noise.enabled) {
     return;
@@ -910,26 +984,14 @@ void ValidateNoiseParameters(const videosynth::Section& section,
   }
 
   // Warn if the noise spread target is non-zero but no suitable VITS white-flag
-  // injection is present on the line orc-gui inspects for White SNR.
+  // injection is present on the line orc-gui inspects for White SNR. VITS are
+  // project-wide, so the check consults the project VITS target-line set.
   if (section.noise.noise_spread_db > 0.0) {
     const int expected_line = (standard == videosynth::Standard::kPal)
                                   ? kOrcGuiWhiteSNRLinePal
                                   : kOrcGuiWhiteSNRLineNtsc;
-    bool has_white_flag_vits = false;
-    for (const videosynth::Section::LineInjection& injection :
-         section.line_injections) {
-      if (Lowercase(injection.type) == "vits") {
-        for (int line : injection.target_lines) {
-          if (line == expected_line) {
-            has_white_flag_vits = true;
-            break;
-          }
-        }
-      }
-      if (has_white_flag_vits) {
-        break;
-      }
-    }
+    const bool has_white_flag_vits =
+        project_vits_lines.find(expected_line) != project_vits_lines.end();
     if (!has_white_flag_vits) {
       result->warnings.push_back(
           "Noise warning in section '" + section.name +
@@ -1338,6 +1400,19 @@ ValidationResult ProjectValidator::Validate(const Project& project) {
     result.errors.push_back("Project must contain at least one section.");
   }
 
+  // Validate the project-wide line_injections block (disc_type + VITS set)
+  // before the per-section pass; the section pass relies on the project
+  // disc_type and VITS set.
+  ValidateProjectLineInjections(project, &result);
+
+  // Project VITS target lines, consulted by the per-section noise check.
+  std::set<int> project_vits_lines;
+  for (const VitsInjection& vits : project.line_injections.vits) {
+    for (int line : vits.target_lines) {
+      project_vits_lines.insert(line);
+    }
+  }
+
   for (const Section& section : project.sections) {
     if (logger_ != nullptr) {
       logger_->Trace("Validating section '" + section.name + "' of type '" +
@@ -1345,12 +1420,14 @@ ValidationResult ProjectValidator::Validate(const Project& project) {
     }
 
     if (section.type == "progressive") {
-      if (!ValidateLaserdiscInjectionStructure(section, &result)) {
+      if (!ValidateLaserdiscInjectionStructure(
+              section, project.line_injections.disc_type, &result)) {
         break;
       }
 
       if (!ValidateLaserdiscSectionTypeAndCodes(
-              section, project.cvbs_presets.video_standard_preset, &result)) {
+              section, project.cvbs_presets.video_standard_preset,
+              project.line_injections.disc_type, &result)) {
         break;
       }
 
@@ -1364,8 +1441,9 @@ ValidationResult ProjectValidator::Validate(const Project& project) {
         break;
       }
 
-      ValidateNoiseParameters(
-          section, project.cvbs_presets.video_standard_preset, &result);
+      ValidateNoiseParameters(section,
+                              project.cvbs_presets.video_standard_preset,
+                              project_vits_lines, &result);
       if (!result.is_valid) {
         break;
       }
@@ -1406,6 +1484,20 @@ ValidationResult ProjectValidator::Validate(const Project& project) {
             "Progressive section validation error: duration_frames must be > 0 "
             "or 'all'.");
         break;
+      }
+
+      if (section.duration_frames_repeat < 1) {
+        result.is_valid = false;
+        result.errors.push_back(
+            "Progressive section validation error: duration_repeat must be >= "
+            "1.");
+        break;
+      }
+
+      if (!section.duration_frames_all && section.duration_frames_repeat != 1) {
+        result.warnings.push_back(
+            "Progressive section '" + section.name +
+            "': duration_repeat is ignored unless duration_frames is 'all'.");
       }
 
       std::string source_family_error;

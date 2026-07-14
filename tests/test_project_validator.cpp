@@ -67,6 +67,43 @@ TEST(ProjectValidatorTest, AcceptsMvpCompliantProject) {
   EXPECT_TRUE(result.errors.empty());
 }
 
+TEST(ProjectValidatorTest, AcceptsDurationRepeatWithAllSourceFrames) {
+  Project project = MakeValidProject();
+  project.sections[0].duration_frames_all = true;
+  project.sections[0].duration_frames = 0;
+  project.sections[0].duration_frames_repeat = 3;
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_TRUE(result.is_valid);
+}
+
+TEST(ProjectValidatorTest, RejectsDurationRepeatBelowOne) {
+  Project project = MakeValidProject();
+  project.sections[0].duration_frames_all = true;
+  project.sections[0].duration_frames = 0;
+  project.sections[0].duration_frames_repeat = 0;
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_FALSE(result.is_valid);
+}
+
+TEST(ProjectValidatorTest, WarnsDurationRepeatWithoutAllSourceFrames) {
+  Project project = MakeValidProject();
+  project.sections[0].duration_frames_all = false;
+  project.sections[0].duration_frames = 5;
+  project.sections[0].duration_frames_repeat = 2;
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_TRUE(result.is_valid);
+  EXPECT_FALSE(result.warnings.empty());
+}
+
 TEST(ProjectValidatorTest, AcceptsKnownAssetRootTokenSource) {
   Project project = MakeValidProject();
   project.sections[0].source = "{bundled}/exr/720x576/75_BARS.exr";
@@ -345,13 +382,9 @@ TEST(ProjectValidatorTest, RejectsNtscLaserdiscVbiBurstAsDeferredFeature) {
       "not implemented in the current runtime.");
 }
 
-TEST(ProjectValidatorTest, AcceptsVitsLineInjectionsForImplementedRuntimePath) {
+TEST(ProjectValidatorTest, AcceptsProjectVitsSet) {
   Project project = MakeValidProject();
-  Section::LineInjection injection;
-  injection.type = "vits";
-  injection.target_lines = {17};
-  injection.vits_type = "vits17";
-  project.sections[0].line_injections.push_back(injection);
+  project.line_injections.vits.push_back(VitsInjection{"vits17", {17}});
 
   ProjectValidator validator;
   const ValidationResult result = validator.Validate(project);
@@ -360,9 +393,8 @@ TEST(ProjectValidatorTest, AcceptsVitsLineInjectionsForImplementedRuntimePath) {
   EXPECT_TRUE(result.errors.empty());
 }
 
-TEST(ProjectValidatorTest, AcceptsLaserdiscInjectionWithoutDiscTypeField) {
-  // Bare laserdisc injection with no disc_type: structurally valid and now
-  // fully implemented via BiphaseInjectionManager.
+TEST(ProjectValidatorTest, RejectsLaserdiscInjectionWithoutProjectDiscType) {
+  // A section declaring laserdisc codes requires a project-wide disc_type.
   Project project = MakeValidProject();
   Section::LineInjection injection;
   injection.type = "laserdisc";
@@ -371,16 +403,14 @@ TEST(ProjectValidatorTest, AcceptsLaserdiscInjectionWithoutDiscTypeField) {
   ProjectValidator validator;
   const ValidationResult result = validator.Validate(project);
 
-  EXPECT_TRUE(result.is_valid);
-  EXPECT_TRUE(result.errors.empty());
+  EXPECT_FALSE(result.is_valid);
+  ASSERT_FALSE(result.errors.empty());
+  EXPECT_NE(result.errors[0].find("disc_type"), std::string::npos);
 }
 
-TEST(ProjectValidatorTest, RejectsVitsInjectionWithoutTargetLines) {
+TEST(ProjectValidatorTest, RejectsProjectVitsWithoutTargetLines) {
   Project project = MakeValidProject();
-  Section::LineInjection injection;
-  injection.type = "vits";
-  injection.vits_type = "vits17";
-  project.sections[0].line_injections.push_back(injection);
+  project.line_injections.vits.push_back(VitsInjection{"vits17", {}});
 
   ProjectValidator validator;
   const ValidationResult result = validator.Validate(project);
@@ -388,17 +418,13 @@ TEST(ProjectValidatorTest, RejectsVitsInjectionWithoutTargetLines) {
   EXPECT_FALSE(result.is_valid);
   ASSERT_FALSE(result.errors.empty());
   EXPECT_EQ(result.errors[0],
-            "Line injection validation error: target_lines must be provided "
-            "and non-empty for injection type 'vits'.");
+            "Line injection validation error: VITS injection 'vits17' must "
+            "provide at least one target line.");
 }
 
 TEST(ProjectValidatorTest, RejectsVitsTypeThatDoesNotMatchProjectStandard) {
   Project project = MakeValidProject();
-  Section::LineInjection injection;
-  injection.type = "vits";
-  injection.target_lines = {17};
-  injection.vits_type = "ntc7-composite";
-  project.sections[0].line_injections.push_back(injection);
+  project.line_injections.vits.push_back(VitsInjection{"ntc7-composite", {17}});
 
   ProjectValidator validator;
   const ValidationResult result = validator.Validate(project);
@@ -412,11 +438,7 @@ TEST(ProjectValidatorTest, RejectsVitsTypeThatDoesNotMatchProjectStandard) {
 
 TEST(ProjectValidatorTest, RejectsVitsTargetLineOutsideStandardRange) {
   Project project = MakeValidProject();
-  Section::LineInjection injection;
-  injection.type = "vits";
-  injection.target_lines = {626};
-  injection.vits_type = "vits17";
-  project.sections[0].line_injections.push_back(injection);
+  project.line_injections.vits.push_back(VitsInjection{"vits17", {626}});
 
   ProjectValidator validator;
   const ValidationResult result = validator.Validate(project);
@@ -424,17 +446,13 @@ TEST(ProjectValidatorTest, RejectsVitsTargetLineOutsideStandardRange) {
   EXPECT_FALSE(result.is_valid);
   ASSERT_FALSE(result.errors.empty());
   EXPECT_EQ(result.errors[0],
-            "Line injection validation error: target line 626 is outside the "
-            "valid frame-line range for PAL.");
+            "Line injection validation error: VITS target line 626 is outside "
+            "the valid frame-line range for PAL.");
 }
 
 TEST(ProjectValidatorTest, RejectsVitsTypeOnNonRecommendedLine) {
   Project project = MakeValidProject();
-  Section::LineInjection injection;
-  injection.type = "vits";
-  injection.target_lines = {19};
-  injection.vits_type = "vits17";
-  project.sections[0].line_injections.push_back(injection);
+  project.line_injections.vits.push_back(VitsInjection{"vits17", {19}});
 
   ProjectValidator validator;
   const ValidationResult result = validator.Validate(project);
@@ -446,19 +464,10 @@ TEST(ProjectValidatorTest, RejectsVitsTypeOnNonRecommendedLine) {
             "frame line 17 for PAL.");
 }
 
-TEST(ProjectValidatorTest, RejectsOverlappingTargetLinesAcrossInjections) {
+TEST(ProjectValidatorTest, RejectsOverlappingTargetLinesAcrossProjectVits) {
   Project project = MakeValidProject();
-
-  Section::LineInjection first;
-  first.type = "vits";
-  first.target_lines = {17};
-  first.vits_type = "vits17";
-  project.sections[0].line_injections.push_back(first);
-
-  Section::LineInjection second;
-  second.type = "vitc";
-  second.target_lines = {17};
-  project.sections[0].line_injections.push_back(second);
+  project.line_injections.vits.push_back(VitsInjection{"vits17", {17}});
+  project.line_injections.vits.push_back(VitsInjection{"vits17", {17}});
 
   ProjectValidator validator;
   const ValidationResult result = validator.Validate(project);
@@ -466,12 +475,14 @@ TEST(ProjectValidatorTest, RejectsOverlappingTargetLinesAcrossInjections) {
   EXPECT_FALSE(result.is_valid);
   ASSERT_FALSE(result.errors.empty());
   EXPECT_EQ(result.errors[0],
-            "Line injection validation error: overlapping target line 17 "
-            "within the same section.");
+            "Line injection validation error: overlapping VITS target line 17 "
+            "within the project VITS set.");
 }
 
 TEST(ProjectValidatorTest, RejectsLaserdiscInjectionWithExplicitTargetLines) {
   Project project = MakeValidProject();
+  project.line_injections.disc_type = "CAV";
+  project.sections[0].section_type = SectionType::kProgrammeArea;
 
   Section::LineInjection injection;
   injection.type = "laserdisc";
@@ -490,6 +501,8 @@ TEST(ProjectValidatorTest, RejectsLaserdiscInjectionWithExplicitTargetLines) {
 
 TEST(ProjectValidatorTest, RejectsLaserdiscAndVitcInSameSection) {
   Project project = MakeValidProject();
+  project.line_injections.disc_type = "CAV";
+  project.sections[0].section_type = SectionType::kProgrammeArea;
 
   Section::LineInjection laserdisc;
   laserdisc.type = "laserdisc";
@@ -511,18 +524,15 @@ TEST(ProjectValidatorTest, RejectsLaserdiscAndVitcInSameSection) {
 }
 
 TEST(ProjectValidatorTest,
-     RejectsLinesInLaserdiscReservedRangesWhenLaserdiscIsActive) {
+     RejectsProjectVitsInLaserdiscReservedRangesWhenLaserdiscIsActive) {
   Project project = MakeValidProject();
+  project.line_injections.disc_type = "CAV";
+  project.line_injections.vits.push_back(VitsInjection{"vits17", {17}});
+  project.sections[0].section_type = SectionType::kProgrammeArea;
 
   Section::LineInjection laserdisc;
   laserdisc.type = "laserdisc";
   project.sections[0].line_injections.push_back(laserdisc);
-
-  Section::LineInjection vits;
-  vits.type = "vits";
-  vits.target_lines = {17};
-  vits.vits_type = "vits17";
-  project.sections[0].line_injections.push_back(vits);
 
   ProjectValidator validator;
   const ValidationResult result = validator.Validate(project);
@@ -530,8 +540,8 @@ TEST(ProjectValidatorTest,
   EXPECT_FALSE(result.is_valid);
   ASSERT_FALSE(result.errors.empty());
   EXPECT_EQ(result.errors[0],
-            "Line injection validation error: target line 17 conflicts with "
-            "laserdisc reserved VBI ranges for PAL.");
+            "Line injection validation error: VITS target line 17 conflicts "
+            "with laserdisc reserved VBI ranges for PAL.");
 }
 
 TEST(ProjectValidatorTest, RejectsUnsupportedSectionType) {
@@ -855,10 +865,10 @@ TEST(ProjectValidatorTest, PropagatesProgressiveProbeErrorMessage) {
 
 TEST(ProjectValidatorTest, AcceptsLaserdiscInjectionWithValidCavDiscType) {
   Project project = MakeValidProject();
+  project.line_injections.disc_type = "CAV";
   project.sections[0].section_type = SectionType::kProgrammeArea;
   Section::LineInjection injection;
   injection.type = "laserdisc";
-  injection.disc_type = "CAV";
   Section::LineInjectionCode code;
   code.code_type = "picture_number";
   code.start_value = 1;
@@ -875,10 +885,10 @@ TEST(ProjectValidatorTest, AcceptsLaserdiscInjectionWithValidCavDiscType) {
 
 TEST(ProjectValidatorTest, AcceptsLaserdiscInjectionWithValidClvDiscType) {
   Project project = MakeValidProject();
+  project.line_injections.disc_type = "CLV";
   project.sections[0].section_type = SectionType::kProgrammeArea;
   Section::LineInjection injection;
   injection.type = "laserdisc";
-  injection.disc_type = "CLV";
   Section::LineInjectionCode code;
   code.code_type = "programme_time_code";
   injection.codes.push_back(code);
@@ -893,9 +903,9 @@ TEST(ProjectValidatorTest, AcceptsLaserdiscInjectionWithValidClvDiscType) {
 
 TEST(ProjectValidatorTest, RejectsLaserdiscInjectionWithUnknownDiscType) {
   Project project = MakeValidProject();
+  project.line_injections.disc_type = "VHD";
   Section::LineInjection injection;
   injection.type = "laserdisc";
-  injection.disc_type = "VHD";
   project.sections[0].line_injections.push_back(injection);
 
   ProjectValidator validator;
@@ -909,9 +919,9 @@ TEST(ProjectValidatorTest, RejectsLaserdiscInjectionWithUnknownDiscType) {
 
 TEST(ProjectValidatorTest, RejectsLaserdiscInjectionWithCodeTypeInvalidForCav) {
   Project project = MakeValidProject();
+  project.line_injections.disc_type = "CAV";
   Section::LineInjection injection;
   injection.type = "laserdisc";
-  injection.disc_type = "CAV";
   Section::LineInjectionCode code;
   code.code_type = "programme_time_code";
   injection.codes.push_back(code);
@@ -928,9 +938,9 @@ TEST(ProjectValidatorTest, RejectsLaserdiscInjectionWithCodeTypeInvalidForCav) {
 
 TEST(ProjectValidatorTest, RejectsLaserdiscInjectionWithCodeTypeInvalidForClv) {
   Project project = MakeValidProject();
+  project.line_injections.disc_type = "CLV";
   Section::LineInjection injection;
   injection.type = "laserdisc";
-  injection.disc_type = "CLV";
   Section::LineInjectionCode code;
   code.code_type = "picture_number";
   injection.codes.push_back(code);
@@ -947,9 +957,9 @@ TEST(ProjectValidatorTest, RejectsLaserdiscInjectionWithCodeTypeInvalidForClv) {
 
 TEST(ProjectValidatorTest, RejectsLaserdiscInjectionWithUnknownCodeType) {
   Project project = MakeValidProject();
+  project.line_injections.disc_type = "CAV";
   Section::LineInjection injection;
   injection.type = "laserdisc";
-  injection.disc_type = "CAV";
   Section::LineInjectionCode code;
   code.code_type = "unknown_code";
   injection.codes.push_back(code);

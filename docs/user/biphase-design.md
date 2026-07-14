@@ -73,7 +73,14 @@ Each section must have a `laserdisc` line injection configured with the appropri
 
 ### Disc Types
 
-Set `disc_type` to `CAV` or `CLV` in the `laserdisc` injection. This determines which code types are valid and how the player addresses frames.
+Set `disc_type` to `CAV` or `CLV` **once, at the project level**, in the top-level `line_injections:` block (a sibling of `output:` and `sections:`). A disc is entirely CAV or entirely CLV, so this single project-wide selection applies to every section and determines which code types are valid and how the player addresses frames:
+
+```yaml
+line_injections:
+  disc_type: CAV        # project-wide CAV/CLV selection
+```
+
+Individual sections then carry only their per-section `laserdisc` `codes:` — they no longer repeat `disc_type`.
 
 ### Standards
 
@@ -123,22 +130,21 @@ Only certain code types are allowed in each section type. The following matrices
 
 ### Valid and Invalid Configuration Examples
 
+The `disc_type` (CAV vs CLV) is a project-wide setting in the top-level `line_injections:` block; the fragments below show only the per-section `section_type` and `codes:`.
+
 ```yaml
 # VALID: lead_in code in lead_in section
 section_type: lead_in
-disc_type: CAV
 codes:
   - code_type: lead_in       # ✅ correct section
 
 # INVALID: picture_number in lead_in
 section_type: lead_in
-disc_type: CAV
 codes:
   - code_type: picture_number  # ❌ ERROR: not allowed in lead_in
 
 # VALID: users_code in lead_out
 section_type: lead_out
-disc_type: CLV
 codes:
   - code_type: lead_out
   - code_type: users_code      # ✅ users_code allowed in lead_out
@@ -146,7 +152,6 @@ codes:
 
 # INVALID: users_code in programme_area
 section_type: programme_area
-disc_type: CAV
 codes:
   - code_type: users_code      # ❌ ERROR: users_code only in lead_in/lead_out
 ```
@@ -206,11 +211,21 @@ Fixed code that marks the lead-out section.
 | Value range | 1–99,999 (PAL) / 1–79,999 (NTSC) |
 | Digit constraint | X₁–X₅ must each be 0–9 (decimal digits) |
 
-The picture number identifies each unique frame on a CAV disc. It starts at `start_value` and auto-increments by 1 per frame.
+The picture number identifies each unique frame on a CAV disc. It auto-increments by 1 per frame.
+
+`start_value` is **optional**:
+
+- **Omit it** to continue numbering from the previous section. The counter runs continuously across every section, so a disc-wide sequential picture number needs `start_value` on the *first* section only (or nowhere, in which case numbering begins at 1).
+- **Set it** to re-anchor the count for that section — the first frame of the section takes `start_value`, overriding the continued count (useful for skip/replay sections whose picture numbers are non-contiguous).
 
 ```yaml
+# First programme section: anchor at 1 (or omit start_value to default to 1).
 - code_type: picture_number
-  start_value: 1        # Required; typically 1 for the first programme section
+  start_value: 1
+
+# Later section: omit start_value to continue the count from the previous
+# section, or set it to jump the numbering to a specific frame.
+- code_type: picture_number
 ```
 
 ---
@@ -429,17 +444,17 @@ The white flag is a constant 100 IRE signal that marks the start of each new pic
 IEC 60856/60857 §10.1.5 requires that timecodes run **continuously** from the first frame of the programme area to the last, without resetting for any reason.
 
 The affected code types are:
-- `picture_number` (CAV): counts from `start_value`, increments every frame
+- `picture_number` (CAV): increments every frame and continues across sections (anchored by `start_value` on the first section, or re-anchored where a section sets it explicitly)
 - `programme_time_code` (CLV): counts from `0:00`, increments minutes every 1500 (PAL) or 1800 (NTSC) frames
 - `clv_picture_number` (CLV): counts seconds and frames from `0:00`, increments every frame
 
 ### Chapters Do NOT Reset Timecodes
 
-This is a critical rule that is often misunderstood: **chapter boundaries do not reset any timecode counter**. When you start a new chapter section in YAML, you must continue setting `start_value` on `picture_number` to the next frame number — do not restart from 1.
+This is a critical rule that is often misunderstood: **chapter boundaries do not reset any timecode counter**. The generator enforces this for you — the `picture_number`, `programme_time_code`, and `clv_picture_number` counters persist across every section boundary and keep incrementing continuously. For the CLV clocks there is nothing to set. For `picture_number`, simply **omit `start_value`** on the later sections and the count continues automatically.
 
-**Example (correct — continuous across chapters):**
+**Example (recommended — continuous across chapters):**
 ```yaml
-# Chapter 0: frames 1–100
+# Chapter 0: anchor the numbering at 1 on the first section.
 - name: Chapter0
   section_type: programme_area
   codes:
@@ -448,24 +463,25 @@ This is a critical rule that is often misunderstood: **chapter boundaries do not
     - code_type: chapter_number
       chapter: 0
 
-# Chapter 1: frames 101–200 (NOT restarted at 1)
+# Chapter 1: omit start_value — numbering continues from the previous section.
 - name: Chapter1
   section_type: programme_area
   codes:
-    - code_type: picture_number
-      start_value: 101        # ← continues from previous section
+    - code_type: picture_number   # ← continues automatically (no start_value)
     - code_type: chapter_number
       chapter: 1
 ```
 
-**Example (incorrect — resets timecode):**
+Setting `start_value` explicitly on a later section is still allowed and **re-anchors** the count for that section — use it only when you deliberately want a discontinuity (for example, a skip/replay section whose picture numbers jump). Setting `start_value: 1` on every chapter, which would restart numbering at each boundary, is almost never what you want:
+
 ```yaml
-# Chapter 1: incorrect — restarts picture_number at 1
+# Chapter 1: re-anchors picture_number back to 1 — a deliberate discontinuity,
+# not continuous numbering.
 - name: Chapter1
   section_type: programme_area
   codes:
     - code_type: picture_number
-      start_value: 1          # ← WRONG: resets timecode at chapter boundary
+      start_value: 1          # ← re-anchors; only correct if you *want* a jump
 ```
 
 ### NTSC Frozen Values
@@ -670,6 +686,10 @@ cvbs_presets:
 output:
   video_path: output/my_disc.composite
 
+# Project-wide disc type — applies to every section.
+line_injections:
+  disc_type: CAV
+
 sections:
   # Lead-in: minimum 938 frames (≥ 1.5 mm)
   - name: LeadIn
@@ -679,7 +699,6 @@ sections:
     section_type: lead_in
     line_injections:
       - type: laserdisc
-        disc_type: CAV
         codes:
           - code_type: lead_in
           - code_type: users_code
@@ -693,7 +712,6 @@ sections:
     section_type: programme_area
     line_injections:
       - type: laserdisc
-        disc_type: CAV
         codes:
           - code_type: picture_number
             start_value: 1            # First picture
@@ -710,7 +728,6 @@ sections:
     section_type: programme_area
     line_injections:
       - type: laserdisc
-        disc_type: CAV
         codes:
           - code_type: picture_number
             start_value: 101          # Continues from chapter 0
@@ -727,7 +744,6 @@ sections:
     section_type: lead_out
     line_injections:
       - type: laserdisc
-        disc_type: CAV
         codes:
           - code_type: lead_out
           - code_type: users_code
@@ -751,6 +767,10 @@ cvbs_presets:
 output:
   video_path: output/clv_disc.composite
 
+# Project-wide disc type — applies to every section.
+line_injections:
+  disc_type: CLV
+
 sections:
   - name: LeadIn
     type: progressive
@@ -759,7 +779,6 @@ sections:
     section_type: lead_in
     line_injections:
       - type: laserdisc
-        disc_type: CLV
         codes:
           - code_type: lead_in
 
@@ -770,7 +789,6 @@ sections:
     section_type: programme_area
     line_injections:
       - type: laserdisc
-        disc_type: CLV
         codes:
           - code_type: programme_time_code    # auto-increments from 0:00
           - code_type: clv_code
@@ -787,7 +805,6 @@ sections:
     section_type: lead_out
     line_injections:
       - type: laserdisc
-        disc_type: CLV
         codes:
           - code_type: lead_out
 ```
@@ -796,7 +813,7 @@ sections:
 
 ### Example 3: NTSC CAV Disc
 
-NTSC discs require both 24-bit biphase codes and 40-bit FM codes, plus a mandatory VIRS signal on lines 19/282.
+NTSC discs require both 24-bit biphase codes and 40-bit FM codes, plus a mandatory VIRS signal on lines 19/282. The disc type and the VIRS VITS are declared once at the project level, so every section is covered automatically.
 
 ```yaml
 project:
@@ -811,6 +828,14 @@ cvbs_presets:
 output:
   video_path: output/ntsc_disc.composite
 
+# Project-wide disc type and the mandatory NTSC VIRS reference, applied to
+# every frame of every section (IEC 60857 §9.1.3).
+line_injections:
+  disc_type: CAV
+  vits:
+    - vits_type: virs
+      target_lines: [19, 282]
+
 sections:
   - name: LeadIn
     type: progressive
@@ -819,15 +844,11 @@ sections:
     section_type: lead_in
     line_injections:
       - type: laserdisc
-        disc_type: CAV
         codes:
           - code_type: lead_in
           - code_type: fm_white_flag          # NTSC: required in all sections
           - code_type: users_code
             users_code: "0x80D000"
-      - type: vits                            # VIRS mandatory per IEC 60857 §9.1.3
-        target_lines: [19, 282]
-        vits_type: virs
 
   - name: Chapter0
     type: progressive
@@ -836,7 +857,6 @@ sections:
     section_type: programme_area
     line_injections:
       - type: laserdisc
-        disc_type: CAV
         codes:
           - code_type: picture_number
             start_value: 1
@@ -846,9 +866,6 @@ sections:
             programme_status: "0x8DC001"
           - code_type: fm_picture_number      # 40-bit FM on lines 10/273
           - code_type: fm_white_flag          # 100 IRE on line 11/274
-      - type: vits
-        target_lines: [19, 282]
-        vits_type: virs
 
   - name: LeadOut
     type: progressive
@@ -857,15 +874,11 @@ sections:
     section_type: lead_out
     line_injections:
       - type: laserdisc
-        disc_type: CAV
         codes:
           - code_type: lead_out
           - code_type: fm_white_flag
           - code_type: users_code
             users_code: "0x80D000"
-      - type: vits
-        target_lines: [19, 282]
-        vits_type: virs
 ```
 
 ---
@@ -875,6 +888,10 @@ sections:
 A CAV disc with 4 chapters, each 500 frames long. Chapter 0 is the first chapter after lead-in (stop-bit always 1 by IEC rule); chapters 1–3 follow normal stop-bit behaviour.
 
 ```yaml
+# Project-wide disc type — applies to every section.
+line_injections:
+  disc_type: CAV
+
 sections:
   - name: LeadIn
     type: progressive
@@ -883,7 +900,6 @@ sections:
     section_type: lead_in
     line_injections:
       - type: laserdisc
-        disc_type: CAV
         codes:
           - code_type: lead_in
 
@@ -895,7 +911,6 @@ sections:
     section_type: programme_area
     line_injections:
       - type: laserdisc
-        disc_type: CAV
         codes:
           - code_type: picture_number
             start_value: 1
@@ -913,7 +928,6 @@ sections:
     section_type: programme_area
     line_injections:
       - type: laserdisc
-        disc_type: CAV
         codes:
           - code_type: picture_number
             start_value: 501
@@ -930,7 +944,6 @@ sections:
     section_type: programme_area
     line_injections:
       - type: laserdisc
-        disc_type: CAV
         codes:
           - code_type: picture_number
             start_value: 1001
@@ -947,7 +960,6 @@ sections:
     section_type: programme_area
     line_injections:
       - type: laserdisc
-        disc_type: CAV
         codes:
           - code_type: picture_number
             start_value: 1501
@@ -963,7 +975,6 @@ sections:
     section_type: lead_out
     line_injections:
       - type: laserdisc
-        disc_type: CAV
         codes:
           - code_type: lead_out
 ```
@@ -974,13 +985,19 @@ sections:
 
 ### Required Fields
 
-Every section with laserdisc injection must have:
+The disc type (and, on NTSC, the mandatory VIRS VITS) is declared once in the top-level `line_injections:` block:
+
+| Field | Level | Required | Description |
+|-------|-------|----------|-------------|
+| `disc_type` | Project `line_injections` | Yes (laserdisc projects) | `CAV` or `CLV`; applies to every section |
+| `vits` | Project `line_injections` | NTSC laserdisc: Yes (`virs`) | Project-wide VITS set applied to every frame of every section |
+
+Every section with a laserdisc injection must then have:
 
 | Field | Level | Required | Description |
 |-------|-------|----------|-------------|
 | `section_type` | Section | Yes | `lead_in`, `programme_area`, or `lead_out` |
 | `type: laserdisc` | line_injection | Yes | Injection type selector |
-| `disc_type` | laserdisc | Yes | `CAV` or `CLV` |
 | `codes` | laserdisc | Yes | List of at least one code type |
 | `code_type` | code | Yes | The code type identifier (see tables above) |
 
@@ -1010,7 +1027,7 @@ The validator enforces all of the following before generation begins:
 11. Lead-out duration ≥ 1250 frames (CAV) at 1.6 µm pitch
 12. Chapter sections ≥ 30 frames (minimum chapter length)
 13. VITS types that target the biphase reserved range are rejected when laserdisc is active
-14. NTSC: `virs` VITS injection is required in every laserdisc section
+14. NTSC: a `virs` VITS is required in the project-level `line_injections.vits` list (it is applied to every laserdisc section)
 15. PAL: `vits17`, `itu-multiburst`, `itu-composite`, `itu-combination` are rejected when laserdisc is active
 16. NTSC: `ntc7-composite`, `fcc-multiburst`, `ntc7-combination`, `fcc-composite` are rejected when laserdisc is active
 17. `target_lines` must not be specified for laserdisc injections
@@ -1109,12 +1126,14 @@ NTSC VITS types that target lines within 10–18 or 273–281 cannot coexist wit
 
 #### `NTSC laserdisc section 'Programme' requires a 'virs' VITS injection`
 
-Every NTSC laserdisc section must have a `virs` injection on lines 19/282. Add the following to the section's `line_injections`:
+NTSC laserdisc discs require a `virs` VITS on lines 19/282. It is declared once at the project level and applied to every section — add the following to the top-level `line_injections:` block (a sibling of `output:` and `sections:`):
 
 ```yaml
-- type: vits
-  target_lines: [19, 282]
-  vits_type: virs
+line_injections:
+  disc_type: CAV        # or CLV
+  vits:
+    - vits_type: virs
+      target_lines: [19, 282]
 ```
 
 ---

@@ -81,6 +81,9 @@ class SectionEditor : public QWidget {
   std::string SourceFromWidgets() const;
   void LoadSourceWidgets(const std::string& source);
   void UpdateSourceResolvedHint();
+  // Refreshes the "N frames x R = T total" duration hint from the latest probe
+  // result and the current repeat multiplier.
+  void UpdateDurationSummary();
   // Base directory relative source paths anchor to: the project file's folder,
   // or the working directory for a never-saved project.
   QString ProjectBaseDir() const;
@@ -102,6 +105,9 @@ class SectionEditor : public QWidget {
   QLabel* source_resolved_hint_ = nullptr;
   QSpinBox* duration_spin_ = nullptr;
   QCheckBox* duration_all_check_ = nullptr;
+  QSpinBox* duration_repeat_spin_ = nullptr;
+  QLabel* duration_repeat_label_ = nullptr;
+  QLabel* duration_summary_label_ = nullptr;
   QLabel* start_frame_label_ = nullptr;
 
   // Probe.

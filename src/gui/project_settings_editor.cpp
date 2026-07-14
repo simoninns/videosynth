@@ -15,6 +15,7 @@
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QFormLayout>
+#include <QGridLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -24,7 +25,16 @@
 #include <QVBoxLayout>
 
 #include "asset_roots.h"
+#include "line_injection_presenter.h"
 #include "project_settings_presenter.h"
+#include "project_templates.h"
+
+namespace {
+constexpr int kVitsTypeColumn = 0;
+constexpr int kVitsLinesColumn = 1;
+// Sentinel disc_type combo entry meaning "not a laserdisc project".
+const char* const kDiscTypeNone = "(none)";
+}  // namespace
 
 namespace videosynth::gui {
 
@@ -122,6 +132,35 @@ void ProjectSettingsEditor::BuildUi() {
   connect(setup_ire_combo_, &QComboBox::activated, this,
           &ProjectSettingsEditor::CommitCvbsPresets);
 
+  // --- line_injections: (project-wide laserdisc format + VITS set) ---------
+  auto* injections_group = new QGroupBox(tr("Laserdisc && VITS"), this);
+  auto* injections_layout = new QVBoxLayout(injections_group);
+  auto* disc_form = new QFormLayout();
+  disc_type_combo_ = new QComboBox(injections_group);
+  disc_type_combo_->addItem(QString::fromLatin1(kDiscTypeNone));
+  for (const std::string& disc_type : AvailableDiscTypes()) {
+    disc_type_combo_->addItem(QString::fromStdString(disc_type));
+  }
+  disc_form->addRow(tr("Disc format:"), disc_type_combo_);
+  injections_layout->addLayout(disc_form);
+
+  auto* vits_label = new QLabel(
+      tr("VITS test signals (applied project-wide) — tick the signals to "
+         "include; each sits on its standard line."),
+      injections_group);
+  vits_label->setWordWrap(true);
+  injections_layout->addWidget(vits_label);
+
+  auto* vits_host = new QWidget(injections_group);
+  vits_checklist_layout_ = new QGridLayout(vits_host);
+  vits_checklist_layout_->setContentsMargins(0, 0, 0, 0);
+  vits_checklist_layout_->setColumnStretch(1, 1);
+  injections_layout->addWidget(vits_host);
+  layout->addWidget(injections_group);
+
+  connect(disc_type_combo_, &QComboBox::activated, this,
+          &ProjectSettingsEditor::CommitLineInjections);
+
   // --- output: -------------------------------------------------------------
   auto* output_group = new QGroupBox(tr("Output"), this);
   auto* output_form = new QFormLayout(output_group);
@@ -216,10 +255,76 @@ void ProjectSettingsEditor::LoadFromDocument() {
   setup_ire_check_->setChecked(
       project.cvbs_presets.ntsc_black_setup_ire_specified);
 
+  const QString disc_type =
+      project.line_injections.disc_type.empty()
+          ? QString::fromLatin1(kDiscTypeNone)
+          : QString::fromStdString(project.line_injections.disc_type);
+  int disc_index = disc_type_combo_->findText(disc_type);
+  if (disc_index < 0) {
+    disc_type_combo_->addItem(disc_type);
+    disc_index = disc_type_combo_->count() - 1;
+  }
+  disc_type_combo_->setCurrentIndex(disc_index);
+  RebuildVitsChecklist();
+
   video_path_edit_->setText(QString::fromStdString(project.output.video_path));
 
   ApplyEnablement();
   updating_ = false;
+}
+
+void ProjectSettingsEditor::RebuildVitsChecklist() {
+  vits_rows_.clear();
+  QLayoutItem* item = nullptr;
+  while ((item = vits_checklist_layout_->takeAt(0)) != nullptr) {
+    delete item->widget();
+    delete item;
+  }
+
+  const Project& project = document_->project();
+  const Standard standard = project.cvbs_presets.video_standard_preset;
+  const std::vector<std::string> vits_types = AvailableVitsTypes(standard);
+
+  const auto find_existing =
+      [&project](const std::string& vits_type) -> const VitsInjection* {
+    for (const VitsInjection& vits : project.line_injections.vits) {
+      if (vits.vits_type == vits_type) {
+        return &vits;
+      }
+    }
+    return nullptr;
+  };
+
+  int row = 0;
+  for (const std::string& vits_type : vits_types) {
+    const VitsInjection* existing = find_existing(vits_type);
+    const bool ticked = existing != nullptr;
+    const bool fixed = VitsHasFixedLine(standard, vits_type);
+
+    auto* check = new QCheckBox(QString::fromStdString(vits_type));
+    check->setChecked(ticked);
+    connect(check, &QCheckBox::toggled, this,
+            [this, row] { OnVitsRowToggled(row); });
+    vits_checklist_layout_->addWidget(check, row, kVitsTypeColumn);
+
+    const std::vector<int> lines =
+        ticked ? existing->target_lines : DefaultVitsLines(standard, vits_type);
+    auto* lines_edit = new QLineEdit();
+    lines_edit->setText(QString::fromStdString(FormatTargetLines(lines)));
+    lines_edit->setPlaceholderText(tr("e.g. 19, 282"));
+    lines_edit->setReadOnly(fixed);
+    lines_edit->setEnabled(ticked);
+    lines_edit->setToolTip(
+        fixed ? tr("Fixed placement line for this signal (set by the "
+                   "standard).")
+              : tr("Target VBI line(s), comma-separated."));
+    connect(lines_edit, &QLineEdit::editingFinished, this,
+            [this, row] { OnVitsLineEdited(row); });
+    vits_checklist_layout_->addWidget(lines_edit, row, kVitsLinesColumn);
+
+    vits_rows_.push_back({vits_type, check, lines_edit});
+    ++row;
+  }
 }
 
 void ProjectSettingsEditor::SetStandardEditable(bool editable) {
@@ -259,6 +364,9 @@ void ProjectSettingsEditor::CommitCvbsPresets() {
     return;
   }
 
+  const Standard old_standard =
+      document_->project().cvbs_presets.video_standard_preset;
+
   CvbsPresets presets = document_->project().cvbs_presets;
   presets.video_standard_preset =
       StandardFromString(standard_combo_->currentText().toStdString());
@@ -276,8 +384,89 @@ void ProjectSettingsEditor::CommitCvbsPresets() {
 
   committing_ = true;
   document_->SetCvbsPresets(presets);
+  // Switching the standard changes the required source raster (720x576 PAL vs
+  // 720x486 System-M). Re-point any section still on a bundled default
+  // colour-bar EXR to the new standard's raster so a freshly seeded project
+  // stays previewable; user-chosen sources are left untouched.
+  const Standard new_standard = presets.video_standard_preset;
+  if (new_standard != old_standard) {
+    Project remapped = document_->project();
+    if (RemapBundledDefaultSources(&remapped, new_standard) > 0) {
+      // Push only the sections the remap actually changed through the document
+      // so each becomes an undoable edit and observers (preview, list) refresh.
+      const std::vector<Section>& live = document_->project().sections;
+      for (int index = 0; index < static_cast<int>(remapped.sections.size());
+           ++index) {
+        const std::size_t i = static_cast<std::size_t>(index);
+        if (remapped.sections[i].source != live[i].source) {
+          document_->SetSection(index, remapped.sections[i]);
+        }
+      }
+    }
+  }
   committing_ = false;
   LoadFromDocument();
+}
+
+void ProjectSettingsEditor::CommitLineInjections() {
+  if (updating_) {
+    return;
+  }
+
+  ProjectLineInjections li;
+  const std::string disc = disc_type_combo_->currentText().toStdString();
+  li.disc_type = (disc == kDiscTypeNone) ? std::string() : disc;
+
+  for (const VitsRow& vits_row : vits_rows_) {
+    if (!vits_row.check->isChecked()) {
+      continue;
+    }
+    VitsInjection vits;
+    vits.vits_type = vits_row.vits_type;
+    ParseTargetLines(vits_row.lines->text().toStdString(), &vits.target_lines);
+    li.vits.push_back(std::move(vits));
+  }
+
+  // Commit without a full reload: the checklist widgets already reflect the
+  // user's intent, and rebuilding here would destroy the widget whose signal
+  // triggered this commit. External changes still reload via the document
+  // observers (guarded by committing_).
+  committing_ = true;
+  document_->SetProjectLineInjections(std::move(li));
+  committing_ = false;
+}
+
+void ProjectSettingsEditor::OnVitsRowToggled(int row) {
+  if (updating_ || row < 0 || row >= static_cast<int>(vits_rows_.size())) {
+    return;
+  }
+  const VitsRow& vits_row = vits_rows_[static_cast<std::size_t>(row)];
+  vits_row.lines->setEnabled(vits_row.check->isChecked());
+  CommitLineInjections();
+}
+
+void ProjectSettingsEditor::OnVitsLineEdited(int row) {
+  if (updating_ || row < 0 || row >= static_cast<int>(vits_rows_.size())) {
+    return;
+  }
+  const VitsRow& vits_row = vits_rows_[static_cast<std::size_t>(row)];
+  std::vector<int> lines;
+  if (!ParseTargetLines(vits_row.lines->text().toStdString(), &lines)) {
+    // Restore the last-known-good value from the model; range feedback comes
+    // from the issues panel.
+    const auto& vits_set = document_->project().line_injections.vits;
+    std::vector<int> restored;
+    for (const VitsInjection& vits : vits_set) {
+      if (vits.vits_type == vits_row.vits_type) {
+        restored = vits.target_lines;
+        break;
+      }
+    }
+    vits_row.lines->setText(
+        QString::fromStdString(FormatTargetLines(restored)));
+    return;
+  }
+  CommitLineInjections();
 }
 
 void ProjectSettingsEditor::CommitOutputTargets() {

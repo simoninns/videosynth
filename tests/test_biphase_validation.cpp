@@ -47,10 +47,9 @@ Section MakeSection(SectionType stype, int frames = 100) {
   return s;
 }
 
-Section::LineInjection MakeLaserdiscInjection(const std::string& disc_type) {
+Section::LineInjection MakeLaserdiscInjection() {
   Section::LineInjection inj;
   inj.type = "laserdisc";
-  inj.disc_type = disc_type;
   return inj;
 }
 
@@ -67,7 +66,8 @@ TEST(BiphaseValidationTest, RequiresSectionTypeWhenDiscTypeIsPresent) {
   // section_type defaults to kUnknown; should be rejected when disc_type set.
   Project p = MakeBasePalProject();
   Section s = MakeSection(SectionType::kUnknown);
-  auto inj = MakeLaserdiscInjection("CAV");
+  p.line_injections.disc_type = "CAV";
+  auto inj = MakeLaserdiscInjection();
   s.line_injections.push_back(inj);
   p.sections.push_back(s);
 
@@ -82,7 +82,8 @@ TEST(BiphaseValidationTest, RequiresSectionTypeWhenDiscTypeIsPresent) {
 TEST(BiphaseValidationTest, AcceptsSectionTypeLeadInWithDiscType) {
   Project p = MakeBasePalProject();
   Section s = MakeSection(SectionType::kLeadIn, 938);
-  auto inj = MakeLaserdiscInjection("CAV");
+  p.line_injections.disc_type = "CAV";
+  auto inj = MakeLaserdiscInjection();
   inj.codes.push_back(MakeCode("lead_in"));
   s.line_injections.push_back(inj);
   p.sections.push_back(s);
@@ -95,7 +96,8 @@ TEST(BiphaseValidationTest, AcceptsSectionTypeLeadInWithDiscType) {
 TEST(BiphaseValidationTest, AcceptsSectionTypeProgrammeAreaWithDiscType) {
   Project p = MakeBasePalProject();
   Section s = MakeSection(SectionType::kProgrammeArea);
-  auto inj = MakeLaserdiscInjection("CAV");
+  p.line_injections.disc_type = "CAV";
+  auto inj = MakeLaserdiscInjection();
   inj.codes.push_back(MakeCode("picture_number"));
   s.line_injections.push_back(inj);
   p.sections.push_back(s);
@@ -108,7 +110,8 @@ TEST(BiphaseValidationTest, AcceptsSectionTypeProgrammeAreaWithDiscType) {
 TEST(BiphaseValidationTest, AcceptsSectionTypeLeadOutWithDiscType) {
   Project p = MakeBasePalProject();
   Section s = MakeSection(SectionType::kLeadOut, 1250);
-  auto inj = MakeLaserdiscInjection("CAV");
+  p.line_injections.disc_type = "CAV";
+  auto inj = MakeLaserdiscInjection();
   inj.codes.push_back(MakeCode("lead_out"));
   s.line_injections.push_back(inj);
   p.sections.push_back(s);
@@ -123,7 +126,8 @@ TEST(BiphaseValidationTest, AcceptsSectionTypeLeadOutWithDiscType) {
 TEST(BiphaseValidationTest, RejectsLeadInCodeInProgrammeAreaSection) {
   Project p = MakeBasePalProject();
   Section s = MakeSection(SectionType::kProgrammeArea);
-  auto inj = MakeLaserdiscInjection("CAV");
+  p.line_injections.disc_type = "CAV";
+  auto inj = MakeLaserdiscInjection();
   inj.codes.push_back(MakeCode("lead_in"));
   s.line_injections.push_back(inj);
   p.sections.push_back(s);
@@ -138,7 +142,8 @@ TEST(BiphaseValidationTest, RejectsLeadInCodeInProgrammeAreaSection) {
 TEST(BiphaseValidationTest, RejectsLeadOutCodeInProgrammeAreaSection) {
   Project p = MakeBasePalProject();
   Section s = MakeSection(SectionType::kProgrammeArea);
-  auto inj = MakeLaserdiscInjection("CAV");
+  p.line_injections.disc_type = "CAV";
+  auto inj = MakeLaserdiscInjection();
   inj.codes.push_back(MakeCode("lead_out"));
   s.line_injections.push_back(inj);
   p.sections.push_back(s);
@@ -151,7 +156,8 @@ TEST(BiphaseValidationTest, RejectsLeadOutCodeInProgrammeAreaSection) {
 TEST(BiphaseValidationTest, RejectsPictureNumberInLeadInSection) {
   Project p = MakeBasePalProject();
   Section s = MakeSection(SectionType::kLeadIn, 938);
-  auto inj = MakeLaserdiscInjection("CAV");
+  p.line_injections.disc_type = "CAV";
+  auto inj = MakeLaserdiscInjection();
   inj.codes.push_back(MakeCode("picture_number"));
   s.line_injections.push_back(inj);
   p.sections.push_back(s);
@@ -166,7 +172,8 @@ TEST(BiphaseValidationTest, RejectsPictureNumberInLeadInSection) {
 TEST(BiphaseValidationTest, RejectsPictureNumberInLeadOutSection) {
   Project p = MakeBasePalProject();
   Section s = MakeSection(SectionType::kLeadOut, 1250);
-  auto inj = MakeLaserdiscInjection("CAV");
+  p.line_injections.disc_type = "CAV";
+  auto inj = MakeLaserdiscInjection();
   inj.codes.push_back(MakeCode("picture_number"));
   s.line_injections.push_back(inj);
   p.sections.push_back(s);
@@ -179,7 +186,8 @@ TEST(BiphaseValidationTest, RejectsPictureNumberInLeadOutSection) {
 TEST(BiphaseValidationTest, RejectsUsersCodeInProgrammeArea) {
   Project p = MakeBasePalProject();
   Section s = MakeSection(SectionType::kProgrammeArea);
-  auto inj = MakeLaserdiscInjection("CAV");
+  p.line_injections.disc_type = "CAV";
+  auto inj = MakeLaserdiscInjection();
   inj.codes.push_back(MakeCode("users_code"));
   s.line_injections.push_back(inj);
   p.sections.push_back(s);
@@ -194,7 +202,8 @@ TEST(BiphaseValidationTest, RejectsUsersCodeInProgrammeArea) {
 TEST(BiphaseValidationTest, AcceptsUsersCodeInLeadIn) {
   Project p = MakeBasePalProject();
   Section s = MakeSection(SectionType::kLeadIn, 938);
-  auto inj = MakeLaserdiscInjection("CAV");
+  p.line_injections.disc_type = "CAV";
+  auto inj = MakeLaserdiscInjection();
   auto code = MakeCode("users_code");
   code.users_code =
       "0x80D234";  // X1=0, D=0xD (canonical format per IEC §10.1.9)
@@ -212,7 +221,8 @@ TEST(BiphaseValidationTest, AcceptsUsersCodeInLeadIn) {
 TEST(BiphaseValidationTest, AcceptsUsersCodeInLeadOut) {
   Project p = MakeBasePalProject();
   Section s = MakeSection(SectionType::kLeadOut, 1250);
-  auto inj = MakeLaserdiscInjection("CAV");
+  p.line_injections.disc_type = "CAV";
+  auto inj = MakeLaserdiscInjection();
   auto code = MakeCode("users_code");
   code.users_code =
       "0x80D234";  // X1=0, D=0xD (canonical format per IEC §10.1.9)
@@ -236,7 +246,8 @@ TEST(BiphaseValidationTest, AcceptsFmWhiteFlagInAllSections) {
                  : (st == SectionType::kLeadOut) ? 1250
                                                  : 100;
     Section s = MakeSection(st, frames);
-    auto inj = MakeLaserdiscInjection("CAV");
+    p.line_injections.disc_type = "CAV";
+    auto inj = MakeLaserdiscInjection();
     inj.codes.push_back(MakeCode("fm_white_flag"));
     if (st == SectionType::kLeadIn) inj.codes.push_back(MakeCode("lead_in"));
     if (st == SectionType::kLeadOut) inj.codes.push_back(MakeCode("lead_out"));
@@ -246,11 +257,7 @@ TEST(BiphaseValidationTest, AcceptsFmWhiteFlagInAllSections) {
     s.line_injections.push_back(inj);
 
     // Add mandatory NTSC virs.
-    Section::LineInjection virs;
-    virs.type = "vits";
-    virs.vits_type = "virs";
-    virs.target_lines = {19, 282};
-    s.line_injections.push_back(virs);
+    p.line_injections.vits.push_back(VitsInjection{"virs", {19, 282}});
 
     p.sections.push_back(s);
     ProjectValidator v;
@@ -263,7 +270,8 @@ TEST(BiphaseValidationTest, AcceptsFmWhiteFlagInAllSections) {
 TEST(BiphaseValidationTest, RejectsProgrammeTimeCodeInLeadIn) {
   Project p = MakeBasePalProject();
   Section s = MakeSection(SectionType::kLeadIn, 938);
-  auto inj = MakeLaserdiscInjection("CLV");
+  p.line_injections.disc_type = "CLV";
+  auto inj = MakeLaserdiscInjection();
   inj.codes.push_back(MakeCode("programme_time_code"));
   s.line_injections.push_back(inj);
   p.sections.push_back(s);
@@ -281,7 +289,8 @@ TEST(BiphaseValidationTest, RejectsProgrammeTimeCodeInLeadIn) {
 TEST(BiphaseValidationTest, RejectsFmPictureNumberOnPalProject) {
   Project p = MakeBasePalProject();
   Section s = MakeSection(SectionType::kProgrammeArea);
-  auto inj = MakeLaserdiscInjection("CAV");
+  p.line_injections.disc_type = "CAV";
+  auto inj = MakeLaserdiscInjection();
   inj.codes.push_back(MakeCode("fm_picture_number"));
   inj.codes.push_back(MakeCode("picture_number"));
   s.line_injections.push_back(inj);
@@ -298,7 +307,8 @@ TEST(BiphaseValidationTest, RejectsFmPictureNumberOnPalProject) {
 TEST(BiphaseValidationTest, RejectsFmWhiteFlagOnPalProject) {
   Project p = MakeBasePalProject();
   Section s = MakeSection(SectionType::kProgrammeArea);
-  auto inj = MakeLaserdiscInjection("CAV");
+  p.line_injections.disc_type = "CAV";
+  auto inj = MakeLaserdiscInjection();
   inj.codes.push_back(MakeCode("fm_white_flag"));
   inj.codes.push_back(MakeCode("picture_number"));
   s.line_injections.push_back(inj);
@@ -317,7 +327,8 @@ TEST(BiphaseValidationTest, RejectsFmWhiteFlagOnPalProject) {
 TEST(BiphaseValidationTest, AcceptsPalPictureNumberAtMaximum) {
   Project p = MakeBasePalProject();
   Section s = MakeSection(SectionType::kProgrammeArea);
-  auto inj = MakeLaserdiscInjection("CAV");
+  p.line_injections.disc_type = "CAV";
+  auto inj = MakeLaserdiscInjection();
   auto code = MakeCode("picture_number");
   code.start_value = 99999;
   code.start_value_specified = true;
@@ -333,7 +344,8 @@ TEST(BiphaseValidationTest, AcceptsPalPictureNumberAtMaximum) {
 TEST(BiphaseValidationTest, RejectsPalPictureNumberAboveMaximum) {
   Project p = MakeBasePalProject();
   Section s = MakeSection(SectionType::kProgrammeArea);
-  auto inj = MakeLaserdiscInjection("CAV");
+  p.line_injections.disc_type = "CAV";
+  auto inj = MakeLaserdiscInjection();
   auto code = MakeCode("picture_number");
   code.start_value = 100000;
   code.start_value_specified = true;
@@ -351,7 +363,8 @@ TEST(BiphaseValidationTest, RejectsPalPictureNumberAboveMaximum) {
 TEST(BiphaseValidationTest, AcceptsNtscPictureNumberAtMaximum) {
   Project p = MakeBaseNtscProject();
   Section s = MakeSection(SectionType::kProgrammeArea);
-  auto inj = MakeLaserdiscInjection("CAV");
+  p.line_injections.disc_type = "CAV";
+  auto inj = MakeLaserdiscInjection();
   auto code = MakeCode("picture_number");
   code.start_value = 79999;
   code.start_value_specified = true;
@@ -359,11 +372,7 @@ TEST(BiphaseValidationTest, AcceptsNtscPictureNumberAtMaximum) {
   inj.codes.push_back(MakeCode("fm_picture_number"));
   s.line_injections.push_back(inj);
 
-  Section::LineInjection virs;
-  virs.type = "vits";
-  virs.vits_type = "virs";
-  virs.target_lines = {19, 282};
-  s.line_injections.push_back(virs);
+  p.line_injections.vits.push_back(VitsInjection{"virs", {19, 282}});
 
   p.sections.push_back(s);
   ProjectValidator v;
@@ -374,7 +383,9 @@ TEST(BiphaseValidationTest, AcceptsNtscPictureNumberAtMaximum) {
 TEST(BiphaseValidationTest, RejectsNtscPictureNumberAboveNtscMaximum) {
   Project p = MakeBaseNtscProject();
   Section s = MakeSection(SectionType::kProgrammeArea);
-  auto inj = MakeLaserdiscInjection("CAV");
+  p.line_injections.disc_type = "CAV";
+  p.line_injections.vits.push_back(VitsInjection{"virs", {19, 282}});
+  auto inj = MakeLaserdiscInjection();
   auto code = MakeCode("picture_number");
   code.start_value = 80000;
   code.start_value_specified = true;
@@ -392,7 +403,8 @@ TEST(BiphaseValidationTest, RejectsNtscPictureNumberAboveNtscMaximum) {
 TEST(BiphaseValidationTest, RejectsPictureNumberBelowZero) {
   Project p = MakeBasePalProject();
   Section s = MakeSection(SectionType::kProgrammeArea);
-  auto inj = MakeLaserdiscInjection("CAV");
+  p.line_injections.disc_type = "CAV";
+  auto inj = MakeLaserdiscInjection();
   auto code = MakeCode("picture_number");
   code.start_value = -1;
   code.start_value_specified = true;
@@ -411,7 +423,8 @@ TEST(BiphaseValidationTest, RejectsPictureNumberBelowZero) {
 TEST(BiphaseValidationTest, AcceptsFmPictureNumberAtMaximum) {
   Project p = MakeBaseNtscProject();
   Section s = MakeSection(SectionType::kProgrammeArea);
-  auto inj = MakeLaserdiscInjection("CAV");
+  p.line_injections.disc_type = "CAV";
+  auto inj = MakeLaserdiscInjection();
   auto code = MakeCode("fm_picture_number");
   code.start_value = 79999;
   code.start_value_specified = true;
@@ -419,11 +432,7 @@ TEST(BiphaseValidationTest, AcceptsFmPictureNumberAtMaximum) {
   inj.codes.push_back(MakeCode("picture_number"));
   s.line_injections.push_back(inj);
 
-  Section::LineInjection virs;
-  virs.type = "vits";
-  virs.vits_type = "virs";
-  virs.target_lines = {19, 282};
-  s.line_injections.push_back(virs);
+  p.line_injections.vits.push_back(VitsInjection{"virs", {19, 282}});
 
   p.sections.push_back(s);
   ProjectValidator v;
@@ -434,7 +443,9 @@ TEST(BiphaseValidationTest, AcceptsFmPictureNumberAtMaximum) {
 TEST(BiphaseValidationTest, RejectsFmPictureNumberAboveMaximum) {
   Project p = MakeBaseNtscProject();
   Section s = MakeSection(SectionType::kProgrammeArea);
-  auto inj = MakeLaserdiscInjection("CAV");
+  p.line_injections.disc_type = "CAV";
+  p.line_injections.vits.push_back(VitsInjection{"virs", {19, 282}});
+  auto inj = MakeLaserdiscInjection();
   auto code = MakeCode("fm_picture_number");
   code.start_value = 80000;
   code.start_value_specified = true;
@@ -455,7 +466,8 @@ TEST(BiphaseValidationTest, RejectsFmPictureNumberAboveMaximum) {
 TEST(BiphaseValidationTest, AcceptsChapterNumberAtMaximum) {
   Project p = MakeBasePalProject();
   Section s = MakeSection(SectionType::kProgrammeArea);
-  auto inj = MakeLaserdiscInjection("CAV");
+  p.line_injections.disc_type = "CAV";
+  auto inj = MakeLaserdiscInjection();
   auto code = MakeCode("chapter_number");
   code.chapter = 79;
   code.chapter_specified = true;
@@ -471,7 +483,8 @@ TEST(BiphaseValidationTest, AcceptsChapterNumberAtMaximum) {
 TEST(BiphaseValidationTest, AcceptsChapterNumberAtZero) {
   Project p = MakeBasePalProject();
   Section s = MakeSection(SectionType::kProgrammeArea);
-  auto inj = MakeLaserdiscInjection("CAV");
+  p.line_injections.disc_type = "CAV";
+  auto inj = MakeLaserdiscInjection();
   auto code = MakeCode("chapter_number");
   code.chapter = 0;
   code.chapter_specified = true;
@@ -487,7 +500,8 @@ TEST(BiphaseValidationTest, AcceptsChapterNumberAtZero) {
 TEST(BiphaseValidationTest, RejectsChapterNumberAboveMaximum) {
   Project p = MakeBasePalProject();
   Section s = MakeSection(SectionType::kProgrammeArea);
-  auto inj = MakeLaserdiscInjection("CAV");
+  p.line_injections.disc_type = "CAV";
+  auto inj = MakeLaserdiscInjection();
   auto code = MakeCode("chapter_number");
   code.chapter = 80;
   code.chapter_specified = true;
@@ -505,7 +519,8 @@ TEST(BiphaseValidationTest, RejectsChapterNumberAboveMaximum) {
 TEST(BiphaseValidationTest, RejectsChapterNumberBelowZero) {
   Project p = MakeBasePalProject();
   Section s = MakeSection(SectionType::kProgrammeArea);
-  auto inj = MakeLaserdiscInjection("CAV");
+  p.line_injections.disc_type = "CAV";
+  auto inj = MakeLaserdiscInjection();
   auto code = MakeCode("chapter_number");
   code.chapter = -1;
   code.chapter_specified = true;
@@ -524,7 +539,8 @@ TEST(BiphaseValidationTest, RejectsChapterNumberBelowZero) {
 TEST(BiphaseValidationTest, AcceptsUsersCodeWithX1EqualSeven) {
   Project p = MakeBasePalProject();
   Section s = MakeSection(SectionType::kLeadIn, 938);
-  auto inj = MakeLaserdiscInjection("CAV");
+  p.line_injections.disc_type = "CAV";
+  auto inj = MakeLaserdiscInjection();
   inj.codes.push_back(MakeCode("lead_in"));
   auto code = MakeCode("users_code");
   code.users_code = "0x87D234";  // X1=7 (max valid), D=0xD (canonical)
@@ -541,7 +557,8 @@ TEST(BiphaseValidationTest, AcceptsUsersCodeWithX1EqualSeven) {
 TEST(BiphaseValidationTest, RejectsUsersCodeWithX1EqualEight) {
   Project p = MakeBasePalProject();
   Section s = MakeSection(SectionType::kLeadIn, 938);
-  auto inj = MakeLaserdiscInjection("CAV");
+  p.line_injections.disc_type = "CAV";
+  auto inj = MakeLaserdiscInjection();
   inj.codes.push_back(MakeCode("lead_in"));
   auto code = MakeCode("users_code");
   code.users_code = "0x88D234";  // X1=8 (invalid), D=0xD (canonical)
@@ -560,7 +577,8 @@ TEST(BiphaseValidationTest, RejectsUsersCodeWithX1EqualEight) {
 TEST(BiphaseValidationTest, RejectsUsersCodeWithX1EqualFifteen) {
   Project p = MakeBasePalProject();
   Section s = MakeSection(SectionType::kLeadIn, 938);
-  auto inj = MakeLaserdiscInjection("CAV");
+  p.line_injections.disc_type = "CAV";
+  auto inj = MakeLaserdiscInjection();
   inj.codes.push_back(MakeCode("lead_in"));
   auto code = MakeCode("users_code");
   code.users_code = "0x8FD234";  // X1=15 (invalid), D=0xD (canonical)
@@ -579,7 +597,8 @@ TEST(BiphaseValidationTest, RejectsUsersCodeWithInvalidDNibble) {
   for (const char* bad_code : {"0x801234", "0x870000", "0x80A000"}) {
     Project p = MakeBasePalProject();
     Section s = MakeSection(SectionType::kLeadIn, 938);
-    auto inj = MakeLaserdiscInjection("CAV");
+    p.line_injections.disc_type = "CAV";
+    auto inj = MakeLaserdiscInjection();
     inj.codes.push_back(MakeCode("lead_in"));
     auto code = MakeCode("users_code");
     code.users_code = bad_code;
@@ -600,7 +619,8 @@ TEST(BiphaseValidationTest, RejectsUsersCodeWithInvalidDNibble) {
 TEST(BiphaseValidationTest, RejectsUsersCodeWithNonHexString) {
   Project p = MakeBasePalProject();
   Section s = MakeSection(SectionType::kLeadIn, 938);
-  auto inj = MakeLaserdiscInjection("CAV");
+  p.line_injections.disc_type = "CAV";
+  auto inj = MakeLaserdiscInjection();
   inj.codes.push_back(MakeCode("lead_in"));
   auto code = MakeCode("users_code");
   code.users_code = "not_a_hex";
@@ -617,7 +637,8 @@ TEST(BiphaseValidationTest, RejectsUsersCodeWithNonHexString) {
 TEST(BiphaseValidationTest, RejectsUsersCodeExceeding24BitRange) {
   Project p = MakeBasePalProject();
   Section s = MakeSection(SectionType::kLeadIn, 938);
-  auto inj = MakeLaserdiscInjection("CAV");
+  p.line_injections.disc_type = "CAV";
+  auto inj = MakeLaserdiscInjection();
   inj.codes.push_back(MakeCode("lead_in"));
   auto code = MakeCode("users_code");
   code.users_code = "0x1000000";  // > 0xFFFFFF
@@ -637,7 +658,8 @@ TEST(BiphaseValidationTest, RejectsUsersCodeExceeding24BitRange) {
 TEST(BiphaseValidationTest, AcceptsLeadInWithExactMinimumFrames) {
   Project p = MakeBasePalProject();
   Section s = MakeSection(SectionType::kLeadIn, 938);
-  auto inj = MakeLaserdiscInjection("CAV");
+  p.line_injections.disc_type = "CAV";
+  auto inj = MakeLaserdiscInjection();
   inj.codes.push_back(MakeCode("lead_in"));
   s.line_injections.push_back(inj);
   p.sections.push_back(s);
@@ -651,7 +673,8 @@ TEST(BiphaseValidationTest, AcceptsLeadInWithExactMinimumFrames) {
 TEST(BiphaseValidationTest, WarnsLeadInBelowMinimumFrames) {
   Project p = MakeBasePalProject();
   Section s = MakeSection(SectionType::kLeadIn, 937);  // one below IEC minimum
-  auto inj = MakeLaserdiscInjection("CAV");
+  p.line_injections.disc_type = "CAV";
+  auto inj = MakeLaserdiscInjection();
   inj.codes.push_back(MakeCode("lead_in"));
   s.line_injections.push_back(inj);
   p.sections.push_back(s);
@@ -666,7 +689,8 @@ TEST(BiphaseValidationTest, WarnsLeadInBelowMinimumFrames) {
 TEST(BiphaseValidationTest, AcceptsLeadOutWithExactMinimumFrames) {
   Project p = MakeBasePalProject();
   Section s = MakeSection(SectionType::kLeadOut, 1250);
-  auto inj = MakeLaserdiscInjection("CAV");
+  p.line_injections.disc_type = "CAV";
+  auto inj = MakeLaserdiscInjection();
   inj.codes.push_back(MakeCode("lead_out"));
   s.line_injections.push_back(inj);
   p.sections.push_back(s);
@@ -681,7 +705,8 @@ TEST(BiphaseValidationTest, WarnsLeadOutBelowMinimumFrames) {
   Project p = MakeBasePalProject();
   Section s =
       MakeSection(SectionType::kLeadOut, 1249);  // one below IEC minimum
-  auto inj = MakeLaserdiscInjection("CAV");
+  p.line_injections.disc_type = "CAV";
+  auto inj = MakeLaserdiscInjection();
   inj.codes.push_back(MakeCode("lead_out"));
   s.line_injections.push_back(inj);
   p.sections.push_back(s);
@@ -698,7 +723,8 @@ TEST(BiphaseValidationTest, AcceptsLeadInWithDurationAll) {
   Project p = MakeBasePalProject();
   Section s = MakeSection(SectionType::kLeadIn, 0);
   s.duration_frames_all = true;
-  auto inj = MakeLaserdiscInjection("CAV");
+  p.line_injections.disc_type = "CAV";
+  auto inj = MakeLaserdiscInjection();
   inj.codes.push_back(MakeCode("lead_in"));
   s.line_injections.push_back(inj);
   p.sections.push_back(s);
@@ -712,7 +738,8 @@ TEST(BiphaseValidationTest, SkipsMinDurationCheckForClvLeadIn) {
   // CLV track density varies; no minimum frame count is enforced for CLV.
   Project p = MakeBasePalProject();
   Section s = MakeSection(SectionType::kLeadIn, 10);  // tiny, accepted for CLV
-  auto inj = MakeLaserdiscInjection("CLV");
+  p.line_injections.disc_type = "CLV";
+  auto inj = MakeLaserdiscInjection();
   inj.codes.push_back(MakeCode("lead_in"));
   s.line_injections.push_back(inj);
   p.sections.push_back(s);
@@ -725,7 +752,8 @@ TEST(BiphaseValidationTest, SkipsMinDurationCheckForClvLeadIn) {
 TEST(BiphaseValidationTest, SkipsMinDurationCheckForClvLeadOut) {
   Project p = MakeBasePalProject();
   Section s = MakeSection(SectionType::kLeadOut, 10);
-  auto inj = MakeLaserdiscInjection("CLV");
+  p.line_injections.disc_type = "CLV";
+  auto inj = MakeLaserdiscInjection();
   inj.codes.push_back(MakeCode("lead_out"));
   s.line_injections.push_back(inj);
   p.sections.push_back(s);
@@ -739,7 +767,8 @@ TEST(BiphaseValidationTest, ProgrammeAreaHasNoDurationConstraint) {
   // Programme area sections have no IEC minimum frame count.
   Project p = MakeBasePalProject();
   Section s = MakeSection(SectionType::kProgrammeArea, 1);
-  auto inj = MakeLaserdiscInjection("CAV");
+  p.line_injections.disc_type = "CAV";
+  auto inj = MakeLaserdiscInjection();
   inj.codes.push_back(MakeCode("picture_number"));
   s.line_injections.push_back(inj);
   p.sections.push_back(s);
@@ -749,19 +778,20 @@ TEST(BiphaseValidationTest, ProgrammeAreaHasNoDurationConstraint) {
   EXPECT_TRUE(r.is_valid) << (!r.errors.empty() ? r.errors[0] : "");
 }
 
-TEST(BiphaseValidationTest, SkipsValidationWhenDiscTypeIsAbsent) {
-  // Laserdisc injection without disc_type skips Phase-9 validation.
+TEST(BiphaseValidationTest, RejectsLaserdiscSectionWhenDiscTypeIsAbsent) {
+  // A section declaring laserdisc codes now requires a project-wide disc_type.
   Project p = MakeBasePalProject();
-  Section s =
-      MakeSection(SectionType::kUnknown);  // kUnknown is otherwise rejected
+  Section s = MakeSection(SectionType::kProgrammeArea);
   Section::LineInjection inj;
-  inj.type = "laserdisc";  // No disc_type set
+  inj.type = "laserdisc";  // Project disc_type deliberately left unset.
   s.line_injections.push_back(inj);
   p.sections.push_back(s);
 
   ProjectValidator v;
   const auto r = v.Validate(p);
-  EXPECT_TRUE(r.is_valid) << (!r.errors.empty() ? r.errors[0] : "");
+  EXPECT_FALSE(r.is_valid);
+  ASSERT_FALSE(r.errors.empty());
+  EXPECT_NE(r.errors[0].find("disc_type"), std::string::npos);
 }
 
 }  // namespace

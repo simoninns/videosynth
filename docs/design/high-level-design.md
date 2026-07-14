@@ -704,9 +704,9 @@ The current parser, validator, and runtime implement only a subset of the YAML s
 
 - Implemented top-level presets: `video_standard_preset`, `sample_encoding_preset`, `signal_state_preset`, `ntsc_black_setup_ire`, `output.video_path`, and `output.signal_type` (`"composite"` or `"yc"`; defaults to `"composite"`). The metadata sidecar is not configured in YAML: it is always colocated with the video output and its path is derived from `output.video_path` (`.composite`/`.y` → `.meta`).
 - The `project:` block fields `name`, `version`, and `description` are parsed and retained on the in-memory `Project` model, so they survive load/save round-trips.
-- A YAML project **emitter** (`YamlProjectEmitter` in `videosynth_core`) serialises an in-memory `Project` back to this schema. It writes fields in the canonical order shown below and emits only explicitly-set optional blocks (`noise:`, `dropouts:`, `osd:`, `audio:`, `line_injections:`, `disc_skips:`), so emitted files stay minimal and diffable. Emit → parse is lossless: a saved file parses back to an equal `Project`, which is the contract that keeps GUI-saved projects loadable by the CLI and vice versa.
+- A YAML project **emitter** (`YamlProjectEmitter` in `videosynth_core`) serialises an in-memory `Project` back to this schema. It writes fields in the canonical order shown below and emits only explicitly-set optional blocks (the project-level `line_injections:` and `disc_skips:`, and the per-section `noise:`, `dropouts:`, `osd:`, `audio:`, `line_injections:`), so emitted files stay minimal and diffable. Emit → parse is lossless: a saved file parses back to an equal `Project`, which is the contract that keeps GUI-saved projects loadable by the CLI and vice versa.
 - Implemented section fields: `name`, `type`, `source`, `start_frame`, `duration_frames`, and the optional per-section `noise:`, `dropouts:`, `osd:`, and `audio:` blocks.
-- The `line_injections` schema is represented in the current parser data model and receives validator-level schema/compatibility checks for injection type, `target_lines`, and standard-dependent VITS constraints.
+- The `line_injections` schema is split across two levels of the data model. A **project-level** `line_injections:` block (a sibling of `output:` and `sections:`) is parsed into a `ProjectLineInjections` value on `Project` holding the project-wide `disc_type` (`CAV`/`CLV`) and the `vits` set (each entry a `vits_type` plus `target_lines`) applied to every frame of every section. Each **section-level** `line_injections:` list holds only `Section::LineInjection` entries (`type` plus, per type, `target_lines`/`codes`) — the per-section biphase `codes` (picture_number, chapter_number, lead_in/out, etc.) that legitimately differ between lead-in, programme, and lead-out. Both levels receive validator-level schema/compatibility checks for injection type, `target_lines`, and standard-dependent VITS constraints.
 - VITS line injections have a generation-stage orchestration path and are applied only on their targeted frame lines within the owning section span.
 - Built-in VITS catalog entries now carry full waveform-definition primitive/composite trees for every supported `vits_type`, so the default runtime path can render all supported PAL and NTSC VITS patterns.
 - `pal_laserdisc_pilot_burst` is parsed, validated, and fully implemented: a 3.75 MHz (240 × f_H) sinusoidal burst at ±300 mV is superimposed on every sync pulse in the Y channel when enabled.
@@ -740,6 +740,12 @@ output:
   video_path: "out/pal_test_video.composite"
   signal_type: composite      # "composite" (default) or "yc"; for "yc", video_path must end in ".y"
 
+line_injections:               # Project-wide laserdisc/VITS settings (sibling of output/sections)
+  disc_type: CAV               # CAV or CLV; applies to every section (omit for non-laserdisc projects)
+  vits:                        # Project-wide VITS set applied to every frame of every section
+    - vits_type: "virs"
+      target_lines: [10, 11, 12]
+
 sections:
   - name: "Progressive Source with VITS and Laserdisc"
     type: progressive
@@ -752,13 +758,10 @@ sections:
       waveform: sine           # sine, square, sawtooth, or triangle
       frequency: 1000.0        # Fixed-tone frequency in Hz [0, 22000]
       amplitude: 0.5           # Peak amplitude as a fraction of full scale [0.0, 1.0]
-    line_injections:           # Line-based injections for this section
-      - type: vits
-        target_lines: [10, 11, 12]
-        vits_type: "virs"
+    line_injections:           # Per-section laserdisc codes / VITC for this section
       - type: laserdisc
-        disc_type: CAV
-        # No target_lines — line placement is fixed by IEC 60856 §10
+        # No disc_type or target_lines — disc_type is project-wide; line
+        # placement is fixed by IEC 60856 §10
         codes:
           - code_type: picture_number
             start_value: 1
@@ -1060,6 +1063,7 @@ video_path: "out/pal_test_video.composite" # project-relative output file path
   - `duration_frames` must be either:
     - A positive integer (fixed number of frames).
     - `"all"` (use all available frames from the source).
+  - `duration_repeat` is an optional positive integer (default `1`) that replays the whole source `duration_repeat` times when `duration_frames: "all"`. Total output frames = source frame count × `duration_repeat`; each replay loops the source (source frame indices restart at 0). It is ignored — and a validation warning is emitted — when `duration_frames` is a fixed integer.
 
 ---
 
@@ -1116,6 +1120,7 @@ Any other codec, chroma format, bit depth, or packing is outside scope and must 
 | `source`          | string         | Yes          | Path to the source file. May be a `builtin:` prefixed name, an absolute path, or a path relative to the project YAML. See [File Path Resolution](#file-path-resolution). | `"assets/test.mkv"` |
 | `start_frame`     | integer        | No           | First frame to use (default: `0`).                                             | `0`                  |
 | `duration_frames` | integer/string | No           | Number of frames to extract. Use `"all"` for all frames or a positive integer. | `100` or `"all"`     |
+| `duration_repeat` | integer        | No           | Replay count when `duration_frames: "all"` (default `1`). Total frames = source length × repeat. Ignored for fixed integer durations. | `2`                  |
 
 
 ##### **Colour Space and Frame Rate**
@@ -1145,6 +1150,7 @@ sections:
     type: progressive
     source: "/assets/test.mkv"
     duration_frames: "all"  # Use all frames from the source
+    duration_repeat: 2      # Optional: play the whole source twice
     line_injections:
       - type: vitc
         target_lines: [19, 20, 21]
@@ -1162,8 +1168,12 @@ sections:
 
 ### **8.2. Line Injections**
 
-Line-based content to inject into the **VBI of frames** in the parent section.  
-Each line injection is defined as an item in the `line_injections` list under a section.
+Line-based content to inject into the **VBI of frames**.
+
+Line injections live at two levels:
+
+- **Project level** — the top-level `line_injections:` block (a sibling of `output:` and `sections:`) carries the project-wide `disc_type` (`CAV`/`CLV`) and the `vits` set. The VITS set is applied to every frame of every section, so a disc's reference/test signals are declared once for the whole disc. See [VITS](#vits-vertical-interval-test-signals) below.
+- **Section level** — each section's own `line_injections:` list carries the per-section `laserdisc` code injections and any `vitc` injection, i.e. content that legitimately differs between sections (lead-in vs programme vs lead-out).
 
 ---
 
@@ -1172,13 +1182,15 @@ Each line injection is defined as an item in the `line_injections` list under a 
 
 | **Field**      | **Type** | **Required**              | **Description**                                                                                                                                                  | **Example**    |
 | -------------- | -------- | ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------- |
-| `type`         | string   | Yes                       | Type of line injection: `vits`, `laserdisc`, `vitc`, or `line_content`.                                                                                          | `"vits"`       |
+| `type`         | string   | Section-level only        | Type of a section-level line injection: `laserdisc`, `vitc`, or `line_content`. (`vits` is not a section-level type — VITS is declared project-wide.)            | `"laserdisc"`  |
 | `target_lines` | list     | Yes (except `laserdisc`)  | Lines to inject into (1-based, sequential across the entire frame). **Not applicable for `laserdisc` injections** — line placement is fixed by the standard.     | `[10, 11, 12]` |
 
 
 ---
 
 #### **VITS (Vertical Interval Test Signals)**
+
+VITS are a **project-level** signal set. Each VITS entry lives in the top-level `line_injections.vits` list and is applied to every frame of every section — you do not repeat it per section. For laserdisc discs this is where the mandatory NTSC `virs` reference is declared.
 
 For **VITS waveform definitions**, refer to:
 
@@ -1223,10 +1235,11 @@ Valid `vits_type` values depend on the active video standard. PAL types must onl
 ##### **Example**
 
 ```yaml
+# Top-level block (sibling of output/sections)
 line_injections:
-  - type: vits
-    target_lines: [17]
-    vits_type: "ntc7-composite"
+  vits:
+    - vits_type: "ntc7-composite"
+      target_lines: [17]
 ```
 
 ---
@@ -1319,9 +1332,10 @@ This signal co-exists with the 24-bit biphase system and occupies separate lines
 
 | **Field**   | **Type** | **Required** | **Description**                            | **Example** |
 | ----------- | -------- | ------------ | ------------------------------------------ | ----------- |
-| `disc_type` | string   | Yes          | `"CAV"` or `"CLV"`.                        | `"CAV"`     |
 | `codes`     | list     | Yes          | List of biphase codes to encode per frame. | (See below) |
 
+> **Note**: `disc_type` is **not** specified on a per-section `laserdisc` injection. It is a project-wide setting (`CAV` or `CLV`) declared once in the top-level `line_injections:` block, since a disc is entirely CAV or entirely CLV.
+>
 > **Note**: `target_lines` must **not** be specified for `laserdisc` injections.
 
 ##### **`codes` Item Fields**
@@ -1367,11 +1381,14 @@ This signal co-exists with the 24-bit biphase system and occupies separate lines
 
 ##### **Example (PAL CAV)**
 
+`disc_type` (CAV vs CLV) is set once in the project-level `line_injections:` block; the per-section fragments below carry only the `codes:`.
+
 ```yaml
+# Project-level: line_injections: { disc_type: CAV }
 line_injections:
   - type: laserdisc
-    disc_type: CAV
-    # No target_lines — line placement is fixed by IEC 60856 §10
+    # No disc_type or target_lines — disc_type is project-wide; line placement
+    # is fixed by IEC 60856 §10
     codes:
       - code_type: picture_number
         start_value: 1          # Auto-increments each frame
@@ -1385,10 +1402,11 @@ line_injections:
 ##### **Example (NTSC CLV)**
 
 ```yaml
+# Project-level: line_injections: { disc_type: CLV, vits: [ { vits_type: virs, target_lines: [19, 282] } ] }
 line_injections:
   - type: laserdisc
-    disc_type: CLV
-    # No target_lines — line placement is fixed by IEC 60857 §10
+    # No disc_type or target_lines — disc_type is project-wide; line placement
+    # is fixed by IEC 60857 §10
     codes:
       - code_type: programme_time_code
         time_hours: 0
@@ -1814,7 +1832,7 @@ To simulate **analogue output**, the generator must:
 The current validator enforces a narrower subset than the full design intent in this section:
 
 - Implemented: standard selection, locked `4fsc` preset constraints, output-path requirements (including `signal_type` validation and `.y`-suffix enforcement for Y/C mode), progressive source profile checks, accepted raster checks, NTSC black-setup constraints, and validator-side VITS/line-injection compatibility checks including overlap detection, laserdisc reserved-range conflicts, and VITC/laserdisc incompatibility.
-- Implemented: full laserdisc biphase validation including section_type/code_type matrix enforcement, IEC value range constraints (picture_number, chapter_number, users_code X₁, CLV picture number digits, programme time code BCD), CAV minimum duration checks (lead-in ≥ 938 frames, lead-out ≥ 1250 frames), minimum chapter length (30 tracks), NTSC VIRS mandatory presence check, and VITS/biphase reserved-range line conflict detection.
+- Implemented: full laserdisc biphase validation including section_type/code_type matrix enforcement, IEC value range constraints (picture_number, chapter_number, users_code X₁, CLV picture number digits, programme time code BCD), CAV minimum duration checks (lead-in ≥ 938 frames, lead-out ≥ 1250 frames), minimum chapter length (30 tracks), the NTSC VIRS mandatory presence check (a `virs` entry in the project-level `line_injections.vits`), and VITS/biphase reserved-range line conflict detection.
 - Implemented: per-section noise parameter validation (range, spread floor, mutual dependency).
 - Not yet implemented in the validator/runtime pair: VITC and custom per-line content runtime paths.
 

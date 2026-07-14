@@ -27,6 +27,7 @@
 #include <QSpinBox>
 #include <QTableWidget>
 #include <QVBoxLayout>
+#include <algorithm>
 #include <filesystem>
 #include <string>
 
@@ -156,11 +157,24 @@ QWidget* SectionEditor::BuildGeneralGroup() {
   duration_spin_ = new QSpinBox(group);
   duration_spin_->setRange(1, kMaxDurationFrames);
   duration_all_check_ = new QCheckBox(tr("All source frames"), group);
+  duration_repeat_label_ = new QLabel(tr("repeat"), group);
+  duration_repeat_spin_ = new QSpinBox(group);
+  duration_repeat_spin_->setRange(1, kMaxDurationFrames);
+  duration_repeat_spin_->setSuffix(tr("x"));
+  duration_repeat_spin_->setToolTip(
+      tr("How many times the whole source is replayed in this section."));
   auto* duration_row = new QHBoxLayout();
   duration_row->addWidget(duration_spin_);
   duration_row->addWidget(duration_all_check_);
+  duration_row->addWidget(duration_repeat_label_);
+  duration_row->addWidget(duration_repeat_spin_);
   duration_row->addStretch();
   form->addRow(tr("Duration (frames):"), duration_row);
+
+  // Live summary of the resolved source length and the repeat multiplier.
+  duration_summary_label_ = new QLabel(group);
+  duration_summary_label_->setEnabled(false);
+  form->addRow(QString(), duration_summary_label_);
 
   start_frame_label_ = new QLabel(group);
   form->addRow(tr("Start frame:"), start_frame_label_);
@@ -189,6 +203,15 @@ QWidget* SectionEditor::BuildGeneralGroup() {
   });
   connect(duration_all_check_, &QCheckBox::toggled, this, [this](bool all) {
     duration_spin_->setEnabled(!all);
+    duration_repeat_label_->setEnabled(all);
+    duration_repeat_spin_->setEnabled(all);
+    UpdateDurationSummary();
+    if (!updating_) {
+      CommitSection();
+    }
+  });
+  connect(duration_repeat_spin_, &QSpinBox::valueChanged, this, [this](int) {
+    UpdateDurationSummary();
     if (!updating_) {
       CommitSection();
     }
@@ -476,6 +499,10 @@ void SectionEditor::LoadFromDocument() {
   if (section.duration_frames > 0) {
     duration_spin_->setValue(section.duration_frames);
   }
+  duration_repeat_spin_->setValue(std::max(1, section.duration_frames_repeat));
+  duration_repeat_label_->setEnabled(section.duration_frames_all);
+  duration_repeat_spin_->setEnabled(section.duration_frames_all);
+  UpdateDurationSummary();
 
   const std::vector<SectionListRow> rows = BuildSectionListRows(project);
   start_frame_label_->setText(QStringLiteral("%1").arg(
@@ -521,10 +548,16 @@ void SectionEditor::LoadFromDocument() {
   osd_group_->setChecked(OsdBlockEnabled(section));
   LoadOsdTable(section);
 
-  // Line injections (block present exactly when it carries injections).
+  // Line injections. Section-level injections carry only laserdisc biphase
+  // codes, which are meaningless without a project-wide disc format, so the
+  // whole group is hidden until CAV/CLV is chosen in project settings.
+  const DiscType project_disc_type =
+      DiscTypeFromString(project.line_injections.disc_type);
+  const bool laserdisc_project = project_disc_type != DiscType::kUnknown;
+  injections_group_->setVisible(laserdisc_project);
   injections_group_->setChecked(!section.line_injections.empty());
   injections_editor_->SetContext(project.cvbs_presets.video_standard_preset,
-                                 section.section_type);
+                                 section.section_type, project_disc_type);
   injections_editor_->SetInjections(section.line_injections);
 
   updating_ = false;
@@ -596,6 +629,8 @@ Section SectionEditor::SectionFromWidgets() const {
   section.duration_frames_all = duration_all_check_->isChecked();
   section.duration_frames =
       section.duration_frames_all ? 0 : duration_spin_->value();
+  section.duration_frames_repeat =
+      section.duration_frames_all ? duration_repeat_spin_->value() : 1;
 
   // Audio block (unticking excludes it entirely).
   section.audio_channel_pairs = audio_group_->isChecked()
@@ -726,6 +761,39 @@ void SectionEditor::UpdateProbeDisplay() {
   probe_detail_label_->setText(
       FormatSourceProfileSummary(report.profile) + QStringLiteral("\n") +
       report.profile_issues.join(QStringLiteral("\n")));
+  UpdateDurationSummary();
+}
+
+void SectionEditor::UpdateDurationSummary() {
+  // Only relevant while "All source frames" drives the duration; a manually
+  // entered frame count already shows in the spinbox.
+  if (!duration_all_check_->isChecked()) {
+    duration_summary_label_->clear();
+    return;
+  }
+
+  const int repeat = std::max(1, duration_repeat_spin_->value());
+  int source_frames = 0;
+  if (probe_controller_->has_report()) {
+    const SourceProbeReport& report = probe_controller_->report();
+    if (report.probe_ok) {
+      source_frames = report.profile.frame_count;
+    }
+  }
+
+  if (source_frames <= 0) {
+    // Probe pending or unavailable: still convey the multiplier.
+    duration_summary_label_->setText(
+        repeat > 1 ? tr("Source frame count x %1 (probing source…)").arg(repeat)
+                   : tr("Using source frame count (probing source…)"));
+    return;
+  }
+
+  const int64_t total = static_cast<int64_t>(source_frames) * repeat;
+  duration_summary_label_->setText(tr("%1 frames x %2 = %3 total")
+                                       .arg(source_frames)
+                                       .arg(repeat)
+                                       .arg(static_cast<qlonglong>(total)));
 }
 
 void SectionEditor::OnBrowseSource() {

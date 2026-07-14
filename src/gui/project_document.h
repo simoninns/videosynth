@@ -109,6 +109,7 @@ class ProjectDocument : public QObject {
   bool SetProjectInfo(const std::string& name, const std::string& version,
                       const std::string& description);
   bool SetCvbsPresets(const CvbsPresets& presets);
+  bool SetProjectLineInjections(ProjectLineInjections line_injections);
   bool SetOutputTargets(const OutputTargets& output);
   bool SetDiscSkips(std::vector<DiscSkip> disc_skips);
 

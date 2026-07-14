@@ -32,6 +32,12 @@ cvbs_presets:
 output:
   video_path: "{project}/output/ntsc_cav_showcase.composite"
 
+line_injections:
+  disc_type: CAV
+  vits:
+    - vits_type: virs
+      target_lines: [19, 282]
+
 sections:
 
   - name: LeadIn
@@ -41,16 +47,11 @@ sections:
     section_type: lead_in
     line_injections:
       - type: laserdisc
-        disc_type: CAV
         codes:
           - code_type: lead_in
           - code_type: fm_white_flag
           - code_type: users_code
             users_code: "0x80D234"
-      - type: vits
-        vits_type: virs
-        target_lines: [19, 282]
-
   - name: Chapter0Bars
     type: progressive
     source: "{bundled}/exr/720x486/75_BARS.exr"
@@ -58,7 +59,6 @@ sections:
     section_type: programme_area
     line_injections:
       - type: laserdisc
-        disc_type: CAV
         codes:
           - code_type: picture_number
             start_value: 1
@@ -69,9 +69,6 @@ sections:
             programme_status: "0x8DC001"
           - code_type: fm_picture_number
           - code_type: fm_white_flag
-      - type: vits
-        vits_type: virs
-        target_lines: [19, 282]
     osd:
       overlays:
         - text: "NTSC CAV Chapter0"
@@ -100,7 +97,6 @@ sections:
     section_type: programme_area
     line_injections:
       - type: laserdisc
-        disc_type: CAV
         codes:
           - code_type: picture_number
             start_value: 9
@@ -110,9 +106,6 @@ sections:
             programme_status: "0x8DC001"
           - code_type: fm_picture_number
           - code_type: fm_white_flag
-      - type: vits
-        vits_type: virs
-        target_lines: [19, 282]
     noise:
       noise_db: 43.0
       noise_spread_db: 4.0
@@ -127,7 +120,6 @@ sections:
     section_type: programme_area
     line_injections:
       - type: laserdisc
-        disc_type: CAV
         codes:
           - code_type: picture_number
             start_value: 17
@@ -137,9 +129,6 @@ sections:
             programme_status: "0x8DC001"
           - code_type: fm_picture_number
           - code_type: fm_white_flag
-      - type: vits
-        vits_type: virs
-        target_lines: [19, 282]
     dropouts:
       scratch:
         scale: 4
@@ -151,12 +140,8 @@ sections:
     section_type: lead_out
     line_injections:
       - type: laserdisc
-        disc_type: CAV
         codes:
           - code_type: lead_out
           - code_type: fm_white_flag
           - code_type: users_code
             users_code: "0x87D000"
-      - type: vits
-        vits_type: virs
-        target_lines: [19, 282]

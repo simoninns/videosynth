@@ -69,6 +69,34 @@ void EmitCvbsPresets(YAML::Emitter& out, const CvbsPresets& presets) {
   out << YAML::EndMap;
 }
 
+// Emits the project-wide `line_injections:` block (laserdisc disc_type and the
+// VITS test-signal set). Omitted entirely when neither is configured.
+void EmitProjectLineInjections(YAML::Emitter& out,
+                               const ProjectLineInjections& line_injections) {
+  if (line_injections.disc_type.empty() && line_injections.vits.empty()) {
+    return;
+  }
+
+  out << YAML::Key << "line_injections" << YAML::Value << YAML::BeginMap;
+  if (!line_injections.disc_type.empty()) {
+    out << YAML::Key << "disc_type" << YAML::Value << line_injections.disc_type;
+  }
+  if (!line_injections.vits.empty()) {
+    out << YAML::Key << "vits" << YAML::Value << YAML::BeginSeq;
+    for (const VitsInjection& vits : line_injections.vits) {
+      out << YAML::BeginMap;
+      out << YAML::Key << "vits_type" << YAML::Value << vits.vits_type;
+      if (!vits.target_lines.empty()) {
+        out << YAML::Key << "target_lines" << YAML::Value << YAML::Flow
+            << vits.target_lines;
+      }
+      out << YAML::EndMap;
+    }
+    out << YAML::EndSeq;
+  }
+  out << YAML::EndMap;
+}
+
 void EmitOutputTargets(YAML::Emitter& out, const OutputTargets& output) {
   out << YAML::Key << "output" << YAML::Value << YAML::BeginMap;
   out << YAML::Key << "video_path" << YAML::Value << output.video_path;
@@ -112,12 +140,6 @@ void EmitLineInjections(YAML::Emitter& out, const Section& section) {
     if (!injection.target_lines.empty()) {
       out << YAML::Key << "target_lines" << YAML::Value << YAML::Flow
           << injection.target_lines;
-    }
-    if (!injection.vits_type.empty()) {
-      out << YAML::Key << "vits_type" << YAML::Value << injection.vits_type;
-    }
-    if (!injection.disc_type.empty()) {
-      out << YAML::Key << "disc_type" << YAML::Value << injection.disc_type;
     }
     if (!injection.codes.empty()) {
       out << YAML::Key << "codes" << YAML::Value << YAML::BeginSeq;
@@ -285,6 +307,12 @@ void EmitSection(YAML::Emitter& out, const Section& section) {
   }
   if (section.duration_frames_all) {
     out << YAML::Key << "duration_frames" << YAML::Value << "all";
+    // Only meaningful alongside duration_frames: all; omit the default of 1 to
+    // keep serialised projects clean and backward-compatible.
+    if (section.duration_frames_repeat > 1) {
+      out << YAML::Key << "duration_repeat" << YAML::Value
+          << section.duration_frames_repeat;
+    }
   } else {
     out << YAML::Key << "duration_frames" << YAML::Value
         << section.duration_frames;
@@ -336,6 +364,7 @@ std::string YamlProjectEmitter::EmitString(const Project& project) const {
   EmitProjectBlock(out, project);
   EmitCvbsPresets(out, project.cvbs_presets);
   EmitOutputTargets(out, project.output);
+  EmitProjectLineInjections(out, project.line_injections);
 
   out << YAML::Key << "sections" << YAML::Value << YAML::BeginSeq;
   for (const Section& section : project.sections) {

@@ -31,6 +31,12 @@ output:
   video_path: "{project}/../stacking-yc-output/videosynth_ntsc_discsim_C_clean.y"
   signal_type: yc
 
+line_injections:
+  disc_type: CAV
+  vits:
+    - vits_type: virs
+      target_lines: [19, 282]
+
 sections:
 
   # ---------------------------------------------------------------------------
@@ -43,7 +49,6 @@ sections:
     section_type: programme_area
     line_injections:
       - type: laserdisc
-        disc_type: CAV
         codes:
           - code_type: picture_number
             start_value: 3
@@ -51,9 +56,6 @@ sections:
             programme_status: "0x8DC001"
           - code_type: fm_picture_number
           - code_type: fm_white_flag
-      - type: vits
-        vits_type: virs
-        target_lines: [19, 282]
   # ---------------------------------------------------------------------------
   # PNs 9–12: UK test card F (first play; player rewinds after PN 12)
   # ---------------------------------------------------------------------------
@@ -64,7 +66,6 @@ sections:
     section_type: programme_area
     line_injections:
       - type: laserdisc
-        disc_type: CAV
         codes:
           - code_type: picture_number
             start_value: 9
@@ -72,9 +73,6 @@ sections:
             programme_status: "0x8DC001"
           - code_type: fm_picture_number
           - code_type: fm_white_flag
-      - type: vits
-        vits_type: virs
-        target_lines: [19, 282]
   # ---------------------------------------------------------------------------
   # PNs 9–16: UK test card F replay (backward skip — same start_value, fresh noise)
   # ---------------------------------------------------------------------------
@@ -85,7 +83,6 @@ sections:
     section_type: programme_area
     line_injections:
       - type: laserdisc
-        disc_type: CAV
         codes:
           - code_type: picture_number
             start_value: 9
@@ -93,9 +90,6 @@ sections:
             programme_status: "0x8DC001"
           - code_type: fm_picture_number
           - code_type: fm_white_flag
-      - type: vits
-        vits_type: virs
-        target_lines: [19, 282]
   # ---------------------------------------------------------------------------
   # PNs 17–24: multi-burst
   # ---------------------------------------------------------------------------
@@ -106,7 +100,6 @@ sections:
     section_type: programme_area
     line_injections:
       - type: laserdisc
-        disc_type: CAV
         codes:
           - code_type: picture_number
             start_value: 17
@@ -114,9 +107,6 @@ sections:
             programme_status: "0x8DC001"
           - code_type: fm_picture_number
           - code_type: fm_white_flag
-      - type: vits
-        vits_type: virs
-        target_lines: [19, 282]
   # ---------------------------------------------------------------------------
   # PNs 25–28: tartan (player skips forward after PN 28)
   # ---------------------------------------------------------------------------
@@ -127,7 +117,6 @@ sections:
     section_type: programme_area
     line_injections:
       - type: laserdisc
-        disc_type: CAV
         codes:
           - code_type: picture_number
             start_value: 25
@@ -135,9 +124,6 @@ sections:
             programme_status: "0x8DC001"
           - code_type: fm_picture_number
           - code_type: fm_white_flag
-      - type: vits
-        vits_type: virs
-        target_lines: [19, 282]
   # ---------------------------------------------------------------------------
   # PNs 31–32: tartan resumed after forward skip (gap of 2: PNs 29–30 absent)
   # ---------------------------------------------------------------------------
@@ -148,7 +134,6 @@ sections:
     section_type: programme_area
     line_injections:
       - type: laserdisc
-        disc_type: CAV
         codes:
           - code_type: picture_number
             start_value: 31
@@ -156,9 +141,6 @@ sections:
             programme_status: "0x8DC001"
           - code_type: fm_picture_number
           - code_type: fm_white_flag
-      - type: vits
-        vits_type: virs
-        target_lines: [19, 282]
   # ---------------------------------------------------------------------------
   # PNs 33–40: YCbCr ramps
   # ---------------------------------------------------------------------------
@@ -169,7 +151,6 @@ sections:
     section_type: programme_area
     line_injections:
       - type: laserdisc
-        disc_type: CAV
         codes:
           - code_type: picture_number
             start_value: 33
@@ -177,6 +158,3 @@ sections:
             programme_status: "0x8DC001"
           - code_type: fm_picture_number
           - code_type: fm_white_flag
-      - type: vits
-        vits_type: virs
-        target_lines: [19, 282]

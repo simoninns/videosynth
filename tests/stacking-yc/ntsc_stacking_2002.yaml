@@ -28,6 +28,12 @@ output:
   video_path: "{project}/../stacking-yc-output/videosynth_ntsc_stacking_2002.y"
   signal_type: yc
 
+line_injections:
+  disc_type: CAV
+  vits:
+    - vits_type: virs
+      target_lines: [19, 282]
+
 sections:
 
   # ---------------------------------------------------------------------------
@@ -40,7 +46,6 @@ sections:
     section_type: programme_area
     line_injections:
       - type: laserdisc
-        disc_type: CAV
         codes:
           - code_type: picture_number
             start_value: 1
@@ -48,10 +53,6 @@ sections:
             programme_status: "0x8DC001"
           - code_type: fm_picture_number
           - code_type: fm_white_flag
-      - type: vits
-        vits_type: virs
-        target_lines: [19, 282]
-
   # ---------------------------------------------------------------------------
   # Section 2: near-quantisation noise, minimal dropout
   # ---------------------------------------------------------------------------
@@ -73,7 +74,6 @@ sections:
         seed: 2002
     line_injections:
       - type: laserdisc
-        disc_type: CAV
         codes:
           - code_type: picture_number
             start_value: 9
@@ -81,10 +81,6 @@ sections:
             programme_status: "0x8DC001"
           - code_type: fm_picture_number
           - code_type: fm_white_flag
-      - type: vits
-        vits_type: virs
-        target_lines: [19, 282]
-
   # ---------------------------------------------------------------------------
   # Section 3: excellent source quality
   # ---------------------------------------------------------------------------
@@ -106,7 +102,6 @@ sections:
         seed: 2002
     line_injections:
       - type: laserdisc
-        disc_type: CAV
         codes:
           - code_type: picture_number
             start_value: 17
@@ -114,10 +109,6 @@ sections:
             programme_status: "0x8DC001"
           - code_type: fm_picture_number
           - code_type: fm_white_flag
-      - type: vits
-        vits_type: virs
-        target_lines: [19, 282]
-
   # ---------------------------------------------------------------------------
   # Section 4: good source quality
   # ---------------------------------------------------------------------------
@@ -139,7 +130,6 @@ sections:
         seed: 2002
     line_injections:
       - type: laserdisc
-        disc_type: CAV
         codes:
           - code_type: picture_number
             start_value: 25
@@ -147,10 +137,6 @@ sections:
             programme_status: "0x8DC001"
           - code_type: fm_picture_number
           - code_type: fm_white_flag
-      - type: vits
-        vits_type: virs
-        target_lines: [19, 282]
-
   # ---------------------------------------------------------------------------
   # Section 5: fair source quality
   # ---------------------------------------------------------------------------
@@ -172,7 +158,6 @@ sections:
         seed: 2002
     line_injections:
       - type: laserdisc
-        disc_type: CAV
         codes:
           - code_type: picture_number
             start_value: 33
@@ -180,10 +165,6 @@ sections:
             programme_status: "0x8DC001"
           - code_type: fm_picture_number
           - code_type: fm_white_flag
-      - type: vits
-        vits_type: virs
-        target_lines: [19, 282]
-
   # ---------------------------------------------------------------------------
   # Section 6: typical VHS quality
   # ---------------------------------------------------------------------------
@@ -205,7 +186,6 @@ sections:
         seed: 2002
     line_injections:
       - type: laserdisc
-        disc_type: CAV
         codes:
           - code_type: picture_number
             start_value: 41
@@ -213,10 +193,6 @@ sections:
             programme_status: "0x8DC001"
           - code_type: fm_picture_number
           - code_type: fm_white_flag
-      - type: vits
-        vits_type: virs
-        target_lines: [19, 282]
-
   # ---------------------------------------------------------------------------
   # Section 7: poor tape
   # ---------------------------------------------------------------------------
@@ -238,7 +214,6 @@ sections:
         seed: 2002
     line_injections:
       - type: laserdisc
-        disc_type: CAV
         codes:
           - code_type: picture_number
             start_value: 49
@@ -246,10 +221,6 @@ sections:
             programme_status: "0x8DC001"
           - code_type: fm_picture_number
           - code_type: fm_white_flag
-      - type: vits
-        vits_type: virs
-        target_lines: [19, 282]
-
   # ---------------------------------------------------------------------------
   # Section 8: very poor tape
   # ---------------------------------------------------------------------------
@@ -271,7 +242,6 @@ sections:
         seed: 2002
     line_injections:
       - type: laserdisc
-        disc_type: CAV
         codes:
           - code_type: picture_number
             start_value: 57
@@ -279,10 +249,6 @@ sections:
             programme_status: "0x8DC001"
           - code_type: fm_picture_number
           - code_type: fm_white_flag
-      - type: vits
-        vits_type: virs
-        target_lines: [19, 282]
-
   # ---------------------------------------------------------------------------
   # Section 9: barely watchable
   # ---------------------------------------------------------------------------
@@ -304,7 +270,6 @@ sections:
         seed: 2002
     line_injections:
       - type: laserdisc
-        disc_type: CAV
         codes:
           - code_type: picture_number
             start_value: 65
@@ -312,10 +277,6 @@ sections:
             programme_status: "0x8DC001"
           - code_type: fm_picture_number
           - code_type: fm_white_flag
-      - type: vits
-        vits_type: virs
-        target_lines: [19, 282]
-
   # ---------------------------------------------------------------------------
   # Section 10: sync-borderline — maximum noise and dropout
   # ---------------------------------------------------------------------------
@@ -337,7 +298,6 @@ sections:
         seed: 2002
     line_injections:
       - type: laserdisc
-        disc_type: CAV
         codes:
           - code_type: picture_number
             start_value: 73
@@ -345,6 +305,3 @@ sections:
             programme_status: "0x8DC001"
           - code_type: fm_picture_number
           - code_type: fm_white_flag
-      - type: vits
-        vits_type: virs
-        target_lines: [19, 282]

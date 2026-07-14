@@ -215,6 +215,7 @@ void BiphaseInjectionManager::Reset() {
   biphase_encoder_.reset();
   fm_encoder_.reset();
   has_laserdisc_ = false;
+  project_disc_type_ = DiscType::kUnknown;
   disc_type_ = DiscType::kUnknown;
   section_type_ = SectionType::kUnknown;
   last_context_ = {};
@@ -223,6 +224,10 @@ void BiphaseInjectionManager::Reset() {
 
 void BiphaseInjectionManager::SetInitialFrameCount(int initial_count) {
   frame_count_ = initial_count;
+}
+
+void BiphaseInjectionManager::SetProjectDiscType(DiscType disc_type) {
+  project_disc_type_ = disc_type;
 }
 
 const PerFrameContext& BiphaseInjectionManager::GetLastFrameContext() const {
@@ -405,9 +410,12 @@ bool BiphaseInjectionManager::InitializeSection(
   // Preserve disc-global timekeeping generators across section boundaries.
   // programme_time_code and clv_picture_number accumulate from the start of
   // the disc and must not reset on chapter/section transitions; only Reset()
-  // starts them over.
+  // starts them over. The CAV picture_number counter is preserved the same way
+  // so it numbers frames continuously across all sections by default; a section
+  // that specifies an explicit start_value re-anchors it (handled below).
   std::unique_ptr<CodeGenerator> saved_ptc;
   std::unique_ptr<CodeGenerator> saved_cpn;
+  std::unique_ptr<CodeGenerator> saved_pn;
   {
     auto it = generators_.find("programme_time_code");
     if (it != generators_.end()) {
@@ -416,6 +424,10 @@ bool BiphaseInjectionManager::InitializeSection(
     it = generators_.find("clv_picture_number");
     if (it != generators_.end()) {
       saved_cpn = std::move(it->second);
+    }
+    it = generators_.find("picture_number");
+    if (it != generators_.end()) {
+      saved_pn = std::move(it->second);
     }
   }
 
@@ -437,6 +449,9 @@ bool BiphaseInjectionManager::InitializeSection(
   if (saved_cpn) {
     generators_["clv_picture_number"] = std::move(saved_cpn);
   }
+  if (saved_pn) {
+    generators_["picture_number"] = std::move(saved_pn);
+  }
 
   const Section::LineInjection* injection = nullptr;
   for (const Section::LineInjection& inj : section.line_injections) {
@@ -450,10 +465,12 @@ bool BiphaseInjectionManager::InitializeSection(
     return true;
   }
 
-  disc_type_ = DiscTypeFromString(injection->disc_type);
+  // The disc format is a project-wide setting supplied via SetProjectDiscType.
+  disc_type_ = project_disc_type_;
   if (disc_type_ == DiscType::kUnknown) {
-    errors->push_back("Biphase injection: unknown disc_type '" +
-                      injection->disc_type + "'.");
+    errors->push_back(
+        "Biphase injection: a section declares laserdisc codes but no "
+        "project disc_type (CAV/CLV) was set.");
     return false;
   }
 
@@ -475,9 +492,19 @@ bool BiphaseInjectionManager::InitializeSection(
       generators_["lead_out"] = std::make_unique<LeadOutCodeGenerator>();
 
     } else if (code.code_type == "picture_number") {
-      const int start = code.start_value_specified ? code.start_value : 1;
-      generators_["picture_number"] =
-          std::make_unique<CavPictureNumberGenerator>(start, standard);
+      if (code.start_value_specified) {
+        // Explicit anchor: (re)start numbering from start_value at this
+        // section, overriding any continued counter.
+        generators_["picture_number"] =
+            std::make_unique<CavPictureNumberGenerator>(code.start_value,
+                                                        standard);
+      } else if (generators_.find("picture_number") == generators_.end()) {
+        // No counter carried over from an earlier section (this is the first
+        // section to number): begin at 1. When a counter was preserved above,
+        // leave it running so the number continues across the boundary.
+        generators_["picture_number"] =
+            std::make_unique<CavPictureNumberGenerator>(1, standard);
+      }
 
     } else if (code.code_type == "picture_stop") {
       generators_["picture_stop"] =

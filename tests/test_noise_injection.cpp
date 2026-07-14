@@ -250,12 +250,8 @@ TEST(NoiseInjectionTest, ValidatorWarnsWhenNoVitsForWhiteSnrCheck) {
 TEST(NoiseInjectionTest, ValidatorNoWarnWhenVitsOnWhiteSnrLine) {
   ProjectValidator validator;
   Project project = MakeValidNoiseProject(48.0, 4.0);
-  // Add a VITS injection on PAL line 19 to suppress the warning.
-  Section::LineInjection vits;
-  vits.type = "vits";
-  vits.vits_type = "uk-national";
-  vits.target_lines = {19};
-  project.sections[0].line_injections.push_back(vits);
+  // Add a project-wide VITS injection on PAL line 19 to suppress the warning.
+  project.line_injections.vits.push_back(VitsInjection{"uk-national", {19}});
 
   const ValidationResult result = validator.Validate(project);
   EXPECT_TRUE(result.is_valid);

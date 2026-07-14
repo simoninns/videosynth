@@ -40,6 +40,12 @@ cvbs_presets:
 output:
   video_path: "{project}/output/pal_cav_showcase.composite"
 
+line_injections:
+  disc_type: CAV
+  vits:
+    - vits_type: uk-national
+      target_lines: [19]
+
 sections:
 
   # Lead-in: lead_in marker plus a manufacturer users_code.
@@ -50,7 +56,6 @@ sections:
     section_type: lead_in
     line_injections:
       - type: laserdisc
-        disc_type: CAV
         codes:
           - code_type: lead_in
           - code_type: users_code
@@ -65,7 +70,6 @@ sections:
     section_type: programme_area
     line_injections:
       - type: laserdisc
-        disc_type: CAV
         codes:
           - code_type: picture_number
             start_value: 1
@@ -74,9 +78,6 @@ sections:
           - code_type: picture_stop
           - code_type: programme_status
             programme_status: "0x8DC000"
-      - type: vits
-        vits_type: uk-national
-        target_lines: [19]
     osd:
       overlays:
         - text: "Chapter0Bars"
@@ -106,7 +107,6 @@ sections:
     section_type: programme_area
     line_injections:
       - type: laserdisc
-        disc_type: CAV
         codes:
           - code_type: picture_number
             start_value: 9
@@ -114,9 +114,6 @@ sections:
             chapter: 1
           - code_type: programme_status
             programme_status: "0x8DC100"
-      - type: vits
-        vits_type: uk-national
-        target_lines: [19]
     noise:
       noise_db: 43.0
       noise_spread_db: 4.0
@@ -132,7 +129,6 @@ sections:
     section_type: programme_area
     line_injections:
       - type: laserdisc
-        disc_type: CAV
         codes:
           - code_type: picture_number
             start_value: 17
@@ -141,9 +137,6 @@ sections:
           - code_type: picture_stop
           - code_type: programme_status
             programme_status: "0x8BA000"
-      - type: vits
-        vits_type: uk-national
-        target_lines: [19]
     dropouts:
       scratch:
         scale: 6
@@ -166,7 +159,6 @@ sections:
     section_type: lead_out
     line_injections:
       - type: laserdisc
-        disc_type: CAV
         codes:
           - code_type: lead_out
           - code_type: users_code

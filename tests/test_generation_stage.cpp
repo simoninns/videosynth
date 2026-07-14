@@ -461,11 +461,11 @@ TEST(GenerationStageTimingTest, ReportsProgressiveSourceReadError) {
 
 TEST(GenerationStageTimingTest, AppliesVitsInjectionOnlyToRequestedLines) {
   Project project = MakeProject(Standard::kPal, 1);
-  Section::LineInjection injection;
-  injection.type = "vits";
-  injection.target_lines = {17, 18};
+  // VITS injections are now project-wide (Project::line_injections.vits).
+  VitsInjection injection;
   injection.vits_type = "fake-vits";
-  project.sections[0].line_injections.push_back(injection);
+  injection.target_lines = {17, 18};
+  project.line_injections.vits.push_back(injection);
 
   FakeVitsDefinitionProvider provider;
   FakeVitsGenerator fake_generator;
@@ -491,13 +491,15 @@ TEST(GenerationStageTimingTest, AppliesVitsInjectionOnlyToRequestedLines) {
   EXPECT_LT(WindowMeanMillivolts(y, line19 + start, line19 + end), 10.0);
 }
 
-TEST(GenerationStageTimingTest, AppliesVitsInjectionOnlyWithinSectionSpan) {
+TEST(GenerationStageTimingTest, AppliesProjectWideVitsToEverySectionFrame) {
+  // VITS injections are now a project-wide decision
+  // (Project::line_injections.vits) rather than per-section, so the injected
+  // VITS line must be rendered on the frames of every section in the project.
   Project project = MakeProjectWithSectionSpans(Standard::kPal);
-  Section::LineInjection injection;
-  injection.type = "vits";
-  injection.target_lines = {17};
+  VitsInjection injection;
   injection.vits_type = "fake-vits";
-  project.sections[0].line_injections.push_back(injection);
+  injection.target_lines = {17};
+  project.line_injections.vits.push_back(injection);
 
   FakeVitsDefinitionProvider provider;
   FakeVitsGenerator fake_generator;
@@ -517,20 +519,22 @@ TEST(GenerationStageTimingTest, AppliesVitsInjectionOnlyWithinSectionSpan) {
   const int end =
       static_cast<int>(std::lround(pal.sample_rate_4fsc_hz * 20.0e-6));
 
+  // First section's frame carries the project VITS.
   EXPECT_GT(WindowMeanMillivolts(y, line17 + start, line17 + end), 100.0);
-  EXPECT_LT(WindowMeanMillivolts(y, frame_samples + line17 + start,
+  // Second section's frame carries the same project-wide VITS.
+  EXPECT_GT(WindowMeanMillivolts(y, frame_samples + line17 + start,
                                  frame_samples + line17 + end),
-            10.0);
+            100.0);
 }
 
 TEST(GenerationStageTimingTest,
      AppliesBuiltInVitsDefinitionThroughDefaultRuntimePath) {
   Project project = MakeProject(Standard::kPal, 1);
-  Section::LineInjection injection;
-  injection.type = "vits";
-  injection.target_lines = {17};
+  // VITS injections are now project-wide (Project::line_injections.vits).
+  VitsInjection injection;
   injection.vits_type = "vits17";
-  project.sections[0].line_injections.push_back(injection);
+  injection.target_lines = {17};
+  project.line_injections.vits.push_back(injection);
 
   GenerationStage generation;
   std::vector<std::string> errors;

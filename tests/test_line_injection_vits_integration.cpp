@@ -50,13 +50,11 @@ Project CreateProjectWithVits(Standard standard, const std::string& vits_type,
   section.duration_frames = 1;
   section.duration_frames_all = false;
 
-  Section::LineInjection injection;
-  injection.type = "vits";
-  injection.target_lines = {target_line};
-  injection.vits_type = vits_type;
-
-  section.line_injections.push_back(injection);
   project.sections.push_back(section);
+
+  // VITS is a project-wide test-signal set, not a per-section injection.
+  project.line_injections.vits.push_back(
+      VitsInjection{vits_type, {target_line}});
 
   return project;
 }
@@ -212,26 +210,12 @@ TEST(LineInjectionVitsIntegrationTest, MultipleVitsLinesInSameFrame) {
   section.duration_frames = 1;
   section.duration_frames_all = false;
 
-  // Add multiple VITS lines
-  Section::LineInjection injection17;
-  injection17.type = "vits";
-  injection17.target_lines = {17};
-  injection17.vits_type = "vits17";
-  section.line_injections.push_back(injection17);
-
-  Section::LineInjection injection18;
-  injection18.type = "vits";
-  injection18.target_lines = {18};
-  injection18.vits_type = "itu-multiburst";
-  section.line_injections.push_back(injection18);
-
-  Section::LineInjection injection19;
-  injection19.type = "vits";
-  injection19.target_lines = {19};
-  injection19.vits_type = "uk-national";
-  section.line_injections.push_back(injection19);
-
   project.sections.push_back(section);
+
+  // Add multiple VITS lines (project-wide test-signal set).
+  project.line_injections.vits.push_back(VitsInjection{"vits17", {17}});
+  project.line_injections.vits.push_back(VitsInjection{"itu-multiburst", {18}});
+  project.line_injections.vits.push_back(VitsInjection{"uk-national", {19}});
 
   GenerationStage generation;
   std::vector<std::string> errors;

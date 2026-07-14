@@ -83,6 +83,10 @@ Project MakeDeterministicProject(const std::filesystem::path& output_dir,
   project.output.metadata_path =
       (output_dir / ("videosynth_determinism_" + run_tag + ".meta")).string();
 
+  // Laserdisc format and VITS complement are project-wide decisions.
+  project.line_injections.disc_type = "CAV";
+  project.line_injections.vits.push_back(VitsInjection{"uk-national", {19}});
+
   Section lead_in;
   lead_in.name = "CavLeadIn";
   lead_in.type = "progressive";
@@ -93,7 +97,6 @@ Project MakeDeterministicProject(const std::filesystem::path& output_dir,
   {
     Section::LineInjection laserdisc;
     laserdisc.type = "laserdisc";
-    laserdisc.disc_type = "CAV";
     Section::LineInjectionCode lead_in_code;
     lead_in_code.code_type = "lead_in";
     laserdisc.codes.push_back(lead_in_code);
@@ -131,19 +134,12 @@ Project MakeDeterministicProject(const std::filesystem::path& output_dir,
   {
     Section::LineInjection laserdisc;
     laserdisc.type = "laserdisc";
-    laserdisc.disc_type = "CAV";
     Section::LineInjectionCode picture_number;
     picture_number.code_type = "picture_number";
     picture_number.start_value = 1;
     picture_number.start_value_specified = true;
     laserdisc.codes.push_back(picture_number);
     programme.line_injections.push_back(laserdisc);
-
-    Section::LineInjection vits;
-    vits.type = "vits";
-    vits.vits_type = "uk-national";
-    vits.target_lines = {19};
-    programme.line_injections.push_back(vits);
   }
   programme.noise.enabled = true;
   programme.noise.noise_db = 38.0;

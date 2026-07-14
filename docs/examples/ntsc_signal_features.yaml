@@ -26,6 +26,19 @@ cvbs_presets:
 output:
   video_path: "{project}/output/ntsc_signal_features.composite"
 
+line_injections:
+  vits:
+    - vits_type: ntc7-composite
+      target_lines: [17]
+    - vits_type: fcc-multiburst
+      target_lines: [18]
+    - vits_type: virs
+      target_lines: [21]
+    - vits_type: ntc7-combination
+      target_lines: [280]
+    - vits_type: fcc-composite
+      target_lines: [281]
+
 sections:
 
   # Full NTSC VITS reference on the standard insertion lines.
@@ -33,23 +46,6 @@ sections:
     type: progressive
     source: "{bundled}/exr/720x486/100_BARS.exr"
     duration_frames: 8
-    line_injections:
-      - type: vits
-        vits_type: ntc7-composite
-        target_lines: [17]
-      - type: vits
-        vits_type: fcc-multiburst
-        target_lines: [18]
-      - type: vits
-        vits_type: virs
-        target_lines: [21]
-      - type: vits
-        vits_type: ntc7-combination
-        target_lines: [280]
-      - type: vits
-        vits_type: fcc-composite
-        target_lines: [281]
-
   # Good-quality source: light noise plus a fixed 1 kHz tone.
   - name: GoodSource
     type: progressive
@@ -58,10 +54,6 @@ sections:
     noise:
       noise_db: 48.0
       noise_spread_db: 4.0
-    line_injections:
-      - type: vits
-        vits_type: virs
-        target_lines: [21]
     audio:
       channel_pairs:
         - pair: 0
@@ -83,10 +75,6 @@ sections:
     dropouts:
       random:
         scale: 10
-    line_injections:
-      - type: vits
-        vits_type: virs
-        target_lines: [21]
     osd:
       overlays:
         - text: "SEC:{section_name} PHASE:{phase_id}"
@@ -104,10 +92,6 @@ sections:
     dropouts:
       scratch:
         scale: 4
-    line_injections:
-      - type: vits
-        vits_type: virs
-        target_lines: [21]
     audio:
       channel_pairs:
         - pair: 0
@@ -125,7 +109,3 @@ sections:
     type: progressive
     source: "{bundled}/mkv/720x486/MOVING_ZONE_2H.mkv"
     duration_frames: 8
-    line_injections:
-      - type: vits
-        vits_type: virs
-        target_lines: [21]

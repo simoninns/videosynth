@@ -61,6 +61,15 @@ TEST(SectionListModelTest, AllDurationRowShowsAllFrames) {
   EXPECT_EQ(rows[1].DurationText(), QStringLiteral("all frames"));
 }
 
+TEST(SectionListModelTest, AllDurationRowWithRepeatShowsMultiplier) {
+  Project project = MakeProject();
+  project.sections[1].duration_frames_all = true;
+  project.sections[1].duration_frames = 0;
+  project.sections[1].duration_frames_repeat = 4;
+  const std::vector<SectionListRow> rows = BuildSectionListRows(project);
+  EXPECT_EQ(rows[1].DurationText(), QStringLiteral("all frames x4"));
+}
+
 TEST(SectionListModelTest, ModelTracksDocumentMutations) {
   ProjectDocument document;
   document.ResetProject(MakeProject(), QString());
@@ -184,6 +193,7 @@ TEST(SectionListModelTest, SectionTemplatesValidateStructurally) {
     project.cvbs_presets.video_standard_preset = standard;
     project.output.video_path = "out/video.composite";
     project.output.metadata_path = "out/video.meta";
+    project.line_injections = MakeLaserdiscLineInjections(standard);
     project.sections.push_back(MakeLaserdiscLeadInSectionTemplate(standard));
     project.sections.push_back(MakeLaserdiscProgrammeSectionTemplate(standard));
     project.sections.push_back(MakeLaserdiscLeadOutSectionTemplate(standard));

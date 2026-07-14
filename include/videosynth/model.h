@@ -276,8 +276,6 @@ struct Section {
   struct LineInjection {
     std::string type;
     std::vector<int> target_lines;
-    std::string vits_type;
-    std::string disc_type;
     std::vector<LineInjectionCode> codes;
   };
 
@@ -288,6 +286,10 @@ struct Section {
   std::string source = {};
   bool duration_frames_all = false;
   int duration_frames = 0;
+  // Number of times the resolved source is replayed when duration_frames_all is
+  // true (total output frames = source frame count * duration_frames_repeat).
+  // Ignored when duration_frames_all is false. Always >= 1.
+  int duration_frames_repeat = 1;
   int start_frame = 0;
   NoiseParameters noise = {};
   DropoutParameters dropouts = {};
@@ -325,6 +327,24 @@ struct DiscSkip {
   int count = 0;
 };
 
+// One project-wide VITS (vertical interval test signal) injection: a single
+// VITS type placed on one or more 1-based frame lines. The same set is applied
+// to every frame of the project regardless of section.
+struct VitsInjection {
+  std::string vits_type;
+  std::vector<int> target_lines;
+};
+
+// Project-wide line-injection configuration. `disc_type` selects the laserdisc
+// format ("CAV"/"CLV", empty for a non-laserdisc project) shared by every
+// section's laserdisc code injections. `vits` is the VITS test-signal set
+// applied across the whole project. Both are project-wide decisions: the disc
+// format and the VITS complement do not vary per section.
+struct ProjectLineInjections {
+  std::string disc_type;
+  std::vector<VitsInjection> vits;
+};
+
 struct Project {
   std::string name;
   std::string version;
@@ -332,6 +352,7 @@ struct Project {
   std::string description;
   CvbsPresets cvbs_presets;
   OutputTargets output;
+  ProjectLineInjections line_injections;
   std::vector<Section> sections;
   // Optional list of disc skip events applied after generation. Empty = no
   // skips; the pipeline uses the standard batch loop.
@@ -421,8 +442,16 @@ inline bool operator==(const Section::LineInjectionCode& a,
 inline bool operator==(const Section::LineInjection& a,
                        const Section::LineInjection& b) {
   return a.type == b.type && a.target_lines == b.target_lines &&
-         a.vits_type == b.vits_type && a.disc_type == b.disc_type &&
          a.codes == b.codes;
+}
+
+inline bool operator==(const VitsInjection& a, const VitsInjection& b) {
+  return a.vits_type == b.vits_type && a.target_lines == b.target_lines;
+}
+
+inline bool operator==(const ProjectLineInjections& a,
+                       const ProjectLineInjections& b) {
+  return a.disc_type == b.disc_type && a.vits == b.vits;
 }
 
 inline bool operator==(const Section& a, const Section& b) {
@@ -431,6 +460,7 @@ inline bool operator==(const Section& a, const Section& b) {
          a.line_injections == b.line_injections && a.source == b.source &&
          a.duration_frames_all == b.duration_frames_all &&
          a.duration_frames == b.duration_frames &&
+         a.duration_frames_repeat == b.duration_frames_repeat &&
          a.start_frame == b.start_frame && a.noise == b.noise &&
          a.dropouts == b.dropouts && a.osd == b.osd &&
          a.audio_channel_pairs == b.audio_channel_pairs;
@@ -449,8 +479,8 @@ inline bool operator==(const DiscSkip& a, const DiscSkip& b) {
 inline bool operator==(const Project& a, const Project& b) {
   return a.name == b.name && a.version == b.version &&
          a.description == b.description && a.cvbs_presets == b.cvbs_presets &&
-         a.output == b.output && a.sections == b.sections &&
-         a.disc_skips == b.disc_skips;
+         a.output == b.output && a.line_injections == b.line_injections &&
+         a.sections == b.sections && a.disc_skips == b.disc_skips;
 }
 
 inline bool operator!=(const Project& a, const Project& b) { return !(a == b); }

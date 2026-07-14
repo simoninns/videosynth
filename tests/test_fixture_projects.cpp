@@ -114,14 +114,16 @@ void ExpectVitsFixtureProject(const ExpectedVitsFixture& expected) {
   ASSERT_EQ(section.type, "progressive");
   ASSERT_EQ(section.duration_frames, 1);
   ASSERT_FALSE(section.duration_frames_all);
-  ASSERT_EQ(section.line_injections.size(), expected.injections.size())
+
+  // VITS is now a project-wide test-signal set rather than a per-section
+  // line injection.
+  ASSERT_EQ(project.line_injections.vits.size(), expected.injections.size())
       << expected.fixture_name;
 
   for (std::size_t index = 0; index < expected.injections.size(); ++index) {
-    const Section::LineInjection& injection = section.line_injections[index];
+    const VitsInjection& injection = project.line_injections.vits[index];
     const ExpectedVitsInjection& expected_injection =
         expected.injections[index];
-    EXPECT_EQ(injection.type, "vits") << expected.fixture_name;
     ASSERT_EQ(injection.target_lines.size(), 1U) << expected.fixture_name;
     EXPECT_EQ(injection.target_lines[0], expected_injection.target_line)
         << expected.fixture_name;
@@ -382,6 +384,55 @@ TEST(ProjectFixturesTest,
 
     std::filesystem::remove(output_path);
     std::filesystem::remove(metadata_path);
+  }
+}
+
+TEST(ProjectFixturesTest, ProgressiveMkvRepeatMultipliesGeneratedFrameCount) {
+  YamlProjectParser parser;
+  ProgressiveFrameSourceProbe progressive_frame_source_probe;
+  ProjectValidator validator(&progressive_frame_source_probe);
+  GenerationStage generation;
+  ProgressiveFrameSource progressive_source;
+
+  constexpr int kRepeat = 3;
+  const std::vector<std::string> fixtures = {
+      "general/pal_progressive_mkv.yaml", "general/ntsc_progressive_mkv.yaml"};
+
+  for (const std::string& fixture : fixtures) {
+    const ParseResult parsed = parser.ParseFile(FixturePath(fixture));
+    ASSERT_TRUE(parsed.ok) << fixture;
+    Project project = parsed.project;
+    ResolveFixtureProjectPaths(&project, FixtureProjectDir(fixture));
+
+    int expected_source_frames = 0;
+    for (Section& section : project.sections) {
+      int section_source_frames = 0;
+      std::string count_error;
+      ASSERT_TRUE(progressive_source.ResolveFrameCount(
+          section, project.cvbs_presets.video_standard_preset,
+          &section_source_frames, &count_error))
+          << fixture << ": " << count_error;
+      ASSERT_GT(section_source_frames, 0) << fixture;
+      expected_source_frames += section_source_frames;
+      // These fixtures use duration_frames: all; add the repeat multiplier.
+      ASSERT_TRUE(section.duration_frames_all) << fixture;
+      section.duration_frames_repeat = kRepeat;
+    }
+
+    ASSERT_TRUE(validator.Validate(project).is_valid) << fixture;
+
+    std::vector<SampleFixed> y_mv;
+    std::vector<SampleFixed> c_mv;
+    std::vector<std::string> generation_errors;
+    ASSERT_TRUE(generation.Generate(project, &y_mv, &c_mv, &generation_errors))
+        << fixture;
+
+    const std::size_t frame_span = static_cast<std::size_t>(
+        SamplesPerFrame4fsc(project.cvbs_presets.video_standard_preset));
+    EXPECT_EQ(y_mv.size(),
+              frame_span * static_cast<std::size_t>(expected_source_frames) *
+                  static_cast<std::size_t>(kRepeat))
+        << fixture;
   }
 }
 

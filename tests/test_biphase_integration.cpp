@@ -44,15 +44,19 @@ Section MakeSection(const std::string& name, SectionType stype, int frames) {
 }
 
 Section::LineInjection MakeLaserdiscInjection(const std::string& disc_type) {
+  // disc_type is now a project-level decision (Project::line_injections.
+  // disc_type); the section injection only carries codes. The argument is
+  // retained so call sites still document the intended disc format.
+  (void)disc_type;
   Section::LineInjection inj;
   inj.type = "laserdisc";
-  inj.disc_type = disc_type;
   return inj;
 }
 
-Section::LineInjection MakeVirsInjection() {
-  Section::LineInjection inj;
-  inj.type = "vits";
+// VITS injections are now project-wide. This returns a VitsInjection to be
+// pushed into Project::line_injections.vits (not a section injection).
+VitsInjection MakeVirsInjection() {
+  VitsInjection inj;
   inj.vits_type = "virs";
   inj.target_lines = {19, 282};
   return inj;
@@ -85,6 +89,7 @@ Section::LineInjectionCode MakeChapterCode(int chapter) {
 
 TEST(BiphaseIntegrationTest, AcceptsCompletePalCavProject) {
   Project p = MakeBaseProject(Standard::kPal);
+  p.line_injections.disc_type = "CAV";
 
   // Lead-in (minimum 938 frames for CAV).
   Section lead_in = MakeSection("Lead-in", SectionType::kLeadIn, 938);
@@ -117,6 +122,7 @@ TEST(BiphaseIntegrationTest, AcceptsCompletePalCavProject) {
 
 TEST(BiphaseIntegrationTest, AcceptsCompletePalClvProject) {
   Project p = MakeBaseProject(Standard::kPal);
+  p.line_injections.disc_type = "CLV";
 
   // Lead-in (CLV: no minimum frame count enforced).
   Section lead_in = MakeSection("Lead-in", SectionType::kLeadIn, 10);
@@ -150,13 +156,14 @@ TEST(BiphaseIntegrationTest, AcceptsCompletePalClvProject) {
 
 TEST(BiphaseIntegrationTest, AcceptsCompleteNtscCavProject) {
   Project p = MakeBaseProject(Standard::kNtsc);
+  p.line_injections.disc_type = "CAV";
+  p.line_injections.vits.push_back(MakeVirsInjection());
 
   // Lead-in.
   Section lead_in = MakeSection("Lead-in", SectionType::kLeadIn, 938);
   auto li_inj = MakeLaserdiscInjection("CAV");
   li_inj.codes.push_back(MakeCode("lead_in"));
   lead_in.line_injections.push_back(li_inj);
-  lead_in.line_injections.push_back(MakeVirsInjection());
   p.sections.push_back(lead_in);
 
   // Programme area with picture_number and fm_picture_number.
@@ -166,7 +173,6 @@ TEST(BiphaseIntegrationTest, AcceptsCompleteNtscCavProject) {
   prog_inj.codes.push_back(MakeCode("fm_picture_number"));
   prog_inj.codes.push_back(MakeCode("fm_white_flag"));
   prog.line_injections.push_back(prog_inj);
-  prog.line_injections.push_back(MakeVirsInjection());
   p.sections.push_back(prog);
 
   // Lead-out.
@@ -174,7 +180,6 @@ TEST(BiphaseIntegrationTest, AcceptsCompleteNtscCavProject) {
   auto lo_inj = MakeLaserdiscInjection("CAV");
   lo_inj.codes.push_back(MakeCode("lead_out"));
   lead_out.line_injections.push_back(lo_inj);
-  lead_out.line_injections.push_back(MakeVirsInjection());
   p.sections.push_back(lead_out);
 
   ProjectValidator v;
@@ -187,13 +192,14 @@ TEST(BiphaseIntegrationTest, AcceptsCompleteNtscCavProject) {
 
 TEST(BiphaseIntegrationTest, AcceptsCompleteNtscClvProject) {
   Project p = MakeBaseProject(Standard::kNtsc);
+  p.line_injections.disc_type = "CLV";
+  p.line_injections.vits.push_back(MakeVirsInjection());
 
   // Lead-in.
   Section lead_in = MakeSection("Lead-in", SectionType::kLeadIn, 10);
   auto li_inj = MakeLaserdiscInjection("CLV");
   li_inj.codes.push_back(MakeCode("lead_in"));
   lead_in.line_injections.push_back(li_inj);
-  lead_in.line_injections.push_back(MakeVirsInjection());
   p.sections.push_back(lead_in);
 
   // Programme area.
@@ -204,7 +210,6 @@ TEST(BiphaseIntegrationTest, AcceptsCompleteNtscClvProject) {
   prog_inj.codes.push_back(MakeCode("fm_programme_time"));
   prog_inj.codes.push_back(MakeCode("fm_white_flag"));
   prog.line_injections.push_back(prog_inj);
-  prog.line_injections.push_back(MakeVirsInjection());
   p.sections.push_back(prog);
 
   // Lead-out.
@@ -212,7 +217,6 @@ TEST(BiphaseIntegrationTest, AcceptsCompleteNtscClvProject) {
   auto lo_inj = MakeLaserdiscInjection("CLV");
   lo_inj.codes.push_back(MakeCode("lead_out"));
   lead_out.line_injections.push_back(lo_inj);
-  lead_out.line_injections.push_back(MakeVirsInjection());
   p.sections.push_back(lead_out);
 
   ProjectValidator v;
@@ -224,6 +228,7 @@ TEST(BiphaseIntegrationTest, AcceptsCompleteNtscClvProject) {
 
 TEST(BiphaseIntegrationTest, AcceptsMultiChapterPalCavProject) {
   Project p = MakeBaseProject(Standard::kPal);
+  p.line_injections.disc_type = "CAV";
 
   // Lead-in.
   Section lead_in = MakeSection("Lead-in", SectionType::kLeadIn, 938);
@@ -261,6 +266,7 @@ TEST(BiphaseIntegrationTest,
      AcceptsProjectWithMixedLaserdiscAndNonLaserdiscSections) {
   // Non-laserdisc sections do not require any laserdisc-specific validation.
   Project p = MakeBaseProject(Standard::kPal);
+  p.line_injections.disc_type = "CAV";
 
   // Section without laserdisc.
   Section plain = MakeSection("Plain", SectionType::kUnknown, 25);
@@ -283,6 +289,7 @@ TEST(BiphaseIntegrationTest,
 
 TEST(BiphaseIntegrationTest, RejectsProjectWithLeadInCodeInProgrammeSection) {
   Project p = MakeBaseProject(Standard::kPal);
+  p.line_injections.disc_type = "CAV";
 
   Section prog = MakeSection("Programme", SectionType::kProgrammeArea, 200);
   auto prog_inj = MakeLaserdiscInjection("CAV");
@@ -301,6 +308,7 @@ TEST(BiphaseIntegrationTest, RejectsProjectWithLeadInCodeInProgrammeSection) {
 
 TEST(BiphaseIntegrationTest, WarnsCompleteProjectWithInsufficientLeadIn) {
   Project p = MakeBaseProject(Standard::kPal);
+  p.line_injections.disc_type = "CAV";
 
   Section lead_in =
       MakeSection("Lead-in", SectionType::kLeadIn, 100);  // below IEC minimum
@@ -321,19 +329,20 @@ TEST(BiphaseIntegrationTest, WarnsCompleteProjectWithInsufficientLeadIn) {
 
 TEST(BiphaseIntegrationTest, RejectsNtscProjectWhenOneSectionMissingVirs) {
   Project p = MakeBaseProject(Standard::kNtsc);
+  p.line_injections.disc_type = "CAV";
+  // VITS are now project-wide; omitting the virs injection at the project
+  // level must reject an NTSC laserdisc project (IEC 60857 §9.1.3).
 
   Section s1 = MakeSection("Section1", SectionType::kProgrammeArea, 200);
   auto inj1 = MakeLaserdiscInjection("CAV");
   inj1.codes.push_back(MakePictureNumberCode(1));
   s1.line_injections.push_back(inj1);
-  s1.line_injections.push_back(MakeVirsInjection());  // OK
   p.sections.push_back(s1);
 
   Section s2 = MakeSection("Section2", SectionType::kProgrammeArea, 200);
   auto inj2 = MakeLaserdiscInjection("CAV");
   inj2.codes.push_back(MakePictureNumberCode(200));
   s2.line_injections.push_back(inj2);
-  // Missing virs in s2.
   p.sections.push_back(s2);
 
   ProjectValidator v;
@@ -347,6 +356,7 @@ TEST(BiphaseIntegrationTest, RejectsNtscProjectWhenOneSectionMissingVirs) {
 
 TEST(BiphaseIntegrationTest, AcceptsUsersCodeInBothLeadInAndLeadOut) {
   Project p = MakeBaseProject(Standard::kPal);
+  p.line_injections.disc_type = "CAV";
 
   Section lead_in = MakeSection("Lead-in", SectionType::kLeadIn, 938);
   auto li_inj = MakeLaserdiscInjection("CAV");

@@ -67,20 +67,34 @@ bool ParseDurationFrames(const YAML::Node& section_node, Section* section,
   if (scalar == "all") {
     section->duration_frames_all = true;
     section->duration_frames = 0;
-    return true;
+  } else {
+    try {
+      const int duration_frames = duration_node.as<int>();
+      section->duration_frames_all = false;
+      section->duration_frames = duration_frames;
+    } catch (const YAML::Exception&) {
+      errors->push_back(
+          "section field 'duration_frames' must be an integer or the string "
+          "'all'.");
+      return false;
+    }
   }
 
-  try {
-    const int duration_frames = duration_node.as<int>();
-    section->duration_frames_all = false;
-    section->duration_frames = duration_frames;
-    return true;
-  } catch (const YAML::Exception&) {
-    errors->push_back(
-        "section field 'duration_frames' must be an integer or the string "
-        "'all'.");
-    return false;
+  // Optional repeat multiplier; only meaningful with duration_frames: all.
+  if (section_node["duration_repeat"]) {
+    const YAML::Node repeat_node = section_node["duration_repeat"];
+    try {
+      section->duration_frames_repeat = repeat_node.as<int>();
+    } catch (const YAML::Exception&) {
+      errors->push_back(
+          "section field 'duration_repeat' must be a positive integer.");
+      return false;
+    }
+  } else {
+    section->duration_frames_repeat = 1;
   }
+
+  return true;
 }
 
 bool ParseLineInjectionCodes(const YAML::Node& codes_node,
@@ -160,8 +174,11 @@ bool ParseLineInjections(const YAML::Node& section_node, Section* section,
       return false;
     }
 
-    const std::set<std::string> injection_keys = {
-        "type", "target_lines", "vits_type", "disc_type", "codes"};
+    // Section-level line injections carry only laserdisc codes (and vitc).
+    // The VITS set and the disc_type (CAV/CLV) are project-wide and live in the
+    // top-level `line_injections:` block, so they are not accepted here.
+    const std::set<std::string> injection_keys = {"type", "target_lines",
+                                                  "codes"};
     ValidateAllowedKeys(injection_node, injection_keys, "line_injections[]",
                         errors);
     if (!errors->empty()) {
@@ -187,15 +204,81 @@ bool ParseLineInjections(const YAML::Node& section_node, Section* section,
       }
     }
 
-    injection.vits_type = injection_node["vits_type"].as<std::string>("");
-    injection.disc_type = injection_node["disc_type"].as<std::string>("");
-
     if (injection_node["codes"] &&
         !ParseLineInjectionCodes(injection_node["codes"], &injection, errors)) {
       return false;
     }
 
     section->line_injections.push_back(injection);
+  }
+
+  return true;
+}
+
+// Parses the project-wide `line_injections:` block: the laserdisc disc_type
+// (CAV/CLV) and the VITS test-signal set. Both are project-wide decisions, so
+// they live at the top level rather than per section.
+bool ParseProjectLineInjections(const YAML::Node& root, Project* project,
+                                std::vector<std::string>* errors) {
+  if (project == nullptr || errors == nullptr) {
+    return false;
+  }
+
+  if (!root["line_injections"]) {
+    return true;
+  }
+
+  const YAML::Node node = root["line_injections"];
+  if (!node.IsMap()) {
+    errors->push_back("Top-level 'line_injections' must be a map/object.");
+    return false;
+  }
+
+  const std::set<std::string> keys = {"disc_type", "vits"};
+  ValidateAllowedKeys(node, keys, "line_injections", errors);
+  if (!errors->empty()) {
+    return false;
+  }
+
+  project->line_injections.disc_type = node["disc_type"].as<std::string>("");
+
+  if (node["vits"]) {
+    const YAML::Node vits_node = node["vits"];
+    if (!vits_node.IsSequence()) {
+      errors->push_back("line_injections.vits must be a list/sequence.");
+      return false;
+    }
+    for (const YAML::Node& entry : vits_node) {
+      if (!entry.IsMap()) {
+        errors->push_back("line_injections.vits[] must be a map/object.");
+        return false;
+      }
+      const std::set<std::string> vits_keys = {"vits_type", "target_lines"};
+      ValidateAllowedKeys(entry, vits_keys, "line_injections.vits[]", errors);
+      if (!errors->empty()) {
+        return false;
+      }
+
+      VitsInjection vits;
+      vits.vits_type = entry["vits_type"].as<std::string>("");
+      if (vits.vits_type.empty()) {
+        errors->push_back(
+            "line_injections.vits[] is missing required field: 'vits_type'.");
+        return false;
+      }
+      if (entry["target_lines"]) {
+        const YAML::Node target_lines_node = entry["target_lines"];
+        if (!target_lines_node.IsSequence()) {
+          errors->push_back(
+              "line_injections.vits[].target_lines must be a list/sequence.");
+          return false;
+        }
+        for (const YAML::Node& target_line : target_lines_node) {
+          vits.target_lines.push_back(target_line.as<int>());
+        }
+      }
+      project->line_injections.vits.push_back(std::move(vits));
+    }
   }
 
   return true;
@@ -286,8 +369,9 @@ ParseResult ParseYamlNode(const YAML::Node& root, ILogger* logger) {
       return result;
     }
 
-    const std::set<std::string> root_keys = {
-        "project", "cvbs_presets", "output", "sections", "disc_skips"};
+    const std::set<std::string> root_keys = {"project",  "cvbs_presets",
+                                             "output",   "line_injections",
+                                             "sections", "disc_skips"};
     ValidateAllowedKeys(root, root_keys, "Top-level YAML", &result.errors);
     if (!result.errors.empty()) {
       return result;
@@ -362,6 +446,10 @@ ParseResult ParseYamlNode(const YAML::Node& root, ILogger* logger) {
     result.project.output.signal_type =
         output["signal_type"].as<std::string>("composite");
 
+    if (!ParseProjectLineInjections(root, &result.project, &result.errors)) {
+      return result;
+    }
+
     for (const YAML::Node& section_node : root["sections"]) {
       if (!section_node.IsMap()) {
         result.errors.push_back("Each section entry must be a map/object.");
@@ -372,6 +460,7 @@ ParseResult ParseYamlNode(const YAML::Node& root, ILogger* logger) {
                                                   "type",
                                                   "section_type",
                                                   "duration_frames",
+                                                  "duration_repeat",
                                                   "line_injections",
                                                   "source",
                                                   "start_frame",

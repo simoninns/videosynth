@@ -29,6 +29,12 @@ output:
   video_path: "{project}/../stacking-yc-output/videosynth_pal_stacking_4004.y"
   signal_type: yc
 
+line_injections:
+  disc_type: CAV
+  vits:
+    - vits_type: uk-national
+      target_lines: [19]
+
 sections:
 
   # ---------------------------------------------------------------------------
@@ -41,16 +47,11 @@ sections:
     section_type: programme_area
     line_injections:
       - type: laserdisc
-        disc_type: CAV
         codes:
           - code_type: picture_number
             start_value: 1
           - code_type: programme_status
             programme_status: "0x8DC000"
-      - type: vits
-        vits_type: uk-national
-        target_lines: [19]
-
   # ---------------------------------------------------------------------------
   # Section 2: near-quantisation noise, minimal dropout
   # ---------------------------------------------------------------------------
@@ -72,16 +73,11 @@ sections:
         seed: 4004
     line_injections:
       - type: laserdisc
-        disc_type: CAV
         codes:
           - code_type: picture_number
             start_value: 9
           - code_type: programme_status
             programme_status: "0x8DC000"
-      - type: vits
-        vits_type: uk-national
-        target_lines: [19]
-
   # ---------------------------------------------------------------------------
   # Section 3: excellent source quality
   # ---------------------------------------------------------------------------
@@ -103,16 +99,11 @@ sections:
         seed: 4004
     line_injections:
       - type: laserdisc
-        disc_type: CAV
         codes:
           - code_type: picture_number
             start_value: 17
           - code_type: programme_status
             programme_status: "0x8DC000"
-      - type: vits
-        vits_type: uk-national
-        target_lines: [19]
-
   # ---------------------------------------------------------------------------
   # Section 4: good source quality
   # ---------------------------------------------------------------------------
@@ -134,16 +125,11 @@ sections:
         seed: 4004
     line_injections:
       - type: laserdisc
-        disc_type: CAV
         codes:
           - code_type: picture_number
             start_value: 25
           - code_type: programme_status
             programme_status: "0x8DC000"
-      - type: vits
-        vits_type: uk-national
-        target_lines: [19]
-
   # ---------------------------------------------------------------------------
   # Section 5: fair source quality
   # ---------------------------------------------------------------------------
@@ -165,16 +151,11 @@ sections:
         seed: 4004
     line_injections:
       - type: laserdisc
-        disc_type: CAV
         codes:
           - code_type: picture_number
             start_value: 33
           - code_type: programme_status
             programme_status: "0x8DC000"
-      - type: vits
-        vits_type: uk-national
-        target_lines: [19]
-
   # ---------------------------------------------------------------------------
   # Section 6: typical VHS quality
   # ---------------------------------------------------------------------------
@@ -196,16 +177,11 @@ sections:
         seed: 4004
     line_injections:
       - type: laserdisc
-        disc_type: CAV
         codes:
           - code_type: picture_number
             start_value: 41
           - code_type: programme_status
             programme_status: "0x8DC000"
-      - type: vits
-        vits_type: uk-national
-        target_lines: [19]
-
   # ---------------------------------------------------------------------------
   # Section 7: poor tape
   # ---------------------------------------------------------------------------
@@ -227,16 +203,11 @@ sections:
         seed: 4004
     line_injections:
       - type: laserdisc
-        disc_type: CAV
         codes:
           - code_type: picture_number
             start_value: 49
           - code_type: programme_status
             programme_status: "0x8DC000"
-      - type: vits
-        vits_type: uk-national
-        target_lines: [19]
-
   # ---------------------------------------------------------------------------
   # Section 8: very poor tape
   # ---------------------------------------------------------------------------
@@ -258,16 +229,11 @@ sections:
         seed: 4004
     line_injections:
       - type: laserdisc
-        disc_type: CAV
         codes:
           - code_type: picture_number
             start_value: 57
           - code_type: programme_status
             programme_status: "0x8DC000"
-      - type: vits
-        vits_type: uk-national
-        target_lines: [19]
-
   # ---------------------------------------------------------------------------
   # Section 9: barely watchable
   # ---------------------------------------------------------------------------
@@ -289,16 +255,11 @@ sections:
         seed: 4004
     line_injections:
       - type: laserdisc
-        disc_type: CAV
         codes:
           - code_type: picture_number
             start_value: 65
           - code_type: programme_status
             programme_status: "0x8DC000"
-      - type: vits
-        vits_type: uk-national
-        target_lines: [19]
-
   # ---------------------------------------------------------------------------
   # Section 10: sync-borderline — maximum noise and dropout
   # ---------------------------------------------------------------------------
@@ -320,12 +281,8 @@ sections:
         seed: 4004
     line_injections:
       - type: laserdisc
-        disc_type: CAV
         codes:
           - code_type: picture_number
             start_value: 73
           - code_type: programme_status
             programme_status: "0x8DC000"
-      - type: vits
-        vits_type: uk-national
-        target_lines: [19]

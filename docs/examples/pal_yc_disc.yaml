@@ -21,6 +21,12 @@ output:
   video_path: "{project}/output/pal_yc_showcase.y"
   signal_type: yc
 
+line_injections:
+  disc_type: CAV
+  vits:
+    - vits_type: uk-national
+      target_lines: [19]
+
 sections:
 
   - name: LeadIn
@@ -30,7 +36,6 @@ sections:
     section_type: lead_in
     line_injections:
       - type: laserdisc
-        disc_type: CAV
         codes:
           - code_type: lead_in
           - code_type: users_code
@@ -43,7 +48,6 @@ sections:
     section_type: programme_area
     line_injections:
       - type: laserdisc
-        disc_type: CAV
         codes:
           - code_type: picture_number
             start_value: 1
@@ -51,9 +55,6 @@ sections:
             chapter: 0
           - code_type: programme_status
             programme_status: "0x8DC000"
-      - type: vits
-        vits_type: uk-national
-        target_lines: [19]
     osd:
       overlays:
         - text: "PAL Y/C Chapter0"
@@ -76,7 +77,6 @@ sections:
     section_type: lead_out
     line_injections:
       - type: laserdisc
-        disc_type: CAV
         codes:
           - code_type: lead_out
           - code_type: users_code

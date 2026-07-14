@@ -25,15 +25,35 @@ Project MakeDefaultProject(Standard standard);
 // Convenience wrapper for MakeDefaultProject(Standard::kPal).
 Project MakeDefaultPalProject();
 
+// The bundled colour-bar source path MakeDefaultProject seeds for `standard`,
+// referenced through the {bundled} logical asset root. Exposed so callers can
+// detect and remap the seeded default when the project standard changes.
+std::string DefaultBundledSource(Standard standard);
+
+// Rewrites any section source that is still one of the bundled default
+// colour-bar EXRs so it matches `standard`'s active raster (720x576 for PAL,
+// 720x486 for NTSC/PAL-M). Sources the user has chosen are left untouched.
+// Returns the number of sections changed. Used when the New Project dialog
+// switches the standard on the scratch document so the seeded section stays
+// previewable instead of retaining a raster the new standard rejects.
+int RemapBundledDefaultSources(Project* project, Standard standard);
+
 // Plain progressive section (no laserdisc VBI codes). `ordinal` seeds the
 // default name ("Section <ordinal>").
 Section MakeProgressiveSectionTemplate(int ordinal);
 
-// Laserdisc section templates modelled on docs/examples/. Each carries a CAV
-// laserdisc injection with the codes IEC 60856/60857 expects for its section
-// type; NTSC and PAL-M additionally get the mandatory FM white flag and the
-// virs VITS colour reference (IEC 60857 §9.1.3). Durations default to the
-// IEC track-pitch minimums the validator checks (lead-in 938, lead-out 1250).
+// Project-wide line_injections for a laserdisc project: the CAV disc format
+// and, for NTSC/PAL-M, the mandatory virs VITS colour reference
+// (IEC 60857 §9.1.3). Pair this with the laserdisc section templates below,
+// whose sections carry only their per-section biphase codes.
+ProjectLineInjections MakeLaserdiscLineInjections(Standard standard);
+
+// Laserdisc section templates modelled on docs/examples/. Each carries the
+// laserdisc code injection IEC 60856/60857 expects for its section type; NTSC
+// and PAL-M additionally get the mandatory FM white flag. The disc format and
+// VITS set are project-wide (see MakeLaserdiscLineInjections). Durations
+// default to the IEC track-pitch minimums the validator checks (lead-in 938,
+// lead-out 1250).
 Section MakeLaserdiscLeadInSectionTemplate(Standard standard);
 Section MakeLaserdiscProgrammeSectionTemplate(Standard standard);
 Section MakeLaserdiscLeadOutSectionTemplate(Standard standard);

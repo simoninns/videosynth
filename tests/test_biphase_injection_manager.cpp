@@ -77,6 +77,9 @@ int ActiveWindowEnd(Standard standard) {
 Section MakeLaserdiscSection(
     SectionType section_type, DiscType disc_type,
     const std::vector<Section::LineInjectionCode>& codes) {
+  // disc_type is now a project-level setting supplied to the manager via
+  // SetProjectDiscType; the section carries only its laserdisc codes.
+  (void)disc_type;
   Section section;
   section.name = "TestSection";
   section.type = "progressive";
@@ -85,7 +88,6 @@ Section MakeLaserdiscSection(
 
   Section::LineInjection injection;
   injection.type = "laserdisc";
-  injection.disc_type = DiscTypeToString(disc_type);
   injection.codes = codes;
   section.line_injections.push_back(injection);
 
@@ -186,6 +188,9 @@ class BiphaseInjectionManagerTest : public ::testing::Test {
     const int awe = ActiveWindowEnd(standard);
     const TimingConstants timing = GetTimingConstants(standard);
 
+    // Member-manager tests exercise CAV sections; the disc format is a
+    // project-level setting supplied once per pass.
+    manager_.SetProjectDiscType(DiscType::kCAV);
     return manager_.ProcessFrame(&y_mv, 0, offsets, counts, section, standard,
                                  timing.sample_rate_4fsc_hz, frame_lines, aws,
                                  awe, &errors_);
@@ -225,18 +230,19 @@ TEST_F(BiphaseInjectionManagerTest, ResetAllowsReinit) {
 }
 
 // ---------------------------------------------------------------------------
-// Invalid disc_type string returns false with an error.
+// A laserdisc section with no project disc_type set returns false with an
+// error (the disc format is required project-wide).
 // ---------------------------------------------------------------------------
 
-TEST_F(BiphaseInjectionManagerTest, UnknownDiscTypeReturnsError) {
+TEST_F(BiphaseInjectionManagerTest, MissingProjectDiscTypeReturnsError) {
   Section section;
   section.name = "Bad";
   section.type = "progressive";
   section.section_type = SectionType::kLeadIn;
   Section::LineInjection inj;
   inj.type = "laserdisc";
-  inj.disc_type = "UNKNOWN_DISC";
   section.line_injections.push_back(inj);
+  // Deliberately do not call SetProjectDiscType: project_disc_type_ is unknown.
 
   auto y_mv = MakeBlankingBuffer(Standard::kPal);
   std::vector<int> offsets, counts;
@@ -269,6 +275,7 @@ TEST(BiphaseInjectionManagerPalCavTest, LeadInCodeAppearsOnCorrectLines) {
   const TimingConstants timing = GetTimingConstants(Standard::kPal);
   std::vector<std::string> errors;
 
+  manager.SetProjectDiscType(DiscType::kCAV);
   ASSERT_TRUE(manager.ProcessFrame(&y_mv, 0, offsets, counts, section,
                                    Standard::kPal, timing.sample_rate_4fsc_hz,
                                    frame_lines, 177,
@@ -307,6 +314,7 @@ TEST(BiphaseInjectionManagerPalCavTest, LeadInSignalLevelsWithinSpec) {
   const TimingConstants timing = GetTimingConstants(Standard::kPal);
   std::vector<std::string> errors;
 
+  manager.SetProjectDiscType(DiscType::kCAV);
   ASSERT_TRUE(manager.ProcessFrame(&y_mv, 0, offsets, counts, section,
                                    Standard::kPal, timing.sample_rate_4fsc_hz,
                                    frame_lines, 177,
@@ -341,6 +349,7 @@ TEST(BiphaseInjectionManagerPalCavTest, LeadOutCodeAppearsOnField2Lines) {
   const TimingConstants timing = GetTimingConstants(Standard::kPal);
   std::vector<std::string> errors;
 
+  manager.SetProjectDiscType(DiscType::kCAV);
   ASSERT_TRUE(manager.ProcessFrame(&y_mv, 0, offsets, counts, section,
                                    Standard::kPal, timing.sample_rate_4fsc_hz,
                                    frame_lines, 177,
@@ -377,12 +386,14 @@ TEST(BiphaseInjectionManagerPalCavTest, PictureNumberIncrementsAcrossFrames) {
   // Generate two frames and capture the Y buffer state for line 17 each time.
   auto y1 = MakeBlankingBuffer(Standard::kPal);
   std::vector<std::string> errors1;
+  manager.SetProjectDiscType(DiscType::kCAV);
   ASSERT_TRUE(manager.ProcessFrame(&y1, 0, offsets, counts, section,
                                    Standard::kPal, timing.sample_rate_4fsc_hz,
                                    frame_lines, aws, awe, &errors1));
 
   auto y2 = MakeBlankingBuffer(Standard::kPal);
   std::vector<std::string> errors2;
+  manager.SetProjectDiscType(DiscType::kCAV);
   ASSERT_TRUE(manager.ProcessFrame(&y2, 0, offsets, counts, section,
                                    Standard::kPal, timing.sample_rate_4fsc_hz,
                                    frame_lines, aws, awe, &errors2));
@@ -409,6 +420,85 @@ TEST(BiphaseInjectionManagerPalCavTest, PictureNumberIncrementsAcrossFrames) {
 }
 
 // ---------------------------------------------------------------------------
+// PAL CAV: picture_number continues across section boundaries unless a
+// section re-anchors it with an explicit start_value.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Processes one PAL CAV frame of `section` and returns the CAV picture number
+// stamped on it (0 when no picture_number generator is active).
+int ProcessCavFrameGetPictureNumber(BiphaseInjectionManager* manager,
+                                    const Section& section) {
+  std::vector<int> offsets, counts;
+  BuildLineLayout(Standard::kPal, &offsets, &counts);
+  const auto frame_lines = BuildFrameTimingPrimitives(Standard::kPal);
+  const TimingConstants timing = GetTimingConstants(Standard::kPal);
+  auto y = MakeBlankingBuffer(Standard::kPal);
+  std::vector<std::string> errors;
+  EXPECT_TRUE(manager->ProcessFrame(&y, 0, offsets, counts, section,
+                                    Standard::kPal, timing.sample_rate_4fsc_hz,
+                                    frame_lines, 177,
+                                    ActiveWindowEnd(Standard::kPal), &errors));
+  return manager->GetLastFrameContext().picture_number;
+}
+
+}  // namespace
+
+TEST(BiphaseInjectionManagerPalCavTest, PictureNumberContinuesAcrossSections) {
+  // Section A anchors numbering at 1; section B (a distinct Section, so the
+  // manager re-initialises) omits start_value and must continue from where A
+  // left off rather than restart at 1.
+  Section::LineInjectionCode anchored;
+  anchored.code_type = "picture_number";
+  anchored.start_value = 1;
+  anchored.start_value_specified = true;
+  const Section section_a = MakeLaserdiscSection(SectionType::kProgrammeArea,
+                                                 DiscType::kCAV, {anchored});
+
+  Section::LineInjectionCode continued;
+  continued.code_type = "picture_number";  // start_value left unspecified
+  const Section section_b = MakeLaserdiscSection(SectionType::kProgrammeArea,
+                                                 DiscType::kCAV, {continued});
+
+  BiphaseInjectionManager manager;
+  manager.SetProjectDiscType(DiscType::kCAV);
+
+  EXPECT_EQ(ProcessCavFrameGetPictureNumber(&manager, section_a), 1);
+  EXPECT_EQ(ProcessCavFrameGetPictureNumber(&manager, section_a), 2);
+  EXPECT_EQ(ProcessCavFrameGetPictureNumber(&manager, section_a), 3);
+  // Crossing into section B without a start_value continues the count.
+  EXPECT_EQ(ProcessCavFrameGetPictureNumber(&manager, section_b), 4);
+  EXPECT_EQ(ProcessCavFrameGetPictureNumber(&manager, section_b), 5);
+}
+
+TEST(BiphaseInjectionManagerPalCavTest,
+     PictureNumberReanchorsOnExplicitStartValue) {
+  Section::LineInjectionCode from_one;
+  from_one.code_type = "picture_number";
+  from_one.start_value = 1;
+  from_one.start_value_specified = true;
+  const Section section_a = MakeLaserdiscSection(SectionType::kProgrammeArea,
+                                                 DiscType::kCAV, {from_one});
+
+  Section::LineInjectionCode from_hundred;
+  from_hundred.code_type = "picture_number";
+  from_hundred.start_value = 100;
+  from_hundred.start_value_specified = true;
+  const Section section_b = MakeLaserdiscSection(
+      SectionType::kProgrammeArea, DiscType::kCAV, {from_hundred});
+
+  BiphaseInjectionManager manager;
+  manager.SetProjectDiscType(DiscType::kCAV);
+
+  EXPECT_EQ(ProcessCavFrameGetPictureNumber(&manager, section_a), 1);
+  EXPECT_EQ(ProcessCavFrameGetPictureNumber(&manager, section_a), 2);
+  // An explicit start_value re-anchors the count for the new section.
+  EXPECT_EQ(ProcessCavFrameGetPictureNumber(&manager, section_b), 100);
+  EXPECT_EQ(ProcessCavFrameGetPictureNumber(&manager, section_b), 101);
+}
+
+// ---------------------------------------------------------------------------
 // PAL CLV programme area: programme_time_code appears on correct lines.
 // ---------------------------------------------------------------------------
 
@@ -427,6 +517,7 @@ TEST(BiphaseInjectionManagerPalClvTest,
   const TimingConstants timing = GetTimingConstants(Standard::kPal);
   std::vector<std::string> errors;
 
+  manager.SetProjectDiscType(DiscType::kCLV);
   ASSERT_TRUE(manager.ProcessFrame(&y_mv, 0, offsets, counts, section,
                                    Standard::kPal, timing.sample_rate_4fsc_hz,
                                    frame_lines, 177,
@@ -465,6 +556,7 @@ TEST(BiphaseInjectionManagerPalClvTest, ClvPictureNumberAppearsOnLine16) {
   const TimingConstants timing = GetTimingConstants(Standard::kPal);
   std::vector<std::string> errors;
 
+  manager.SetProjectDiscType(DiscType::kCLV);
   ASSERT_TRUE(manager.ProcessFrame(&y_mv, 0, offsets, counts, section,
                                    Standard::kPal, timing.sample_rate_4fsc_hz,
                                    frame_lines, 177,
@@ -507,6 +599,7 @@ TEST(BiphaseInjectionManagerPalCavTest, ProgrammeStatusUses172HOffset) {
   const int awe = ActiveWindowEnd(Standard::kPal);
   std::vector<std::string> errors;
 
+  manager.SetProjectDiscType(DiscType::kCAV);
   ASSERT_TRUE(manager.ProcessFrame(&y_mv, 0, offsets, counts, section,
                                    Standard::kPal, timing.sample_rate_4fsc_hz,
                                    frame_lines, aws, awe, &errors));
@@ -549,6 +642,7 @@ TEST(BiphaseInjectionManagerPalClvTest, ClvCodeAppearsWithNoOffset) {
   const auto frame_lines = BuildFrameTimingPrimitives(Standard::kPal);
   std::vector<std::string> errors;
 
+  manager.SetProjectDiscType(DiscType::kCLV);
   ASSERT_TRUE(manager.ProcessFrame(&y_mv, 0, offsets, counts, section,
                                    Standard::kPal, timing.sample_rate_4fsc_hz,
                                    frame_lines, 177,
@@ -580,6 +674,7 @@ TEST(BiphaseInjectionManagerNtscCavTest, LeadInCodeAppearsOnField1Lines) {
   const int awe = ActiveWindowEnd(Standard::kNtsc);
   std::vector<std::string> errors;
 
+  manager.SetProjectDiscType(DiscType::kCAV);
   ASSERT_TRUE(manager.ProcessFrame(&y_mv, 0, offsets, counts, section,
                                    Standard::kNtsc, timing.sample_rate_4fsc_hz,
                                    frame_lines, aws, awe, &errors));
@@ -611,6 +706,7 @@ TEST(BiphaseInjectionManagerNtscCavTest, SignalLevelsWithinSpec) {
   const int awe = ActiveWindowEnd(Standard::kNtsc);
   std::vector<std::string> errors;
 
+  manager.SetProjectDiscType(DiscType::kCAV);
   ASSERT_TRUE(manager.ProcessFrame(&y_mv, 0, offsets, counts, section,
                                    Standard::kNtsc, timing.sample_rate_4fsc_hz,
                                    frame_lines, aws, awe, &errors));
@@ -657,6 +753,7 @@ TEST(BiphaseInjectionManagerNtscCavTest, FmPictureNumberAppearsOnFmLines) {
   const int awe = ActiveWindowEnd(Standard::kNtsc);
   std::vector<std::string> errors;
 
+  manager.SetProjectDiscType(DiscType::kCAV);
   ASSERT_TRUE(manager.ProcessFrame(&y_mv, 0, offsets, counts, section,
                                    Standard::kNtsc, timing.sample_rate_4fsc_hz,
                                    frame_lines, aws, awe, &errors));
@@ -696,6 +793,7 @@ TEST(BiphaseInjectionManagerNtscCavTest, WhiteFlagAppearsOnLine11) {
   const int awe = ActiveWindowEnd(Standard::kNtsc);
   std::vector<std::string> errors;
 
+  manager.SetProjectDiscType(DiscType::kCAV);
   ASSERT_TRUE(manager.ProcessFrame(&y_mv, 0, offsets, counts, section,
                                    Standard::kNtsc, timing.sample_rate_4fsc_hz,
                                    frame_lines, aws, awe, &errors));
@@ -738,6 +836,7 @@ TEST(BiphaseInjectionManagerNtscClvTest, FmProgrammeTimeAppearsOnFmLines) {
   const int awe = ActiveWindowEnd(Standard::kNtsc);
   std::vector<std::string> errors;
 
+  manager.SetProjectDiscType(DiscType::kCLV);
   ASSERT_TRUE(manager.ProcessFrame(&y_mv, 0, offsets, counts, section,
                                    Standard::kNtsc, timing.sample_rate_4fsc_hz,
                                    frame_lines, aws, awe, &errors));
@@ -774,6 +873,7 @@ TEST(BiphaseInjectionManagerNtscCavTest, WhiteFlagLeadInOnlyLine11) {
   const int awe = ActiveWindowEnd(Standard::kNtsc);
   std::vector<std::string> errors;
 
+  manager.SetProjectDiscType(DiscType::kCAV);
   ASSERT_TRUE(manager.ProcessFrame(&y_mv, 0, offsets, counts, section,
                                    Standard::kNtsc, timing.sample_rate_4fsc_hz,
                                    frame_lines, aws, awe, &errors));
@@ -811,6 +911,7 @@ TEST(BiphaseInjectionManagerNtscCavTest, WhiteFlagLeadOutBothLines) {
   const int awe = ActiveWindowEnd(Standard::kNtsc);
   std::vector<std::string> errors;
 
+  manager.SetProjectDiscType(DiscType::kCAV);
   ASSERT_TRUE(manager.ProcessFrame(&y_mv, 0, offsets, counts, section,
                                    Standard::kNtsc, timing.sample_rate_4fsc_hz,
                                    frame_lines, aws, awe, &errors));
@@ -843,6 +944,7 @@ TEST(BiphaseInjectionManagerPalCavTest, SectionTransitionReinitialises) {
 
   auto y1 = MakeBlankingBuffer(Standard::kPal);
   std::vector<std::string> errors1;
+  manager.SetProjectDiscType(DiscType::kCAV);
   ASSERT_TRUE(manager.ProcessFrame(&y1, 0, offsets, counts, lead_in_section,
                                    Standard::kPal, timing.sample_rate_4fsc_hz,
                                    frame_lines, aws, awe, &errors1));
@@ -857,6 +959,7 @@ TEST(BiphaseInjectionManagerPalCavTest, SectionTransitionReinitialises) {
 
   auto y2 = MakeBlankingBuffer(Standard::kPal);
   std::vector<std::string> errors2;
+  manager.SetProjectDiscType(DiscType::kCAV);
   ASSERT_TRUE(manager.ProcessFrame(&y2, 0, offsets, counts, prog_section,
                                    Standard::kPal, timing.sample_rate_4fsc_hz,
                                    frame_lines, aws, awe, &errors2));
@@ -892,6 +995,7 @@ TEST(BiphaseInjectionManagerPalCavTest, UsersCodeInLeadIn) {
   const TimingConstants timing = GetTimingConstants(Standard::kPal);
   std::vector<std::string> errors;
 
+  manager.SetProjectDiscType(DiscType::kCAV);
   ASSERT_TRUE(manager.ProcessFrame(&y_mv, 0, offsets, counts, section,
                                    Standard::kPal, timing.sample_rate_4fsc_hz,
                                    frame_lines, 177,
@@ -931,6 +1035,7 @@ TEST(BiphaseInjectionManagerPalCavTest, ChapterNumberInProgrammeArea) {
   const TimingConstants timing = GetTimingConstants(Standard::kPal);
   std::vector<std::string> errors;
 
+  manager.SetProjectDiscType(DiscType::kCAV);
   ASSERT_TRUE(manager.ProcessFrame(&y_mv, 0, offsets, counts, section,
                                    Standard::kPal, timing.sample_rate_4fsc_hz,
                                    frame_lines, 177,
@@ -961,6 +1066,7 @@ TEST(BiphaseInjectionManagerPalCavTest, ActivePictureLinesUnaffected) {
   const TimingConstants timing = GetTimingConstants(Standard::kPal);
   std::vector<std::string> errors;
 
+  manager.SetProjectDiscType(DiscType::kCAV);
   ASSERT_TRUE(manager.ProcessFrame(&y_mv, 0, offsets, counts, section,
                                    Standard::kPal, timing.sample_rate_4fsc_hz,
                                    frame_lines, 177,
@@ -1008,6 +1114,7 @@ TEST(BiphaseInjectionManagerPalClvTest, TimeCodeIsContinuousAcrossSections) {
   // Process 25 frames of section_a (1 second).
   for (int f = 0; f < 25; ++f) {
     auto y = MakeBlankingBuffer(Standard::kPal);
+    manager.SetProjectDiscType(DiscType::kCLV);
     ASSERT_TRUE(manager.ProcessFrame(&y, 0, offsets, counts, section_a,
                                      Standard::kPal, timing.sample_rate_4fsc_hz,
                                      frame_lines, aws, awe, &errors))
@@ -1016,6 +1123,7 @@ TEST(BiphaseInjectionManagerPalClvTest, TimeCodeIsContinuousAcrossSections) {
 
   // Capture the first frame of section_b.
   auto y_b = MakeBlankingBuffer(Standard::kPal);
+  manager.SetProjectDiscType(DiscType::kCLV);
   ASSERT_TRUE(manager.ProcessFrame(&y_b, 0, offsets, counts, section_b,
                                    Standard::kPal, timing.sample_rate_4fsc_hz,
                                    frame_lines, aws, awe, &errors));
@@ -1024,6 +1132,7 @@ TEST(BiphaseInjectionManagerPalClvTest, TimeCodeIsContinuousAcrossSections) {
   // Also capture a fresh single-frame session starting from zero for
   // comparison.
   BiphaseInjectionManager fresh_manager;
+  fresh_manager.SetProjectDiscType(DiscType::kCLV);
   auto y_fresh = MakeBlankingBuffer(Standard::kPal);
   ASSERT_TRUE(fresh_manager.ProcessFrame(
       &y_fresh, 0, offsets, counts, section_b, Standard::kPal,
@@ -1073,6 +1182,7 @@ TEST(BiphaseInjectionManagerPalCavTest, MultipleFramesSameSection) {
   // Process 5 frames; all must succeed.
   for (int f = 0; f < 5; ++f) {
     auto y_mv = MakeBlankingBuffer(Standard::kPal);
+    manager.SetProjectDiscType(DiscType::kCAV);
     EXPECT_TRUE(manager.ProcessFrame(&y_mv, 0, offsets, counts, section,
                                      Standard::kPal, timing.sample_rate_4fsc_hz,
                                      frame_lines, aws, awe, &errors))

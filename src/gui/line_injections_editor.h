@@ -1,8 +1,7 @@
 /*
  * File:        line_injections_editor.h
  * Module:      gui
- * Purpose:     Editor for a section's line injections (VITS and laserdisc
- *              biphase codes)
+ * Purpose:     Editor for a section's laserdisc biphase code injections
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Simon Inns
@@ -11,25 +10,33 @@
 #pragma once
 
 #include <QWidget>
+#include <string>
 #include <vector>
 
 #include "videosynth/biphase_types.h"
 #include "videosynth/model.h"
 
-class QComboBox;
+class QCheckBox;
+class QGridLayout;
 class QLabel;
 class QLineEdit;
-class QListWidget;
-class QPushButton;
-class QTableWidget;
 
 namespace videosynth::gui {
 
-// Edits a working copy of a section's line_injections list. Choices are
-// constrained by the validator's compatibility matrix through the
-// line_injection_presenter catalogues (standard-filtered vits types,
-// disc/section/standard-filtered code types). The owner reads back
-// injections() and commits after every InjectionsEdited signal.
+// Edits a working copy of a section's laserdisc code injections. Section-level
+// injections are laserdisc-only and the runtime uses a single injection per
+// section, so this editor presents one implicit injection as a *checklist* of
+// the code types valid for the current disc format / section type / standard:
+// tick a code to include it, with an optional value beside codes that carry
+// one. There is no add/remove flow — the offered codes are fixed by the
+// compatibility matrix, and the "expected" set for the section type is
+// pre-ticked (see line_injection_presenter's Recommended/Available catalogues,
+// which mirror the validator).
+//
+// The disc_type (CAV/CLV) and the VITS set are project-wide and edited in the
+// project settings; this editor takes the resolved disc_type through
+// SetContext. The owner reads back injections() and commits after every
+// InjectionsEdited signal.
 //
 // Thread-safety: NOT thread-safe. GUI (main) thread only.
 class LineInjectionsEditor : public QWidget {
@@ -38,20 +45,25 @@ class LineInjectionsEditor : public QWidget {
  public:
   explicit LineInjectionsEditor(QWidget* parent = nullptr);
 
-  // Catalogue context: the project standard and the owning section's type.
-  // Refreshes the offered choices without touching the working copy.
-  void SetContext(Standard standard, SectionType section_type);
+  // Catalogue context: the project standard, the owning section's type, and
+  // the project-wide disc format. Refreshes the offered choices without
+  // touching the working copy (beyond pruning codes no longer valid for the
+  // context, so the checklist and the model stay in step).
+  void SetContext(Standard standard, SectionType section_type,
+                  DiscType disc_type);
 
-  // Replaces the working copy (no InjectionsEdited emission).
+  // Replaces the working copy (no InjectionsEdited emission). Any legacy list
+  // of injections is collapsed to a single laserdisc injection.
   void SetInjections(std::vector<Section::LineInjection> injections);
 
   const std::vector<Section::LineInjection>& injections() const {
     return injections_;
   }
 
-  // Appends a validator-clean default injection (identical to the Add button)
-  // and emits InjectionsEdited. The section editor uses this to seed the block
-  // when its "include" checkbox is switched on so the block is never empty.
+  // Seeds a single laserdisc injection pre-populated with the recommended
+  // ("expected") codes for the current section type and emits InjectionsEdited.
+  // The section editor calls this when its "include" checkbox is switched on so
+  // the block starts with the codes a section of that type normally carries.
   void AddDefaultInjection();
 
  signals:
@@ -59,46 +71,38 @@ class LineInjectionsEditor : public QWidget {
   void InjectionsEdited();
 
  private:
-  void RebuildInjectionList(int select_row);
+  // One checklist row: a code type, its tick box, and (for codes that carry a
+  // parameter) the value editor beside it. `value` is null for value-less
+  // codes such as lead_in/lead_out/clv_code.
+  struct CodeRow {
+    std::string code_type;
+    QCheckBox* check = nullptr;
+    QLineEdit* value = nullptr;
+  };
+
   void LoadInjectionForm();
-  void RebuildCodesTable(const Section::LineInjection& injection);
+  void RebuildCodeChecklist();
+  void ClearChecklist();
   void AnnounceEdit();
 
+  // The single implicit laserdisc injection, or nullptr when the block holds
+  // none (block excluded).
   Section::LineInjection* CurrentInjection();
 
-  void OnAddInjection();
-  void OnRemoveInjection();
-  void OnTypeChanged();
-  void OnVitsTypeChanged();
-  void OnTargetLinesEdited();
-  void OnDiscTypeChanged();
-  void OnAddCode();
-  void OnRemoveCode();
-  void OnCodeTypeChanged(int row);
-  void OnCodeValueEdited(int row);
-
-  QString InjectionSummary(const Section::LineInjection& injection) const;
+  // Rebuilds injection->codes from the current tick/value state (canonical
+  // order) and emits InjectionsEdited when it changed.
+  void OnChecklistChanged();
 
   Standard standard_ = Standard::kUnknown;
   SectionType section_type_ = SectionType::kUnknown;
+  DiscType disc_type_ = DiscType::kUnknown;
   std::vector<Section::LineInjection> injections_;
   bool updating_ = false;
 
-  QListWidget* injection_list_ = nullptr;
-  QPushButton* remove_injection_button_ = nullptr;
-
-  QWidget* form_panel_ = nullptr;
-  QComboBox* type_combo_ = nullptr;
-
-  QWidget* vits_panel_ = nullptr;
-  QComboBox* vits_type_combo_ = nullptr;
-  QLineEdit* target_lines_edit_ = nullptr;
-  QLabel* vits_line_hint_ = nullptr;
-
-  QWidget* laserdisc_panel_ = nullptr;
-  QComboBox* disc_type_combo_ = nullptr;
-  QTableWidget* codes_table_ = nullptr;
-  QPushButton* remove_code_button_ = nullptr;
+  QLabel* disc_type_label_ = nullptr;
+  QLabel* empty_hint_label_ = nullptr;
+  QGridLayout* checklist_layout_ = nullptr;
+  std::vector<CodeRow> code_rows_;
 };
 
 }  // namespace videosynth::gui
