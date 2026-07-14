@@ -24,16 +24,19 @@
 #include <QLineEdit>
 #include <QPushButton>
 #include <QScrollArea>
+#include <QSignalBlocker>
 #include <QSpinBox>
+#include <QStackedWidget>
 #include <QTableWidget>
 #include <QVBoxLayout>
 #include <algorithm>
-#include <filesystem>
 #include <string>
 
 #include "asset_roots.h"
+#include "project_templates.h"
 #include "section_block_presenters.h"
 #include "section_list_model.h"
+#include "source_path_model.h"
 #include "videosynth/path_resolution.h"
 
 namespace videosynth::gui {
@@ -132,22 +135,57 @@ QWidget* SectionEditor::BuildGeneralGroup() {
   section_type_combo_->addItem(QStringLiteral("lead_out"));
   form->addRow(tr("Disc section type:"), section_type_combo_);
 
-  source_root_combo_ = new QComboBox(group);
-  source_root_combo_->addItem(tr("Project"), QStringLiteral("project"));
-  source_root_combo_->addItem(tr("Bundled"), QStringLiteral("bundled"));
-  source_root_combo_->addItem(tr("User"), QStringLiteral("user"));
-  source_root_combo_->addItem(tr("Absolute"), QString());
-  source_root_combo_->setToolTip(
-      tr("Logical asset root the source path is relative to. Project = next to "
-         "the project file; Bundled = shipped assets; User = your asset "
-         "library; Absolute = a full path."));
-  source_edit_ = new QLineEdit(group);
-  auto* browse = new QPushButton(tr("Browse…"), group);
-  auto* source_row = new QHBoxLayout();
-  source_row->addWidget(source_root_combo_);
-  source_row->addWidget(source_edit_);
-  source_row->addWidget(browse);
-  form->addRow(tr("Source:"), source_row);
+  // Source: a two-way choice between a built-in (shipped) asset and the user's
+  // own file. Built-in composes {bundled}/<type>/<raster>/<file> from the
+  // project raster so only the filename is a real choice; My own file is a
+  // browsed path stored project-relative or absolute.
+  source_mode_combo_ = new QComboBox(group);
+  source_mode_combo_->setObjectName(QStringLiteral("sourceModeCombo"));
+  source_mode_combo_->addItem(tr("Built-in asset"), QStringLiteral("builtin"));
+  source_mode_combo_->addItem(tr("My own file"), QStringLiteral("own"));
+  source_mode_combo_->setToolTip(
+      tr("Built-in = an asset shipped with videosynth (only the file name is "
+         "yours to pick; the folder follows the project's video standard). My "
+         "own file = any file on disk, stored relative to the project or as a "
+         "full path."));
+  form->addRow(tr("Source:"), source_mode_combo_);
+
+  source_stack_ = new QStackedWidget(group);
+
+  // Page 0: built-in asset — asset-type toggle plus a filename dropdown.
+  auto* builtin_page = new QWidget(source_stack_);
+  auto* builtin_row = new QHBoxLayout(builtin_page);
+  builtin_row->setContentsMargins(0, 0, 0, 0);
+  builtin_type_combo_ = new QComboBox(builtin_page);
+  builtin_type_combo_->setObjectName(QStringLiteral("builtinTypeCombo"));
+  builtin_type_combo_->addItem(tr("Still image (EXR)"), QStringLiteral("exr"));
+  builtin_type_combo_->addItem(tr("Video (MKV)"), QStringLiteral("mkv"));
+  builtin_file_combo_ = new QComboBox(builtin_page);
+  builtin_file_combo_->setObjectName(QStringLiteral("builtinFileCombo"));
+  builtin_row->addWidget(builtin_type_combo_);
+  builtin_row->addWidget(builtin_file_combo_, 1);
+  source_stack_->addWidget(builtin_page);
+
+  // Page 1: my own file — path edit, browse, and a portability checkbox.
+  auto* own_page = new QWidget(source_stack_);
+  auto* own_col = new QVBoxLayout(own_page);
+  own_col->setContentsMargins(0, 0, 0, 0);
+  auto* own_row = new QHBoxLayout();
+  source_edit_ = new QLineEdit(own_page);
+  source_edit_->setObjectName(QStringLiteral("sourceEdit"));
+  auto* browse = new QPushButton(tr("Browse…"), own_page);
+  own_row->addWidget(source_edit_, 1);
+  own_row->addWidget(browse);
+  own_col->addLayout(own_row);
+  source_relative_check_ = new QCheckBox(tr("Relative to project"), own_page);
+  source_relative_check_->setObjectName(QStringLiteral("sourceRelativeCheck"));
+  source_relative_check_->setToolTip(
+      tr("Store the path relative to the project file so the project stays "
+         "portable; unticked stores a full absolute path."));
+  own_col->addWidget(source_relative_check_);
+  source_stack_->addWidget(own_page);
+
+  form->addRow(QString(), source_stack_);
 
   source_resolved_hint_ = new QLabel(group);
   source_resolved_hint_->setWordWrap(true);
@@ -183,18 +221,30 @@ QWidget* SectionEditor::BuildGeneralGroup() {
           &SectionEditor::CommitSection);
   connect(section_type_combo_, &QComboBox::activated, this,
           &SectionEditor::CommitSection);
-  connect(source_edit_, &QLineEdit::editingFinished, this, [this] {
-    CommitSection();
-    RequestProbe();
-    UpdateSourceResolvedHint();
-  });
-  connect(source_root_combo_, &QComboBox::activated, this, [this] {
+  const auto commit_source = [this] {
     if (!updating_) {
       CommitSection();
       RequestProbe();
       UpdateSourceResolvedHint();
     }
-  });
+  };
+  connect(source_mode_combo_, &QComboBox::activated, this,
+          [this, commit_source] {
+            source_stack_->setCurrentIndex(source_mode_combo_->currentIndex());
+            commit_source();
+          });
+  connect(builtin_type_combo_, &QComboBox::activated, this,
+          [this, commit_source] {
+            if (!updating_) {
+              PopulateBuiltinFiles(QString());
+            }
+            commit_source();
+          });
+  connect(builtin_file_combo_, &QComboBox::activated, this,
+          [commit_source](int) { commit_source(); });
+  connect(source_edit_, &QLineEdit::editingFinished, this, commit_source);
+  connect(source_relative_check_, &QCheckBox::toggled, this,
+          [commit_source](bool) { commit_source(); });
   connect(browse, &QPushButton::clicked, this, &SectionEditor::OnBrowseSource);
   connect(duration_spin_, &QSpinBox::valueChanged, this, [this](int) {
     if (!updating_) {
@@ -717,10 +767,23 @@ void SectionEditor::CommitSection() {
   const bool changed = document_->SetSection(section_index_, section);
   committing_ = false;
 
-  if (changed) {
+  if (changed && !reload_pending_) {
     // Refresh derived displays (start frame, block defaults seeded by the
-    // enable helpers, injection catalogue context).
-    LoadFromDocument();
+    // enable helpers, injection catalogue context). The reload rebuilds child
+    // editors — deleting and recreating their widgets — so it must never run
+    // synchronously here: CommitSection is frequently reached from a child
+    // widget's own signal (e.g. a laserdisc-code checkbox toggle), and tearing
+    // that widget down while Qt is still mid-dispatch of its click is a
+    // use-after-free. Defer to the next event-loop pass, once the originating
+    // event has fully unwound.
+    reload_pending_ = true;
+    QMetaObject::invokeMethod(
+        this,
+        [this] {
+          reload_pending_ = false;
+          LoadFromDocument();
+        },
+        Qt::QueuedConnection);
   }
 }
 
@@ -797,13 +860,15 @@ void SectionEditor::UpdateDurationSummary() {
 }
 
 void SectionEditor::OnBrowseSource() {
-  // Open the dialog at the current source's *resolved* location so that a
-  // logical root (e.g. Bundled) opens where those assets actually live rather
-  // than the process working directory. An empty field under a root resolves
-  // to that root's base directory; fall back to the project directory.
-  QString start = QString::fromStdString(videosynth::ResolveAssetPath(
-      SourceFromWidgets(), GuiAssetRoots(), ProjectBaseDir().toStdString(),
-      /*anchor_unset=*/true));
+  // Only reachable in "My own file" mode (Built-in uses a dropdown). Open the
+  // dialog at the current source's resolved location, falling back to the
+  // project directory.
+  QString start;
+  if (!source_edit_->text().trimmed().isEmpty()) {
+    start = QString::fromStdString(videosynth::ResolveAssetPath(
+        SourceFromWidgets(), GuiAssetRoots(), ProjectBaseDir().toStdString(),
+        /*anchor_unset=*/true));
+  }
   if (start.isEmpty()) {
     start = ProjectBaseDir();
   }
@@ -814,74 +879,89 @@ void SectionEditor::OnBrowseSource() {
     return;
   }
 
-  // If the chosen file sits under the currently-selected root, keep the root
-  // and store the remainder; otherwise fall back to an absolute path.
-  const QString root_name = source_root_combo_->currentData().toString();
-  QString stored = path;
-  if (!root_name.isEmpty()) {
-    const QString base = QString::fromStdString(videosynth::ResolveAssetPath(
-        "{" + root_name.toStdString() + "}", GuiAssetRoots(),
-        ProjectBaseDir().toStdString(), /*anchor_unset=*/true));
-    if (!base.isEmpty() && path.startsWith(base + QLatin1Char('/'))) {
-      source_edit_->setText(path.mid(base.length() + 1));
-      CommitSection();
-      RequestProbe();
-      UpdateSourceResolvedHint();
-      return;
+  // Keep the path project-relative when requested and the file actually sits
+  // under the project directory; otherwise store an absolute path and untick
+  // the checkbox so the stored form matches what the user sees.
+  if (source_relative_check_->isChecked()) {
+    const QString relative = QDir(ProjectBaseDir()).relativeFilePath(path);
+    if (!relative.startsWith(QStringLiteral(".."))) {
+      source_edit_->setText(relative);
+    } else {
+      source_edit_->setText(path);
+      source_relative_check_->setChecked(false);
     }
+  } else {
+    source_edit_->setText(path);
   }
-  // Not under the selected root: store the absolute path.
-  source_root_combo_->setCurrentIndex(source_root_combo_->findData(QString()));
-  source_edit_->setText(stored);
   CommitSection();
   RequestProbe();
   UpdateSourceResolvedHint();
 }
 
 std::string SectionEditor::SourceFromWidgets() const {
-  const QString root_name = source_root_combo_->currentData().toString();
-  QString rest = source_edit_->text();
-  if (root_name.isEmpty()) {
-    return rest.toStdString();  // Absolute (or verbatim) path.
-  }
-  while (rest.startsWith(QLatin1Char('/'))) {
-    rest.remove(0, 1);
-  }
-  if (rest.isEmpty()) {
-    return "{" + root_name.toStdString() + "}";
-  }
-  return "{" + root_name.toStdString() + "}/" + rest.toStdString();
+  SourceSelection selection;
+  selection.builtin =
+      source_mode_combo_->currentData().toString() == QLatin1String("builtin");
+  selection.type = builtin_type_combo_->currentData().toString().toStdString();
+  selection.file = builtin_file_combo_->currentText().trimmed().toStdString();
+  selection.relative = source_relative_check_->isChecked();
+  selection.text = source_edit_->text().trimmed().toStdString();
+  return ComposeSource(selection, ProjectBundledRaster().toStdString());
 }
 
 void SectionEditor::LoadSourceWidgets(const std::string& source) {
-  QString root_name;  // empty => Absolute
-  QString rest = QString::fromStdString(source);
+  const SourceSelection selection = ParseSourceSelection(source);
 
-  if (!source.empty() && source.front() == '{') {
-    const std::size_t close = source.find('}');
-    const std::string name =
-        close == std::string::npos ? "" : source.substr(1, close - 1);
-    if (videosynth::IsBuiltinRootName(name)) {
-      root_name = QString::fromStdString(name);
-      std::string tail =
-          close == std::string::npos ? "" : source.substr(close + 1);
-      if (!tail.empty() && (tail.front() == '/' || tail.front() == '\\')) {
-        tail.erase(0, 1);
-      }
-      rest = QString::fromStdString(tail);
-    }
-    // Unknown root token: leave as Absolute so the string round-trips verbatim.
-  } else if (source.empty() || !std::filesystem::path(source).is_absolute()) {
-    // No token and not absolute: a plain relative path is project-relative.
-    root_name = QStringLiteral("project");
+  if (selection.builtin) {
+    source_mode_combo_->setCurrentIndex(
+        source_mode_combo_->findData(QStringLiteral("builtin")));
+    source_stack_->setCurrentIndex(source_mode_combo_->currentIndex());
+    const int type_index =
+        builtin_type_combo_->findData(QString::fromStdString(selection.type));
+    builtin_type_combo_->setCurrentIndex(type_index >= 0 ? type_index : 0);
+    // The raster is re-derived from the current project, so a stored raster
+    // that no longer matches the standard is corrected on the next save.
+    PopulateBuiltinFiles(QString::fromStdString(selection.file));
+    UpdateSourceResolvedHint();
+    return;
   }
 
-  const int index = root_name.isEmpty()
-                        ? source_root_combo_->findData(QString())
-                        : source_root_combo_->findData(root_name);
-  source_root_combo_->setCurrentIndex(index >= 0 ? index : 0);
-  source_edit_->setText(rest);
+  source_mode_combo_->setCurrentIndex(
+      source_mode_combo_->findData(QStringLiteral("own")));
+  source_stack_->setCurrentIndex(source_mode_combo_->currentIndex());
+  // Keep the built-in dropdown current for when the user switches to it.
+  PopulateBuiltinFiles(QString());
+  source_relative_check_->setChecked(selection.relative);
+  source_edit_->setText(QString::fromStdString(selection.text));
   UpdateSourceResolvedHint();
+}
+
+QString SectionEditor::ProjectBundledRaster() const {
+  return QString::fromStdString(
+      BundledRaster(document_->project().cvbs_presets.video_standard_preset));
+}
+
+void SectionEditor::PopulateBuiltinFiles(const QString& keep_file) {
+  const QString type = builtin_type_combo_->currentData().toString();
+  const QString root = "{bundled}/" + type + "/" + ProjectBundledRaster();
+  const QString dir = QString::fromStdString(videosynth::ResolveAssetPath(
+      root.toStdString(), GuiAssetRoots(), ProjectBaseDir().toStdString(),
+      /*anchor_unset=*/true));
+
+  const QSignalBlocker blocker(builtin_file_combo_);
+  builtin_file_combo_->clear();
+  builtin_file_combo_->addItems(
+      QDir(dir).entryList({"*." + type}, QDir::Files, QDir::Name));
+
+  // Preserve a stored filename even when it is missing on disk (or belongs to
+  // a raster the project no longer targets) so saving never silently drops it.
+  if (!keep_file.isEmpty()) {
+    if (builtin_file_combo_->findText(keep_file) < 0) {
+      builtin_file_combo_->insertItem(0, keep_file);
+    }
+    builtin_file_combo_->setCurrentIndex(
+        builtin_file_combo_->findText(keep_file));
+  }
 }
 
 void SectionEditor::UpdateSourceResolvedHint() {

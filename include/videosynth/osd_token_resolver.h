@@ -23,6 +23,9 @@ namespace videosynth {
 //                      when the active-generator list is empty.
 //   {phase_id}       — colour-frame sequence index as a single decimal digit.
 //   {section_name}   — the section's name field verbatim.
+//   {timecode}       — CLV programme timecode HH:MM:SS:FF from the output frame
+//                      position; "--:--:--:--" on non-CLV discs.
+//   {frame_number}   — 1-based sequential frame position in the whole output.
 //
 // Static text (no token braces) is returned unchanged.  Unknown token names
 // (e.g. {foo}) are caught at project-validation time by HasOnlyKnownTokens()
@@ -44,7 +47,7 @@ class OsdTokenResolver {
   std::string Resolve(const std::string& text, const PerFrameContext& ctx,
                       const std::string& section_name) const;
 
-  // Returns true if every {token} in text is one of the four recognised names.
+  // Returns true if every {token} in text is one of the recognised names.
   // When false and unknown_token is non-null, *unknown_token is set to the
   // first unrecognised token name (without braces).
   static bool HasOnlyKnownTokens(const std::string& text,

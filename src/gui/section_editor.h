@@ -25,6 +25,7 @@ class QLabel;
 class QLineEdit;
 class QPushButton;
 class QSpinBox;
+class QStackedWidget;
 class QTableWidget;
 
 namespace videosynth::gui {
@@ -75,12 +76,20 @@ class SectionEditor : public QWidget {
   void OnAddOverlay();
   void OnRemoveOverlay();
 
-  // Reconstructs the stored source string from the root combo + path edit,
-  // splits a stored source into (root, remainder) for display, and refreshes
-  // the "resolves to" hint.
+  // Composes the stored source string from the built-in / my-own picker,
+  // classifies a stored source back into the picker, and refreshes the
+  // "resolves to" hint. A built-in source is {bundled}/<type>/<raster>/<file>
+  // recomposed from the current project raster; a my-own source is a
+  // {project}-relative path, an absolute path, or a preserved logical token.
   std::string SourceFromWidgets() const;
   void LoadSourceWidgets(const std::string& source);
   void UpdateSourceResolvedHint();
+  // Fills the built-in file dropdown by scanning the bundled asset folder for
+  // the current project raster and selected asset type, keeping `keep_file`
+  // selectable even when it is absent on disk so saving never drops it.
+  void PopulateBuiltinFiles(const QString& keep_file);
+  // The bundled raster subfolder ("720x576"/"720x486") for the project.
+  QString ProjectBundledRaster() const;
   // Refreshes the "N frames x R = T total" duration hint from the latest probe
   // result and the current repeat multiplier.
   void UpdateDurationSummary();
@@ -93,6 +102,10 @@ class SectionEditor : public QWidget {
   int section_index_ = -1;
   bool updating_ = false;
   bool committing_ = false;
+  // Guards against queuing more than one deferred reload at a time (see
+  // CommitSection): a reload rebuilds child editors, and doing so synchronously
+  // from a child widget's own signal handler would free the widget mid-event.
+  bool reload_pending_ = false;
 
   QWidget* content_ = nullptr;
   QLabel* placeholder_ = nullptr;
@@ -100,8 +113,12 @@ class SectionEditor : public QWidget {
   // General.
   QLineEdit* name_edit_ = nullptr;
   QComboBox* section_type_combo_ = nullptr;
-  QComboBox* source_root_combo_ = nullptr;
+  QComboBox* source_mode_combo_ = nullptr;
+  QStackedWidget* source_stack_ = nullptr;
+  QComboBox* builtin_type_combo_ = nullptr;
+  QComboBox* builtin_file_combo_ = nullptr;
   QLineEdit* source_edit_ = nullptr;
+  QCheckBox* source_relative_check_ = nullptr;
   QLabel* source_resolved_hint_ = nullptr;
   QSpinBox* duration_spin_ = nullptr;
   QCheckBox* duration_all_check_ = nullptr;

@@ -10,7 +10,7 @@
 #include "preview_window.h"
 
 #include <QSettings>
-#include <QVBoxLayout>
+#include <QStatusBar>
 
 namespace videosynth::gui {
 
@@ -22,13 +22,28 @@ constexpr const char* kGeometrySettingsKey = "preview_window/geometry";
 
 PreviewWindow::PreviewWindow(ProjectDocument* document,
                              ThemeController* theme_controller, QWidget* parent)
-    : QWidget(parent, Qt::Window) {
+    : QMainWindow(parent, Qt::Window) {
   setWindowTitle(tr("Preview — videosynth"));
 
-  auto* layout = new QVBoxLayout(this);
-  layout->setContentsMargins(0, 0, 0, 0);
   preview_pane_ = new PreviewPane(document, theme_controller, this);
-  layout->addWidget(preview_pane_);
+  setCentralWidget(preview_pane_);
+
+  // Create the status bar up front so it reserves its height immediately;
+  // otherwise the first status message would lazily construct it and resize the
+  // window. showMessage() below reuses this same bar.
+  statusBar();
+
+  // Surface the pane's stale/error status in the status bar instead of an
+  // inline banner, so the preview content never shifts. A 0 timeout keeps the
+  // message shown until the pane clears it (frame refreshed).
+  connect(preview_pane_, &PreviewPane::StatusMessageChanged, this,
+          [this](const QString& message) {
+            if (message.isEmpty()) {
+              statusBar()->clearMessage();
+            } else {
+              statusBar()->showMessage(message);
+            }
+          });
 
   const QSettings settings;
   const QByteArray geometry =

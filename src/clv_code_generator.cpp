@@ -163,4 +163,23 @@ int ClvPictureNumberGenerator::FramesPerSecond(Standard standard) {
   return (standard == Standard::kNtsc) ? 30 : 25;
 }
 
+// ---------------------------------------------------------------------------
+// Free functions
+// ---------------------------------------------------------------------------
+
+ClvTimecode ClvTimecodeForFrame(std::size_t output_frame_index,
+                                Standard standard) {
+  const int fps = ClvPictureNumberGenerator::FramesPerSecond(standard);
+  const std::size_t total_seconds =
+      output_frame_index / static_cast<std::size_t>(fps);
+
+  ClvTimecode tc;
+  tc.frames =
+      static_cast<int>(output_frame_index % static_cast<std::size_t>(fps));
+  tc.seconds = static_cast<int>(total_seconds % 60U);
+  tc.minutes = static_cast<int>((total_seconds / 60U) % 60U);
+  tc.hours = static_cast<int>(total_seconds / 3600U);
+  return tc;
+}
+
 }  // namespace videosynth

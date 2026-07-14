@@ -31,6 +31,13 @@ TEST(ProjectTemplatesTest, DefaultBundledSourceRasterFollowsStandard) {
             DefaultBundledSource(Standard::kNtsc));
 }
 
+TEST(ProjectTemplatesTest, BundledRasterMapsStandardToSubfolder) {
+  // The section editor composes {bundled}/<type>/<raster>/<file> from this.
+  EXPECT_EQ(BundledRaster(Standard::kPal), "720x576");
+  EXPECT_EQ(BundledRaster(Standard::kNtsc), "720x486");
+  EXPECT_EQ(BundledRaster(Standard::kPalM), "720x486");
+}
+
 TEST(ProjectTemplatesTest, RemapRepointsBundledDefaultToNewStandard) {
   Project project = MakeDefaultProject(Standard::kPal);
   ASSERT_EQ(project.sections.front().source,

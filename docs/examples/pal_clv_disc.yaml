@@ -65,7 +65,7 @@ sections:
             programme_status: "0x8DC001"
     osd:
       overlays:
-        - text: "PAL CLV Chapter0"
+        - text: "TC {timecode} F{frame_number}"
           x: 8
           y: 8
           scale: 2

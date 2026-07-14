@@ -22,6 +22,7 @@
 #include "videosynth/active_sample_mapping.h"
 #include "videosynth/biphase_injection_manager.h"
 #include "videosynth/chroma_encoder.h"
+#include "videosynth/clv_code_generator.h"
 #include "videosynth/fixed_point.h"
 #include "videosynth/frame_enrichment.h"
 #include "videosynth/frame_line_layout.h"
@@ -698,6 +699,10 @@ bool GenerationStage::BuildFrameSchedule(
   const int active_window_start =
       std::max(0, std::min(synth.active.active_window_start_samples,
                            synth.max_line_samples - 1));
+  // The {timecode} OSD token is a continuous CLV programme timecode; it is only
+  // meaningful on CLV discs, where it runs from the start of the output.
+  const bool disc_is_clv =
+      DiscTypeFromString(project.line_injections.disc_type) == DiscType::kCLV;
   for (std::size_t frame_index = 0; frame_index < out_schedule->size();
        ++frame_index) {
     FrameScheduleItem& item = (*out_schedule)[frame_index];
@@ -714,6 +719,25 @@ bool GenerationStage::BuildFrameSchedule(
             *item.section, standard, synth.sample_rate_hz, active_window_start,
             enrichment.get(), errors)) {
       return false;
+    }
+
+    // The {frame_number} OSD token is the 1-based position of this frame in the
+    // whole generated output; it is independent of biphase codes and cannot be
+    // re-anchored by a section, so it is derived from the schedule position
+    // here rather than in the biphase manager.
+    enrichment->context.frame_number = static_cast<int>(frame_index) + 1;
+
+    // The {timecode} OSD token is a continuous CLV programme timecode driven by
+    // the 0-based output frame position, so it advances on every frame of a CLV
+    // disc regardless of which VBI codes (if any) a section injects. It renders
+    // a placeholder on non-CLV discs where has_clv_timecode stays false.
+    if (disc_is_clv) {
+      const ClvTimecode tc = ClvTimecodeForFrame(frame_index, standard);
+      enrichment->context.has_clv_timecode = true;
+      enrichment->context.clv_hours = tc.hours;
+      enrichment->context.clv_minutes = tc.minutes;
+      enrichment->context.clv_seconds = tc.seconds;
+      enrichment->context.clv_frames = tc.frames;
     }
 
     enrichment->osd_texts.reserve(item.section->osd.overlays.size());

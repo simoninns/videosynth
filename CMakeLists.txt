@@ -196,6 +196,8 @@ if(VIDEOSYNTH_BUILD_GUI)
         src/gui/section_list_dock.h
         src/gui/section_list_model.cpp
         src/gui/section_list_model.h
+        src/gui/source_path_model.cpp
+        src/gui/source_path_model.h
         src/gui/source_probe_controller.cpp
         src/gui/source_probe_controller.h
         src/gui/theme_color_tokens.h
@@ -343,6 +345,7 @@ if(VIDEOSYNTH_BUILD_GUI)
         tests/gui/test_section_block_presenters.cpp
         tests/gui/test_section_editing_roundtrip.cpp
         tests/gui/test_section_list_model.cpp
+        tests/gui/test_source_path_model.cpp
         tests/gui/test_source_probe_controller.cpp
         tests/gui/test_theme_manager.cpp
         tests/gui/test_theme_settings.cpp
@@ -427,6 +430,7 @@ set(videosynth_unit_test_patterns
     "^QtMessageBridgeTest\\."
     "^SectionListModelTest\\."
     "^SectionBlockPresenterTest\\."
+    "^SourcePathModelTest\\."
     "^LineInjectionPresenterTest\\."
     "^DiscSkipsModelTest\\."
     "^SourceProbeControllerTest\\."

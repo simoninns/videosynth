@@ -20,6 +20,7 @@
 #include <QSlider>
 #include <QSpinBox>
 #include <QStackedLayout>
+#include <QStackedWidget>
 #include <QTabWidget>
 #include <QVBoxLayout>
 #include <algorithm>
@@ -85,14 +86,6 @@ void PreviewPane::SetDebounceInterval(int msec) {
 void PreviewPane::BuildUi() {
   auto* layout = new QVBoxLayout(this);
 
-  banner_label_ = new QLabel(this);
-  banner_label_->setWordWrap(true);
-  banner_label_->setVisible(false);
-  banner_label_->setAutoFillBackground(true);
-  banner_label_->setContentsMargins(6, 4, 6, 4);
-  banner_label_->setFrameShape(QFrame::StyledPanel);
-  layout->addWidget(banner_label_);
-
   // Navigator row.
   auto* navigator_layout = new QHBoxLayout();
   navigator_layout->addWidget(new QLabel(tr("Frame:"), this));
@@ -153,7 +146,15 @@ void PreviewPane::BuildUi() {
   encoded_layout->addWidget(WrapInScrollArea(encoded_view_, encoded_page), 1);
   view_tabs_->addTab(encoded_page, tr("Encoded"));
 
-  layout->addWidget(view_tabs_, 1);
+  // The live views and a "Loading…" placeholder share the picture area; the
+  // placeholder is shown while a synthesis request is in flight so a slow
+  // re-render never leaves a stale frame on screen.
+  view_stack_ = new QStackedWidget(this);
+  loading_placeholder_ = new QLabel(tr("Loading preview…"), view_stack_);
+  loading_placeholder_->setAlignment(Qt::AlignCenter);
+  view_stack_->addWidget(view_tabs_);
+  view_stack_->addWidget(loading_placeholder_);
+  layout->addWidget(view_stack_, 1);
 
   // The encoded signal is the primary inspection surface; open on it.
   view_tabs_->setCurrentWidget(encoded_page);
@@ -229,7 +230,7 @@ void PreviewPane::showEvent(QShowEvent* event) {
 void PreviewPane::OnDocumentChanged() {
   needs_refresh_ = true;
   if (current_frame_ != nullptr) {
-    ShowBanner(tr("Preview is out of date — updating…"));
+    SetStatusMessage(tr("Preview is out of date — updating…"));
   }
   if (isVisible()) {
     refresh_timer_.start();
@@ -250,6 +251,12 @@ void PreviewPane::PushProjectToService() {
   service_->SetProject(videosynth::ResolveProjectPaths(
       document_->project(), GuiAssetRoots(), base_dir.toStdString(),
       /*anchor_unset=*/true));
+  // A project edit clears the cache, so this always re-synthesises from
+  // scratch: show the placeholder so a slow re-render (e.g. a new source
+  // asset) never leaves a misleading stale frame up. Frame stepping goes
+  // straight through RequestCurrentFrame and deliberately keeps the current
+  // frame on screen so scrubbing the navigator never flickers.
+  SetLoadingVisible(true);
   RequestCurrentFrame();
 }
 
@@ -295,7 +302,8 @@ void PreviewPane::OnFrameReady(std::shared_ptr<const PreviewFrameData> frame) {
     return;
   }
   current_frame_ = std::move(frame);
-  banner_label_->setVisible(false);
+  SetStatusMessage(QString());
+  SetLoadingVisible(false);
   UpdatePictures();
   UpdateScope();
   UpdateFrameInfoLabel();
@@ -305,10 +313,13 @@ void PreviewPane::OnPreviewFailed(quint64 revision, const QString& message) {
   if (revision != service_->revision()) {
     return;
   }
+  // Reveal whatever we last had (the last good frame, or the empty views) with
+  // the reason in the status bar, rather than stranding the "Loading…" text.
+  SetLoadingVisible(false);
   if (current_frame_ != nullptr) {
-    ShowBanner(tr("%1 — showing the last good frame.").arg(message));
+    SetStatusMessage(tr("%1 — showing the last good frame.").arg(message));
   } else {
-    ShowBanner(tr("Preview unavailable: %1").arg(message));
+    SetStatusMessage(tr("Preview unavailable: %1").arg(message));
   }
 }
 
@@ -447,7 +458,7 @@ void PreviewPane::ShowSectionFirstFrame(int section_index) {
   const qint64 first_frame =
       info->section_first_output_frame[static_cast<std::size_t>(section_index)];
   if (first_frame < 0) {
-    ShowBanner(tr("The selected section contributes no output frames."));
+    SetStatusMessage(tr("The selected section contributes no output frames."));
     return;
   }
   if (frame_slider_->value() == static_cast<int>(first_frame)) {
@@ -457,9 +468,18 @@ void PreviewPane::ShowSectionFirstFrame(int section_index) {
   }
 }
 
-void PreviewPane::ShowBanner(const QString& message) {
-  banner_label_->setText(message);
-  banner_label_->setVisible(true);
+void PreviewPane::SetStatusMessage(const QString& message) {
+  if (message == status_message_) {
+    return;
+  }
+  status_message_ = message;
+  emit StatusMessageChanged(message);
+}
+
+void PreviewPane::SetLoadingVisible(bool visible) {
+  view_stack_->setCurrentWidget(
+      visible ? static_cast<QWidget*>(loading_placeholder_)
+              : static_cast<QWidget*>(view_tabs_));
 }
 
 }  // namespace videosynth::gui

@@ -25,6 +25,12 @@ Project MakeDefaultProject(Standard standard);
 // Convenience wrapper for MakeDefaultProject(Standard::kPal).
 Project MakeDefaultPalProject();
 
+// The bundled asset raster subfolder for `standard`: "720x576" for PAL,
+// "720x486" for NTSC/PAL-M (System-M). Bundled assets are laid out as
+// {bundled}/<type>/<raster>/<file>, so the section editor composes a built-in
+// source path from this raster plus the asset type and the chosen filename.
+std::string BundledRaster(Standard standard);
+
 // The bundled colour-bar source path MakeDefaultProject seeds for `standard`,
 // referenced through the {bundled} logical asset root. Exposed so callers can
 // detect and remap the seeded default when the project standard changes.

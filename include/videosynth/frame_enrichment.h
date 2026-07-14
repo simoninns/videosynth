@@ -30,6 +30,22 @@ struct PerFrameContext {
   std::vector<uint32_t> biphase_words;
   // Colour-frame sequence index: 0–3 for PAL (V-axis cycle), 0–1 for NTSC.
   int colour_frame_index = 0;
+  // Sequential position of this frame within the whole generated output,
+  // 1-based. Independent of any biphase code; it cannot be re-anchored by a
+  // section and simply runs from 1 to the total output frame count.
+  int frame_number = 0;
+  // True when a CLV programme timecode is available for this frame, i.e. the
+  // project is a CLV disc. When false the {timecode} token renders a
+  // placeholder. Set by GenerationStage, not the biphase manager.
+  bool has_clv_timecode = false;
+  // CLV programme timecode components (HH:MM:SS:FF). Computed from the 0-based
+  // sequential output frame position (see ClvTimecodeForFrame), so the timecode
+  // runs continuously from the start of the output independent of which VBI
+  // codes a section injects. Valid only when has_clv_timecode is true.
+  int clv_hours = 0;
+  int clv_minutes = 0;
+  int clv_seconds = 0;
+  int clv_frames = 0;
 };
 
 // One fully-resolved VBI code injection for a single line of one frame.

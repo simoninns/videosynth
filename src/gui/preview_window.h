@@ -10,7 +10,7 @@
 #pragma once
 
 #include <QCloseEvent>
-#include <QWidget>
+#include <QMainWindow>
 
 #include "preview_pane.h"
 #include "project_document.h"
@@ -18,14 +18,17 @@
 
 namespace videosynth::gui {
 
-// Detached preview window. Hosts a PreviewPane as an independent top-level
-// window the user opens on demand (View > Preview), so it can sit alongside the
-// main window (e.g. on a second monitor). Geometry is persisted via QSettings.
-// Closing the window hides it and emits VisibilityChanged(false) so the main
-// window can keep its menu toggle in sync; it does not affect the project.
+// Detached preview window. Hosts a PreviewPane as its central widget in an
+// independent top-level window the user opens on demand (View > Preview), so it
+// can sit alongside the main window (e.g. on a second monitor). Stale/error
+// status from the pane is surfaced in the window's status bar rather than an
+// inline banner, so the preview content never reflows. Geometry is persisted
+// via QSettings. Closing the window hides it and emits VisibilityChanged(false)
+// so the main window can keep its menu toggle in sync; it does not affect the
+// project.
 //
 // Thread-safety: NOT thread-safe. GUI (main) thread only.
-class PreviewWindow : public QWidget {
+class PreviewWindow : public QMainWindow {
   Q_OBJECT
 
  public:

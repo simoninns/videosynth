@@ -11,6 +11,7 @@
 #pragma once
 
 #include <QShowEvent>
+#include <QString>
 #include <QTimer>
 #include <QWidget>
 #include <memory>
@@ -25,6 +26,7 @@ class QComboBox;
 class QLabel;
 class QSlider;
 class QSpinBox;
+class QStackedWidget;
 class QTabWidget;
 
 namespace videosynth::gui {
@@ -36,8 +38,12 @@ namespace videosynth::gui {
 // interlaced frame; clicking or dragging its crosshair selects the line shown
 // in the waveform scope. Noise and dropouts are always applied so the preview
 // matches the written output. Document edits trigger a debounced re-preview;
-// while the refresh is pending or the project is invalid, a banner marks the
-// shown frame as stale and the last good frame stays visible.
+// while the refresh is pending or the project is invalid, StatusMessageChanged
+// reports the stale/error state (surfaced by the host's status bar). A project
+// edit re-synthesises from scratch, so the picture area is replaced by a
+// "Loading…" placeholder until the fresh frame arrives (a slow new source asset
+// never leaves a misleading stale frame on screen). Frame stepping keeps the
+// current frame visible instead, so scrubbing the navigator never flickers.
 //
 // Thread-safety: NOT thread-safe. GUI (main) thread only.
 class PreviewPane : public QWidget {
@@ -56,6 +62,12 @@ class PreviewPane : public QWidget {
   // Jumps the navigator to the section's first output frame ("preview this
   // section"); deferred until the schedule is known when necessary.
   void ShowSectionFirstFrame(int section_index);
+
+ signals:
+  // Reports the current preview status line: a non-empty message when the shown
+  // frame is stale, updating, or a synthesis error occurred; an empty string
+  // when the frame is current. The host window surfaces this in its status bar.
+  void StatusMessageChanged(const QString& message);
 
  protected:
   void showEvent(QShowEvent* event) override;
@@ -80,7 +92,10 @@ class PreviewPane : public QWidget {
   void UpdatePictures();
   void UpdateScope();
   void UpdateFrameInfoLabel();
-  void ShowBanner(const QString& message);
+  void SetStatusMessage(const QString& message);
+  // Swaps the picture area between the live views and the "Loading…"
+  // placeholder while a synthesis request is in flight.
+  void SetLoadingVisible(bool visible);
 
   ProjectDocument* document_;
   ThemeController* theme_controller_;
@@ -90,11 +105,13 @@ class PreviewPane : public QWidget {
   int pending_section_jump_ = -1;
 
   std::shared_ptr<const PreviewFrameData> current_frame_;
+  QString status_message_;
 
-  QLabel* banner_label_ = nullptr;
   QSlider* frame_slider_ = nullptr;
   QSpinBox* frame_spinbox_ = nullptr;
   QLabel* frame_total_label_ = nullptr;
+  QStackedWidget* view_stack_ = nullptr;
+  QLabel* loading_placeholder_ = nullptr;
   QTabWidget* view_tabs_ = nullptr;
   PictureViewWidget* source_view_ = nullptr;
   QLabel* source_placeholder_ = nullptr;

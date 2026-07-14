@@ -280,6 +280,11 @@ bool BiphaseInjectionManager::ResolveFrame(const Section& section,
   }
   ++frame_count_;
 
+  // Note: the {timecode} OSD token is a continuous per-frame CLV timecode
+  // driven by the output frame position and disc type, not by the injected VBI
+  // generators (which only advance in sections that carry the relevant codes).
+  // It is populated by GenerationStage; see ClvTimecodeForFrame.
+
   if (!has_laserdisc_) {
     out_enrichment->context = last_context_;
     return true;

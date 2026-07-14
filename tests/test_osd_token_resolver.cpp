@@ -108,6 +108,44 @@ TEST(OsdTokenResolverTest, AllTokensCombined) {
             "PN:00007 HEX:F00007 PH:2 S:Alpha");
 }
 
+TEST(OsdTokenResolverTest, FrameNumberReplaced) {
+  OsdTokenResolver resolver;
+  PerFrameContext ctx = MakeContext(0, {}, 0);
+  ctx.frame_number = 137;
+  EXPECT_EQ(resolver.Resolve("F:{frame_number}", ctx, "S"), "F:137");
+}
+
+TEST(OsdTokenResolverTest, FrameNumberFirstFrameIsOne) {
+  OsdTokenResolver resolver;
+  PerFrameContext ctx = MakeContext(0, {}, 0);
+  ctx.frame_number = 1;
+  EXPECT_EQ(resolver.Resolve("{frame_number}", ctx, "S"), "1");
+}
+
+TEST(OsdTokenResolverTest, TimecodeFormattedHhMmSsFf) {
+  OsdTokenResolver resolver;
+  PerFrameContext ctx = MakeContext(0, {}, 0);
+  ctx.has_clv_timecode = true;
+  ctx.clv_hours = 1;
+  ctx.clv_minutes = 23;
+  ctx.clv_seconds = 45;
+  ctx.clv_frames = 12;
+  EXPECT_EQ(resolver.Resolve("TC:{timecode}", ctx, "S"), "TC:01:23:45:12");
+}
+
+TEST(OsdTokenResolverTest, TimecodeZeroPadsAllFields) {
+  OsdTokenResolver resolver;
+  PerFrameContext ctx = MakeContext(0, {}, 0);
+  ctx.has_clv_timecode = true;
+  EXPECT_EQ(resolver.Resolve("{timecode}", ctx, "S"), "00:00:00:00");
+}
+
+TEST(OsdTokenResolverTest, TimecodeUnavailableShowsDashes) {
+  OsdTokenResolver resolver;
+  const PerFrameContext ctx = MakeContext(0, {}, 0);
+  EXPECT_EQ(resolver.Resolve("{timecode}", ctx, "S"), "--:--:--:--");
+}
+
 TEST(OsdTokenResolverTest, UnknownTokenPassesThrough) {
   OsdTokenResolver resolver;
   const PerFrameContext ctx = MakeContext(1, {}, 0);
@@ -136,7 +174,8 @@ TEST(OsdTokenResolverTest, StaticTextHasOnlyKnownTokens) {
 
 TEST(OsdTokenResolverTest, KnownTokensPass) {
   EXPECT_TRUE(OsdTokenResolver::HasOnlyKnownTokens(
-      "PN:{picture_number} HEX:{biphase_hex} PH:{phase_id} {section_name}"));
+      "PN:{picture_number} HEX:{biphase_hex} PH:{phase_id} {section_name} "
+      "{timecode} {frame_number}"));
 }
 
 TEST(OsdTokenResolverTest, UnknownTokenFails) {

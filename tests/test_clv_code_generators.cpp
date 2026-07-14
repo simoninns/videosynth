@@ -600,5 +600,48 @@ TEST(ClvCodeGeneratorTest, MinimumChapterTracksConstantIs30) {
   EXPECT_EQ(ChapterNumberGenerator::kMinimumChapterTracks, 30);
 }
 
+// ---------------------------------------------------------------------------
+// ClvTimecodeForFrame — continuous {timecode} OSD counter
+// ---------------------------------------------------------------------------
+
+TEST(ClvTimecodeForFrameTest, FirstFrameIsZero) {
+  const ClvTimecode tc = ClvTimecodeForFrame(0, Standard::kPal);
+  EXPECT_EQ(tc.hours, 0);
+  EXPECT_EQ(tc.minutes, 0);
+  EXPECT_EQ(tc.seconds, 0);
+  EXPECT_EQ(tc.frames, 0);
+}
+
+TEST(ClvTimecodeForFrameTest, PalFrameFieldWrapsAt25) {
+  // PAL: 25 fps. Frame 24 → :24; frame 25 → 1 second, frame 0.
+  EXPECT_EQ(ClvTimecodeForFrame(24, Standard::kPal).frames, 24);
+  EXPECT_EQ(ClvTimecodeForFrame(24, Standard::kPal).seconds, 0);
+  EXPECT_EQ(ClvTimecodeForFrame(25, Standard::kPal).seconds, 1);
+  EXPECT_EQ(ClvTimecodeForFrame(25, Standard::kPal).frames, 0);
+}
+
+TEST(ClvTimecodeForFrameTest, NtscFrameFieldWrapsAt30) {
+  // NTSC: 30 fps nominal.
+  EXPECT_EQ(ClvTimecodeForFrame(29, Standard::kNtsc).frames, 29);
+  EXPECT_EQ(ClvTimecodeForFrame(29, Standard::kNtsc).seconds, 0);
+  EXPECT_EQ(ClvTimecodeForFrame(30, Standard::kNtsc).seconds, 1);
+  EXPECT_EQ(ClvTimecodeForFrame(30, Standard::kNtsc).frames, 0);
+}
+
+TEST(ClvTimecodeForFrameTest, PalMinutesAndHoursCarry) {
+  // PAL: 25 fps → 1500 frames/minute, 90000 frames/hour.
+  const ClvTimecode one_min = ClvTimecodeForFrame(1500, Standard::kPal);
+  EXPECT_EQ(one_min.minutes, 1);
+  EXPECT_EQ(one_min.seconds, 0);
+  EXPECT_EQ(one_min.frames, 0);
+
+  // 1 h 23 m 45 s 12 f = (5025 s) * 25 + 12 = 125637.
+  const ClvTimecode mixed = ClvTimecodeForFrame(125637, Standard::kPal);
+  EXPECT_EQ(mixed.hours, 1);
+  EXPECT_EQ(mixed.minutes, 23);
+  EXPECT_EQ(mixed.seconds, 45);
+  EXPECT_EQ(mixed.frames, 12);
+}
+
 }  // namespace
 }  // namespace videosynth

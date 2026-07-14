@@ -9,6 +9,7 @@
 
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 
 #include "videosynth/code_generator.h"
@@ -156,5 +157,22 @@ class ClvPictureNumberGenerator final : public CodeGenerator {
   int current_seconds_;
   int current_frame_;
 };
+
+// A decoded CLV programme timecode (HH:MM:SS:FF).
+struct ClvTimecode {
+  int hours = 0;
+  int minutes = 0;
+  int seconds = 0;
+  int frames = 0;
+};
+
+// Computes the continuous CLV programme timecode for a 0-based sequential
+// output frame position, at the standard's nominal CLV frame rate (PAL/PAL-M:
+// 25 fps, NTSC: 30 fps). This drives the {timecode} OSD token, which runs from
+// the start of the generated output regardless of which VBI codes a section
+// injects; the frames field wraps at FramesPerSecond() and the higher fields
+// carry as usual.
+ClvTimecode ClvTimecodeForFrame(std::size_t output_frame_index,
+                                Standard standard);
 
 }  // namespace videosynth

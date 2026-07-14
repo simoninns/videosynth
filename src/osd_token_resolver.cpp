@@ -50,11 +50,23 @@ std::string FormatBiphaseHex(const std::vector<uint32_t>& words) {
   }
   return result;
 }
+
+std::string FormatClvTimecode(const PerFrameContext& ctx) {
+  if (!ctx.has_clv_timecode) {
+    return "--:--:--:--";
+  }
+  // HH:MM:SS:FF; buffer sized for four zero-padded fields plus separators.
+  char buf[16];
+  std::snprintf(buf, sizeof(buf), "%02d:%02d:%02d:%02d", ctx.clv_hours,
+                ctx.clv_minutes, ctx.clv_seconds, ctx.clv_frames);
+  return std::string(buf);
+}
 // NOLINTEND(readability-magic-numbers)
 
 const std::set<std::string>& KnownTokens() {
-  static const std::set<std::string> kTokens = {"picture_number", "biphase_hex",
-                                                "phase_id", "section_name"};
+  static const std::set<std::string> kTokens = {
+      "picture_number", "biphase_hex", "phase_id",
+      "section_name",   "timecode",    "frame_number"};
   return kTokens;
 }
 
@@ -87,6 +99,10 @@ std::string OsdTokenResolver::Resolve(const std::string& text,
       result += std::to_string(ctx.colour_frame_index);
     } else if (token == "section_name") {
       result += section_name;
+    } else if (token == "timecode") {
+      result += FormatClvTimecode(ctx);
+    } else if (token == "frame_number") {
+      result += std::to_string(ctx.frame_number);
     } else {
       result += text.substr(i, close - i + 1);
     }

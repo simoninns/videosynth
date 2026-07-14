@@ -172,6 +172,10 @@ std::vector<OsdTokenHelp> OsdTokenCatalogue() {
       {"{biphase_hex}", "24-bit biphase code word for the frame, in hex"},
       {"{phase_id}", "Colour sequence phase index (PAL 0–7, NTSC 0–3)"},
       {"{section_name}", "Name of the owning section"},
+      {"{timecode}",
+       "CLV programme timecode HH:MM:SS:FF, counting from output start "
+       "(CLV discs only)"},
+      {"{frame_number}", "Sequential output frame number (1-based)"},
   };
 }
 

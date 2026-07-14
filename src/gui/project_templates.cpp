@@ -53,13 +53,16 @@ void AppendCode(Section* section, const std::string& code_type) {
 
 }  // namespace
 
+std::string BundledRaster(Standard standard) {
+  return standard == Standard::kPal ? "720x576"
+                                    : "720x486";  // System-M is 525.
+}
+
 // Bundled colour-bar EXR shipped for the standard's active raster, referenced
 // through the {bundled} logical asset root so a fresh project previews
 // immediately regardless of install location.
 std::string DefaultBundledSource(Standard standard) {
-  const char* raster =
-      standard == Standard::kPal ? "720x576" : "720x486";  // System-M is 525.
-  return std::string("{bundled}/exr/") + raster + "/75_BARS.exr";
+  return "{bundled}/exr/" + BundledRaster(standard) + "/75_BARS.exr";
 }
 
 int RemapBundledDefaultSources(Project* project, Standard standard) {

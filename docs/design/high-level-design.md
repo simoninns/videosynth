@@ -374,6 +374,8 @@ The `OsdRenderer` class writes monochrome bitmap-font text overlays into the lum
 - `{biphase_hex}` — space-separated 6-digit uppercase hex biphase code words; `"--------"` when empty.
 - `{phase_id}` — colour-frame sequence index (0–3 PAL, 0–1 NTSC).
 - `{section_name}` — the section `name:` field verbatim.
+- `{timecode}` — CLV programme timecode `HH:MM:SS:FF`, computed from the 0-based sequential output frame position at the standard's CLV frame rate (`ClvTimecodeForFrame`, 25 fps PAL / 30 fps NTSC); runs continuously from the start of the output on any CLV disc, independent of which VBI codes a section injects. `"--:--:--:--"` on non-CLV discs.
+- `{frame_number}` — 1-based sequential position of the frame in the whole generated output; set from the schedule index in `GenerationStage`, never re-anchored by a section.
 - Unknown token names are rejected at project-validation time by `HasOnlyKnownTokens()`; static text with no tokens passes through unchanged.
 
 **Per-frame VBI context** (`PerFrameContext`, `include/videosynth/biphase_injection_manager.h`):
@@ -800,6 +802,13 @@ Resolution rules (shared by CLI and GUI via `ResolveProjectPaths` /
 - **Plain relative (no token)** → the **CLI** leaves it working-directory-relative (preserving the run-from-a-base-dir convention used by the fixtures and `videosynth-assets`); the **GUI** anchors it to the saved project file's directory so the source probe, preview, and generation resolve identically. Use `{project}/rest` for a plain relative path that must resolve the same under both.
 
 The CLI seeds `{bundled}`/`{user}` from the environment and install prefix and accepts repeatable `--asset-root <name>=<path>` overrides (also usable to register additional named roots). The GUI resolves them via `QStandardPaths`. New GUI projects are saved to disk as part of the create flow so the `{project}` anchor always exists, and their placeholder source uses `{bundled}` so a fresh project previews immediately.
+
+Rather than expose these roots directly, the GUI section editor presents a section `source` as a two-way choice — **Built-in asset** or **My own file** — mapped onto the tokens above:
+
+- **Built-in asset** composes `{bundled}/<type>/<raster>/<file>`, where `<type>` is the asset kind (`exr` still / `mkv` video), `<raster>` is derived from the project's video standard (720x576 PAL / 720x486 System-M, never a user field), and only `<file>` is chosen from a dropdown of the shipped assets. The path is always recomposed from the *current* project raster, so changing the video standard self-heals the source to the matching raster's asset.
+- **My own file** is a browsed path stored as `{project}/…` when "Relative to project" is ticked or as an absolute path otherwise; a source already carrying another logical token (e.g. `{user}/…`) is preserved verbatim.
+
+The compose/classify logic is a pure, Qt-free helper (`source_path_model.h`), independent of the resolution rules above.
 
 #### **`noise:` Sub-Key (Optional, Per-Section)**
 
