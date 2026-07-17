@@ -96,9 +96,9 @@ target_include_directories(videosynth_core
 
 # Default location of the bundled asset library used by the "{bundled}" logical
 # asset root. For dev builds this is the videosynth-assets submodule; installed
-# builds should override it (e.g. -DVIDEOSYNTH_BUNDLED_ASSET_DIR=<datadir>) or
-# rely on the Phase 8.3 install rules. The VIDEOSYNTH_ASSET_DIR environment
-# variable overrides this at runtime.
+# builds should override it (e.g. -DVIDEOSYNTH_BUNDLED_ASSET_DIR=<datadir>) to
+# point at the installed asset directory (see the install rules below). The
+# VIDEOSYNTH_ASSET_DIR environment variable overrides this at runtime.
 if(NOT DEFINED VIDEOSYNTH_BUNDLED_ASSET_DIR)
     set(VIDEOSYNTH_BUNDLED_ASSET_DIR
         "${CMAKE_CURRENT_SOURCE_DIR}/videosynth-assets/assets")
@@ -255,6 +255,23 @@ if(VIDEOSYNTH_BUILD_GUI)
     )
 endif()
 
+# Install rules. The CLI (and GUI, when built) are installed to the standard
+# binary directory; the bundled asset library is installed to the data
+# directory when the videosynth-assets submodule is checked out. Packaged
+# builds set VIDEOSYNTH_BUNDLED_ASSET_DIR to the installed asset location.
+include(GNUInstallDirs)
+
+install(TARGETS videosynth RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+
+if(VIDEOSYNTH_BUILD_GUI)
+    install(TARGETS videosynth-gui RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+endif()
+
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/videosynth-assets/assets")
+    install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/videosynth-assets/assets/"
+        DESTINATION "${CMAKE_INSTALL_DATADIR}/videosynth/assets")
+endif()
+
 enable_testing()
 
 add_executable(videosynth_tests
@@ -401,6 +418,7 @@ set(videosynth_unit_test_patterns
     "^BiphaseUtilsTest\\."
     "^CavCodeGeneratorTest\\."
     "^ClvCodeGeneratorTest\\."
+    "^ClvTimecodeForFrameTest\\."
     "^FmEncoderTest\\."
     "^FrameEnrichmentTest\\."
     "^FrameSynthesisPoolTest\\."
@@ -550,18 +568,30 @@ else()
     message(STATUS "clang-format not found — format checks disabled")
 endif()
 
-find_program(CLANG_TIDY_EXE NAMES clang-tidy)
+# clang-tidy runs as part of the build for local development and CI, where the
+# dev shell supplies a matching, wrapped clang-tools. The release/package build
+# (nix run) must leave this OFF: its sandbox only exposes the stdenv's unwrapped
+# clang-tidy, which cannot resolve libc++ headers (e.g. <cstdint>) and fails on
+# otherwise-valid sources.
+option(VIDEOSYNTH_ENABLE_CLANG_TIDY
+    "Run clang-tidy static analysis as part of the build" ON)
 
-if(CLANG_TIDY_EXE)
-    set_target_properties(videosynth_core videosynth videosynth_tests
-        PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_EXE}"
-    )
-    if(VIDEOSYNTH_BUILD_GUI)
-        set_target_properties(videosynth_gui_lib videosynth-gui
-            videosynth_gui_tests
+if(VIDEOSYNTH_ENABLE_CLANG_TIDY)
+    find_program(CLANG_TIDY_EXE NAMES clang-tidy)
+
+    if(CLANG_TIDY_EXE)
+        set_target_properties(videosynth_core videosynth videosynth_tests
             PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_EXE}"
         )
+        if(VIDEOSYNTH_BUILD_GUI)
+            set_target_properties(videosynth_gui_lib videosynth-gui
+                videosynth_gui_tests
+                PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_EXE}"
+            )
+        endif()
+    else()
+        message(STATUS "clang-tidy not found — static analysis disabled")
     endif()
 else()
-    message(STATUS "clang-tidy not found — static analysis disabled")
+    message(STATUS "clang-tidy disabled (VIDEOSYNTH_ENABLE_CLANG_TIDY=OFF)")
 endif()

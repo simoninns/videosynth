@@ -190,7 +190,7 @@ bool AudioWavWriter::AppendFrameAudio(const std::vector<std::int32_t>& left,
 
   // Each sample position becomes an interleaved L+R pair of 24-bit samples.
   const std::uint64_t frame_bytes =
-      static_cast<std::uint64_t>(left.size() * kChannelCount * kBytesPerSample);
+      static_cast<std::uint64_t>(left.size()) * kChannelCount * kBytesPerSample;
   if (data_bytes_ + frame_bytes + (kHeaderBytes - 8) >
       std::numeric_limits<std::uint32_t>::max()) {
     errors->push_back("Audio track exceeds the 4 GB RIFF/WAVE size limit.");

@@ -9,6 +9,7 @@
 
 #include <cstddef>
 #include <cstdlib>
+#include <exception>
 #include <iostream>
 #include <string>
 
@@ -93,9 +94,7 @@ bool ParseThreadCount(const std::string& value, int* out_threads) {
   return true;
 }
 
-}  // namespace
-
-int main(int argc, char** argv) {
+int RunCli(int argc, char** argv) {
   videosynth::RunOptions options;
   // CLI default is auto (0); the RunOptions member itself defaults to the
   // sequential path for library callers.
@@ -168,4 +167,15 @@ int main(int argc, char** argv) {
                                           &noise_injection, &dropout_injection,
                                           &output, &logger, &audio_generator);
   return pipeline.Run(options) ? 0 : 1;
+}
+
+}  // namespace
+
+int main(int argc, char** argv) {
+  try {
+    return RunCli(argc, argv);
+  } catch (const std::exception& ex) {
+    std::cerr << "Fatal error: " << ex.what() << "\n";
+    return 1;
+  }
 }

@@ -45,15 +45,13 @@ FmData FmPictureNumberGenerator::CurrentData(bool field_one,
                                              SectionType section_type) const {
   int value = 0;
   switch (section_type) {
-    case SectionType::kLeadIn:
-      value = 0;
-      break;
     case SectionType::kProgrammeArea:
       value = current_programme_value_;
       break;
     case SectionType::kLeadOut:
       value = frozen_lead_out_value_;
       break;
+    case SectionType::kLeadIn:
     default:
       value = 0;
       break;
@@ -112,9 +110,6 @@ FmData FmProgrammeTimeGenerator::BuildTimeData(bool field_one, int minutes,
 FmData FmProgrammeTimeGenerator::CurrentData(bool field_one,
                                              SectionType section_type) const {
   switch (section_type) {
-    case SectionType::kLeadIn:
-      return BuildTimeData(field_one, 0, 0, kModeLeadIn);
-
     case SectionType::kProgrammeArea:
       return BuildTimeData(field_one, current_minutes(), current_seconds(),
                            kModePicture);
@@ -123,6 +118,7 @@ FmData FmProgrammeTimeGenerator::CurrentData(bool field_one,
       return BuildTimeData(field_one, frozen_minutes_, frozen_seconds_,
                            kModeLeadOut);
 
+    case SectionType::kLeadIn:
     default:
       return BuildTimeData(field_one, 0, 0, kModeLeadIn);
   }
