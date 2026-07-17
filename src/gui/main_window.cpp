@@ -81,11 +81,11 @@ MainWindow::MainWindow(ThemeController* theme_controller, QWidget* parent)
           new LogMessageModel(LogMessageModel::kDefaultMaxEntries, this)) {
   setWindowIcon(QIcon(QStringLiteral(":/videosynth-gui/icon.png")));
 
-  BuildMenus();
   BuildCentralArea();
   BuildSectionsDock();
   BuildIssuesDock();
   BuildLogDock();
+  BuildMenus();
   statusBar()->showMessage(tr("Ready"));
   BuildGenerationStatusWidgets();
   validation_status_label_ = new QLabel(this);
@@ -223,6 +223,16 @@ void MainWindow::BuildMenus() {
   connect(preview_action_, &QAction::toggled, this,
           &MainWindow::OnTogglePreview);
   view_menu->addSeparator();
+
+  // Toggle actions for the dockable panels. Each action is checkable, shows or
+  // hides its dock, and auto-unchecks when the dock is closed via its title-bar
+  // button, so the menu always reflects the current layout.
+  QMenu* panels_menu = view_menu->addMenu(tr("&Panels"));
+  panels_menu->addAction(sections_dock_->toggleViewAction());
+  panels_menu->addAction(issues_dock_->toggleViewAction());
+  panels_menu->addAction(log_dock_->toggleViewAction());
+  view_menu->addSeparator();
+
   QMenu* theme_menu = view_menu->addMenu(tr("&Theme"));
   auto* theme_group = new QActionGroup(theme_menu);
   theme_group->setExclusive(true);
@@ -293,25 +303,25 @@ void MainWindow::BuildSectionsDock() {
 }
 
 void MainWindow::BuildIssuesDock() {
-  auto* dock = new QDockWidget(tr("Issues"), this);
-  dock->setObjectName(QStringLiteral("issues_dock"));
+  issues_dock_ = new QDockWidget(tr("Issues"), this);
+  issues_dock_->setObjectName(QStringLiteral("issues_dock"));
 
-  auto* view = new QListView(dock);
+  auto* view = new QListView(issues_dock_);
   view->setModel(issues_model_);
   view->setEditTriggers(QAbstractItemView::NoEditTriggers);
   view->setSelectionMode(QAbstractItemView::SingleSelection);
   view->setWordWrap(true);
   connect(view, &QListView::doubleClicked, this, &MainWindow::OnIssueActivated);
 
-  dock->setWidget(view);
-  addDockWidget(Qt::BottomDockWidgetArea, dock);
+  issues_dock_->setWidget(view);
+  addDockWidget(Qt::BottomDockWidgetArea, issues_dock_);
 }
 
 void MainWindow::BuildLogDock() {
-  auto* dock = new QDockWidget(tr("Log"), this);
-  dock->setObjectName(QStringLiteral("log_dock"));
+  log_dock_ = new QDockWidget(tr("Log"), this);
+  log_dock_->setObjectName(QStringLiteral("log_dock"));
 
-  auto* view = new QListView(dock);
+  auto* view = new QListView(log_dock_);
   view->setModel(log_model_);
   view->setEditTriggers(QAbstractItemView::NoEditTriggers);
   view->setSelectionMode(QAbstractItemView::ExtendedSelection);
@@ -321,8 +331,8 @@ void MainWindow::BuildLogDock() {
   connect(log_model_, &QAbstractItemModel::rowsInserted, view,
           [view] { view->scrollToBottom(); });
 
-  dock->setWidget(view);
-  addDockWidget(Qt::BottomDockWidgetArea, dock);
+  log_dock_->setWidget(view);
+  addDockWidget(Qt::BottomDockWidgetArea, log_dock_);
 }
 
 void MainWindow::BuildGenerationStatusWidgets() {

@@ -137,6 +137,8 @@ class MainWindow : public QMainWindow {
   PreviewWindow* preview_window_ = nullptr;
   SectionListDock* section_list_dock_ = nullptr;
   QDockWidget* sections_dock_ = nullptr;
+  QDockWidget* issues_dock_ = nullptr;
+  QDockWidget* log_dock_ = nullptr;
 
   // Output artefacts of the most recently started run, for the completion
   // summary dialog.
