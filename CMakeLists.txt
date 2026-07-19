@@ -57,6 +57,39 @@ find_package(GTest REQUIRED)
 find_package(SQLite3 REQUIRED)
 find_package(OpenEXR REQUIRED)
 
+# EFM digital audio module. Self-contained: it accepts PCM samples and emits an
+# EFM channel stream, and must not depend on videosynth_core (see
+# docs/design/efm-implementation-plan.md).
+set(videosynth_efm_sources
+    src/efm/audio_frame_assembler.cpp
+    src/efm/circ_encoder.cpp
+)
+
+add_library(videosynth_efm ${videosynth_efm_sources})
+
+target_include_directories(videosynth_efm
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+)
+
+# Enforce the module boundary at configure time: module sources and headers may
+# only include videosynth headers from the module's own include directory.
+file(GLOB videosynth_efm_headers
+    "${CMAKE_CURRENT_SOURCE_DIR}/include/videosynth/efm/*.h")
+foreach(module_file IN LISTS videosynth_efm_sources videosynth_efm_headers)
+    if(NOT IS_ABSOLUTE "${module_file}")
+        set(module_file "${CMAKE_CURRENT_SOURCE_DIR}/${module_file}")
+    endif()
+    file(STRINGS "${module_file}" module_includes REGEX "^#include <?\"?videosynth/")
+    foreach(module_include IN LISTS module_includes)
+        if(NOT module_include MATCHES "videosynth/efm/")
+            message(FATAL_ERROR
+                "videosynth_efm module file ${module_file} includes a core "
+                "header (${module_include}); the module must stay standalone.")
+        endif()
+    endforeach()
+endforeach()
+
 add_library(videosynth_core
     src/audio_synthesizer.cpp
     src/audio_track_generator.cpp
@@ -113,6 +146,7 @@ target_compile_definitions(videosynth_core
 
 target_link_libraries(videosynth_core
     PUBLIC
+        videosynth_efm
         yaml-cpp
         spdlog::spdlog
         SQLite::SQLite3
@@ -327,6 +361,8 @@ add_executable(videosynth_tests
     tests/test_noise_injection.cpp
     tests/test_deterministic_output.cpp
     tests/test_dropout_injection.cpp
+    tests/test_efm_audio_frame_assembler.cpp
+    tests/test_efm_circ_encoder.cpp
     tests/test_osd_renderer.cpp
     tests/test_osd_token_resolver.cpp
 )
@@ -471,6 +507,8 @@ set(videosynth_unit_test_patterns
     "^BiphaseFinalTest\\."
     "^NoiseInjectionTest\\."
     "^DropoutInjectionTest\\."
+    "^EfmAudioFrameAssemblerTest\\."
+    "^EfmCircEncoderTest\\."
     "^OsdRendererTest\\."
     "^OsdTokenResolverTest\\."
     "^PathResolutionTest\\."
@@ -585,7 +623,8 @@ if(VIDEOSYNTH_ENABLE_CLANG_TIDY)
     find_program(CLANG_TIDY_EXE NAMES clang-tidy)
 
     if(CLANG_TIDY_EXE)
-        set_target_properties(videosynth_core videosynth videosynth_tests
+        set_target_properties(videosynth_efm videosynth_core videosynth
+            videosynth_tests
             PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_EXE}"
         )
         if(VIDEOSYNTH_BUILD_GUI)

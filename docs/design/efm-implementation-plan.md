@@ -156,6 +156,19 @@ New library `videosynth_efm` (no core dependencies):
 | EFM modulator | `include/videosynth/efm/efm_modulator.h`, `src/efm/efm_modulator.cpp` | Eight-to-fourteen lookup, merging-bit selection (run-length 3–11 preserved, DSV minimised), 24-bit frame sync, 588-channel-bit frame serialisation, channel bits → T-values |
 | Stream encoder facade | `include/videosynth/efm/efm_stream_encoder.h`, `src/efm/efm_stream_encoder.cpp` | The module's public API: `Begin(config)` → `PushSamples(...)` → `Flush()`; internally chains assembler → CIRC → subcode → modulator and exposes encoded T-values for the caller to drain |
 
+Module conventions (established with the CIRC encoder):
+
+- Frames are fixed-size value types: `F1Frame` = `std::array<std::uint8_t, 24>`
+  (audio symbols in WmA/WmB order, IEC 60908-1999, 16.2) and `F2Frame` =
+  `std::array<std::uint8_t, 32>` (24 data plus 8 inverted parity symbols,
+  ECMA-130, figure C.4). `kSilentF1Frame` is the digital-silence frame.
+- Stages are streaming and single-threaded: repeated push calls followed by an
+  explicit `Flush`, with `Reset` restoring the constructed state. Each stage
+  documents its thread-safety in its header; none is thread-safe.
+- Failures are reported by return value (`false`) and no exception crosses the
+  module's public API. Invalid arguments (null output, mismatched channel
+  lengths) leave the stage unchanged.
+
 Integration points in `videosynth_core` (thin, mirroring existing patterns):
 
 - `AudioEfmWriter` (`include/videosynth/audio_efm_writer.h`, `src/audio_efm_writer.cpp`) —
