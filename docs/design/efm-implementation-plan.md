@@ -162,6 +162,15 @@ Module conventions (established with the CIRC encoder):
   (audio symbols in WmA/WmB order, IEC 60908-1999, 16.2) and `F2Frame` =
   `std::array<std::uint8_t, 32>` (24 data plus 8 inverted parity symbols,
   ECMA-130, figure C.4). `kSilentF1Frame` is the digital-silence frame.
+- The subcode stage is index-addressed rather than streaming: `SubcodeGenerator`
+  takes the whole `TrackTable` (`{area, TNO, start_section, section_count}`
+  entries tiling the stream, plus the `VideoSystem` used for the POINT = A0
+  identification) in `Begin`, after which `GenerateSection(index, …)` is a pure
+  function and is safe to call concurrently. A `SubcodeSection` carries the 96 P
+  and 96 Q channel bits of one 98-frame block; frames 0 and 1 carry the
+  out-of-table sync patterns `kSubcodeSyncS0` / `kSubcodeSyncS1` instead of a
+  control symbol, and `ControlByte(frame)` composes the P/Q/R–W symbol the
+  modulator serialises.
 - Stages are streaming and single-threaded: repeated push calls followed by an
   explicit `Flush`, with `Reset` restoring the constructed state. Each stage
   documents its thread-safety in its header; none is thread-safe.

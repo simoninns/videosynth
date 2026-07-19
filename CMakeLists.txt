@@ -63,6 +63,7 @@ find_package(OpenEXR REQUIRED)
 set(videosynth_efm_sources
     src/efm/audio_frame_assembler.cpp
     src/efm/circ_encoder.cpp
+    src/efm/subcode_generator.cpp
 )
 
 add_library(videosynth_efm ${videosynth_efm_sources})
@@ -363,6 +364,7 @@ add_executable(videosynth_tests
     tests/test_dropout_injection.cpp
     tests/test_efm_audio_frame_assembler.cpp
     tests/test_efm_circ_encoder.cpp
+    tests/test_efm_subcode_generator.cpp
     tests/test_osd_renderer.cpp
     tests/test_osd_token_resolver.cpp
 )
@@ -509,6 +511,7 @@ set(videosynth_unit_test_patterns
     "^DropoutInjectionTest\\."
     "^EfmAudioFrameAssemblerTest\\."
     "^EfmCircEncoderTest\\."
+    "^EfmSubcodeGeneratorTest\\."
     "^OsdRendererTest\\."
     "^OsdTokenResolverTest\\."
     "^PathResolutionTest\\."
