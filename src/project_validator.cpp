@@ -1378,7 +1378,7 @@ void ValidateEfmAudioOutput(const videosynth::Project& project,
   } else if (!ProjectDeclaresChannelPair(project, pair)) {
     result->warnings.push_back(
         "output.efm_audio.pair " + std::to_string(pair) +
-        " is not declared by any section; the EFM stream will be silent.");
+        " is not declared by any section; no EFM stream is written.");
   }
 
   // LaserDisc digital audio is specified for 625-line PAL (IEC 60856:1986

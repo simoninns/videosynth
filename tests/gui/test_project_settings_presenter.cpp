@@ -154,5 +154,116 @@ TEST(ProjectSettingsPresenterTest, EnforcedYcPathPassesValidator) {
   EXPECT_TRUE(result.is_valid);
 }
 
+// A project whose single section declares audio channel pair `pair`, so the
+// EFM selection has something to encode.
+Project MakeProjectWithAudioPair(Standard standard, int pair) {
+  Project project = MakeProject(standard);
+  AudioChannelPair channel_pair;
+  channel_pair.pair = pair;
+  channel_pair.pair_specified = true;
+  channel_pair.left.enabled = true;
+  channel_pair.right.enabled = true;
+  project.sections[0].audio_channel_pairs.push_back(channel_pair);
+  return project;
+}
+
+TEST(ProjectSettingsPresenterTest, EfmControlsIdleWhenSelectionDisabled) {
+  const ProjectSettingsFormState state = BuildProjectSettingsFormState(
+      MakeProjectWithAudioPair(Standard::kPal, 0));
+  EXPECT_TRUE(state.efm_output_editable);
+  EXPECT_FALSE(state.efm_pair_editable);
+  EXPECT_EQ(state.efm_status, EfmOutputStatus::kDisabled);
+}
+
+TEST(ProjectSettingsPresenterTest, EfmPairOptionsCoverEveryChannelPair) {
+  const ProjectSettingsFormState state =
+      BuildProjectSettingsFormState(MakeProject(Standard::kPal));
+  ASSERT_EQ(static_cast<int>(state.efm_pair_options.size()),
+            kMaxAudioChannelPairs);
+  for (int pair = 0; pair < kMaxAudioChannelPairs; ++pair) {
+    EXPECT_EQ(state.efm_pair_options[static_cast<std::size_t>(pair)], pair);
+  }
+}
+
+TEST(ProjectSettingsPresenterTest, EfmStatusActiveWhenPairDeclared) {
+  Project project = MakeProjectWithAudioPair(Standard::kNtsc, 3);
+  project.output.efm_audio.enabled = true;
+  project.output.efm_audio.pair = 3;
+
+  const ProjectSettingsFormState state = BuildProjectSettingsFormState(project);
+  EXPECT_TRUE(state.efm_pair_editable);
+  EXPECT_EQ(state.efm_status, EfmOutputStatus::kActive);
+  // The form's verdict must match the predicate the pipeline uses.
+  EXPECT_EQ(ProjectEfmAudioPair(project), 3);
+}
+
+TEST(ProjectSettingsPresenterTest, EfmStatusReportsUndeclaredPair) {
+  Project project = MakeProjectWithAudioPair(Standard::kPal, 0);
+  project.output.efm_audio.enabled = true;
+  project.output.efm_audio.pair = 4;
+
+  EXPECT_EQ(BuildProjectSettingsFormState(project).efm_status,
+            EfmOutputStatus::kPairNotDeclared);
+  EXPECT_EQ(ProjectEfmAudioPair(project), -1);
+}
+
+TEST(ProjectSettingsPresenterTest, EfmStatusReportsPairOutOfRange) {
+  Project project = MakeProjectWithAudioPair(Standard::kPal, 0);
+  project.output.efm_audio.enabled = true;
+  project.output.efm_audio.pair = kMaxAudioChannelPairs;
+
+  EXPECT_EQ(BuildProjectSettingsFormState(project).efm_status,
+            EfmOutputStatus::kPairOutOfRange);
+}
+
+// LaserDisc digital audio exists only for PAL (IEC 60856:1986 Amd 2 clause 13)
+// and NTSC (IEC 60857:1986 Amd 2 clause 13); every other standard must offer no
+// enable control and report why.
+TEST(ProjectSettingsPresenterTest, EfmUnavailableOutsidePalAndNtsc) {
+  Project project = MakeProjectWithAudioPair(Standard::kPalM, 0);
+  EXPECT_FALSE(BuildProjectSettingsFormState(project).efm_output_editable);
+
+  project.output.efm_audio.enabled = true;
+  const ProjectSettingsFormState state = BuildProjectSettingsFormState(project);
+  EXPECT_FALSE(state.efm_pair_editable);
+  EXPECT_EQ(state.efm_status, EfmOutputStatus::kUnsupportedStandard);
+}
+
+TEST(ProjectSettingsPresenterTest, NormalizeOutputClearsEfmForeignToStandard) {
+  OutputTargets output;
+  output.efm_audio.enabled = true;
+  output.efm_audio.pair = 2;
+
+  for (const Standard standard : {Standard::kPal, Standard::kNtsc}) {
+    const OutputTargets kept =
+        NormalizeOutputTargetsForStandard(output, standard);
+    EXPECT_TRUE(kept.efm_audio.enabled);
+    EXPECT_EQ(kept.efm_audio.pair, 2);
+  }
+
+  const OutputTargets cleared =
+      NormalizeOutputTargetsForStandard(output, Standard::kPalM);
+  EXPECT_FALSE(cleared.efm_audio.enabled);
+  EXPECT_EQ(cleared.efm_audio.pair, 0);
+}
+
+// Normalized output targets must never trip the validator's standard rule for
+// EFM (the enablement mirrors validation).
+TEST(ProjectSettingsPresenterTest, NormalizedOutputPassesValidatorEfmRule) {
+  for (const Standard standard :
+       {Standard::kPal, Standard::kNtsc, Standard::kPalM}) {
+    Project project = MakeProjectWithAudioPair(standard, 0);
+    project.output.efm_audio.enabled = true;
+    project.output =
+        NormalizeOutputTargetsForStandard(project.output, standard);
+
+    ProjectValidator validator;
+    const ValidationResult result = validator.Validate(project);
+    for (const std::string& error : result.errors) {
+      EXPECT_EQ(error.find("output.efm_audio"), std::string::npos) << error;
+    }
+  }
+}
+
 }  // namespace
 }  // namespace videosynth::gui

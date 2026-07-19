@@ -170,6 +170,8 @@ VideoSynth currently follows a **four-stage sampled-domain architecture**:
 
 Alongside these four stages, an optional **Audio Track Generator** (`AudioTrackGenerator`) runs when at least one section declares an `audio:` channel pair. It synthesises per-channel test-tone waveforms (`AudioSynthesizer`) frame-locked to the video and streams one stereo 24-bit PCM RIFF/WAVE track per declared channel pair (0–7) to `<basename>_audio_<pair>.wav` (each via an `AudioWavWriter`). Audio is a pure function of output position, so the generator is driven with the output-order section sequence and stays sample-accurately aligned to the stored video frames under disc-skip withhold/replay. See [Section 7 `audio:`](#audio-sub-key-optional-per-section).
 
+When `output.efm_audio` selects one of those channel pairs, the same generator additionally synthesises that pair at 44 100 Hz and streams it through the `videosynth_efm` module (`AudioEfmWriter`) as a LaserDisc digital audio EFM channel stream written to `<basename>_audio_<pair>.efm`. The pair's 48 kHz WAV track is unaffected. See [LaserDisc Digital Audio (EFM) Output](#laserdisc-digital-audio-efm-output).
+
 ### **Key Principles**
 
 - **Independent Y and C Generation**: Luma and chroma are generated separately and combined only at the output stage.
@@ -446,6 +448,28 @@ The output stage generates files as per the [CVBS File Format Specification](../
 
 For Y/C output, `output.video_path` must end in `.y`; the chroma path is derived by replacing the `.y` suffix with `.c`.
 
+### **LaserDisc Digital Audio (EFM) Output**
+
+A project may additionally emit the LaserDisc digital audio channel of one audio channel pair. The full design, including the specification mapping and the phased task breakdown, is in the [EFM Digital Audio Implementation Plan](efm-implementation-plan.md).
+
+**Module boundary** — all EFM signal processing lives in a standalone static library `videosynth_efm` (`src/efm/`, `include/videosynth/efm/`, namespace `videosynth::efm`) that has **no dependency on `videosynth_core`**: its API takes 16-bit stereo PCM plus a track table and emits an EFM channel stream. `videosynth_core` links the module, not the reverse, so a decoder, data modes, or RF modulation can be added later without touching the audio subsystem. Its stages are:
+
+| Stage | Responsibility | Reference |
+|---|---|---|
+| `AudioFrameAssembler` | Six 16-bit stereo samples → one 24-byte F1 frame (WmA = high byte, WmB = low byte) | IEC 60908-1999, 16.2 |
+| `CircEncoder` | GF(2⁸) C2 (28,24) and C1 (32,28) Reed–Solomon parity with the CIRC delay/interleave structure and parity inversion | IEC 60908-1999, 16.3; ECMA-130 Annex C |
+| `SubcodeGenerator` | 98-frame subcode sections at 75 Hz with S0/S1 sync, channel P, and Q-mode 4 (ADR = 0100) DATA-Q: lead-in TOC, per-track running/absolute time, lead-out | IEC 60908-1999, 17.3–17.5.1; IEC 60856:1986 Amd 2, 13.5; IEC 60857:1986 Amd 2, 13.6 |
+| `EfmModulator` | Eight-to-fourteen coding, merging-bit selection (runs 3–11 channel bits, DSV minimised), 24-bit frame sync, 588-channel-bit frames | IEC 60908-1999, clauses 13–15; ECMA-130 Annex D/E |
+| `EfmStreamEncoder` | The module's public facade: `Begin` / `PushSamples` / `Flush`, chaining the stages and exposing T-values | — |
+
+**Output file** — the channel stream is written as one unsigned byte per pit/land run length (T3–T11), starting at the first frame sync, to `<basename>_audio_<pair>.efm` beside that pair's WAV file. `AudioEfmWriter` mirrors the `AudioWavWriter` streaming contract (`BeginWrite` / `AppendFrameAudio` / `FinalizeWrite` / `AbortWrite`), so an aborted run leaves no partial file. The output stage records the emitted stream in an `efm_audio` producer-extension table in the SQLite metadata sidecar; the core CVBS schema has no EFM concept, so consumers must not assume that table exists.
+
+**Sample timing** — the EFM path synthesises the selected pair independently at exactly 44 100 Hz (PAL 1764/625 × F_H, IEC 60856:1986 Amd 2, 13.2; NTSC 7007/2500 × F_H, IEC 60857:1986 Amd 2, 13.2) from the same `AudioParameters` as the 48 kHz WAV path — there is no resampling. Per video frame that is 1764 samples for PAL (exact) and the SMPTE 272M-1994 Table 1 sequence for NTSC (147147 samples per 100 frames). Samples are converted from 24-bit to the CD's 16-bit domain by rounding to nearest with saturation.
+
+**Track layout** — every contiguous run of output frames sharing one `programme_area` section is one track, numbered 01, 02, … in output order (maximum 79 tracks). `lead_in` sections carry the repetitive mode-4 TOC (one POINT per track plus A0/A1/A2, with the video-system identification 22 = PAL / 12 = NTSC in the A0 P FRAME field), and `lead_out` sections carry lead-out subcode (TNO = AA). Track boundaries are placed on the nearest subcode section, so a boundary sits within 1/150 s of the video frame carrying the section change. The first 2 s of track 1 are the mandatory pause required by IEC 60908-1999, 17.5.1: digital silence in the EFM stream while the WAV track carries the section's tone.
+
+**Timing alignment** — t = 0 is common to video frame 0, WAV sample 0, EFM source sample 0, and Q absolute time 00:00:00. The only structural delay is the CIRC interleave, exported as `kCircPipelineLatencyFrames = 108` (ECMA-130, C.9): a complementary decoder emits 108 F1 frames (648 stereo samples, ≈14.69 ms) of warm-up silence before source sample 0, after which decoded PCM is sample-exact against the 44.1 kHz source. The stream is **not** pre-compensated for that delay, so the shared datum with the video and WAV timelines holds.
+
 ### **Inputs**
 
 - `4fsc`-discrete fixed-point Y and C signal buffers from the generation stage.
@@ -454,7 +478,7 @@ For Y/C output, `output.video_path` must end in `.y`; the chroma path is derived
 ### **Outputs**
 
 - **Video File**: Raw samples of the composite signal.
-- **Metadata File**: Header metadata.
+- **Metadata File**: Header metadata (plus the `efm_audio` producer-extension row when EFM output is emitted).
 
 ---
 
@@ -705,6 +729,7 @@ For **NTSC (525-line system)**, the vertical blanking interval (VBI) is defined 
 The current parser, validator, and runtime implement only a subset of the YAML surface described in this section:
 
 - Implemented top-level presets: `video_standard_preset`, `sample_encoding_preset`, `signal_state_preset`, `ntsc_black_setup_ire`, `output.video_path`, and `output.signal_type` (`"composite"` or `"yc"`; defaults to `"composite"`). The metadata sidecar is not configured in YAML: it is always colocated with the video output and its path is derived from `output.video_path` (`.composite`/`.y` → `.meta`).
+- `output.efm_audio` is parsed, emitted, and validated: its presence enables LaserDisc digital audio (EFM) output for the single channel pair named by `pair`. See [`efm_audio:`](#efm_audio-sub-key-optional-project-level).
 - The `project:` block fields `name`, `version`, and `description` are parsed and retained on the in-memory `Project` model, so they survive load/save round-trips.
 - A YAML project **emitter** (`YamlProjectEmitter` in `videosynth_core`) serialises an in-memory `Project` back to this schema. It writes fields in the canonical order shown below and emits only explicitly-set optional blocks (the project-level `line_injections:` and `disc_skips:`, and the per-section `noise:`, `dropouts:`, `osd:`, `audio:`, `line_injections:`), so emitted files stay minimal and diffable. Emit → parse is lossless: a saved file parses back to an equal `Project`, which is the contract that keeps GUI-saved projects loadable by the CLI and vice versa.
 - Implemented section fields: `name`, `type`, `source`, `start_frame`, `duration_frames`, and the optional per-section `noise:`, `dropouts:`, `osd:`, and `audio:` blocks.
@@ -741,6 +766,8 @@ cvbs_presets:
 output:
   video_path: "out/pal_test_video.composite"
   signal_type: composite      # "composite" (default) or "yc"; for "yc", video_path must end in ".y"
+  efm_audio:                  # Optional; LaserDisc digital audio (EFM) for one channel pair (PAL/NTSC only)
+    pair: 0                   # Channel-pair number 0–7; must be declared by at least one section
 
 line_injections:               # Project-wide laserdisc/VITS settings (sibling of output/sections)
   disc_type: CAV               # CAV or CLV; applies to every section (omit for non-laserdisc projects)
@@ -974,6 +1001,31 @@ sections:
             waveform: sawtooth
             amplitude: 0.5
             ramp: { start: 200.0, end: 4000.0, mode: up }
+```
+
+---
+
+#### **`efm_audio:` Sub-Key (Optional, Project-Level)**
+
+The `output.efm_audio:` block selects **one** audio channel pair to be additionally encoded as a LaserDisc digital audio (EFM) channel stream, written as `<basename>_audio_<pair>.efm` beside that pair's WAV track. The pair's WAV output and every other pair are unaffected; audio parameters (waveform, frequency, amplitude, ramps) are shared between the two paths and declared only in the per-section [`audio:`](#audio-sub-key-optional-per-section) blocks. The encoding is described in [LaserDisc Digital Audio (EFM) Output](#laserdisc-digital-audio-efm-output).
+
+| Key | Type | Required | Range / Values | Description |
+|-----|------|----------|----------------|-------------|
+| `pair` | int | Yes | 0–7 | Channel pair to encode. Presence of the `efm_audio:` block is what enables the output; omit the block to disable it. |
+
+Constraints:
+
+- **PAL and NTSC only** — LaserDisc digital audio is defined by IEC 60856:1986 Amd 2 clause 13 (PAL) and IEC 60857:1986 Amd 2 clause 13 (NTSC); any other `video_standard_preset` is a validation error.
+- **The pair must be declared** — if no section declares `pair`, a warning is emitted and no `.efm` file is written.
+- **Track rules** — one track per `programme_area` section, maximum 79 (IEC 60856 Amd 2, 13.5.3.3 / IEC 60857 Amd 2, 13.6.3.3); tracks shorter than 4 s (6 s for track 1, whose first 2 s are the mandatory pause) and a project with no `lead_in` section (no TOC is emitted) produce warnings.
+
+Example YAML:
+
+```yaml
+output:
+  video_path: "out/pal_disc.composite"
+  efm_audio:
+    pair: 0
 ```
 
 ---
@@ -1904,6 +1956,13 @@ The rule set below remains the intended validation contract for VITC and custom 
   - For `direction: forward`: `at_frame + count − 1` must be **≤ total_disc_frames** (the skip range must not extend beyond the last disc frame).
   - For `direction: backward`: `at_frame − count + 1` must be **≥ 1** (the replay range must not extend before the first disc frame).
   - `direction` must be one of `"forward"` or `"backward"`; any other value is a validation error.
+7. **EFM Digital Audio** (`output.efm_audio:` block):
+  - `pair` must be in **[0, 7]** (error if outside this range).
+  - `video_standard_preset` must be `PAL` or `NTSC` — no other standard has a LaserDisc digital audio specification (error otherwise).
+  - If no section declares the selected `pair`, a **warning** is emitted: no `.efm` file is written.
+  - More than **79** `programme_area` sections is an error (IEC 60856 Amd 2, 13.5.3.3 / IEC 60857 Amd 2, 13.6.3.3 — one track per section).
+  - A `programme_area` section shorter than **4 s** (**6 s** for the first, whose leading 2 s are the mandatory pause) emits a **warning** (IEC 60908-1999, 17.5.1).
+  - A project with no `lead_in` section emits a **warning**: no table of contents is emitted.
 
 ---
 
@@ -2189,6 +2248,12 @@ videosynth/
 │   ├── ramping.h
 │   ├── progressive_source.cpp
 │   ├── progressive_source.h
+│   ├── efm/                             # videosynth_efm module (no core dependencies)
+│   │   ├── audio_frame_assembler.cpp
+│   │   ├── circ_encoder.cpp
+│   │   ├── subcode_generator.cpp
+│   │   ├── efm_modulator.cpp
+│   │   └── efm_stream_encoder.cpp
 │   └── ...
 ├── docs/
 │   ├── analogue-video-specifications/  (submodule)
@@ -2264,5 +2329,8 @@ All specifications referenced in this document are available in the following re
   - [IEC 60857](../analogue-video-specifications/docs/laserdisc/IEC-60857-1986-Laservision-NTSC/IEC-60857-1986-Laservision-NTSC.md): Laservision NTSC.
   - [IEC 60857 Amendment 1](../analogue-video-specifications/docs/laserdisc/IEC-60857-1986-Laservision-NTSC-Amendment-1/IEC-60857-1986-Laservision-NTSC-Amendment-1.md): Laservision NTSC Amendment 1.
   - [IEC 60857 Amendment 2](../analogue-video-specifications/docs/laserdisc/IEC-60857-1986-Laservision-NTSC-Amendment-2/IEC-60857-1986-Laservision-NTSC-Amendment-2.md): Laservision NTSC Amendment 2.
+  - [IEC 60908-1999](../analogue-video-specifications/docs/efm/IEC-60908-1999/IEC-60908-1999.md): Compact disc digital audio system (CD-DA) — EFM code, CIRC, and subcode used by LaserDisc digital audio.
+  - [ECMA-130](../analogue-video-specifications/docs/efm/ECMA-130/ECMA-130.md): Data interchange on read-only 120 mm optical discs — machine-readable cross-check of the CD layer (CIRC Annex C, EFM table Annex D, merging bits Annex E).
+  - [SMPTE 272M-1994](../analogue-video-specifications/docs/video_formats/SMPTE-272M-1994/SMPTE-272M-1994.md): Audio frame sequences for embedded audio, including the 44.1 kHz / 29.97 Hz sequence.
   - [SMPTE 12M](../analogue-video-specifications/docs/video_metadata/IEC-60461-2010-Time-and-control-code/IEC-60461-2010-Time-and-control-code.md): Vertical Interval Timecode (VITC).
   - [Vertical Interval Test Signals - NTSC and PAL definitions](../analogue-video-specifications/docs/video_metadata/VITS/index.md): VITS waveforms.

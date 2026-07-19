@@ -216,9 +216,25 @@ void ProjectSettingsEditor::BuildUi() {
       output_group);
   outputs_note_->setWordWrap(true);
 
+  // LaserDisc digital audio: one channel pair is additionally encoded as an
+  // EFM stream (IEC 60856:1986 Amd 2 / IEC 60857:1986 Amd 2, clause 13); its
+  // WAV track is written as usual.
+  efm_check_ =
+      new QCheckBox(tr("Encode one channel pair as EFM"), output_group);
+  efm_pair_combo_ = new QComboBox(output_group);
+  auto* efm_row = new QHBoxLayout();
+  efm_row->addWidget(efm_check_);
+  efm_row->addWidget(new QLabel(tr("Pair:"), output_group));
+  efm_row->addWidget(efm_pair_combo_);
+  efm_row->addStretch();
+  efm_hint_ = new QLabel(output_group);
+  efm_hint_->setWordWrap(true);
+
   output_form->addRow(tr("Signal type:"), signal_type_combo_);
   output_form->addRow(tr("Video path:"), video_row);
   output_form->addRow(QString(), video_path_hint_);
+  output_form->addRow(tr("Digital audio:"), efm_row);
+  output_form->addRow(QString(), efm_hint_);
   output_form->addRow(QString(), outputs_note_);
   layout->addWidget(output_group);
 
@@ -230,6 +246,13 @@ void ProjectSettingsEditor::BuildUi() {
           &ProjectSettingsEditor::CommitOutputTargets);
   connect(browse_button, &QPushButton::clicked, this,
           &ProjectSettingsEditor::OnBrowseVideoPath);
+  connect(efm_check_, &QCheckBox::toggled, this, [this] {
+    if (!updating_) {
+      CommitOutputTargets();
+    }
+  });
+  connect(efm_pair_combo_, &QComboBox::activated, this,
+          &ProjectSettingsEditor::CommitOutputTargets);
 }
 
 void ProjectSettingsEditor::LoadFromDocument() {
@@ -301,6 +324,15 @@ void ProjectSettingsEditor::LoadFromDocument() {
   RebuildVitsChecklist();
 
   video_path_edit_->setText(QString::fromStdString(project.output.video_path));
+
+  efm_pair_combo_->clear();
+  for (const int pair : state.efm_pair_options) {
+    efm_pair_combo_->addItem(QString::number(pair), pair);
+  }
+  const int efm_pair_index =
+      efm_pair_combo_->findData(project.output.efm_audio.pair);
+  efm_pair_combo_->setCurrentIndex(efm_pair_index >= 0 ? efm_pair_index : 0);
+  efm_check_->setChecked(project.output.efm_audio.enabled);
 
   ApplyEnablement();
   updating_ = false;
@@ -402,6 +434,37 @@ void ProjectSettingsEditor::ApplyEnablement() {
           ? tr("Y/C output: the video path must end in “.y” (a matching "
                "“.c” chroma file is written alongside it).")
           : QString());
+
+  efm_check_->setEnabled(state.efm_output_editable);
+  efm_pair_combo_->setEnabled(state.efm_pair_editable);
+  efm_hint_->setText(EfmStatusText(state.efm_status));
+}
+
+// Renders the presenter's EFM outcome as the sentence shown beneath the
+// controls. The wording mirrors the validator messages for the same
+// conditions so the form and the issues dock agree.
+QString ProjectSettingsEditor::EfmStatusText(EfmOutputStatus status) const {
+  const int pair = document_->project().output.efm_audio.pair;
+  switch (status) {
+    case EfmOutputStatus::kUnsupportedStandard:
+      return tr(
+          "LaserDisc digital audio is specified for PAL and NTSC only; "
+          "no “.efm” file is written for this standard.");
+    case EfmOutputStatus::kPairOutOfRange:
+      return tr("Channel pair %1 is outside the supported range 0–7.")
+          .arg(pair);
+    case EfmOutputStatus::kPairNotDeclared:
+      return tr("No section declares audio channel pair %1, so no “.efm” "
+                "file is written.")
+          .arg(pair);
+    case EfmOutputStatus::kActive:
+      return tr("Channel pair %1 is also written as an EFM stream "
+                "(“_audio_%1.efm”) beside its WAV track.")
+          .arg(pair);
+    case EfmOutputStatus::kDisabled:
+    default:
+      return {};
+  }
 }
 
 void ProjectSettingsEditor::CommitProjectInfo() {
@@ -446,6 +509,15 @@ void ProjectSettingsEditor::CommitCvbsPresets() {
   // stays previewable; user-chosen sources are left untouched.
   const Standard new_standard = presets.video_standard_preset;
   if (new_standard != old_standard) {
+    // LaserDisc digital audio only exists for PAL and NTSC, so switching to a
+    // standard without it clears the selection rather than leaving a setting
+    // the validator would reject.
+    OutputTargets output = NormalizeOutputTargetsForStandard(
+        document_->project().output, new_standard);
+    if (!(output == document_->project().output)) {
+      document_->SetOutputTargets(output);
+    }
+
     // The VITS catalogue is standard-specific, so a standard change must
     // reconcile the project VITS set (re-seed under laserdisc placement, drop
     // cross-standard entries otherwise) rather than leave it stale and invalid.
@@ -587,6 +659,11 @@ void ProjectSettingsEditor::CommitOutputTargets() {
   // All outputs are co-located with the video; the metadata path is always
   // derived from it rather than set independently.
   output.metadata_path = DeriveMetadataPath(output.video_path);
+  output.efm_audio.enabled = efm_check_->isChecked();
+  output.efm_audio.pair = efm_pair_combo_->currentData().toInt();
+  output = NormalizeOutputTargetsForStandard(
+      std::move(output),
+      document_->project().cvbs_presets.video_standard_preset);
 
   committing_ = true;
   document_->SetOutputTargets(output);

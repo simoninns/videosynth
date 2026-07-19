@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "project_document.h"
+#include "project_settings_presenter.h"
 
 class QCheckBox;
 class QComboBox;
@@ -58,6 +59,9 @@ class ProjectSettingsEditor : public QWidget {
   // model. Called only on external/standard changes (never from a VITS widget's
   // own signal), so widgets are not destroyed mid-signal.
   void RebuildVitsChecklist();
+
+  // Translated sentence describing the EFM selection's outcome.
+  QString EfmStatusText(EfmOutputStatus status) const;
 
   void OnStandardChanged();
   void OnSignalTypeChanged();
@@ -104,6 +108,13 @@ class ProjectSettingsEditor : public QWidget {
   QLineEdit* video_path_edit_ = nullptr;
   QLabel* video_path_hint_ = nullptr;
   QLabel* outputs_note_ = nullptr;
+
+  // LaserDisc digital audio (EFM): enable plus the single channel pair the
+  // stream is encoded from. The hint reports why no stream is written when the
+  // selection is inert.
+  QCheckBox* efm_check_ = nullptr;
+  QComboBox* efm_pair_combo_ = nullptr;
+  QLabel* efm_hint_ = nullptr;
 };
 
 }  // namespace videosynth::gui

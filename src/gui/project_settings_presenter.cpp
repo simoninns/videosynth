@@ -44,6 +44,34 @@ std::string StripOutputSuffix(const std::string& path) {
   return path;
 }
 
+// True for the standards with a LaserDisc digital audio specification:
+// IEC 60856:1986 Amd 2 clause 13 (PAL) and IEC 60857:1986 Amd 2 clause 13
+// (NTSC). No other standard defines an EFM sample frequency.
+bool StandardHasLaserdiscDigitalAudio(Standard standard) {
+  return standard == Standard::kPal || standard == Standard::kNtsc;
+}
+
+// Classifies the EFM selection exactly as ProjectEfmAudioPair decides whether
+// a stream is emitted, so the form reports the same outcome the pipeline
+// produces.
+EfmOutputStatus ClassifyEfmOutput(const Project& project) {
+  if (!project.output.efm_audio.enabled) {
+    return EfmOutputStatus::kDisabled;
+  }
+  if (!StandardHasLaserdiscDigitalAudio(
+          project.cvbs_presets.video_standard_preset)) {
+    return EfmOutputStatus::kUnsupportedStandard;
+  }
+  const int pair = project.output.efm_audio.pair;
+  if (pair < 0 || pair >= kMaxAudioChannelPairs) {
+    return EfmOutputStatus::kPairOutOfRange;
+  }
+  if (ProjectEfmAudioPair(project) < 0) {
+    return EfmOutputStatus::kPairNotDeclared;
+  }
+  return EfmOutputStatus::kActive;
+}
+
 }  // namespace
 
 ProjectSettingsFormState BuildProjectSettingsFormState(const Project& project) {
@@ -67,6 +95,15 @@ ProjectSettingsFormState BuildProjectSettingsFormState(const Project& project) {
       standard == Standard::kNtsc || standard == Standard::kPalM;
   state.video_path_requires_y_suffix = project.output.signal_type == "yc";
 
+  state.efm_pair_options.reserve(kMaxAudioChannelPairs);
+  for (int pair = 0; pair < kMaxAudioChannelPairs; ++pair) {
+    state.efm_pair_options.push_back(pair);
+  }
+  state.efm_output_editable = StandardHasLaserdiscDigitalAudio(standard);
+  state.efm_pair_editable =
+      state.efm_output_editable && project.output.efm_audio.enabled;
+  state.efm_status = ClassifyEfmOutput(project);
+
   return state;
 }
 
@@ -83,6 +120,14 @@ CvbsPresets NormalizeCvbsPresetsForStandard(CvbsPresets presets) {
     presets.ntsc_black_setup_ire = 7.5;
   }
   return presets;
+}
+
+OutputTargets NormalizeOutputTargetsForStandard(OutputTargets output,
+                                                Standard standard) {
+  if (!StandardHasLaserdiscDigitalAudio(standard)) {
+    output.efm_audio = EfmAudioOutput{};
+  }
+  return output;
 }
 
 std::string DeriveMetadataPath(const std::string& video_path) {
