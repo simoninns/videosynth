@@ -591,6 +591,28 @@ inline std::vector<int> ProjectAudioChannelPairs(const Project& project) {
   return pairs;
 }
 
+// Channel pair carrying LaserDisc digital audio (EFM) output, or -1 when the
+// project emits no EFM track. Output is emitted only when the selection is
+// enabled, the pair is declared by at least one section, and the video standard
+// has a LaserDisc digital audio specification: IEC 60856:1986 Amd 2 clause 13
+// (PAL) and IEC 60857:1986 Amd 2 clause 13 (NTSC) define one; no other standard
+// does. The project validator reports the rejected combinations.
+inline int ProjectEfmAudioPair(const Project& project) {
+  if (!project.output.efm_audio.enabled) {
+    return -1;
+  }
+  const Standard standard = project.cvbs_presets.video_standard_preset;
+  if (standard != Standard::kPal && standard != Standard::kNtsc) {
+    return -1;
+  }
+  const std::vector<int> pairs = ProjectAudioChannelPairs(project);
+  if (std::find(pairs.begin(), pairs.end(), project.output.efm_audio.pair) ==
+      pairs.end()) {
+    return -1;
+  }
+  return project.output.efm_audio.pair;
+}
+
 // First non-empty description recorded for `pair` in section order, or an empty
 // string when none is set (→ NULL in the metadata).
 inline std::string AudioChannelPairDescription(const Project& project,

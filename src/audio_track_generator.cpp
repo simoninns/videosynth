@@ -19,13 +19,6 @@ namespace videosynth {
 
 namespace {
 
-// True when the standard has a LaserDisc digital audio specification: IEC
-// 60856-1986 Amd 2 clause 13 (PAL) and IEC 60857-1986 Amd 2 clause 13 (NTSC).
-// No other standard defines one.
-bool StandardSupportsEfmAudio(Standard standard) {
-  return standard == Standard::kPal || standard == Standard::kNtsc;
-}
-
 // Returns the section's parameters for channel pair `pair`, or nullptr if the
 // section does not declare that pair (all frames silent for the pair).
 const AudioChannelPair* FindPair(const Section* section, int pair) {
@@ -64,6 +57,9 @@ bool AudioTrackGenerator::Begin(
   efm_run_total_samples_.clear();
   efm_frame_left_.clear();
   efm_frame_right_.clear();
+  efm_layout_ = EfmTrackLayout{};
+  efm_writer_.reset();
+  efm_sample_position_ = 0;
 
   pair_numbers_ = ProjectAudioChannelPairs(project);
   if (pair_numbers_.empty()) {
@@ -87,16 +83,21 @@ bool AudioTrackGenerator::Begin(
   // A selection naming an undeclared pair, or a standard without a LaserDisc
   // digital audio specification, leaves the EFM path inactive; the project
   // validator reports both conditions.
-  const EfmAudioOutput& efm = project.output.efm_audio;
-  efm_active_ = efm.enabled && StandardSupportsEfmAudio(standard_) &&
-                std::find(pair_numbers_.begin(), pair_numbers_.end(),
-                          efm.pair) != pair_numbers_.end();
+  const int efm_pair = ProjectEfmAudioPair(project);
+  efm_active_ = efm_pair >= 0;
   if (efm_active_) {
-    efm_pair_ = efm.pair;
+    efm_pair_ = efm_pair;
     efm_frame_sample_counts_.resize(frame_count);
     for (std::size_t k = 0; k < frame_count; ++k) {
       efm_frame_sample_counts_[k] =
           EfmAudioSamplesForFrame(standard_, static_cast<std::int64_t>(k));
+    }
+    // One track per programme-area section, in output order; the subcode
+    // timeline of the whole stream is fixed before any sample is encoded.
+    if (!BuildEfmTrackLayout(standard_, frame_sections_, &efm_layout_,
+                             errors)) {
+      efm_active_ = false;
+      return false;
     }
   }
 
@@ -155,6 +156,20 @@ bool AudioTrackGenerator::Begin(
       return false;
     }
     pairs_.push_back(std::move(state));
+  }
+
+  if (efm_active_) {
+    efm_writer_ = std::make_unique<AudioEfmWriter>(logger_);
+    if (!efm_writer_->BeginWrite(project, efm_pair_, efm_layout_.table,
+                                 errors)) {
+      for (PairState& opened : pairs_) {
+        opened.writer->AbortWrite();
+      }
+      pairs_.clear();
+      efm_writer_.reset();
+      efm_active_ = false;
+      return false;
+    }
   }
 
   active_ = true;
@@ -229,16 +244,42 @@ bool AudioTrackGenerator::EmitFrame(std::size_t output_index,
     }
 
     if (state.efm_left != nullptr) {
+      const int efm_sample_count = efm_frame_sample_counts_[output_index];
+      std::vector<std::int32_t> efm_left =
+          state.efm_left->Synthesize(efm_sample_count);
+      std::vector<std::int32_t> efm_right =
+          state.efm_right->Synthesize(efm_sample_count);
+      MuteTrackOnePause(&efm_left, &efm_right);
+
       // IEC 60908-1999 clause 12: compact-disc audio is 16-bit, so the
       // 44.1 kHz samples are converted from the synthesiser's 24-bit domain.
-      const int efm_sample_count = efm_frame_sample_counts_[output_index];
-      efm_frame_left_ =
-          ConvertSamples24To16(state.efm_left->Synthesize(efm_sample_count));
-      efm_frame_right_ =
-          ConvertSamples24To16(state.efm_right->Synthesize(efm_sample_count));
+      efm_frame_left_ = ConvertSamples24To16(efm_left);
+      efm_frame_right_ = ConvertSamples24To16(efm_right);
+
+      if (efm_writer_ != nullptr &&
+          !efm_writer_->AppendFrameAudio(efm_left, efm_right, errors)) {
+        return false;
+      }
+      efm_sample_position_ += efm_left.size();
     }
   }
   return true;
+}
+
+void AudioTrackGenerator::MuteTrackOnePause(std::vector<std::int32_t>* left,
+                                            std::vector<std::int32_t>* right) {
+  // IEC 60908-1999, 17.5.1: the pause preceding the first track is encoded as
+  // digital silence. Only the EFM stream is affected; the 48 kHz WAV path
+  // carries the section's audio throughout.
+  const std::size_t frame_start = efm_sample_position_;
+  const std::size_t frame_end = frame_start + left->size();
+  const std::size_t start =
+      std::max(frame_start, efm_layout_.pause_start_sample);
+  const std::size_t end = std::min(frame_end, efm_layout_.pause_end_sample);
+  for (std::size_t sample = start; sample < end; ++sample) {
+    (*left)[sample - frame_start] = 0;
+    (*right)[sample - frame_start] = 0;
+  }
 }
 
 bool AudioTrackGenerator::Finalize(std::vector<std::string>* errors) {
@@ -254,6 +295,9 @@ bool AudioTrackGenerator::Finalize(std::vector<std::string>* errors) {
       ok = false;
     }
   }
+  if (efm_writer_ != nullptr && !efm_writer_->FinalizeWrite(errors)) {
+    ok = false;
+  }
   return ok;
 }
 
@@ -263,6 +307,9 @@ void AudioTrackGenerator::Abort() {
   }
   for (PairState& state : pairs_) {
     state.writer->AbortWrite();
+  }
+  if (efm_writer_ != nullptr) {
+    efm_writer_->AbortWrite();
   }
   active_ = false;
 }

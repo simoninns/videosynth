@@ -245,34 +245,91 @@ TEST(AudioTrackGeneratorTest, SynthesisesSelectedPairAt44100Hz) {
       TempPath("videosynth_atg_efm_pal.composite");
   const std::filesystem::path audio1 =
       TempPath("videosynth_atg_efm_pal_audio_1.wav");
+  const std::filesystem::path efm1 =
+      TempPath("videosynth_atg_efm_pal_audio_1.efm");
   std::filesystem::remove(audio1);
+  std::filesystem::remove(efm1);
 
   Project project = MakeProject(video_path);
   project.output.efm_audio.enabled = true;
   project.output.efm_audio.pair = 1;
-  Section section;
-  section.name = "Tone";
-  section.audio_channel_pairs = {MakePair(1, /*left=*/true, /*right=*/true)};
-  project.sections = {section};
-  const std::vector<const Section*> frames = {&project.sections[0],
-                                              &project.sections[0]};
+  Section lead_in;
+  lead_in.name = "LeadIn";
+  lead_in.section_type = SectionType::kLeadIn;
+  lead_in.audio_channel_pairs = {MakePair(1, /*left=*/true, /*right=*/true)};
+  Section programme;
+  programme.name = "Tone";
+  programme.section_type = SectionType::kProgrammeArea;
+  programme.audio_channel_pairs = {MakePair(1, /*left=*/true, /*right=*/true)};
+  project.sections = {lead_in, programme};
+  const std::vector<const Section*> frames = {
+      &project.sections[0], &project.sections[0], &project.sections[1],
+      &project.sections[1]};
 
   const EfmCapture capture = RunAndCaptureEfm(project, frames);
 
   // IEC 60856-1986 Amd 2 13.2: PAL carries 1764 EFM samples per video frame.
-  EXPECT_EQ(capture.samples_per_frame, (std::vector<int>{1764, 1764}));
-  EXPECT_EQ(capture.left.size(), 2U * 1764U);
-  EXPECT_EQ(capture.right.size(), 2U * 1764U);
-  const bool any_nonzero =
-      std::any_of(capture.left.begin(), capture.left.end(),
-                  [](std::int16_t sample) { return sample != 0; });
-  EXPECT_TRUE(any_nonzero);
-  // The 48 kHz WAV path is unaffected and still written for the pair.
-  EXPECT_TRUE(std::filesystem::exists(audio1));
+  EXPECT_EQ(capture.samples_per_frame,
+            (std::vector<int>{1764, 1764, 1764, 1764}));
+  EXPECT_EQ(capture.left.size(), std::size_t{4} * 1764U);
+  EXPECT_EQ(capture.right.size(), std::size_t{4} * 1764U);
+
+  // The lead-in carries the tone; the programme area opens with the mandatory
+  // pause preceding track 1, which is digital silence in the EFM stream
+  // (IEC 60908-1999, 17.5.1).
+  const auto any_nonzero = [&capture](std::ptrdiff_t first,
+                                      std::ptrdiff_t last) {
+    return std::any_of(capture.left.begin() + first,
+                       capture.left.begin() + last,
+                       [](std::int16_t sample) { return sample != 0; });
+  };
+  constexpr std::ptrdiff_t kEfmSamplesPerPalFrame = 1764;
+  EXPECT_TRUE(any_nonzero(0, 2 * kEfmSamplesPerPalFrame));
+  EXPECT_FALSE(
+      any_nonzero(2 * kEfmSamplesPerPalFrame, 4 * kEfmSamplesPerPalFrame));
+
+  // The 48 kHz WAV path is unaffected and still written for the pair, and the
+  // EFM T-value file is written alongside it.
+  ASSERT_TRUE(std::filesystem::exists(audio1));
   const std::vector<char> bytes = ReadFileBytes(audio1);
-  EXPECT_EQ(bytes.size(), 44U + 2U * kFrameBytes);
+  EXPECT_EQ(bytes.size(), 44U + (std::size_t{4} * kFrameBytes));
+  EXPECT_TRUE(std::filesystem::exists(efm1));
+  EXPECT_GT(std::filesystem::file_size(efm1), 0U);
 
   std::filesystem::remove(audio1);
+  std::filesystem::remove(efm1);
+}
+
+TEST(AudioTrackGeneratorTest, AbortRemovesThePartialEfmTrack) {
+  const std::filesystem::path video_path =
+      TempPath("videosynth_atg_efm_abort.composite");
+  const std::filesystem::path audio0 =
+      TempPath("videosynth_atg_efm_abort_audio_0.wav");
+  const std::filesystem::path efm0 =
+      TempPath("videosynth_atg_efm_abort_audio_0.efm");
+  std::filesystem::remove(audio0);
+  std::filesystem::remove(efm0);
+
+  Project project = MakeProject(video_path);
+  project.output.efm_audio.enabled = true;
+  project.output.efm_audio.pair = 0;
+  Section section;
+  section.name = "Tone";
+  section.section_type = SectionType::kProgrammeArea;
+  section.audio_channel_pairs = {MakePair(0, /*left=*/true, /*right=*/true)};
+  project.sections = {section};
+  const std::vector<const Section*> frames = {&project.sections[0],
+                                              &project.sections[0]};
+
+  AudioTrackGenerator generator;
+  std::vector<std::string> errors;
+  ASSERT_TRUE(generator.Begin(project, frames, &errors));
+  ASSERT_TRUE(generator.EmitFrame(0, &errors));
+  ASSERT_TRUE(std::filesystem::exists(efm0));
+  generator.Abort();
+
+  EXPECT_FALSE(std::filesystem::exists(efm0));
+  EXPECT_FALSE(std::filesystem::exists(audio0));
 }
 
 TEST(AudioTrackGeneratorTest, EfmSynthesisIsDeterministicAcrossRuns) {
@@ -280,14 +337,20 @@ TEST(AudioTrackGeneratorTest, EfmSynthesisIsDeterministicAcrossRuns) {
       TempPath("videosynth_atg_efm_repeat.composite");
   const std::filesystem::path audio0 =
       TempPath("videosynth_atg_efm_repeat_audio_0.wav");
+  const std::filesystem::path efm0 =
+      TempPath("videosynth_atg_efm_repeat_audio_0.efm");
   std::filesystem::remove(audio0);
+  std::filesystem::remove(efm0);
 
   Project project = MakeProject(video_path);
   project.cvbs_presets.video_standard_preset = Standard::kNtsc;
   project.output.efm_audio.enabled = true;
   project.output.efm_audio.pair = 0;
+  // Lead-in audio is not muted by the track-1 pause, so the compared samples
+  // carry the synthesised tone.
   Section section;
   section.name = "Tone";
+  section.section_type = SectionType::kLeadIn;
   section.audio_channel_pairs = {MakePair(0, /*left=*/true, /*right=*/true)};
   project.sections = {section};
   const std::vector<const Section*> frames = {
@@ -300,8 +363,11 @@ TEST(AudioTrackGeneratorTest, EfmSynthesisIsDeterministicAcrossRuns) {
   EXPECT_EQ(first.samples_per_frame, (std::vector<int>{1472, 1471, 1472}));
   EXPECT_EQ(first.left, second.left);
   EXPECT_EQ(first.right, second.right);
+  EXPECT_TRUE(std::any_of(first.left.begin(), first.left.end(),
+                          [](std::int16_t sample) { return sample != 0; }));
 
   std::filesystem::remove(audio0);
+  std::filesystem::remove(efm0);
 }
 
 TEST(AudioTrackGeneratorTest,

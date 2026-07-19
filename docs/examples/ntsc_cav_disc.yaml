@@ -10,6 +10,7 @@
 #   - virs VITS on every section (mandatory on NTSC laserdisc)
 #   - OSD label + per-frame tokens, source noise, random/scratch dropouts,
 #     frame-locked audio
+#   - LaserDisc digital audio (EFM) output for channel pair 0
 #
 # NTSC-specific rules enforced by the validator:
 #   - Both biphase and FM codes must be present in every laserdisc section
@@ -31,6 +32,13 @@ cvbs_presets:
 
 output:
   video_path: "{project}/output/ntsc_cav_showcase.composite"
+  # LaserDisc digital audio: channel pair 0 is additionally encoded as an
+  # IEC 60908-1999 EFM channel stream with mode-4 subcode
+  # (IEC 60857:1986 Amd 2 clause 13), written as
+  # <basename>_audio_0.efm beside the WAV track. One track is emitted per
+  # programme_area section, in output order.
+  efm_audio:
+    pair: 0
 
 line_injections:
   disc_type: CAV

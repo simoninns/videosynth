@@ -15,8 +15,10 @@
 #include <string>
 #include <vector>
 
+#include "videosynth/audio_efm_writer.h"
 #include "videosynth/audio_synthesizer.h"
 #include "videosynth/audio_wav_writer.h"
+#include "videosynth/efm_track_layout.h"
 #include "videosynth/interfaces.h"
 #include "videosynth/model.h"
 
@@ -25,6 +27,12 @@ namespace videosynth {
 // Generates every audio channel pair declared by a project and streams each as
 // a separate stereo 24-bit RIFF/WAVE file (`_audio_<pair>.wav`) frame-locked to
 // the output video stream, per the CVBS File Format Specification (Audio Data).
+//
+// When the project selects one pair for LaserDisc digital audio
+// (`output.efm_audio`), that pair is additionally synthesised on the 44.1 kHz
+// grid of IEC 60856/60857:1986 Amd 2, 13.2 and streamed to an
+// `_audio_<pair>.efm` T-value file by an AudioEfmWriter. The WAV file of that
+// pair is unchanged.
 //
 // The set of emitted channel pairs is the union of the pair numbers declared
 // across all sections (ProjectAudioChannelPairs). Every pair file spans the
@@ -92,8 +100,13 @@ class AudioTrackGenerator {
   // Zero when EFM output is inactive or the index is out of range.
   int efm_samples_for_frame(std::size_t output_index) const;
 
-  // 16-bit 44.1 kHz samples synthesised for the most recent EmitFrame() call
-  // (IEC 60908-1999 clause 12 sample format). Empty until the first frame is
+  // Subcode layout of the EFM stream, valid after a successful Begin(). Its
+  // track table is empty when EFM output is inactive.
+  const EfmTrackLayout& efm_layout() const { return efm_layout_; }
+
+  // 16-bit 44.1 kHz samples written to the EFM stream for the most recent
+  // EmitFrame() call (IEC 60908-1999 clause 12 sample format), including the
+  // digital silence of the track-1 pause. Empty until the first frame is
   // emitted, and empty throughout when EFM output is inactive.
   const std::vector<std::int16_t>& efm_frame_left() const {
     return efm_frame_left_;
@@ -120,6 +133,12 @@ class AudioTrackGenerator {
   // starts at output frame `output_index`.
   void BeginRun(std::size_t output_index);
 
+  // Zeroes the samples of one output frame that fall in the mandatory pause
+  // preceding track 1 (IEC 60908-1999, 17.5.1). The buffers hold the samples
+  // starting at stream position efm_sample_position_.
+  void MuteTrackOnePause(std::vector<std::int32_t>* left,
+                         std::vector<std::int32_t>* right);
+
   ILogger* logger_;
   bool active_ = false;
   Standard standard_ = Standard::kUnknown;
@@ -139,6 +158,11 @@ class AudioTrackGenerator {
   std::vector<std::int64_t> efm_run_total_samples_;
   std::vector<std::int16_t> efm_frame_left_;
   std::vector<std::int16_t> efm_frame_right_;
+  EfmTrackLayout efm_layout_;
+  std::unique_ptr<AudioEfmWriter> efm_writer_;
+  // 44.1 kHz sampling periods appended to the EFM stream so far, i.e. the
+  // stream position of the next appended sample.
+  std::size_t efm_sample_position_ = 0;
 };
 
 }  // namespace videosynth

@@ -208,9 +208,36 @@ Integration points in `videosynth_core` (thin, mirroring existing patterns):
 - `include/videosynth/audio_sample_conversion.h` — 24-bit → 16-bit sample
   conversion (round to nearest, saturate) taking synthesised samples into the
   IEC 60908-1999 clause 12 sample domain before they reach the module.
+- `include/videosynth/efm_track_layout.h`, `src/efm_track_layout.cpp` —
+  `BuildEfmTrackLayout`, the pure mapping from the resolved output section
+  layout to an `efm::TrackTable` plus the sample window of the track-1 pause.
 - Model / parser / validator / emitter — a project-level `output.efm_audio`
-  setting (see Phase 1).
+  setting (see Phase 1), with `ProjectEfmAudioPair` (`model.h`) as the single
+  predicate deciding whether a stream is emitted (enabled, pair declared,
+  standard PAL or NTSC).
+- `src/output_stage.cpp` — an `efm_audio` producer extension table in the SQLite
+  sidecar (channel pair and file name). The core CVBS schema has no EFM concept
+  (CVBS File Format Specification, Producer Extension Metadata), so consumers
+  must not assume the table exists.
 - Qt GUI — EFM enable and pair selection in the project settings editor.
+
+Integration conventions (established with the pipeline wiring):
+
+- Track numbering is positional: every contiguous run of output frames sharing
+  one `programme_area` section is one track, numbered from 01 in output order.
+  Adjacent `lead_in` runs, and adjacent `lead_out` runs, merge into a single
+  area entry; a section with no declared type is treated as programme area.
+- Track boundaries are placed on the *nearest* subcode section, so a boundary
+  sits within 1/150 s of the video frame carrying the section change. PAL frames
+  divide exactly (3 subcode sections each); NTSC frames do not.
+- The trailing partial subcode section, and the channel frames produced by the
+  CIRC flush, lie beyond the end of the track table and carry no P or Q data.
+- The track-1 pause is applied by `AudioTrackGenerator`, which zeroes the EFM
+  samples of that window before they reach the writer; the 48 kHz WAV path is
+  untouched.
+- A layout the module would reject (sections out of disc order, more than 79
+  tracks, a standard without a LaserDisc digital audio specification) fails
+  `Begin` with a named error rather than silently disabling the stream.
 
 Derived timing facts used throughout (all cited in code where used):
 

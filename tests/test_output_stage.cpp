@@ -153,6 +153,36 @@ std::vector<AudioChannelPairRow> ReadAudioChannelPairs(
   return rows;
 }
 
+// One row of the efm_audio producer extension table.
+struct EfmAudioRow {
+  int channel_pair = 0;
+  std::string file_name;
+};
+
+std::vector<EfmAudioRow> ReadEfmAudioRows(const std::filesystem::path& path) {
+  std::vector<EfmAudioRow> rows;
+  sqlite3* db = nullptr;
+  if (sqlite3_open(path.c_str(), &db) != SQLITE_OK) {
+    sqlite3_close(db);
+    return rows;
+  }
+  const char* query_sql =
+      "SELECT channel_pair, file_name FROM efm_audio ORDER BY channel_pair;";
+  sqlite3_stmt* stmt = nullptr;
+  if (sqlite3_prepare_v2(db, query_sql, -1, &stmt, nullptr) == SQLITE_OK) {
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+      EfmAudioRow row;
+      row.channel_pair = sqlite3_column_int(stmt, 0);
+      row.file_name = std::string(
+          reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1)));
+      rows.push_back(row);
+    }
+  }
+  sqlite3_finalize(stmt);
+  sqlite3_close(db);
+  return rows;
+}
+
 TEST(OutputStageTest, WritesCompositeSamplesUsingPalQuantizationProfile) {
   OutputStage output;
   Project project = MakeProject(Standard::kPal);
@@ -736,6 +766,91 @@ TEST(OutputStageTest, WritesAudioChannelPairRowsForDeclaredPairs) {
   EXPECT_EQ(rows[0].description, "Analogue stereo");
   EXPECT_EQ(rows[1].channel_pair, 3);
   EXPECT_TRUE(rows[1].description_is_null);
+  // No EFM output was selected, so the extension table stays empty.
+  EXPECT_TRUE(ReadEfmAudioRows(metadata_path).empty());
+
+  std::filesystem::remove(video_path);
+  std::filesystem::remove(metadata_path);
+}
+
+TEST(OutputStageTest, WritesEfmAudioRowForTheSelectedChannelPair) {
+  OutputStage output;
+  Project project = MakeProject(Standard::kPal);
+  Section section;
+  section.name = "Tone";
+  AudioChannelPair pair2;
+  pair2.pair = 2;
+  pair2.pair_specified = true;
+  pair2.left.enabled = true;
+  section.audio_channel_pairs = {pair2};
+  project.sections.push_back(section);
+  project.output.efm_audio.enabled = true;
+  project.output.efm_audio.pair = 2;
+
+  const std::size_t frame_span =
+      static_cast<std::size_t>(SamplesPerFrame4fsc(Standard::kPal));
+  std::vector<SampleFixed> y(frame_span, MillivoltsToSampleFixed(0.0));
+  std::vector<SampleFixed> c(frame_span, MillivoltsToSampleFixed(0.0));
+
+  const std::filesystem::path video_path =
+      std::filesystem::temp_directory_path() /
+      "videosynth_output_stage_efm.composite";
+  const std::filesystem::path metadata_path =
+      std::filesystem::temp_directory_path() /
+      "videosynth_output_stage_efm.meta";
+  project.output.video_path = video_path.string();
+  project.output.metadata_path = metadata_path.string();
+  std::filesystem::remove(video_path);
+  std::filesystem::remove(metadata_path);
+
+  std::vector<std::string> errors;
+  ASSERT_TRUE(output.Write(project, y, c, &errors));
+
+  const std::vector<EfmAudioRow> rows = ReadEfmAudioRows(metadata_path);
+  ASSERT_EQ(rows.size(), 1U);
+  EXPECT_EQ(rows[0].channel_pair, 2);
+  EXPECT_EQ(rows[0].file_name, "videosynth_output_stage_efm_audio_2.efm");
+
+  std::filesystem::remove(video_path);
+  std::filesystem::remove(metadata_path);
+}
+
+TEST(OutputStageTest, NoEfmAudioRowWhenTheStandardHasNoDigitalAudio) {
+  OutputStage output;
+  // PAL-M has no LaserDisc digital audio specification, so the selection is
+  // inactive and no EFM track is written.
+  Project project = MakeProject(Standard::kPalM);
+  Section section;
+  section.name = "Tone";
+  AudioChannelPair pair0;
+  pair0.pair = 0;
+  pair0.pair_specified = true;
+  pair0.left.enabled = true;
+  section.audio_channel_pairs = {pair0};
+  project.sections.push_back(section);
+  project.output.efm_audio.enabled = true;
+  project.output.efm_audio.pair = 0;
+
+  const std::size_t frame_span =
+      static_cast<std::size_t>(SamplesPerFrame4fsc(Standard::kPalM));
+  std::vector<SampleFixed> y(frame_span, MillivoltsToSampleFixed(0.0));
+  std::vector<SampleFixed> c(frame_span, MillivoltsToSampleFixed(0.0));
+
+  const std::filesystem::path video_path =
+      std::filesystem::temp_directory_path() /
+      "videosynth_output_stage_efm_inactive.composite";
+  const std::filesystem::path metadata_path =
+      std::filesystem::temp_directory_path() /
+      "videosynth_output_stage_efm_inactive.meta";
+  project.output.video_path = video_path.string();
+  project.output.metadata_path = metadata_path.string();
+  std::filesystem::remove(video_path);
+  std::filesystem::remove(metadata_path);
+
+  std::vector<std::string> errors;
+  ASSERT_TRUE(output.Write(project, y, c, &errors));
+
+  EXPECT_TRUE(ReadEfmAudioRows(metadata_path).empty());
 
   std::filesystem::remove(video_path);
   std::filesystem::remove(metadata_path);

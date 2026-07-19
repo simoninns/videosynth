@@ -102,6 +102,7 @@ add_library(videosynth_core
     src/biphase_injection_manager.cpp
     src/cav_code_generator.cpp
     src/clv_code_generator.cpp
+    src/efm_track_layout.cpp
     src/fm_encoder.cpp
     src/fm_code_generator.cpp
     src/frame_synthesis_pool.cpp
@@ -369,8 +370,10 @@ add_executable(videosynth_tests
     tests/test_efm_audio_frame_assembler.cpp
     tests/test_efm_circ_encoder.cpp
     tests/test_efm_modulator.cpp
+    tests/test_efm_output_pipeline.cpp
     tests/test_efm_stream_encoder.cpp
     tests/test_efm_subcode_generator.cpp
+    tests/test_efm_track_layout.cpp
     tests/test_osd_renderer.cpp
     tests/test_osd_token_resolver.cpp
 )
@@ -439,6 +442,7 @@ set(videosynth_functional_test_patterns
     "^AudioPipelineTest\\."
     "^AudioTrackGeneratorTest\\."
     "^AudioEfmWriterTest\\."
+    "^EfmOutputPipelineTest\\."
     "^AudioWavWriterTest\\."
     "^FrameSourceTest\\."
     "^ProjectFixturesTest\\."
@@ -469,6 +473,7 @@ set(videosynth_unit_test_patterns
     "^CavCodeGeneratorTest\\."
     "^ClvCodeGeneratorTest\\."
     "^ClvTimecodeForFrameTest\\."
+    "^EfmTrackLayoutTest\\."
     "^FmEncoderTest\\."
     "^FrameEnrichmentTest\\."
     "^FrameSynthesisPoolTest\\."

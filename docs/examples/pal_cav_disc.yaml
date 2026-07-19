@@ -11,6 +11,7 @@
 #   - On-screen display overlays (static labels and per-frame tokens)
 #   - Two-component Gaussian noise and random/scratch dropout impairments
 #   - Frame-locked synthetic audio (fixed tone and a section-spanning sweep)
+#   - LaserDisc digital audio (EFM) output for channel pair 0
 #   - Progressive EXR and MKV sources
 #
 # Paths use logical asset roots: {bundled} is the installed asset library,
@@ -19,7 +20,9 @@
 #
 # Durations are kept short (8 frames/section) so the demo generates quickly.
 # IEC track-pitch minimums (lead-in >= 938, lead-out >= 1250, chapters >= 30
-# frames) apply to production masters and are surfaced as validator warnings.
+# frames) and the CD minimum track lengths of the EFM subcode (6 s for track 1,
+# 4 s thereafter) apply to production masters and are surfaced as validator
+# warnings.
 #
 # CVBS_S16_FSC preserves the full pilot-burst waveform (its trough reaches
 # -600 mV, below the -300 mV legal-code floor of the U10/U16/TPG21 presets).
@@ -39,6 +42,13 @@ cvbs_presets:
 
 output:
   video_path: "{project}/output/pal_cav_showcase.composite"
+  # LaserDisc digital audio: channel pair 0 is additionally encoded as an
+  # IEC 60908-1999 EFM channel stream with mode-4 subcode
+  # (IEC 60856:1986 Amd 2 clause 13), written as
+  # <basename>_audio_0.efm beside the WAV track. One track is emitted per
+  # programme_area section, in output order.
+  efm_audio:
+    pair: 0
 
 line_injections:
   disc_type: CAV
