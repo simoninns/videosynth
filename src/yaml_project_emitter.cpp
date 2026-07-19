@@ -112,6 +112,11 @@ void EmitOutputTargets(YAML::Emitter& out, const OutputTargets& output) {
   if (output.signal_type != "composite") {
     out << YAML::Key << "signal_type" << YAML::Value << output.signal_type;
   }
+  if (output.efm_audio.enabled) {
+    out << YAML::Key << "efm_audio" << YAML::Value << YAML::BeginMap;
+    out << YAML::Key << "pair" << YAML::Value << output.efm_audio.pair;
+    out << YAML::EndMap;
+  }
   out << YAML::EndMap;
 }
 

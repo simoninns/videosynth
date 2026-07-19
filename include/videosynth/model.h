@@ -350,11 +350,23 @@ struct Section {
   std::vector<AudioChannelPair> audio_channel_pairs = {};
 };
 
+// LaserDisc digital audio (EFM) output selection. When `enabled`, the single
+// audio channel pair named by `pair` is additionally encoded as an IEC
+// 60908-1999 EFM channel stream (IEC 60856:1986 Amd 2 clause 13 for PAL, IEC
+// 60857:1986 Amd 2 clause 13 for NTSC) and written alongside that pair's WAV
+// file. The WAV output for the pair is unaffected.
+struct EfmAudioOutput {
+  bool enabled = false;
+  // Channel-pair number 0–7, matching AudioChannelPair::pair.
+  int pair = 0;
+};
+
 struct OutputTargets {
   std::string video_path;
   std::string metadata_path;
   // "composite" (default) or "yc" (dual-file luma+chroma).
   std::string signal_type = "composite";
+  EfmAudioOutput efm_audio = {};
 };
 
 enum class DiscSkipDirection {
@@ -524,9 +536,13 @@ inline bool operator==(const Section& a, const Section& b) {
          a.audio_channel_pairs == b.audio_channel_pairs;
 }
 
+inline bool operator==(const EfmAudioOutput& a, const EfmAudioOutput& b) {
+  return a.enabled == b.enabled && a.pair == b.pair;
+}
+
 inline bool operator==(const OutputTargets& a, const OutputTargets& b) {
   return a.video_path == b.video_path && a.metadata_path == b.metadata_path &&
-         a.signal_type == b.signal_type;
+         a.signal_type == b.signal_type && a.efm_audio == b.efm_audio;
 }
 
 inline bool operator==(const DiscSkip& a, const DiscSkip& b) {

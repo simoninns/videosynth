@@ -1530,5 +1530,202 @@ TEST(ProjectValidatorTest, RejectsNegativeRampPeriod) {
   ASSERT_FALSE(result.errors.empty());
 }
 
+// True when any diagnostic in `messages` contains `needle`.
+bool ContainsMessage(const std::vector<std::string>& messages,
+                     const std::string& needle) {
+  for (const std::string& message : messages) {
+    if (message.find(needle) != std::string::npos) {
+      return true;
+    }
+  }
+  return false;
+}
+
+Section MakeEfmSection(const std::string& name, SectionType section_type,
+                       int duration_frames) {
+  Section section;
+  section.name = name;
+  section.type = "progressive";
+  section.section_type = section_type;
+  section.source = DefaultProgressiveSourcePath();
+  section.duration_frames = duration_frames;
+  return section;
+}
+
+// Declares channel pair `pair` on `section` so the EFM selection resolves to a
+// real audio source.
+void AddActiveChannelPair(Section* section, int pair) {
+  AudioChannelPair channel_pair;
+  channel_pair.pair = pair;
+  channel_pair.pair_specified = true;
+  channel_pair.left.enabled = true;
+  channel_pair.left.frequency_hz = 1000.0;
+  section->audio_channel_pairs.push_back(channel_pair);
+}
+
+// PAL project (25 frames/s) with a lead-in, one 8 s programme-area track
+// carrying channel pair 0, and a lead-out; EFM enabled for pair 0.
+Project MakeEfmProject() {
+  Project project = MakeValidProject();
+  project.sections.clear();
+  project.sections.push_back(
+      MakeEfmSection("LeadIn", SectionType::kLeadIn, 25));
+  Section programme =
+      MakeEfmSection("Track1", SectionType::kProgrammeArea, 200);
+  AddActiveChannelPair(&programme, 0);
+  project.sections.push_back(programme);
+  project.sections.push_back(
+      MakeEfmSection("LeadOut", SectionType::kLeadOut, 25));
+  project.output.efm_audio.enabled = true;
+  project.output.efm_audio.pair = 0;
+  return project;
+}
+
+TEST(ProjectValidatorTest, AcceptsEfmAudioWithDeclaredPairAndLeadIn) {
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(MakeEfmProject());
+
+  EXPECT_TRUE(result.is_valid);
+  EXPECT_TRUE(result.errors.empty());
+  EXPECT_FALSE(ContainsMessage(result.warnings, "efm_audio"));
+}
+
+TEST(ProjectValidatorTest, RejectsEfmAudioPairAboveRange) {
+  Project project = MakeEfmProject();
+  project.output.efm_audio.pair = 8;
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_FALSE(result.is_valid);
+  EXPECT_TRUE(ContainsMessage(result.errors, "output.efm_audio.pair"));
+  EXPECT_TRUE(ContainsMessage(result.errors, "8"));
+}
+
+TEST(ProjectValidatorTest, RejectsEfmAudioPairBelowRange) {
+  Project project = MakeEfmProject();
+  project.output.efm_audio.pair = -1;
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_FALSE(result.is_valid);
+  EXPECT_TRUE(ContainsMessage(result.errors, "output.efm_audio.pair"));
+}
+
+TEST(ProjectValidatorTest, RejectsEfmAudioForPalMPreset) {
+  Project project = MakeEfmProject();
+  project.cvbs_presets.video_standard_preset = Standard::kPalM;
+  project.cvbs_presets.ntsc_black_setup_ire = 7.5;
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_FALSE(result.is_valid);
+  EXPECT_TRUE(ContainsMessage(result.errors,
+                              "output.efm_audio requires a PAL "
+                              "or NTSC video_standard_preset"));
+  EXPECT_TRUE(ContainsMessage(result.errors, "PAL_M"));
+}
+
+TEST(ProjectValidatorTest, WarnsWhenEfmAudioPairIsNotDeclared) {
+  Project project = MakeEfmProject();
+  project.output.efm_audio.pair = 4;
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_TRUE(result.is_valid);
+  EXPECT_TRUE(ContainsMessage(result.warnings,
+                              "output.efm_audio.pair 4 is not declared"));
+}
+
+TEST(ProjectValidatorTest, RejectsMoreEfmTracksThanTheDiscLimit) {
+  Project project = MakeEfmProject();
+  // 80 programme-area sections exceeds the 79-track limit of IEC 60856 Amd 2
+  // 13.5.3.3 / IEC 60857 Amd 2 13.6.3.3.
+  for (int index = 1; index < 80; ++index) {
+    project.sections.push_back(MakeEfmSection(
+        "Track" + std::to_string(index + 1), SectionType::kProgrammeArea, 200));
+  }
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_FALSE(result.is_valid);
+  EXPECT_TRUE(ContainsMessage(result.errors, "at most 79 tracks"));
+  EXPECT_TRUE(ContainsMessage(result.errors, "80 programme_area section(s)"));
+}
+
+TEST(ProjectValidatorTest, AcceptsExactlyTheEfmTrackLimit) {
+  Project project = MakeEfmProject();
+  for (int index = 1; index < 79; ++index) {
+    project.sections.push_back(MakeEfmSection(
+        "Track" + std::to_string(index + 1), SectionType::kProgrammeArea, 200));
+  }
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_TRUE(result.is_valid);
+  EXPECT_FALSE(ContainsMessage(result.errors, "at most 79 tracks"));
+}
+
+TEST(ProjectValidatorTest, WarnsWhenFirstEfmTrackIsShorterThanPausePlusTrack) {
+  Project project = MakeEfmProject();
+  // 125 PAL frames = 5 s: longer than the 4 s track minimum but shorter than
+  // the 2 s pause plus 4 s track required of the first track.
+  project.sections[1].duration_frames = 125;
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_TRUE(result.is_valid);
+  EXPECT_TRUE(ContainsMessage(
+      result.warnings,
+      "section 'Track1' is shorter than the 6 s minimum length"));
+}
+
+TEST(ProjectValidatorTest, WarnsWhenLaterEfmTrackIsShorterThanFourSeconds) {
+  Project project = MakeEfmProject();
+  // 75 PAL frames = 3 s, below the 4 s minimum for a non-first track.
+  project.sections.insert(
+      project.sections.begin() + 2,
+      MakeEfmSection("Track2", SectionType::kProgrammeArea, 75));
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_TRUE(result.is_valid);
+  EXPECT_TRUE(ContainsMessage(
+      result.warnings,
+      "section 'Track2' is shorter than the 4 s minimum length"));
+  EXPECT_FALSE(ContainsMessage(result.warnings, "'Track1' is shorter"));
+}
+
+TEST(ProjectValidatorTest, WarnsWhenEfmProjectHasNoLeadInSection) {
+  Project project = MakeEfmProject();
+  project.sections.erase(project.sections.begin());
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_TRUE(result.is_valid);
+  EXPECT_TRUE(ContainsMessage(result.warnings, "no lead_in section"));
+}
+
+TEST(ProjectValidatorTest, IgnoresEfmTrackLayoutWhenEfmAudioIsDisabled) {
+  Project project = MakeEfmProject();
+  project.output.efm_audio.enabled = false;
+  project.output.efm_audio.pair = 4;
+  project.sections[1].duration_frames = 1;
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_TRUE(result.is_valid);
+  EXPECT_FALSE(ContainsMessage(result.warnings, "efm_audio"));
+}
+
 }  // namespace
 }  // namespace videosynth

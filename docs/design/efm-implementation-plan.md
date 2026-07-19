@@ -29,8 +29,8 @@ between the WAV and EFM paths.
 
 Per the project requirement, all EFM signal processing is implemented as a
 **separate module** — a self-contained static library with a narrow public
-interface — so that later functionality (decoder, TOC/lead-in subcode, data
-modes, RF modulation) can be added without disturbing the core audio subsystem.
+interface — so that later functionality (decoder, data modes, RF modulation)
+can be added without disturbing the core audio subsystem.
 
 ---
 

@@ -1048,5 +1048,85 @@ TEST(YamlProjectParserTest, RejectsUnknownChannelRampKey) {
   ASSERT_FALSE(result.errors.empty());
 }
 
+// Minimal project text with an `output` block whose body is supplied by the
+// caller, used by the EFM digital audio output cases below.
+std::string MakeProjectWithOutputBlock(const std::string& output_body) {
+  return std::string(
+             "project:\n"
+             "  name: EfmAudio\n"
+             "  version: \"1.0\"\n"
+             "cvbs_presets:\n"
+             "  video_standard_preset: PAL\n"
+             "  sample_encoding_preset: CVBS_U10_4FSC\n"
+             "  signal_state_preset: STANDARD_TBC_LOCKED\n"
+             "output:\n"
+             "  video_path: out.composite\n") +
+         output_body +
+         "sections:\n"
+         "  - name: Programme\n"
+         "    type: progressive\n"
+         "    source: fixture.exr\n"
+         "    duration_frames: 10\n";
+}
+
+TEST(YamlProjectParserTest, ParsesEfmAudioOutputPair) {
+  const std::string yaml = MakeProjectWithOutputBlock(
+      "  efm_audio:\n"
+      "    pair: 3\n");
+
+  YamlProjectParser parser;
+  const ParseResult result = parser.ParseString(yaml);
+
+  ASSERT_TRUE(result.ok);
+  EXPECT_TRUE(result.project.output.efm_audio.enabled);
+  EXPECT_EQ(result.project.output.efm_audio.pair, 3);
+}
+
+TEST(YamlProjectParserTest, EfmAudioDisabledWhenOutputBlockAbsent) {
+  YamlProjectParser parser;
+  const ParseResult result = parser.ParseString(MakeProjectWithOutputBlock(""));
+
+  ASSERT_TRUE(result.ok);
+  EXPECT_FALSE(result.project.output.efm_audio.enabled);
+  EXPECT_EQ(result.project.output.efm_audio.pair, 0);
+}
+
+TEST(YamlProjectParserTest, RejectsEfmAudioWithoutPair) {
+  const std::string yaml = MakeProjectWithOutputBlock(
+      "  efm_audio:\n"
+      "    {}\n");
+
+  YamlProjectParser parser;
+  const ParseResult result = parser.ParseString(yaml);
+
+  EXPECT_FALSE(result.ok);
+  ASSERT_FALSE(result.errors.empty());
+}
+
+TEST(YamlProjectParserTest, RejectsUnsupportedEfmAudioField) {
+  const std::string yaml = MakeProjectWithOutputBlock(
+      "  efm_audio:\n"
+      "    pair: 0\n"
+      "    channel: left\n");
+
+  YamlProjectParser parser;
+  const ParseResult result = parser.ParseString(yaml);
+
+  EXPECT_FALSE(result.ok);
+  ASSERT_FALSE(result.errors.empty());
+}
+
+TEST(YamlProjectParserTest, RejectsNonIntegerEfmAudioPair) {
+  const std::string yaml = MakeProjectWithOutputBlock(
+      "  efm_audio:\n"
+      "    pair: first\n");
+
+  YamlProjectParser parser;
+  const ParseResult result = parser.ParseString(yaml);
+
+  EXPECT_FALSE(result.ok);
+  ASSERT_FALSE(result.errors.empty());
+}
+
 }  // namespace
 }  // namespace videosynth

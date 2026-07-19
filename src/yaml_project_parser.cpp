@@ -444,7 +444,8 @@ ParseResult ParseYamlNode(const YAML::Node& root, ILogger* logger) {
     }
 
     const YAML::Node output = root["output"];
-    const std::set<std::string> output_keys = {"video_path", "signal_type"};
+    const std::set<std::string> output_keys = {"video_path", "signal_type",
+                                               "efm_audio"};
     ValidateAllowedKeys(output, output_keys, "output", &result.errors);
     if (!result.errors.empty()) {
       return result;
@@ -457,6 +458,29 @@ ParseResult ParseYamlNode(const YAML::Node& root, ILogger* logger) {
         DeriveMetadataPath(result.project.output.video_path);
     result.project.output.signal_type =
         output["signal_type"].as<std::string>("composite");
+
+    // Presence of the output.efm_audio map enables LaserDisc digital audio
+    // output for the single channel pair it names.
+    if (output["efm_audio"]) {
+      const YAML::Node efm_node = output["efm_audio"];
+      if (!efm_node.IsMap()) {
+        result.errors.push_back("output.efm_audio must be a map/object.");
+        return result;
+      }
+      const std::set<std::string> efm_keys = {"pair"};
+      ValidateAllowedKeys(efm_node, efm_keys, "output.efm_audio",
+                          &result.errors);
+      if (!result.errors.empty()) {
+        return result;
+      }
+      if (!efm_node["pair"]) {
+        result.errors.push_back(
+            "output.efm_audio is missing required field: 'pair'.");
+        return result;
+      }
+      result.project.output.efm_audio.enabled = true;
+      result.project.output.efm_audio.pair = efm_node["pair"].as<int>();
+    }
 
     if (!ParseProjectLineInjections(root, &result.project, &result.errors)) {
       return result;

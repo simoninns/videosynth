@@ -43,6 +43,16 @@ constexpr int kLaserdiscLeadOutMinFrames = 1250;  // ceil(2000 µm / 1.6 µm)
 constexpr int kPalMaxPictureNumber = 99999;
 constexpr int kNtscMaxPictureNumber = 79999;
 constexpr int kMaxChapterNumber = 79;
+
+// LaserDisc digital audio (EFM) track limits.
+// IEC 60856:1986 Amd 2, 13.5.3.3 / IEC 60857:1986 Amd 2, 13.6.3.3: the track
+// number of a digital audio disc is limited to 79.
+constexpr int kMaxEfmTracks = 79;
+// IEC 60908-1999, 17.5.1: a track shall be at least 4 s long.
+constexpr double kMinEfmTrackSeconds = 4.0;
+// IEC 60908-1999, 17.5.1: the pause preceding the first track is 2 s to 3 s,
+// so the first programme-area section must carry the pause plus a full track.
+constexpr double kEfmFirstTrackPauseSeconds = 2.0;
 constexpr uint32_t kMaxUsersCodeX1Nibble = 7;
 
 std::string Lowercase(std::string value) {
@@ -1336,6 +1346,111 @@ void ValidateAudioParameters(const videosynth::Section& section,
   }
 }
 
+// True if any section declares the given channel-pair number.
+bool ProjectDeclaresChannelPair(const videosynth::Project& project, int pair) {
+  for (const videosynth::Section& section : project.sections) {
+    for (const videosynth::AudioChannelPair& channel_pair :
+         section.audio_channel_pairs) {
+      if (channel_pair.pair_specified && channel_pair.pair == pair) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+// Validates the project-level EFM digital audio selection: the channel pair
+// exists, the video standard has a LaserDisc digital audio specification, and
+// the programme-area track layout satisfies the CD-DA/LaserDisc track rules.
+void ValidateEfmAudioOutput(const videosynth::Project& project,
+                            videosynth::ValidationResult* result) {
+  if (result == nullptr || !project.output.efm_audio.enabled) {
+    return;
+  }
+
+  const int pair = project.output.efm_audio.pair;
+  if (pair < 0 || pair >= videosynth::kMaxAudioChannelPairs) {
+    result->is_valid = false;
+    result->errors.push_back(
+        "Project configuration error: output.efm_audio.pair must be in [0, " +
+        std::to_string(videosynth::kMaxAudioChannelPairs - 1) + "]; got " +
+        std::to_string(pair) + ".");
+  } else if (!ProjectDeclaresChannelPair(project, pair)) {
+    result->warnings.push_back(
+        "output.efm_audio.pair " + std::to_string(pair) +
+        " is not declared by any section; the EFM stream will be silent.");
+  }
+
+  // LaserDisc digital audio is specified for 625-line PAL (IEC 60856:1986
+  // Amd 2, clause 13) and 525-line NTSC (IEC 60857:1986 Amd 2, clause 13)
+  // only; no other standard has an EFM sample-frequency definition.
+  const videosynth::Standard standard =
+      project.cvbs_presets.video_standard_preset;
+  if (standard != videosynth::Standard::kPal &&
+      standard != videosynth::Standard::kNtsc) {
+    result->is_valid = false;
+    result->errors.push_back(
+        "Project configuration error: output.efm_audio requires a PAL or NTSC "
+        "video_standard_preset; got '" +
+        videosynth::StandardToString(standard) + "'.");
+    return;
+  }
+
+  const double frame_rate_hz =
+      videosynth::GetTimingConstants(standard).frame_rate_hz;
+  if (frame_rate_hz <= 0.0) {
+    return;
+  }
+
+  // One track per programme-area section, numbered by section sequence.
+  std::vector<const videosynth::Section*> programme_sections;
+  bool has_lead_in = false;
+  for (const videosynth::Section& section : project.sections) {
+    if (section.section_type == videosynth::SectionType::kProgrammeArea) {
+      programme_sections.push_back(&section);
+    } else if (section.section_type == videosynth::SectionType::kLeadIn) {
+      has_lead_in = true;
+    }
+  }
+
+  if (static_cast<int>(programme_sections.size()) > kMaxEfmTracks) {
+    result->is_valid = false;
+    result->errors.push_back(
+        "Project configuration error: output.efm_audio supports at most " +
+        std::to_string(kMaxEfmTracks) + " tracks; the project has " +
+        std::to_string(programme_sections.size()) +
+        " programme_area section(s).");
+  }
+
+  for (std::size_t index = 0; index < programme_sections.size(); ++index) {
+    const videosynth::Section& section = *programme_sections[index];
+    // Sections that play their whole source have no statically known length.
+    if (section.duration_frames_all || section.duration_frames <= 0) {
+      continue;
+    }
+    // The first track's leading 2 s are the mandatory pause and do not count
+    // towards its 4 s minimum length.
+    const double minimum_seconds =
+        kMinEfmTrackSeconds + (index == 0 ? kEfmFirstTrackPauseSeconds : 0.0);
+    const double section_seconds =
+        static_cast<double>(section.duration_frames) / frame_rate_hz;
+    if (section_seconds < minimum_seconds) {
+      result->warnings.push_back(
+          "output.efm_audio: programme_area section '" + section.name +
+          "' is shorter than the " +
+          std::to_string(static_cast<int>(minimum_seconds)) +
+          " s minimum length required for EFM track " +
+          std::to_string(index + 1) + ".");
+    }
+  }
+
+  if (!has_lead_in) {
+    result->warnings.push_back(
+        "output.efm_audio: the project has no lead_in section, so no table of "
+        "contents will be emitted.");
+  }
+}
+
 }  // namespace
 
 namespace videosynth {
@@ -1432,6 +1547,8 @@ ValidationResult ProjectValidator::Validate(const Project& project) {
           "when signal_type is 'yc'.");
     }
   }
+
+  ValidateEfmAudioOutput(project, &result);
 
   if (project.sections.empty()) {
     result.is_valid = false;

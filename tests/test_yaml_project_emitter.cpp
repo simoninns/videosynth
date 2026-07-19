@@ -252,6 +252,31 @@ sections:
 )");
 }
 
+TEST(YamlProjectEmitterTest, EfmAudioOutputRoundTripsSelectedPair) {
+  ExpectRoundTrip(R"(
+cvbs_presets:
+  video_standard_preset: PAL
+output:
+  video_path: out/video.composite
+  efm_audio:
+    pair: 2
+sections:
+  - name: Bars
+    type: progressive
+    source: assets/bars.exr
+    duration_frames: 10
+)");
+}
+
+TEST(YamlProjectEmitterTest, DisabledEfmAudioOmitsOutputKey) {
+  YamlProjectParser parser;
+  const ParseResult parsed = parser.ParseString(kMinimalPalYaml);
+  ASSERT_TRUE(parsed.ok);
+
+  const std::string emitted = YamlProjectEmitter().EmitString(parsed.project);
+  EXPECT_EQ(emitted.find("efm_audio"), std::string::npos);
+}
+
 TEST(YamlProjectEmitterTest, DurationFramesAllRoundTrips) {
   ExpectRoundTrip(R"(
 cvbs_presets:
