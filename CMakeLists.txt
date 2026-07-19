@@ -6,6 +6,9 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# Export compile_commands.json for IDE tooling (clangd, VS Code cpptools).
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 # Version string: PROJECT_VERSION_OVERRIDE (e.g. from a Nix build) wins,
 # otherwise the short git commit hash with a "-dirty" suffix when the working
 # tree has uncommitted changes.
