@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstddef>
+#include <utility>
 
 #include "videosynth/vits_definition.h"
 #include "videosynth/vits_definition_provider.h"
@@ -134,6 +135,43 @@ std::vector<int> DefaultVitsLines(Standard standard,
     return {19, 282};
   }
   return {};
+}
+
+std::vector<VitsInjection> LaserdiscVitsSet(Standard standard) {
+  std::vector<VitsInjection> set;
+  if (standard == Standard::kPal) {
+    // IEC 60856 §9.1.3: VITS on lines 19, 20, 332, 333 (the field-1 pair
+    // mirrored to field 2). uk-national is the line-19 UK ITS; vits20 the
+    // line-20 ITS-2.
+    set.push_back(VitsInjection{"uk-national", {19, 332}});
+    set.push_back(VitsInjection{"vits20", {20, 333}});
+  } else if (standard == Standard::kNtsc || standard == Standard::kPalM) {
+    // IEC 60857 §9.1.3 (VIRS on 19/282, required for colour) and §9.1.4
+    // (composite ITS on line 20, combination ITS on line 283), per NTC-7.
+    set.push_back(VitsInjection{"virs", {19, 282}});
+    set.push_back(VitsInjection{"ntc7-composite", {20}});
+    set.push_back(VitsInjection{"ntc7-combination", {283}});
+  }
+  return set;
+}
+
+ProjectLineInjections ReconcileVitsForStandard(ProjectLineInjections injections,
+                                               Standard new_standard) {
+  if (injections.placement == VitsPlacement::kLaserdisc) {
+    injections.vits = LaserdiscVitsSet(new_standard);
+    return injections;
+  }
+
+  const std::vector<std::string> available = AvailableVitsTypes(new_standard);
+  std::vector<VitsInjection> kept;
+  for (VitsInjection& vits : injections.vits) {
+    if (std::find(available.begin(), available.end(), vits.vits_type) !=
+        available.end()) {
+      kept.push_back(std::move(vits));
+    }
+  }
+  injections.vits = std::move(kept);
+  return injections;
 }
 
 bool CodeTypeUsesStartValue(const std::string& code_type) {

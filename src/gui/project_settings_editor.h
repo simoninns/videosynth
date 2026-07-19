@@ -62,6 +62,7 @@ class ProjectSettingsEditor : public QWidget {
   void OnStandardChanged();
   void OnSignalTypeChanged();
   void OnBrowseVideoPath();
+  void OnVitsPlacementChanged();
   void OnVitsRowToggled(int row);
   void OnVitsLineEdited(int row);
 
@@ -82,17 +83,20 @@ class ProjectSettingsEditor : public QWidget {
   QCheckBox* setup_ire_check_ = nullptr;
   QComboBox* setup_ire_combo_ = nullptr;
 
-  // One VITS checklist row: the type, its tick box, and the target-line editor
-  // (read-only for fixed-placement types, editable for the free-placement virs
-  // colour reference).
+  // One VITS checklist row: the type, its tick box, and the target-line editor.
+  // The line editor is read-only only under standard placement for types with a
+  // fixed broadcast line; laserdisc and custom placement make it editable.
   struct VitsRow {
     std::string vits_type;
     QCheckBox* check = nullptr;
     QLineEdit* lines = nullptr;
   };
 
-  // Project-wide line injections (laserdisc disc format + VITS set).
+  // Project-wide line injections (laserdisc disc format + VITS placement +
+  // set).
   QComboBox* disc_type_combo_ = nullptr;
+  QComboBox* vits_placement_combo_ = nullptr;
+  QLabel* vits_label_ = nullptr;
   QGridLayout* vits_checklist_layout_ = nullptr;
   std::vector<VitsRow> vits_rows_;
 

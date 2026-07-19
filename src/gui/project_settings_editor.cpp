@@ -23,6 +23,7 @@
 #include <QPlainTextEdit>
 #include <QPushButton>
 #include <QVBoxLayout>
+#include <utility>
 
 #include "asset_roots.h"
 #include "line_injection_presenter.h"
@@ -34,6 +35,30 @@ constexpr int kVitsTypeColumn = 0;
 constexpr int kVitsLinesColumn = 1;
 // Sentinel disc_type combo entry meaning "not a laserdisc project".
 const char* const kDiscTypeNone = "(none)";
+
+// VITS placement combo item order: 0 standard, 1 laserdisc, 2 custom.
+videosynth::VitsPlacement VitsPlacementFromComboIndex(int index) {
+  switch (index) {
+    case 1:
+      return videosynth::VitsPlacement::kLaserdisc;
+    case 2:
+      return videosynth::VitsPlacement::kCustom;
+    default:
+      return videosynth::VitsPlacement::kStandard;
+  }
+}
+
+int ComboIndexFromVitsPlacement(videosynth::VitsPlacement placement) {
+  switch (placement) {
+    case videosynth::VitsPlacement::kLaserdisc:
+      return 1;
+    case videosynth::VitsPlacement::kCustom:
+      return 2;
+    case videosynth::VitsPlacement::kStandard:
+    default:
+      return 0;
+  }
+}
 }  // namespace
 
 namespace videosynth::gui {
@@ -142,14 +167,20 @@ void ProjectSettingsEditor::BuildUi() {
     disc_type_combo_->addItem(QString::fromStdString(disc_type));
   }
   disc_form->addRow(tr("Disc format:"), disc_type_combo_);
+
+  vits_placement_combo_ = new QComboBox(injections_group);
+  vits_placement_combo_->addItem(tr("Standard (broadcast lines)"));
+  vits_placement_combo_->addItem(tr("Laserdisc (IEC 60856/60857)"));
+  vits_placement_combo_->addItem(tr("Custom (choose lines)"));
+  disc_form->addRow(tr("VITS placement:"), vits_placement_combo_);
   injections_layout->addLayout(disc_form);
 
-  auto* vits_label = new QLabel(
-      tr("VITS test signals (applied project-wide) — tick the signals to "
-         "include; each sits on its standard line."),
-      injections_group);
-  vits_label->setWordWrap(true);
-  injections_layout->addWidget(vits_label);
+  connect(vits_placement_combo_, &QComboBox::activated, this,
+          &ProjectSettingsEditor::OnVitsPlacementChanged);
+
+  vits_label_ = new QLabel(injections_group);
+  vits_label_->setWordWrap(true);
+  injections_layout->addWidget(vits_label_);
 
   auto* vits_host = new QWidget(injections_group);
   vits_checklist_layout_ = new QGridLayout(vits_host);
@@ -265,6 +296,8 @@ void ProjectSettingsEditor::LoadFromDocument() {
     disc_index = disc_type_combo_->count() - 1;
   }
   disc_type_combo_->setCurrentIndex(disc_index);
+  vits_placement_combo_->setCurrentIndex(
+      ComboIndexFromVitsPlacement(project.line_injections.placement));
   RebuildVitsChecklist();
 
   video_path_edit_->setText(QString::fromStdString(project.output.video_path));
@@ -283,7 +316,27 @@ void ProjectSettingsEditor::RebuildVitsChecklist() {
 
   const Project& project = document_->project();
   const Standard standard = project.cvbs_presets.video_standard_preset;
+  const VitsPlacement placement = project.line_injections.placement;
   const std::vector<std::string> vits_types = AvailableVitsTypes(standard);
+
+  switch (placement) {
+    case VitsPlacement::kStandard:
+      vits_label_->setText(
+          tr("VITS test signals (applied project-wide) — tick the signals to "
+             "include; each sits on its standard broadcast line."));
+      break;
+    case VitsPlacement::kLaserdisc:
+      vits_label_->setText(
+          tr("VITS test signals placed on the laserdisc VBI lines "
+             "(IEC 60856/60857); the spec-required set is pre-selected. "
+             "Lines stay clear of the address-code ranges."));
+      break;
+    case VitsPlacement::kCustom:
+      vits_label_->setText(
+          tr("VITS test signals (applied project-wide) — tick the signals to "
+             "include and set each target VBI line."));
+      break;
+  }
 
   const auto find_existing =
       [&project](const std::string& vits_type) -> const VitsInjection* {
@@ -299,7 +352,10 @@ void ProjectSettingsEditor::RebuildVitsChecklist() {
   for (const std::string& vits_type : vits_types) {
     const VitsInjection* existing = find_existing(vits_type);
     const bool ticked = existing != nullptr;
-    const bool fixed = VitsHasFixedLine(standard, vits_type);
+    // Fixed placement lines only bind under standard placement; laserdisc and
+    // custom placement let the user move each signal.
+    const bool line_locked = placement == VitsPlacement::kStandard &&
+                             VitsHasFixedLine(standard, vits_type);
 
     auto* check = new QCheckBox(QString::fromStdString(vits_type));
     check->setChecked(ticked);
@@ -312,12 +368,12 @@ void ProjectSettingsEditor::RebuildVitsChecklist() {
     auto* lines_edit = new QLineEdit();
     lines_edit->setText(QString::fromStdString(FormatTargetLines(lines)));
     lines_edit->setPlaceholderText(tr("e.g. 19, 282"));
-    lines_edit->setReadOnly(fixed);
+    lines_edit->setReadOnly(line_locked);
     lines_edit->setEnabled(ticked);
     lines_edit->setToolTip(
-        fixed ? tr("Fixed placement line for this signal (set by the "
-                   "standard).")
-              : tr("Target VBI line(s), comma-separated."));
+        line_locked ? tr("Fixed placement line for this signal (set by the "
+                         "standard).")
+                    : tr("Target VBI line(s), comma-separated."));
     connect(lines_edit, &QLineEdit::editingFinished, this,
             [this, row] { OnVitsLineEdited(row); });
     vits_checklist_layout_->addWidget(lines_edit, row, kVitsLinesColumn);
@@ -390,6 +446,12 @@ void ProjectSettingsEditor::CommitCvbsPresets() {
   // stays previewable; user-chosen sources are left untouched.
   const Standard new_standard = presets.video_standard_preset;
   if (new_standard != old_standard) {
+    // The VITS catalogue is standard-specific, so a standard change must
+    // reconcile the project VITS set (re-seed under laserdisc placement, drop
+    // cross-standard entries otherwise) rather than leave it stale and invalid.
+    document_->SetProjectLineInjections(ReconcileVitsForStandard(
+        document_->project().line_injections, new_standard));
+
     Project remapped = document_->project();
     if (RemapBundledDefaultSources(&remapped, new_standard) > 0) {
       // Push only the sections the remap actually changed through the document
@@ -416,6 +478,8 @@ void ProjectSettingsEditor::CommitLineInjections() {
   ProjectLineInjections li;
   const std::string disc = disc_type_combo_->currentText().toStdString();
   li.disc_type = (disc == kDiscTypeNone) ? std::string() : disc;
+  li.placement =
+      VitsPlacementFromComboIndex(vits_placement_combo_->currentIndex());
 
   for (const VitsRow& vits_row : vits_rows_) {
     if (!vits_row.check->isChecked()) {
@@ -434,6 +498,48 @@ void ProjectSettingsEditor::CommitLineInjections() {
   committing_ = true;
   document_->SetProjectLineInjections(std::move(li));
   committing_ = false;
+}
+
+void ProjectSettingsEditor::OnVitsPlacementChanged() {
+  if (updating_) {
+    return;
+  }
+  const Standard standard =
+      document_->project().cvbs_presets.video_standard_preset;
+  const VitsPlacement placement =
+      VitsPlacementFromComboIndex(vits_placement_combo_->currentIndex());
+
+  // Start from the current model so disc_type and any manual VITS set are
+  // preserved where the new mode allows it.
+  ProjectLineInjections li = document_->project().line_injections;
+  li.placement = placement;
+  switch (placement) {
+    case VitsPlacement::kLaserdisc:
+      // One-click preset: place the spec-required VITS set on the laserdisc
+      // VBI lines, replacing the current selection.
+      li.vits = LaserdiscVitsSet(standard);
+      break;
+    case VitsPlacement::kStandard:
+      // Reset each ticked type to its recommended broadcast line so standard
+      // placement is self-consistent (laserdisc lines would be rejected).
+      for (VitsInjection& vits : li.vits) {
+        vits.target_lines = DefaultVitsLines(standard, vits.vits_type);
+      }
+      break;
+    case VitsPlacement::kCustom:
+      // Keep the current lines; the user takes over placement.
+      break;
+  }
+
+  committing_ = true;
+  document_->SetProjectLineInjections(li);
+  committing_ = false;
+
+  // Safe to rebuild here: this handler is driven by the placement combo, not a
+  // VITS row widget, so no VITS widget is being destroyed mid-signal.
+  updating_ = true;
+  RebuildVitsChecklist();
+  updating_ = false;
 }
 
 void ProjectSettingsEditor::OnVitsRowToggled(int row) {

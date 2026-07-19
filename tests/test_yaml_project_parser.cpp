@@ -253,6 +253,78 @@ TEST(YamlProjectParserTest, ParsesLineInjectionsAndLaserdiscPresetFlags) {
             1);
 }
 
+TEST(YamlProjectParserTest, DefaultsVitsPlacementToStandardWhenAbsent) {
+  const std::string yaml =
+      "cvbs_presets:\n"
+      "  video_standard_preset: PAL\n"
+      "output:\n"
+      "  video_path: out.composite\n"
+      "line_injections:\n"
+      "  vits:\n"
+      "    - vits_type: vits17\n"
+      "      target_lines: [17]\n"
+      "sections:\n"
+      "  - name: Bars\n"
+      "    type: progressive\n"
+      "    source: fixture.exr\n"
+      "    duration_frames: 4\n";
+
+  YamlProjectParser parser;
+  const ParseResult result = parser.ParseString(yaml);
+
+  ASSERT_TRUE(result.ok);
+  EXPECT_EQ(result.project.line_injections.placement, VitsPlacement::kStandard);
+}
+
+TEST(YamlProjectParserTest, ParsesLaserdiscVitsPlacement) {
+  const std::string yaml =
+      "cvbs_presets:\n"
+      "  video_standard_preset: PAL\n"
+      "output:\n"
+      "  video_path: out.composite\n"
+      "line_injections:\n"
+      "  placement: laserdisc\n"
+      "  vits:\n"
+      "    - vits_type: uk-national\n"
+      "      target_lines: [19, 332]\n"
+      "sections:\n"
+      "  - name: Bars\n"
+      "    type: progressive\n"
+      "    source: fixture.exr\n"
+      "    duration_frames: 4\n";
+
+  YamlProjectParser parser;
+  const ParseResult result = parser.ParseString(yaml);
+
+  ASSERT_TRUE(result.ok);
+  EXPECT_EQ(result.project.line_injections.placement,
+            VitsPlacement::kLaserdisc);
+}
+
+TEST(YamlProjectParserTest, RejectsUnknownVitsPlacement) {
+  const std::string yaml =
+      "cvbs_presets:\n"
+      "  video_standard_preset: PAL\n"
+      "output:\n"
+      "  video_path: out.composite\n"
+      "line_injections:\n"
+      "  placement: broadcast\n"
+      "sections:\n"
+      "  - name: Bars\n"
+      "    type: progressive\n"
+      "    source: fixture.exr\n"
+      "    duration_frames: 4\n";
+
+  YamlProjectParser parser;
+  const ParseResult result = parser.ParseString(yaml);
+
+  EXPECT_FALSE(result.ok);
+  ASSERT_FALSE(result.errors.empty());
+  EXPECT_EQ(result.errors[0],
+            "line_injections.placement must be 'standard', 'laserdisc', or "
+            "'custom'.");
+}
+
 TEST(YamlProjectParserTest, RejectsUnsupportedLineInjectionField) {
   const std::string yaml =
       "project:\n"

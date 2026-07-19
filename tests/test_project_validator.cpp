@@ -461,7 +461,7 @@ TEST(ProjectValidatorTest, RejectsVitsTypeOnNonRecommendedLine) {
   ASSERT_FALSE(result.errors.empty());
   EXPECT_EQ(result.errors[0],
             "Line injection validation error: vits_type 'vits17' must target "
-            "frame line 17 for PAL.");
+            "frame line 17 for PAL under standard placement.");
 }
 
 TEST(ProjectValidatorTest, RejectsOverlappingTargetLinesAcrossProjectVits) {
@@ -527,6 +527,72 @@ TEST(ProjectValidatorTest,
      RejectsProjectVitsInLaserdiscReservedRangesWhenLaserdiscIsActive) {
   Project project = MakeValidProject();
   project.line_injections.disc_type = "CAV";
+  project.line_injections.vits.push_back(VitsInjection{"vits17", {17}});
+  project.sections[0].section_type = SectionType::kProgrammeArea;
+
+  Section::LineInjection laserdisc;
+  laserdisc.type = "laserdisc";
+  project.sections[0].line_injections.push_back(laserdisc);
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_FALSE(result.is_valid);
+  ASSERT_FALSE(result.errors.empty());
+  EXPECT_EQ(result.errors[0],
+            "Line injection validation error: VITS target line 17 conflicts "
+            "with laserdisc reserved VBI ranges for PAL.");
+}
+
+TEST(ProjectValidatorTest, LaserdiscPlacementAcceptsLaserdiscVitsLines) {
+  Project project = MakeValidProject();
+  project.line_injections.placement = VitsPlacement::kLaserdisc;
+  project.line_injections.vits.push_back(
+      VitsInjection{"uk-national", {19, 332}});
+  project.line_injections.vits.push_back(VitsInjection{"vits20", {20, 333}});
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_TRUE(result.is_valid);
+  EXPECT_TRUE(result.errors.empty());
+}
+
+TEST(ProjectValidatorTest, LaserdiscPlacementRejectsNonLaserdiscVitsLine) {
+  Project project = MakeValidProject();
+  project.line_injections.placement = VitsPlacement::kLaserdisc;
+  // 17 is vits17's broadcast line but not a laserdisc VITS line.
+  project.line_injections.vits.push_back(VitsInjection{"vits17", {17}});
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_FALSE(result.is_valid);
+  ASSERT_FALSE(result.errors.empty());
+  EXPECT_EQ(result.errors[0],
+            "Line injection validation error: VITS target line 17 is not a "
+            "laserdisc VITS line for PAL under laserdisc placement (allowed: "
+            "19, 20, 332, 333).");
+}
+
+TEST(ProjectValidatorTest, CustomPlacementAcceptsNonRecommendedVitsLine) {
+  Project project = MakeValidProject();
+  project.line_injections.placement = VitsPlacement::kCustom;
+  // vits17's broadcast line is 17; custom placement allows any valid line.
+  project.line_injections.vits.push_back(VitsInjection{"vits17", {21}});
+
+  ProjectValidator validator;
+  const ValidationResult result = validator.Validate(project);
+
+  EXPECT_TRUE(result.is_valid);
+  EXPECT_TRUE(result.errors.empty());
+}
+
+TEST(ProjectValidatorTest,
+     CustomPlacementRejectsReservedVitsLineOnLaserdiscProject) {
+  Project project = MakeValidProject();
+  project.line_injections.disc_type = "CAV";
+  project.line_injections.placement = VitsPlacement::kCustom;
   project.line_injections.vits.push_back(VitsInjection{"vits17", {17}});
   project.sections[0].section_type = SectionType::kProgrammeArea;
 

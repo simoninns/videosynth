@@ -12,9 +12,11 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <set>
 #include <string>
+#include <vector>
 
 #include "videosynth/biphase_types.h"
 #include "videosynth/dropout_scale.h"
@@ -905,20 +907,56 @@ bool ValidateProjectLineInjections(const videosynth::Project& project,
       }
     }
 
-    // Strict policy: VITS types with a defined placement line must target
-    // only that line.
-    if (vits_definition.recommended_frame_line > 0) {
-      for (int line_1based : vits.target_lines) {
-        if (line_1based != vits_definition.recommended_frame_line) {
-          result->is_valid = false;
-          result->errors.push_back(
-              "Line injection validation error: vits_type '" + vits.vits_type +
-              "' must target frame line " +
-              std::to_string(vits_definition.recommended_frame_line) + " for " +
-              videosynth::StandardToString(standard) + ".");
-          return false;
+    // Placement policy governs which frame lines a VITS type may occupy.
+    switch (li.placement) {
+      case videosynth::VitsPlacement::kStandard:
+        // Strict: types with a defined broadcast line must target only it.
+        if (vits_definition.recommended_frame_line > 0) {
+          for (int line_1based : vits.target_lines) {
+            if (line_1based != vits_definition.recommended_frame_line) {
+              result->is_valid = false;
+              result->errors.push_back(
+                  "Line injection validation error: vits_type '" +
+                  vits.vits_type + "' must target frame line " +
+                  std::to_string(vits_definition.recommended_frame_line) +
+                  " for " + videosynth::StandardToString(standard) +
+                  " under standard placement.");
+              return false;
+            }
+          }
         }
+        break;
+      case videosynth::VitsPlacement::kLaserdisc: {
+        // Laserdisc placement: VITS may sit only on the standard's laserdisc
+        // VBI lines (IEC 60856 §9.1.3 / IEC 60857 §9.1.3-9.1.4).
+        const std::vector<int> laserdisc_lines =
+            videosynth::LaserdiscVitsLines(standard);
+        for (int line_1based : vits.target_lines) {
+          if (std::find(laserdisc_lines.begin(), laserdisc_lines.end(),
+                        line_1based) == laserdisc_lines.end()) {
+            std::string allowed;
+            for (std::size_t i = 0; i < laserdisc_lines.size(); ++i) {
+              if (i > 0) {
+                allowed += ", ";
+              }
+              allowed += std::to_string(laserdisc_lines[i]);
+            }
+            result->is_valid = false;
+            result->errors.push_back(
+                "Line injection validation error: VITS target line " +
+                std::to_string(line_1based) +
+                " is not a laserdisc VITS line for " +
+                videosynth::StandardToString(standard) +
+                " under laserdisc placement (allowed: " + allowed + ").");
+            return false;
+          }
+        }
+        break;
       }
+      case videosynth::VitsPlacement::kCustom:
+        // Custom placement: any in-range, non-overlapping, non-reserved line is
+        // accepted (those checks are applied above).
+        break;
     }
   }
 

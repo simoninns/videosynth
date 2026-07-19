@@ -234,13 +234,25 @@ bool ParseProjectLineInjections(const YAML::Node& root, Project* project,
     return false;
   }
 
-  const std::set<std::string> keys = {"disc_type", "vits"};
+  const std::set<std::string> keys = {"disc_type", "placement", "vits"};
   ValidateAllowedKeys(node, keys, "line_injections", errors);
   if (!errors->empty()) {
     return false;
   }
 
   project->line_injections.disc_type = node["disc_type"].as<std::string>("");
+
+  if (node["placement"]) {
+    const std::string placement = node["placement"].as<std::string>("");
+    if (placement != "standard" && placement != "laserdisc" &&
+        placement != "custom") {
+      errors->push_back(
+          "line_injections.placement must be 'standard', 'laserdisc', or "
+          "'custom'.");
+      return false;
+    }
+    project->line_injections.placement = VitsPlacementFromString(placement);
+  }
 
   if (node["vits"]) {
     const YAML::Node vits_node = node["vits"];

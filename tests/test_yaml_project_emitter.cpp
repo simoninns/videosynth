@@ -80,6 +80,75 @@ TEST(YamlProjectEmitterTest, MinimalProjectOmitsUnsetOptionalBlocks) {
   EXPECT_EQ(emitted.find("ntsc_black_setup_ire"), std::string::npos);
 }
 
+TEST(YamlProjectEmitterTest, LaserdiscVitsPlacementRoundTrips) {
+  ExpectRoundTrip(R"(
+cvbs_presets:
+  video_standard_preset: PAL
+output:
+  video_path: out/video.composite
+line_injections:
+  placement: laserdisc
+  vits:
+    - vits_type: uk-national
+      target_lines: [19, 332]
+    - vits_type: vits20
+      target_lines: [20, 333]
+sections:
+  - name: Bars
+    type: progressive
+    source: assets/bars.exr
+    duration_frames: 10
+)");
+}
+
+TEST(YamlProjectEmitterTest, CustomVitsPlacementIsEmitted) {
+  YamlProjectParser parser;
+  const ParseResult parsed = parser.ParseString(R"(
+cvbs_presets:
+  video_standard_preset: PAL
+output:
+  video_path: out/video.composite
+line_injections:
+  placement: custom
+  vits:
+    - vits_type: vits17
+      target_lines: [21]
+sections:
+  - name: Bars
+    type: progressive
+    source: assets/bars.exr
+    duration_frames: 10
+)");
+  ASSERT_TRUE(parsed.ok);
+
+  const std::string emitted = YamlProjectEmitter().EmitString(parsed.project);
+  EXPECT_NE(emitted.find("placement: custom"), std::string::npos);
+}
+
+TEST(YamlProjectEmitterTest, StandardVitsPlacementOmitsPlacementKey) {
+  YamlProjectParser parser;
+  const ParseResult parsed = parser.ParseString(R"(
+cvbs_presets:
+  video_standard_preset: PAL
+output:
+  video_path: out/video.composite
+line_injections:
+  vits:
+    - vits_type: vits17
+      target_lines: [17]
+sections:
+  - name: Bars
+    type: progressive
+    source: assets/bars.exr
+    duration_frames: 10
+)");
+  ASSERT_TRUE(parsed.ok);
+
+  const std::string emitted = YamlProjectEmitter().EmitString(parsed.project);
+  EXPECT_NE(emitted.find("line_injections"), std::string::npos);
+  EXPECT_EQ(emitted.find("placement"), std::string::npos);
+}
+
 TEST(YamlProjectEmitterTest, AssetRootTokenSourceRoundTrips) {
   const std::string yaml = R"(
 cvbs_presets:

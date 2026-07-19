@@ -708,7 +708,7 @@ The current parser, validator, and runtime implement only a subset of the YAML s
 - The `project:` block fields `name`, `version`, and `description` are parsed and retained on the in-memory `Project` model, so they survive load/save round-trips.
 - A YAML project **emitter** (`YamlProjectEmitter` in `videosynth_core`) serialises an in-memory `Project` back to this schema. It writes fields in the canonical order shown below and emits only explicitly-set optional blocks (the project-level `line_injections:` and `disc_skips:`, and the per-section `noise:`, `dropouts:`, `osd:`, `audio:`, `line_injections:`), so emitted files stay minimal and diffable. Emit → parse is lossless: a saved file parses back to an equal `Project`, which is the contract that keeps GUI-saved projects loadable by the CLI and vice versa.
 - Implemented section fields: `name`, `type`, `source`, `start_frame`, `duration_frames`, and the optional per-section `noise:`, `dropouts:`, `osd:`, and `audio:` blocks.
-- The `line_injections` schema is split across two levels of the data model. A **project-level** `line_injections:` block (a sibling of `output:` and `sections:`) is parsed into a `ProjectLineInjections` value on `Project` holding the project-wide `disc_type` (`CAV`/`CLV`) and the `vits` set (each entry a `vits_type` plus `target_lines`) applied to every frame of every section. Each **section-level** `line_injections:` list holds only `Section::LineInjection` entries (`type` plus, per type, `target_lines`/`codes`) — the per-section biphase `codes` (picture_number, chapter_number, lead_in/out, etc.) that legitimately differ between lead-in, programme, and lead-out. Both levels receive validator-level schema/compatibility checks for injection type, `target_lines`, and standard-dependent VITS constraints.
+- The `line_injections` schema is split across two levels of the data model. A **project-level** `line_injections:` block (a sibling of `output:` and `sections:`) is parsed into a `ProjectLineInjections` value on `Project` holding the project-wide `disc_type` (`CAV`/`CLV`), the optional `placement` policy (`standard` default / `laserdisc` / `custom`, governing how VITS `target_lines` are constrained — see [VITS](#vits-vertical-interval-test-signals)), and the `vits` set (each entry a `vits_type` plus `target_lines`) applied to every frame of every section. Each **section-level** `line_injections:` list holds only `Section::LineInjection` entries (`type` plus, per type, `target_lines`/`codes`) — the per-section biphase `codes` (picture_number, chapter_number, lead_in/out, etc.) that legitimately differ between lead-in, programme, and lead-out. Both levels receive validator-level schema/compatibility checks for injection type, `target_lines`, and standard-dependent VITS constraints.
 - VITS line injections have a generation-stage orchestration path and are applied only on their targeted frame lines within the owning section span.
 - Built-in VITS catalog entries now carry full waveform-definition primitive/composite trees for every supported `vits_type`, so the default runtime path can render all supported PAL and NTSC VITS patterns.
 - `pal_laserdisc_pilot_burst` is parsed, validated, and fully implemented: a 3.75 MHz (240 × f_H) sinusoidal burst at ±300 mV is superimposed on every sync pulse in the Y channel when enabled.
@@ -744,6 +744,7 @@ output:
 
 line_injections:               # Project-wide laserdisc/VITS settings (sibling of output/sections)
   disc_type: CAV               # CAV or CLV; applies to every section (omit for non-laserdisc projects)
+  placement: standard          # VITS placement policy: standard (default) | laserdisc | custom (omit for standard)
   vits:                        # Project-wide VITS set applied to every frame of every section
     - vits_type: "virs"
       target_lines: [10, 11, 12]
@@ -1200,6 +1201,12 @@ Line injections live at two levels:
 #### **VITS (Vertical Interval Test Signals)**
 
 VITS are a **project-level** signal set. Each VITS entry lives in the top-level `line_injections.vits` list and is applied to every frame of every section — you do not repeat it per section. For laserdisc discs this is where the mandatory NTSC `virs` reference is declared.
+
+**Placement modes.** The optional `line_injections.placement` field selects how the validator constrains each VITS entry's `target_lines`:
+
+- `standard` (default; also assumed when the field is absent) — each VITS type must sit on its broadcast recommended line (`vits17` → 17, `ntc7-composite` → 17, etc.). Any other line is rejected. This preserves the behaviour of projects authored before the field existed.
+- `laserdisc` — VITS must sit on the laserdisc VBI lines, which are clear of the address-code ranges: **PAL** 19, 20, 332, 333 (IEC 60856 §9.1.3); **NTSC/PAL-M** 19, 20, 282, 283 (IEC 60857 §9.1.3 VIRS on 19/282, §9.1.4 composite/combination ITS on 20/283). The editor's one-click laserdisc preset seeds the spec-required set (PAL: `uk-national` on 19/332, `vits20` on 20/333; NTSC: `virs` on 19/282, `ntc7-composite` on 20, `ntc7-combination` on 283).
+- `custom` — VITS may sit on any valid VBI line; the validator still rejects overlapping lines and, on a disc carrying biphase codes, the reserved address-code ranges (see §8.2 reserved-range rule).
 
 For **VITS waveform definitions**, refer to:
 

@@ -64,6 +64,21 @@ bool VitsHasFixedLine(Standard standard, const std::string& vits_type);
 std::vector<int> DefaultVitsLines(Standard standard,
                                   const std::string& vits_type);
 
+// The spec-required VITS set for a laserdisc of this standard, each placed on
+// its laserdisc VBI line(s) — the one-click "laserdisc placement" preset.
+//   PAL:        uk-national on 19/332, vits20 on 20/333 (IEC 60856 §9.1.3).
+//   NTSC/PAL-M: virs on 19/282, ntc7-composite on 20, ntc7-combination on 283
+//               (IEC 60857 §9.1.3 VIRS, §9.1.4 composite/combination ITS).
+std::vector<VitsInjection> LaserdiscVitsSet(Standard standard);
+
+// Reconciles the project VITS set when the video standard changes. The VITS
+// catalogue is standard-specific, so entries do not carry across a standard
+// change. Under laserdisc placement the spec-required set for `new_standard` is
+// substituted; otherwise entries whose vits_type is not offered for
+// `new_standard` are dropped. disc_type and placement are preserved.
+ProjectLineInjections ReconcileVitsForStandard(ProjectLineInjections injections,
+                                               Standard new_standard);
+
 // Which optional parameter each code type carries (biphase-design.md §10).
 bool CodeTypeUsesStartValue(const std::string& code_type);
 bool CodeTypeUsesChapter(const std::string& code_type);

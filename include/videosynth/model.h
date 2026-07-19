@@ -57,6 +57,59 @@ inline std::string StandardToString(Standard standard) {
   }
 }
 
+// VITS placement policy for a project. Governs where the project-wide VITS test
+// signals may sit and how strictly the validator checks their frame lines.
+//   kStandard  — each VITS type sits on its broadcast recommended line (the
+//                catalogue's recommended_frame_line); any other line is
+//                rejected. This is the default and the policy applied to
+//                projects that predate the placement field.
+//   kLaserdisc — VITS sit on the laserdisc VBI lines mandated by IEC 60856
+//                (PAL) / IEC 60857 (NTSC), clear of the address-code lines.
+//   kCustom    — VITS may sit on any valid VBI line; the validator still
+//                rejects overlaps and (for code-carrying discs) the reserved
+//                address-code ranges.
+enum class VitsPlacement { kStandard, kLaserdisc, kCustom };
+
+inline VitsPlacement VitsPlacementFromString(const std::string& value) {
+  if (value == "laserdisc") {
+    return VitsPlacement::kLaserdisc;
+  }
+  if (value == "custom") {
+    return VitsPlacement::kCustom;
+  }
+  return VitsPlacement::kStandard;
+}
+
+inline std::string VitsPlacementToString(VitsPlacement placement) {
+  switch (placement) {
+    case VitsPlacement::kLaserdisc:
+      return "laserdisc";
+    case VitsPlacement::kCustom:
+      return "custom";
+    case VitsPlacement::kStandard:
+    default:
+      return "standard";
+  }
+}
+
+// The VITS VBI lines permitted on a laserdisc of this standard. On laserdisc,
+// the broadcast VITS lines (17/18/330/331 PAL, 17/18/280/281 NTSC) collide with
+// the reserved address/data VBI ranges, so VITS are carried on these lines
+// instead. Returned in field order (field 1 then field 2).
+//   PAL:        IEC 60856 §9.1.3 — lines 19, 20, 332, 333.
+//   NTSC/PAL-M: IEC 60857 §9.1.3 (VIRS 19/282) and §9.1.4 (ITS 20/283).
+inline std::vector<int> LaserdiscVitsLines(Standard standard) {
+  switch (standard) {
+    case Standard::kPal:
+      return {19, 20, 332, 333};
+    case Standard::kNtsc:
+    case Standard::kPalM:
+      return {19, 20, 282, 283};
+    default:
+      return {};
+  }
+}
+
 // Placeholder for project-level biphase configuration.
 // All disc-specific biphase parameters are specified per section and
 // per injection; this struct is reserved for any future global settings.
@@ -342,6 +395,10 @@ struct VitsInjection {
 // format and the VITS complement do not vary per section.
 struct ProjectLineInjections {
   std::string disc_type;
+  // Placement policy for the VITS set (see VitsPlacement). Defaults to
+  // kStandard so projects that omit the field keep the strict broadcast-line
+  // policy they were authored under.
+  VitsPlacement placement = VitsPlacement::kStandard;
   std::vector<VitsInjection> vits;
 };
 
@@ -451,7 +508,8 @@ inline bool operator==(const VitsInjection& a, const VitsInjection& b) {
 
 inline bool operator==(const ProjectLineInjections& a,
                        const ProjectLineInjections& b) {
-  return a.disc_type == b.disc_type && a.vits == b.vits;
+  return a.disc_type == b.disc_type && a.placement == b.placement &&
+         a.vits == b.vits;
 }
 
 inline bool operator==(const Section& a, const Section& b) {

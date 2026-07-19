@@ -73,13 +73,20 @@ void EmitCvbsPresets(YAML::Emitter& out, const CvbsPresets& presets) {
 // VITS test-signal set). Omitted entirely when neither is configured.
 void EmitProjectLineInjections(YAML::Emitter& out,
                                const ProjectLineInjections& line_injections) {
-  if (line_injections.disc_type.empty() && line_injections.vits.empty()) {
+  if (line_injections.disc_type.empty() && line_injections.vits.empty() &&
+      line_injections.placement == VitsPlacement::kStandard) {
     return;
   }
 
   out << YAML::Key << "line_injections" << YAML::Value << YAML::BeginMap;
   if (!line_injections.disc_type.empty()) {
     out << YAML::Key << "disc_type" << YAML::Value << line_injections.disc_type;
+  }
+  // Emitted only when non-default so standard-placement projects keep their
+  // existing serialisation.
+  if (line_injections.placement != VitsPlacement::kStandard) {
+    out << YAML::Key << "placement" << YAML::Value
+        << VitsPlacementToString(line_injections.placement);
   }
   if (!line_injections.vits.empty()) {
     out << YAML::Key << "vits" << YAML::Value << YAML::BeginSeq;

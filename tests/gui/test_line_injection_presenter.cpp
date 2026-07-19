@@ -87,6 +87,88 @@ TEST(LineInjectionPresenterTest, VitsCatalogueIsStandardFiltered) {
   EXPECT_EQ(AvailableVitsTypes(Standard::kPalM), ntsc);
 }
 
+TEST(LineInjectionPresenterTest, LaserdiscVitsSetPlacesPalSignals) {
+  const std::vector<VitsInjection> set = LaserdiscVitsSet(Standard::kPal);
+  ASSERT_EQ(set.size(), 2U);
+  EXPECT_EQ(set[0].vits_type, "uk-national");
+  EXPECT_EQ(set[0].target_lines, (std::vector<int>{19, 332}));
+  EXPECT_EQ(set[1].vits_type, "vits20");
+  EXPECT_EQ(set[1].target_lines, (std::vector<int>{20, 333}));
+}
+
+TEST(LineInjectionPresenterTest, LaserdiscVitsSetPlacesNtscSignals) {
+  const std::vector<VitsInjection> set = LaserdiscVitsSet(Standard::kNtsc);
+  ASSERT_EQ(set.size(), 3U);
+  EXPECT_EQ(set[0].vits_type, "virs");
+  EXPECT_EQ(set[0].target_lines, (std::vector<int>{19, 282}));
+  EXPECT_EQ(set[1].vits_type, "ntc7-composite");
+  EXPECT_EQ(set[1].target_lines, (std::vector<int>{20}));
+  EXPECT_EQ(set[2].vits_type, "ntc7-combination");
+  EXPECT_EQ(set[2].target_lines, (std::vector<int>{283}));
+  // PAL-M shares the System M set.
+  EXPECT_EQ(LaserdiscVitsSet(Standard::kPalM), set);
+}
+
+TEST(LineInjectionPresenterTest,
+     LaserdiscVitsSetValidatesUnderLaserdiscPlacement) {
+  for (const Standard standard : {Standard::kPal, Standard::kNtsc}) {
+    Project project =
+        MakeLaserdiscProject(standard, DiscType::kCAV,
+                             SectionType::kProgrammeArea, "picture_number");
+    project.line_injections.placement = VitsPlacement::kLaserdisc;
+    project.line_injections.vits = LaserdiscVitsSet(standard);
+
+    ProjectValidator validator;
+    const ValidationResult result = validator.Validate(project);
+
+    EXPECT_TRUE(result.is_valid)
+        << "standard=" << StandardToString(standard) << ": "
+        << (result.errors.empty() ? "" : result.errors.front());
+  }
+}
+
+TEST(LineInjectionPresenterTest, ReconcileReSeedsLaserdiscSetOnStandardChange) {
+  // PAL laserdisc set → switch to NTSC must re-seed the NTSC laserdisc set.
+  ProjectLineInjections pal;
+  pal.disc_type = "CAV";
+  pal.placement = VitsPlacement::kLaserdisc;
+  pal.vits = LaserdiscVitsSet(Standard::kPal);
+
+  const ProjectLineInjections ntsc =
+      ReconcileVitsForStandard(pal, Standard::kNtsc);
+
+  EXPECT_EQ(ntsc.disc_type, "CAV");
+  EXPECT_EQ(ntsc.placement, VitsPlacement::kLaserdisc);
+  EXPECT_EQ(ntsc.vits, LaserdiscVitsSet(Standard::kNtsc));
+}
+
+TEST(LineInjectionPresenterTest, ReconcileDropsCrossStandardVitsTypes) {
+  // A standard/custom-placement PAL type has no NTSC counterpart and is
+  // dropped.
+  ProjectLineInjections pal;
+  pal.placement = VitsPlacement::kCustom;
+  pal.vits.push_back(VitsInjection{"vits17", {21}});
+
+  const ProjectLineInjections ntsc =
+      ReconcileVitsForStandard(pal, Standard::kNtsc);
+
+  EXPECT_EQ(ntsc.placement, VitsPlacement::kCustom);
+  EXPECT_TRUE(ntsc.vits.empty());
+}
+
+TEST(LineInjectionPresenterTest, ReconcileKeepsStillValidVitsTypes) {
+  // NTSC virs remains valid on PAL-M (shared System M catalogue).
+  ProjectLineInjections ntsc;
+  ntsc.placement = VitsPlacement::kCustom;
+  ntsc.vits.push_back(VitsInjection{"virs", {19, 282}});
+
+  const ProjectLineInjections palm =
+      ReconcileVitsForStandard(ntsc, Standard::kPalM);
+
+  ASSERT_EQ(palm.vits.size(), 1U);
+  EXPECT_EQ(palm.vits[0].vits_type, "virs");
+}
+
 TEST(LineInjectionPresenterTest, RecommendedLinesComeFromCatalogue) {
   EXPECT_EQ(RecommendedVitsLine(Standard::kPal, "vits17"), 17);
   EXPECT_EQ(RecommendedVitsLine(Standard::kPal, "itu-multiburst"), 18);
