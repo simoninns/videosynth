@@ -63,6 +63,8 @@ find_package(OpenEXR REQUIRED)
 set(videosynth_efm_sources
     src/efm/audio_frame_assembler.cpp
     src/efm/circ_encoder.cpp
+    src/efm/efm_modulator.cpp
+    src/efm/efm_stream_encoder.cpp
     src/efm/subcode_generator.cpp
 )
 
@@ -92,6 +94,7 @@ foreach(module_file IN LISTS videosynth_efm_sources videosynth_efm_headers)
 endforeach()
 
 add_library(videosynth_core
+    src/audio_efm_writer.cpp
     src/audio_synthesizer.cpp
     src/audio_track_generator.cpp
     src/audio_wav_writer.cpp
@@ -319,6 +322,7 @@ add_executable(videosynth_tests
     tests/test_audio_sample_conversion.cpp
     tests/test_audio_synthesizer.cpp
     tests/test_audio_track_generator.cpp
+    tests/test_audio_efm_writer.cpp
     tests/test_audio_wav_writer.cpp
     tests/test_biphase_encoder.cpp
     tests/test_cav_code_generators.cpp
@@ -364,6 +368,8 @@ add_executable(videosynth_tests
     tests/test_dropout_injection.cpp
     tests/test_efm_audio_frame_assembler.cpp
     tests/test_efm_circ_encoder.cpp
+    tests/test_efm_modulator.cpp
+    tests/test_efm_stream_encoder.cpp
     tests/test_efm_subcode_generator.cpp
     tests/test_osd_renderer.cpp
     tests/test_osd_token_resolver.cpp
@@ -432,6 +438,7 @@ set(videosynth_functional_test_patterns
     "^AudioFixtureProjectsTest\\."
     "^AudioPipelineTest\\."
     "^AudioTrackGeneratorTest\\."
+    "^AudioEfmWriterTest\\."
     "^AudioWavWriterTest\\."
     "^FrameSourceTest\\."
     "^ProjectFixturesTest\\."
@@ -510,7 +517,10 @@ set(videosynth_unit_test_patterns
     "^NoiseInjectionTest\\."
     "^DropoutInjectionTest\\."
     "^EfmAudioFrameAssemblerTest\\."
+    "^AudioEfmWriterPathTest\\."
     "^EfmCircEncoderTest\\."
+    "^EfmModulatorTest\\."
+    "^EfmStreamEncoderTest\\."
     "^EfmSubcodeGeneratorTest\\."
     "^OsdRendererTest\\."
     "^OsdTokenResolverTest\\."

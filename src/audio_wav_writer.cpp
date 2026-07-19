@@ -17,6 +17,7 @@
 #include <string>
 #include <string_view>
 
+#include "videosynth/audio_output_paths.h"
 #include "videosynth/timing_constants.h"
 
 namespace videosynth {
@@ -89,22 +90,7 @@ AudioWavWriter::AudioWavWriter(ILogger* logger) : logger_(logger) {}
 
 std::string AudioWavWriter::DeriveAudioPath(const std::string& video_path,
                                             int channel_pair) {
-  constexpr std::string_view kCompositeSuffix = ".composite";
-  constexpr std::string_view kLumaSuffix = ".y";
-
-  std::string base = video_path;
-  auto ends_with = [&](std::string_view suffix) {
-    return base.size() >= suffix.size() &&
-           base.compare(base.size() - suffix.size(), suffix.size(), suffix) ==
-               0;
-  };
-
-  if (ends_with(kCompositeSuffix)) {
-    base.resize(base.size() - kCompositeSuffix.size());
-  } else if (ends_with(kLumaSuffix)) {
-    base.resize(base.size() - kLumaSuffix.size());
-  }
-  return base + "_audio_" + std::to_string(channel_pair) + ".wav";
+  return DeriveAudioTrackPath(video_path, channel_pair, ".wav");
 }
 
 bool AudioWavWriter::BeginWrite(const Project& project, int channel_pair,

@@ -171,6 +171,21 @@ Module conventions (established with the CIRC encoder):
   out-of-table sync patterns `kSubcodeSyncS0` / `kSubcodeSyncS1` instead of a
   control symbol, and `ControlByte(frame)` composes the P/Q/R–W symbol the
   modulator serialises.
+- The modulator works purely in the bit domain and takes the *14 channel bits*
+  of a frame's first byte rather than the byte itself, so the out-of-table
+  S0/S1 sync patterns need no special case in the eight-to-fourteen table.
+  Merging-bit selection expresses ECMA-130 annex E rule ii (no false sync) as
+  "two consecutive maximum-length runs may occur only inside a sync header",
+  which is exactly the 24-bit sync pattern; when no candidate satisfies every
+  rule the run-length rules win, because they govern detectability.
+- `TValueEncoder` converts channel bits to run lengths. The run still in
+  progress at the end of the stream has no terminating transition, so `Flush`
+  extends it to `kMinRunLengthT`; a consumer that reconstructs channel bits and
+  truncates to the known stream length recovers the stream exactly.
+- `EfmStreamEncoder` is the module's only entry point for callers: `Begin(track
+  table)`, repeated `PushSamples`, `Flush`. Channel frames beyond the end of the
+  track table — those produced by the CIRC flush — carry the sync patterns and
+  otherwise-zero P and Q channels.
 - Stages are streaming and single-threaded: repeated push calls followed by an
   explicit `Flush`, with `Reset` restoring the constructed state. Each stage
   documents its thread-safety in its header; none is thread-safe.
@@ -184,6 +199,9 @@ Integration points in `videosynth_core` (thin, mirroring existing patterns):
   file writer with the same streaming contract as `AudioWavWriter`
   (`BeginWrite` / `AppendFrameAudio` / `FinalizeWrite` / `AbortWrite`), owning an
   `efm::EfmStreamEncoder`. This is the only core component that touches the module.
+- `include/videosynth/audio_output_paths.h` — `DeriveAudioTrackPath`, the suffix
+  stripping and `_audio_<pair><extension>` rule shared by `AudioWavWriter` and
+  `AudioEfmWriter`.
 - `AudioTrackGenerator` — for the selected pair only, adds a second
   `AudioSynthesizer` pair constructed at 44 100 Hz and feeds the `AudioEfmWriter`
   from `EmitFrame` in output-frame order.
