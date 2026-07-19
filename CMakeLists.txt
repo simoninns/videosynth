@@ -281,6 +281,7 @@ add_executable(videosynth_tests
     tests/test_active_sample_mapping.cpp
     tests/test_audio_fixture_projects.cpp
     tests/test_audio_pipeline.cpp
+    tests/test_audio_sample_conversion.cpp
     tests/test_audio_synthesizer.cpp
     tests/test_audio_track_generator.cpp
     tests/test_audio_wav_writer.cpp
@@ -415,6 +416,7 @@ set(videosynth_functional_test_patterns
 
 set(videosynth_unit_test_patterns
     "^ActiveSampleMappingTest\\."
+    "^AudioSampleConversionTest\\."
     "^AudioSynthesizerTest\\."
     "^AudioWavWriterPathTest\\."
     "^BiphaseEncoderTest\\."

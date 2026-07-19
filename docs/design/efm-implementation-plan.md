@@ -165,6 +165,9 @@ Integration points in `videosynth_core` (thin, mirroring existing patterns):
 - `AudioTrackGenerator` — for the selected pair only, adds a second
   `AudioSynthesizer` pair constructed at 44 100 Hz and feeds the `AudioEfmWriter`
   from `EmitFrame` in output-frame order.
+- `include/videosynth/audio_sample_conversion.h` — 24-bit → 16-bit sample
+  conversion (round to nearest, saturate) taking synthesised samples into the
+  IEC 60908-1999 clause 12 sample domain before they reach the module.
 - Model / parser / validator / emitter — a project-level `output.efm_audio`
   setting (see Phase 1).
 - Qt GUI — EFM enable and pair selection in the project settings editor.

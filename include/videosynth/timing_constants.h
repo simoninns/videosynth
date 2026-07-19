@@ -220,6 +220,54 @@ inline int AudioSamplesForFrame(Standard standard, std::int64_t frame_index) {
       "Audio samples-per-frame requested for unknown standard");
 }
 
+// LaserDisc digital audio (EFM) is carried at its own sampling frequency,
+// independent of the 48 kHz CVBS audio grid: the EFM path synthesises directly
+// at 44.1 kHz rather than resampling the 48 kHz stream.
+
+// Authoritative EFM audio sample rate in Hz. Both LaserDisc digital audio
+// amendments lock the sampling frequency to the line frequency and both
+// evaluate to exactly 44 100 Hz at the nominal line frequency:
+// IEC 60856-1986 Amd 2 13.2: Fs = 1764/625 x fH = 1764/625 x 15 625 Hz (PAL).
+// IEC 60857-1986 Amd 2 13.2: Fs = 7007/2500 x fH = 7007/2500 x (4.5 MHz/286)
+// (NTSC).
+inline double EfmAudioSampleRateHz() { return 44100.0; }
+
+// Number of 44.1 kHz EFM audio samples carried by stored video frame
+// `frame_index` (zero-based, in output order). Only PAL and NTSC define
+// LaserDisc digital audio; other standards are rejected.
+//
+// PAL is a constant 1764 samples/frame (1764/625 x fH over 25 frames/s is
+// exact, IEC 60856-1986 Amd 2 13.2). NTSC follows the SMPTE 272M-1994 Section
+// 14.3 Table 1 audio-frame sequence for 44.1 kHz: a 100-frame sequence
+// carrying 147 147 samples, where audio frame numbers (1-based within the
+// sequence, frame number 1 at output frame 0) are 1472 samples for odd frames
+// and 1471 for even frames, except frame numbers 23, 47 and 71 which carry
+// 1471.
+inline int EfmAudioSamplesForFrame(Standard standard,
+                                   std::int64_t frame_index) {
+  if (frame_index < 0) {
+    throw std::invalid_argument(
+        "EFM audio samples-per-frame requested for a negative frame index");
+  }
+  if (standard == Standard::kPal) {
+    return 1764;
+  }
+  if (standard == Standard::kNtsc) {
+    // SMPTE 272M-1994 Section 14.3 Table 1: 44.1 kHz, frame sequence 100.
+    const std::int64_t frame_number = (frame_index % 100) + 1;
+    if (frame_number % 2 == 0) {
+      return 1471;
+    }
+    if (frame_number == 23 || frame_number == 47 || frame_number == 71) {
+      return 1471;
+    }
+    return 1472;
+  }
+  throw std::invalid_argument(
+      "EFM audio samples-per-frame requested for a standard without a "
+      "LaserDisc digital audio specification");
+}
+
 inline double SampleRateHzForEncodingPreset(Standard standard,
                                             const std::string& preset) {
   const TimingConstants timing = GetTimingConstants(standard);

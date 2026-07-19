@@ -113,5 +113,50 @@ TEST(TimingConstantsTest, ProvidesPalMAudioRateAndSamplesPerFrame) {
   }
 }
 
+TEST(TimingConstantsTest, ProvidesPalEfmAudioSamplesPerFrame) {
+  EXPECT_DOUBLE_EQ(EfmAudioSampleRateHz(), 44100.0);
+  // IEC 60856-1986 Amd 2 13.2: Fs = 1764/625 x fH, i.e. 1764 samples per
+  // 25 Hz frame exactly, for every frame.
+  for (int frame = 0; frame < 200; ++frame) {
+    EXPECT_EQ(EfmAudioSamplesForFrame(Standard::kPal, frame), 1764);
+  }
+}
+
+TEST(TimingConstantsTest, NtscEfmAudioSequenceMatchesSmpte272mTable1) {
+  // SMPTE 272M-1994 Section 14.3 Table 1: 44.1 kHz, 100-frame sequence, odd
+  // frames 1472 and even frames 1471, with frame numbers 23, 47 and 71
+  // reduced to 1471.
+  for (int frame_number = 1; frame_number <= 100; ++frame_number) {
+    const bool is_exception =
+        frame_number == 23 || frame_number == 47 || frame_number == 71;
+    const int expected = (frame_number % 2 == 0 || is_exception) ? 1471 : 1472;
+    EXPECT_EQ(EfmAudioSamplesForFrame(Standard::kNtsc, frame_number - 1),
+              expected)
+        << "audio frame number " << frame_number;
+    // The sequence repeats every 100 output frames.
+    EXPECT_EQ(EfmAudioSamplesForFrame(Standard::kNtsc, frame_number + 99),
+              expected);
+  }
+}
+
+TEST(TimingConstantsTest, AnyHundredNtscEfmFramesCarry147147Samples) {
+  for (std::int64_t start = 0; start < 250; ++start) {
+    std::int64_t total = 0;
+    for (std::int64_t frame = start; frame < start + 100; ++frame) {
+      total += EfmAudioSamplesForFrame(Standard::kNtsc, frame);
+    }
+    EXPECT_EQ(total, 147147) << "sequence starting at frame " << start;
+  }
+}
+
+TEST(TimingConstantsTest, EfmAudioRejectsStandardsWithoutLaserDiscAudio) {
+  EXPECT_THROW(EfmAudioSamplesForFrame(Standard::kPalM, 0),
+               std::invalid_argument);
+  EXPECT_THROW(EfmAudioSamplesForFrame(Standard::kUnknown, 0),
+               std::invalid_argument);
+  EXPECT_THROW(EfmAudioSamplesForFrame(Standard::kPal, -1),
+               std::invalid_argument);
+}
+
 }  // namespace
 }  // namespace videosynth

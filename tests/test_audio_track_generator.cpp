@@ -11,6 +11,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -208,6 +209,141 @@ TEST(AudioTrackGeneratorTest, SilentChannelWithinDeclaredPairIsZero) {
     EXPECT_EQ(ReadLe24Signed(bytes, right_offset), 0);  // Right is silent.
   }
   EXPECT_TRUE(any_left_nonzero);
+
+  std::filesystem::remove(audio0);
+}
+
+// Runs the generator over `frames` and returns the concatenated 44.1 kHz EFM
+// samples for the left and right channels of the selected pair.
+struct EfmCapture {
+  std::vector<std::int16_t> left;
+  std::vector<std::int16_t> right;
+  std::vector<int> samples_per_frame;
+};
+
+EfmCapture RunAndCaptureEfm(const Project& project,
+                            const std::vector<const Section*>& frames) {
+  EfmCapture capture;
+  AudioTrackGenerator generator;
+  std::vector<std::string> errors;
+  EXPECT_TRUE(generator.Begin(project, frames, &errors));
+  EXPECT_TRUE(generator.efm_active());
+  for (std::size_t k = 0; k < frames.size(); ++k) {
+    EXPECT_TRUE(generator.EmitFrame(k, &errors));
+    capture.samples_per_frame.push_back(generator.efm_samples_for_frame(k));
+    const std::vector<std::int16_t>& left = generator.efm_frame_left();
+    const std::vector<std::int16_t>& right = generator.efm_frame_right();
+    capture.left.insert(capture.left.end(), left.begin(), left.end());
+    capture.right.insert(capture.right.end(), right.begin(), right.end());
+  }
+  EXPECT_TRUE(generator.Finalize(&errors));
+  return capture;
+}
+
+TEST(AudioTrackGeneratorTest, SynthesisesSelectedPairAt44100Hz) {
+  const std::filesystem::path video_path =
+      TempPath("videosynth_atg_efm_pal.composite");
+  const std::filesystem::path audio1 =
+      TempPath("videosynth_atg_efm_pal_audio_1.wav");
+  std::filesystem::remove(audio1);
+
+  Project project = MakeProject(video_path);
+  project.output.efm_audio.enabled = true;
+  project.output.efm_audio.pair = 1;
+  Section section;
+  section.name = "Tone";
+  section.audio_channel_pairs = {MakePair(1, /*left=*/true, /*right=*/true)};
+  project.sections = {section};
+  const std::vector<const Section*> frames = {&project.sections[0],
+                                              &project.sections[0]};
+
+  const EfmCapture capture = RunAndCaptureEfm(project, frames);
+
+  // IEC 60856-1986 Amd 2 13.2: PAL carries 1764 EFM samples per video frame.
+  EXPECT_EQ(capture.samples_per_frame, (std::vector<int>{1764, 1764}));
+  EXPECT_EQ(capture.left.size(), 2U * 1764U);
+  EXPECT_EQ(capture.right.size(), 2U * 1764U);
+  const bool any_nonzero =
+      std::any_of(capture.left.begin(), capture.left.end(),
+                  [](std::int16_t sample) { return sample != 0; });
+  EXPECT_TRUE(any_nonzero);
+  // The 48 kHz WAV path is unaffected and still written for the pair.
+  EXPECT_TRUE(std::filesystem::exists(audio1));
+  const std::vector<char> bytes = ReadFileBytes(audio1);
+  EXPECT_EQ(bytes.size(), 44U + 2U * kFrameBytes);
+
+  std::filesystem::remove(audio1);
+}
+
+TEST(AudioTrackGeneratorTest, EfmSynthesisIsDeterministicAcrossRuns) {
+  const std::filesystem::path video_path =
+      TempPath("videosynth_atg_efm_repeat.composite");
+  const std::filesystem::path audio0 =
+      TempPath("videosynth_atg_efm_repeat_audio_0.wav");
+  std::filesystem::remove(audio0);
+
+  Project project = MakeProject(video_path);
+  project.cvbs_presets.video_standard_preset = Standard::kNtsc;
+  project.output.efm_audio.enabled = true;
+  project.output.efm_audio.pair = 0;
+  Section section;
+  section.name = "Tone";
+  section.audio_channel_pairs = {MakePair(0, /*left=*/true, /*right=*/true)};
+  project.sections = {section};
+  const std::vector<const Section*> frames = {
+      &project.sections[0], &project.sections[0], &project.sections[0]};
+
+  const EfmCapture first = RunAndCaptureEfm(project, frames);
+  const EfmCapture second = RunAndCaptureEfm(project, frames);
+
+  // SMPTE 272M-1994 Table 1: 44.1 kHz NTSC frames 1, 2, 3 of the sequence.
+  EXPECT_EQ(first.samples_per_frame, (std::vector<int>{1472, 1471, 1472}));
+  EXPECT_EQ(first.left, second.left);
+  EXPECT_EQ(first.right, second.right);
+
+  std::filesystem::remove(audio0);
+}
+
+TEST(AudioTrackGeneratorTest,
+     EfmInactiveForUndeclaredPairOrUnsupportedStandard) {
+  const std::filesystem::path video_path =
+      TempPath("videosynth_atg_efm_inactive.composite");
+  const std::filesystem::path audio0 =
+      TempPath("videosynth_atg_efm_inactive_audio_0.wav");
+  std::filesystem::remove(audio0);
+
+  Project project = MakeProject(video_path);
+  project.output.efm_audio.enabled = true;
+  project.output.efm_audio.pair = 3;  // Not declared by any section.
+  Section section;
+  section.name = "Tone";
+  section.audio_channel_pairs = {MakePair(0, /*left=*/true, /*right=*/true)};
+  project.sections = {section};
+  const std::vector<const Section*> frames = {&project.sections[0]};
+
+  {
+    AudioTrackGenerator generator;
+    std::vector<std::string> errors;
+    ASSERT_TRUE(generator.Begin(project, frames, &errors));
+    EXPECT_FALSE(generator.efm_active());
+    ASSERT_TRUE(generator.EmitFrame(0, &errors));
+    EXPECT_TRUE(generator.efm_frame_left().empty());
+    EXPECT_EQ(generator.efm_samples_for_frame(0), 0);
+    ASSERT_TRUE(generator.Finalize(&errors));
+  }
+
+  // PAL-M has no LaserDisc digital audio specification, so a valid pair
+  // selection still leaves the EFM path inactive.
+  project.output.efm_audio.pair = 0;
+  project.cvbs_presets.video_standard_preset = Standard::kPalM;
+  {
+    AudioTrackGenerator generator;
+    std::vector<std::string> errors;
+    ASSERT_TRUE(generator.Begin(project, frames, &errors));
+    EXPECT_FALSE(generator.efm_active());
+    ASSERT_TRUE(generator.EmitFrame(0, &errors));
+    ASSERT_TRUE(generator.Finalize(&errors));
+  }
 
   std::filesystem::remove(audio0);
 }

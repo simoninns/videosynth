@@ -78,13 +78,42 @@ class AudioTrackGenerator {
   // Channel-pair numbers being written, sorted ascending.
   const std::vector<int>& channel_pairs() const { return pair_numbers_; }
 
+  // True when the project selects a declared channel pair for LaserDisc
+  // digital audio (EFM) output on a standard that defines it, so the second
+  // 44.1 kHz synthesis path is running alongside the 48 kHz WAV path.
+  bool efm_active() const { return efm_active_; }
+
+  // Channel-pair number carrying EFM output; meaningful only when
+  // efm_active() is true.
+  int efm_pair() const { return efm_pair_; }
+
+  // Number of 44.1 kHz EFM samples per channel carried by output frame
+  // `output_index` (IEC 60856/60857 Amd 2 13.2, SMPTE 272M-1994 Table 1).
+  // Zero when EFM output is inactive or the index is out of range.
+  int efm_samples_for_frame(std::size_t output_index) const;
+
+  // 16-bit 44.1 kHz samples synthesised for the most recent EmitFrame() call
+  // (IEC 60908-1999 clause 12 sample format). Empty until the first frame is
+  // emitted, and empty throughout when EFM output is inactive.
+  const std::vector<std::int16_t>& efm_frame_left() const {
+    return efm_frame_left_;
+  }
+  const std::vector<std::int16_t>& efm_frame_right() const {
+    return efm_frame_right_;
+  }
+
  private:
-  // Per channel pair: its number, WAV writer, and the two channel synthesisers.
+  // Per channel pair: its number, WAV writer, and the two channel
+  // synthesisers. The EFM-selected pair additionally owns a second pair of
+  // synthesisers running on the 44.1 kHz grid; they are null for every other
+  // pair.
   struct PairState {
     int pair = 0;
     std::unique_ptr<AudioWavWriter> writer;
     std::unique_ptr<AudioSynthesizer> left;
     std::unique_ptr<AudioSynthesizer> right;
+    std::unique_ptr<AudioSynthesizer> efm_left;
+    std::unique_ptr<AudioSynthesizer> efm_right;
   };
 
   // Reconfigures every pair's channel synthesisers for the section run that
@@ -102,6 +131,14 @@ class AudioTrackGenerator {
   std::vector<int> frame_sample_counts_;
   std::vector<char> is_run_start_;
   std::vector<std::int64_t> run_total_samples_;
+
+  // Parallel 44.1 kHz plan for the EFM-selected pair, empty when inactive.
+  bool efm_active_ = false;
+  int efm_pair_ = 0;
+  std::vector<int> efm_frame_sample_counts_;
+  std::vector<std::int64_t> efm_run_total_samples_;
+  std::vector<std::int16_t> efm_frame_left_;
+  std::vector<std::int16_t> efm_frame_right_;
 };
 
 }  // namespace videosynth
