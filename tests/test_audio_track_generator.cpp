@@ -245,8 +245,7 @@ TEST(AudioTrackGeneratorTest, SynthesisesSelectedPairAt44100Hz) {
       TempPath("videosynth_atg_efm_pal.composite");
   const std::filesystem::path audio1 =
       TempPath("videosynth_atg_efm_pal_audio_1.wav");
-  const std::filesystem::path efm1 =
-      TempPath("videosynth_atg_efm_pal_audio_1.efm");
+  const std::filesystem::path efm1 = TempPath("videosynth_atg_efm_pal.efm");
   std::filesystem::remove(audio1);
   std::filesystem::remove(efm1);
 
@@ -305,8 +304,7 @@ TEST(AudioTrackGeneratorTest, AbortRemovesThePartialEfmTrack) {
       TempPath("videosynth_atg_efm_abort.composite");
   const std::filesystem::path audio0 =
       TempPath("videosynth_atg_efm_abort_audio_0.wav");
-  const std::filesystem::path efm0 =
-      TempPath("videosynth_atg_efm_abort_audio_0.efm");
+  const std::filesystem::path efm0 = TempPath("videosynth_atg_efm_abort.efm");
   std::filesystem::remove(audio0);
   std::filesystem::remove(efm0);
 
@@ -337,8 +335,7 @@ TEST(AudioTrackGeneratorTest, EfmSynthesisIsDeterministicAcrossRuns) {
       TempPath("videosynth_atg_efm_repeat.composite");
   const std::filesystem::path audio0 =
       TempPath("videosynth_atg_efm_repeat_audio_0.wav");
-  const std::filesystem::path efm0 =
-      TempPath("videosynth_atg_efm_repeat_audio_0.efm");
+  const std::filesystem::path efm0 = TempPath("videosynth_atg_efm_repeat.efm");
   std::filesystem::remove(audio0);
   std::filesystem::remove(efm0);
 

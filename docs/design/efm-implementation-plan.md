@@ -131,7 +131,8 @@ In scope:
 7. **Output format: T-value stream.** The EFM channel stream is written as one
    unsigned byte per pit/land run length (values 3–11, i.e. T3–T11), starting at
    the first frame sync — directly consumable by existing EFM decoding tooling.
-   Path derived as `<basename>_audio_<pair>.efm` beside the WAV.
+   Path derived as `<basename>.efm` beside the WAV, with the per-frame index
+   in a `<basename>.efm.meta` sidecar (EFM Extension Format).
 8. **Standards: PAL and NTSC only.** Validation rejects EFM output for other
    video standard presets (e.g. PAL-M), which have no LD digital audio
    specification.
@@ -215,10 +216,10 @@ Integration points in `videosynth_core` (thin, mirroring existing patterns):
   setting (see Phase 1), with `ProjectEfmAudioPair` (`model.h`) as the single
   predicate deciding whether a stream is emitted (enabled, pair declared,
   standard PAL or NTSC).
-- `src/output_stage.cpp` — an `efm_audio` producer extension table in the SQLite
-  sidecar (channel pair and file name). The core CVBS schema has no EFM concept
-  (CVBS File Format Specification, Producer Extension Metadata), so consumers
-  must not assume the table exists.
+- `src/audio_efm_writer.cpp` — the `<basename>.efm.meta` extension sidecar
+  (`efm_frame` rows indexing the binary stream). The core CVBS schema has no EFM
+  concept (CVBS File Format Specification, Producer Extension Metadata), so the
+  extension stands alone and `src/output_stage.cpp` writes no EFM metadata.
 - Qt GUI — EFM enable and pair selection in the project settings editor.
 
 Integration conventions (established with the pipeline wiring):
@@ -386,7 +387,7 @@ the T-value file.
 | 5.1 | Implement the eight-to-fourteen code table (ECMA-130 Annex D; IEC 60908-1999 clause 13 figures 6/7) and the 588-channel-bit frame layout per IEC 60908-1999 clause 14 / ECMA-130 19.4: 24-bit sync header 100000000001000000000010 (NOT the truncated 22-digit rendering in the vendored ECMA-130 markdown — see Referenced Specifications), then subcode byte, 24 audio bytes, and 8 parity bytes at 14 channel bits each, every element followed by 3 merging bits (24 + 34 × 3 + 33 × 14 = 588) | Full 256-entry table validated against ECMA-130 Annex D (every entry: 14 bits, ≥2 and ≤10 zeros between ones); frame length exactly 588 channel bits in tests |
 | 5.2 | Implement merging-bit selection per ECMA-130 Annex E (IEC 60908-1999 clause 13, annex A): candidate bits filtered by run-length rules (min 3, max 11 channel bits, including across symbol boundaries and sync), tie-broken by minimising absolute accumulated DSV | Property tests over long random payloads: no run < 3 or > 11 anywhere in the stream; |DSV| remains bounded |
 | 5.3 | Implement channel-bit → T-value conversion and the `EfmStreamEncoder` facade (`Begin`/`PushSamples`/`Flush`), including CIRC priming/flush so all pushed samples are fully represented in the output and the Timing Alignment Contract holds end to end | Round-trip test: an independent minimal decoder (test-only helper) recovers sync positions every 588 bits and the original subcode and audio bytes, with the audio warm-up matching `kCircPipelineLatencyFrames` exactly |
-| 5.4 | Implement `AudioEfmWriter` in `videosynth_core` mirroring the `AudioWavWriter` contract (`BeginWrite`/`AppendFrameAudio`/`FinalizeWrite`/`AbortWrite`), with path derivation `<basename>_audio_<pair>.efm` alongside `AudioWavWriter::DeriveAudioPath` | Path-derivation unit tests mirror the WAV equivalents; `AbortWrite` removes partial files |
+| 5.4 | Implement `AudioEfmWriter` in `videosynth_core` mirroring the `AudioWavWriter` contract (`BeginWrite`/`AppendFrameAudio`/`FinalizeWrite`/`AbortWrite`), with path derivation `<basename>.efm` alongside `AudioWavWriter::DeriveAudioPath` | Path-derivation unit tests mirror the WAV equivalents; `AbortWrite` removes partial files |
 
 **Validation:**
 - Encoding a known tone yields a byte-identical `.efm` file across runs and
@@ -405,7 +406,7 @@ behaviour.
 |----|------|---------------------|
 | 6.1 | Build the track table in `AudioTrackGenerator::Begin` from the resolved section layout: TNO assigned sequentially (01, 02, …) over `programme_area` sections in output order; `lead_in` / `lead_out` sections mapped to lead-in and lead-out areas; start times and durations computed from `EfmAudioSamplesForFrame` counts | Track table matches the section layout for PAL and NTSC fixtures, including projects without lead-in/lead-out sections |
 | 6.2 | `AudioTrackGenerator`: when `output.efm_audio` selects a pair, drive the `AudioEfmWriter` from `Begin`/`EmitFrame`/`Finalize`/`Abort` using `EfmAudioSamplesForFrame` counts and the track table, alongside the existing WAV writer for the same pair | Both `.wav` and `.efm` are produced for the selected pair; other pairs unchanged; `Abort` leaves no partial `.efm` |
-| 6.3 | Record the EFM output in the SQLite metadata sidecar written by `src/output_stage.cpp` (extend the `audio_channel_pair` table or add an `efm_audio` table with pair and path) | Sidecar row present with correct pair/path; schema change covered by output-stage tests |
+| 6.3 | Write the `<basename>.efm.meta` extension sidecar from `AudioEfmWriter` (one `efm_frame` row per stored frame, schema version 1) and keep the core metadata database free of EFM tables | Sidecar rows are contiguous and cover the binary file; the core database carries only the core tables |
 | 6.4 | Functional tests: generate a short PAL project and a short NTSC project with EFM enabled, each with lead-in, multiple programme-area sections, and lead-out; assert `.efm` size matches the expected frame count, sync spacing every 588 channel bits, T-value range, Q-time progression, TNO incrementing at section boundaries, TOC entries matching the section layout, and lead-out TNO = AA. Decode the `.efm` with the test decoder and, after discarding the `kCircPipelineLatencyFrames` warm-up, verify sample-exact alignment (zero net offset) against a 44.1 kHz reference synthesis of the same `AudioParameters`, with the track-1 pause window silent. Register suites in `videosynth_functional_test_patterns` | Functional tests pass; unit-test lane unaffected |
 | 6.5 | Add EFM audio to one PAL and one NTSC example project in `docs/examples/` (multi-section, so the examples demonstrate per-section tracks and TOC) | Examples validate and generate cleanly via `run-examples.sh` |
 

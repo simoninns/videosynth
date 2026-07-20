@@ -10,6 +10,7 @@
  */
 
 #include <gtest/gtest.h>
+#include <sqlite3.h>
 
 #include <algorithm>
 #include <cstddef>
@@ -123,6 +124,38 @@ class SilentLogger final : public ILogger {
 
 std::filesystem::path TempPath(const std::string& name) {
   return std::filesystem::temp_directory_path() / name;
+}
+
+// One row of the `<basename>.efm.meta` frame index sidecar.
+struct EfmFrameRow {
+  std::int64_t frame_id = 0;
+  std::int64_t t_value_offset = 0;
+  std::int64_t t_value_count = 0;
+};
+
+std::vector<EfmFrameRow> ReadEfmFrameRows(const std::filesystem::path& path) {
+  std::vector<EfmFrameRow> rows;
+  sqlite3* db = nullptr;
+  if (sqlite3_open(path.c_str(), &db) != SQLITE_OK) {
+    sqlite3_close(db);
+    return rows;
+  }
+  const char* query_sql =
+      "SELECT frame_id, t_value_offset, t_value_count FROM efm_frame "
+      "WHERE cvbs_file_id = 1 ORDER BY frame_id;";
+  sqlite3_stmt* stmt = nullptr;
+  if (sqlite3_prepare_v2(db, query_sql, -1, &stmt, nullptr) == SQLITE_OK) {
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+      EfmFrameRow row;
+      row.frame_id = sqlite3_column_int64(stmt, 0);
+      row.t_value_offset = sqlite3_column_int64(stmt, 1);
+      row.t_value_count = sqlite3_column_int64(stmt, 2);
+      rows.push_back(row);
+    }
+  }
+  sqlite3_finalize(stmt);
+  sqlite3_close(db);
+  return rows;
 }
 
 std::vector<std::uint8_t> ReadTValues(const std::filesystem::path& path) {
@@ -304,15 +337,18 @@ void VerifyEfmOutput(Standard standard, const std::vector<SectionPlan>& plans,
                      std::uint8_t expected_video_system_code) {
   const std::filesystem::path video_path = TempPath(basename + ".composite");
   const std::filesystem::path wav_path = TempPath(basename + "_audio_0.wav");
-  const std::filesystem::path efm_path = TempPath(basename + "_audio_0.efm");
+  const std::filesystem::path efm_path = TempPath(basename + ".efm");
+  const std::filesystem::path efm_meta_path = TempPath(basename + ".efm.meta");
   std::filesystem::remove(wav_path);
   std::filesystem::remove(efm_path);
+  std::filesystem::remove(efm_meta_path);
 
   const Project project = MakeEfmProject(standard, plans, video_path);
   AudioTrackGenerator generator;
   ASSERT_TRUE(RunPipeline(project, &generator));
   ASSERT_TRUE(std::filesystem::exists(wav_path));
   ASSERT_TRUE(std::filesystem::exists(efm_path));
+  ASSERT_TRUE(std::filesystem::exists(efm_meta_path));
 
   // Expected stream geometry: one F1 frame per six sampling periods and one
   // channel frame per F1 frame, plus the CIRC flush (ECMA-130, C.9).
@@ -458,8 +494,21 @@ void VerifyEfmOutput(Standard standard, const std::vector<SectionPlan>& plans,
     ASSERT_EQ(decoded_left[warm_up + index], 0) << "pause sample " << index;
   }
 
+  // The extension sidecar indexes one frame per stored video frame and covers
+  // the whole binary file (efm-extension-format.md §Frame Validity Rules).
+  const std::vector<EfmFrameRow> index_rows = ReadEfmFrameRows(efm_meta_path);
+  ASSERT_EQ(index_rows.size(), frame_count);
+  std::int64_t running_offset = 0;
+  for (std::size_t index = 0; index < index_rows.size(); ++index) {
+    ASSERT_EQ(index_rows[index].frame_id, static_cast<std::int64_t>(index));
+    ASSERT_EQ(index_rows[index].t_value_offset, running_offset);
+    running_offset += index_rows[index].t_value_count;
+  }
+  EXPECT_EQ(running_offset, static_cast<std::int64_t>(t_values.size()));
+
   std::filesystem::remove(wav_path);
   std::filesystem::remove(efm_path);
+  std::filesystem::remove(efm_meta_path);
 }
 
 // 4 s of PAL: 10 lead-in frames, a 60-frame first track (longer than the 2 s
@@ -498,7 +547,7 @@ TEST(EfmOutputPipelineTest, NoEfmFileWhenTheSelectionIsInactive) {
   const std::filesystem::path video_path =
       TempPath("videosynth_efm_pipeline_off.composite");
   const std::filesystem::path efm_path =
-      TempPath("videosynth_efm_pipeline_off_audio_0.efm");
+      TempPath("videosynth_efm_pipeline_off.efm");
   const std::filesystem::path wav_path =
       TempPath("videosynth_efm_pipeline_off_audio_0.wav");
   std::filesystem::remove(efm_path);

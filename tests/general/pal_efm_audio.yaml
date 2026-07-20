@@ -1,0 +1,121 @@
+# PAL LaserDisc Digital Audio (EFM) Example
+#
+# Exercises the EFM channel-stream encoder end to end: `output.efm_audio`
+# selects channel pair 0, which is additionally synthesised at 44100 Hz
+# (IEC 60856:1986 Amd 2, 13.2: Fs = 1764/625 x F_H) and written as an
+# IEC 60908-1999 EFM T-value stream to
+# `videosynth_pal_efm_audio.efm` with its `.efm.meta` frame-index sidecar,
+# beside the unchanged 48 kHz
+# `_audio_0.wav`. Channel pair 1 has no EFM path and demonstrates that the
+# other pairs are untouched.
+#
+# Disc structure (one EFM track per `programme_area` section, in output order):
+#   - LeadIn        2 s  - repetitive mode-4 TOC (3 POINTs + A0/A1/A2)
+#   - Track 1       7 s  - 2 s mandatory pause (EFM-silent) + 5 s programme
+#   - Track 2       5 s
+#   - Track 3       5 s
+#   - LeadOut       3 s  - lead-out subcode, TNO = AA
+#
+# Track lengths satisfy IEC 60908-1999, 17.5.1: 4 s minimum per track, with the
+# first track's leading 2 s pause excluded from that minimum. Each programme
+# section uses a different source so track boundaries are visible in the video.
+#
+# No biphase `line_injections` are declared: `section_type` alone drives the EFM
+# disc-area mapping, which keeps the lead-in short. A CAV biphase lead-in would
+# instead have to run for at least 938 frames.
+
+project:
+  name: PalEfmAudio
+  version: "1.0"
+  description: PAL LaserDisc digital audio (EFM) — lead-in TOC, three tracks, lead-out
+
+cvbs_presets:
+  video_standard_preset: PAL
+  sample_encoding_preset: CVBS_U10_4FSC
+  signal_state_preset: STANDARD_TBC_LOCKED
+
+output:
+  video_path: "{project}/../general-output/videosynth_pal_efm_audio.composite"
+  efm_audio:
+    pair: 0
+
+sections:
+
+  # ---------------------------------------------------------------------------
+  # Lead-in: carries the table of contents. Audio content is irrelevant here, so
+  # the section declares no audio: block and the pair files advance in silence.
+  # ---------------------------------------------------------------------------
+  - name: LeadIn
+    type: progressive
+    source: "{bundled}/exr/720x576/PLUGE.exr"
+    duration_frames: 50
+    section_type: lead_in
+
+  # ---------------------------------------------------------------------------
+  # Track 1 (7 s). Its first 2 s are the mandatory pause: the EFM stream carries
+  # digital silence there while the WAV track already carries the 1 kHz tone.
+  # ---------------------------------------------------------------------------
+  - name: Track1Bars
+    type: progressive
+    source: "{bundled}/exr/720x576/75_BARS.exr"
+    duration_frames: 175
+    section_type: programme_area
+    audio:
+      channel_pairs:
+        - pair: 0
+          description: LaserDisc digital audio (EFM)
+          left:  { waveform: sine, frequency: 1000.0, amplitude: 0.5 }
+          right: { waveform: sine, frequency: 1000.0, amplitude: 0.5 }
+        - pair: 1
+          description: Analogue-only pair (no EFM)
+          left:  { waveform: square, frequency: 300.0, amplitude: 0.4 }
+
+  # ---------------------------------------------------------------------------
+  # Track 2 (5 s). Distinct left/right tones make the stereo interleave of the
+  # decoded EFM stream checkable by ear or by analysis.
+  # ---------------------------------------------------------------------------
+  - name: Track2Ramps
+    type: progressive
+    source: "{bundled}/exr/720x576/Y_CB_CR_RAMPS.exr"
+    duration_frames: 125
+    section_type: programme_area
+    audio:
+      channel_pairs:
+        - pair: 0
+          left:  { waveform: sine, frequency: 440.0, amplitude: 0.5 }
+          right: { waveform: sine, frequency: 880.0, amplitude: 0.5 }
+        - pair: 1
+          left:  { waveform: square, frequency: 300.0, amplitude: 0.4 }
+
+  # ---------------------------------------------------------------------------
+  # Track 3 (5 s). A section-spanning sweep exercises a continuously changing
+  # sample value, so the CIRC interleave and merging-bit choices see varied data.
+  # ---------------------------------------------------------------------------
+  - name: Track3Multiburst
+    type: progressive
+    source: "{bundled}/exr/720x576/MULTIBURST.exr"
+    duration_frames: 125
+    section_type: programme_area
+    audio:
+      channel_pairs:
+        - pair: 0
+          left:
+            waveform: sawtooth
+            amplitude: 0.5
+            ramp: { start: 200.0, end: 4000.0, mode: up }
+          right:
+            waveform: sawtooth
+            amplitude: 0.5
+            ramp: { start: 4000.0, end: 200.0, mode: up }
+        - pair: 1
+          left:  { waveform: square, frequency: 300.0, amplitude: 0.4 }
+
+  # ---------------------------------------------------------------------------
+  # Lead-out: TNO = AA subcode with running time, and the 2 Hz P-channel rhythm
+  # (IEC 60908-1999, 17.4) after its leading 2-3 s of P = 0.
+  # ---------------------------------------------------------------------------
+  - name: LeadOut
+    type: progressive
+    source: "{bundled}/exr/720x576/PLUGE.exr"
+    duration_frames: 75
+    section_type: lead_out

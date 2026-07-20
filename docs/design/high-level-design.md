@@ -170,7 +170,7 @@ VideoSynth currently follows a **four-stage sampled-domain architecture**:
 
 Alongside these four stages, an optional **Audio Track Generator** (`AudioTrackGenerator`) runs when at least one section declares an `audio:` channel pair. It synthesises per-channel test-tone waveforms (`AudioSynthesizer`) frame-locked to the video and streams one stereo 24-bit PCM RIFF/WAVE track per declared channel pair (0–7) to `<basename>_audio_<pair>.wav` (each via an `AudioWavWriter`). Audio is a pure function of output position, so the generator is driven with the output-order section sequence and stays sample-accurately aligned to the stored video frames under disc-skip withhold/replay. See [Section 7 `audio:`](#audio-sub-key-optional-per-section).
 
-When `output.efm_audio` selects one of those channel pairs, the same generator additionally synthesises that pair at 44 100 Hz and streams it through the `videosynth_efm` module (`AudioEfmWriter`) as a LaserDisc digital audio EFM channel stream written to `<basename>_audio_<pair>.efm`. The pair's 48 kHz WAV track is unaffected. See [LaserDisc Digital Audio (EFM) Output](#laserdisc-digital-audio-efm-output).
+When `output.efm_audio` selects one of those channel pairs, the same generator additionally synthesises that pair at 44 100 Hz and streams it through the `videosynth_efm` module (`AudioEfmWriter`) as a LaserDisc digital audio EFM channel stream written to `<basename>.efm` with its own `<basename>.efm.meta` sidecar. The pair's 48 kHz WAV track is unaffected. See [LaserDisc Digital Audio (EFM) Output](#laserdisc-digital-audio-efm-output).
 
 ### **Key Principles**
 
@@ -462,7 +462,7 @@ A project may additionally emit the LaserDisc digital audio channel of one audio
 | `EfmModulator` | Eight-to-fourteen coding, merging-bit selection (runs 3–11 channel bits, DSV minimised), 24-bit frame sync, 588-channel-bit frames | IEC 60908-1999, clauses 13–15; ECMA-130 Annex D/E |
 | `EfmStreamEncoder` | The module's public facade: `Begin` / `PushSamples` / `Flush`, chaining the stages and exposing T-values | — |
 
-**Output file** — the channel stream is written as one unsigned byte per pit/land run length (T3–T11), starting at the first frame sync, to `<basename>_audio_<pair>.efm` beside that pair's WAV file. `AudioEfmWriter` mirrors the `AudioWavWriter` streaming contract (`BeginWrite` / `AppendFrameAudio` / `FinalizeWrite` / `AbortWrite`), so an aborted run leaves no partial file. The output stage records the emitted stream in an `efm_audio` producer-extension table in the SQLite metadata sidecar; the core CVBS schema has no EFM concept, so consumers must not assume that table exists.
+**Output files** — the EFM extension is the two-file pair defined by the [EFM Extension Format](../cvbs-file-format-specification/docs/extensions/efm-extension-format.md): `<basename>.efm` holds the channel stream as one unsigned byte per pit/land run length (T3–T11), starting at the first frame sync, and `<basename>.efm.meta` is its own SQLite sidecar (schema version 1) carrying one `efm_frame` row per stored video frame — `cvbs_file_id`, `frame_id`, `t_value_offset` and `t_value_count`. Both share the CVBS basename, so the channel pair is not part of either name. `AudioEfmWriter` mirrors the `AudioWavWriter` streaming contract (`BeginWrite` / `AppendFrameAudio` / `FinalizeWrite` / `AbortWrite`), writing the sidecar on finalize, so an aborted run leaves neither file behind. No EFM metadata is written into the core `<basename>.meta` database: the core CVBS schema has no EFM concept, and the extension is self-describing.
 
 **Sample timing** — the EFM path synthesises the selected pair independently at exactly 44 100 Hz (PAL 1764/625 × F_H, IEC 60856:1986 Amd 2, 13.2; NTSC 7007/2500 × F_H, IEC 60857:1986 Amd 2, 13.2) from the same `AudioParameters` as the 48 kHz WAV path — there is no resampling. Per video frame that is 1764 samples for PAL (exact) and the SMPTE 272M-1994 Table 1 sequence for NTSC (147147 samples per 100 frames). Samples are converted from 24-bit to the CD's 16-bit domain by rounding to nearest with saturation.
 
@@ -478,7 +478,7 @@ A project may additionally emit the LaserDisc digital audio channel of one audio
 ### **Outputs**
 
 - **Video File**: Raw samples of the composite signal.
-- **Metadata File**: Header metadata (plus the `efm_audio` producer-extension row when EFM output is emitted).
+- **Metadata File**: Header metadata. EFM output adds no rows here; it carries its own `<basename>.efm.meta` sidecar.
 
 ---
 
@@ -1007,7 +1007,7 @@ sections:
 
 #### **`efm_audio:` Sub-Key (Optional, Project-Level)**
 
-The `output.efm_audio:` block selects **one** audio channel pair to be additionally encoded as a LaserDisc digital audio (EFM) channel stream, written as `<basename>_audio_<pair>.efm` beside that pair's WAV track. The pair's WAV output and every other pair are unaffected; audio parameters (waveform, frequency, amplitude, ramps) are shared between the two paths and declared only in the per-section [`audio:`](#audio-sub-key-optional-per-section) blocks. The encoding is described in [LaserDisc Digital Audio (EFM) Output](#laserdisc-digital-audio-efm-output).
+The `output.efm_audio:` block selects **one** audio channel pair to be additionally encoded as a LaserDisc digital audio (EFM) channel stream, written as `<basename>.efm` with a `<basename>.efm.meta` frame-index sidecar beside that pair's WAV track. The pair's WAV output and every other pair are unaffected; audio parameters (waveform, frequency, amplitude, ramps) are shared between the two paths and declared only in the per-section [`audio:`](#audio-sub-key-optional-per-section) blocks. The encoding is described in [LaserDisc Digital Audio (EFM) Output](#laserdisc-digital-audio-efm-output).
 
 | Key | Type | Required | Range / Values | Description |
 |-----|------|----------|----------------|-------------|

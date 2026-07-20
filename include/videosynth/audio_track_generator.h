@@ -30,9 +30,9 @@ namespace videosynth {
 //
 // When the project selects one pair for LaserDisc digital audio
 // (`output.efm_audio`), that pair is additionally synthesised on the 44.1 kHz
-// grid of IEC 60856/60857:1986 Amd 2, 13.2 and streamed to an
-// `_audio_<pair>.efm` T-value file by an AudioEfmWriter. The WAV file of that
-// pair is unchanged.
+// grid of IEC 60856/60857:1986 Amd 2, 13.2 and streamed to a `.efm` T-value
+// file (plus its `.efm.meta` frame-index sidecar) by an AudioEfmWriter. The WAV
+// file of that pair is unchanged.
 //
 // The set of emitted channel pairs is the union of the pair numbers declared
 // across all sections (ProjectAudioChannelPairs). Every pair file spans the

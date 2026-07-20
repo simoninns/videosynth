@@ -459,7 +459,8 @@ QString ProjectSettingsEditor::EfmStatusText(EfmOutputStatus status) const {
           .arg(pair);
     case EfmOutputStatus::kActive:
       return tr("Channel pair %1 is also written as an EFM stream "
-                "(“_audio_%1.efm”) beside its WAV track.")
+                "(“.efm” plus its “.efm.meta” sidecar) beside its WAV "
+                "track.")
           .arg(pair);
     case EfmOutputStatus::kDisabled:
     default:

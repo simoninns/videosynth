@@ -21,7 +21,6 @@
 #include <string>
 #include <vector>
 
-#include "videosynth/audio_efm_writer.h"
 #include "videosynth/cvbs_quantization.h"
 #include "videosynth/fixed_point.h"
 #include "videosynth/model.h"
@@ -292,25 +291,10 @@ bool WriteMetadataDatabase(const Project& project, std::size_t frame_count,
     return false;
   }
 
-  // Producer extension table (CVBS File Format Specification, Producer
-  // Extension Metadata): one row for the channel pair that is additionally
-  // written as a LaserDisc digital audio (EFM) T-value stream. The core schema
-  // has no EFM concept, so consumers must not assume the table exists.
-  const char* create_efm_table_sql =
-      "CREATE TABLE efm_audio ("
-      "    channel_pair                INTEGER PRIMARY KEY"
-      "        CHECK (channel_pair BETWEEN 0 AND 7),"
-      "    file_name                   TEXT    NOT NULL"
-      ");";
-
-  if (sqlite3_exec(db, create_efm_table_sql, nullptr, nullptr, &error_msg) !=
-      SQLITE_OK) {
-    errors->push_back(std::string("Failed to create efm_audio table: ") +
-                      error_msg);
-    sqlite3_free(error_msg);
-    sqlite3_close(db);
-    return false;
-  }
+  // No EFM table here: the LaserDisc digital audio stream is a separate
+  // extension format (CVBS File Format Specification, Producer Extension
+  // Metadata) and carries its own `<basename>.efm.meta` sidecar, written by
+  // AudioEfmWriter. The core schema has no EFM concept.
 
   const std::string preset_str =
       StandardToString(project.cvbs_presets.video_standard_preset);
@@ -416,35 +400,6 @@ bool WriteMetadataDatabase(const Project& project, std::size_t frame_count,
       }
     }
     sqlite3_finalize(audio_stmt);
-  }
-
-  // One efm_audio row when a declared channel pair is also written as an EFM
-  // stream; the file name is the one AudioEfmWriter derives from video_path.
-  const int efm_pair = ProjectEfmAudioPair(project);
-  if (efm_pair >= 0) {
-    const std::string efm_file_name =
-        std::filesystem::path(AudioEfmWriter::DeriveAudioPath(
-                                  project.output.video_path, efm_pair))
-            .filename()
-            .string();
-    sqlite3_stmt* efm_stmt = nullptr;
-    const char* efm_insert_sql =
-        "INSERT INTO efm_audio (channel_pair, file_name) VALUES (?, ?);";
-    if (sqlite3_prepare_v2(db, efm_insert_sql, -1, &efm_stmt, nullptr) !=
-        SQLITE_OK) {
-      errors->push_back("Failed to prepare efm_audio insert");
-      sqlite3_close(db);
-      return false;
-    }
-    sqlite3_bind_int(efm_stmt, 1, efm_pair);
-    sqlite3_bind_text(efm_stmt, 2, efm_file_name.c_str(), -1, SQLITE_TRANSIENT);
-    if (sqlite3_step(efm_stmt) != SQLITE_DONE) {
-      errors->push_back("Failed to insert efm_audio row");
-      sqlite3_finalize(efm_stmt);
-      sqlite3_close(db);
-      return false;
-    }
-    sqlite3_finalize(efm_stmt);
   }
 
   sqlite3_close(db);

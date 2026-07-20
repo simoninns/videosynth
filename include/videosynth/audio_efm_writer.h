@@ -23,9 +23,16 @@
 namespace videosynth {
 
 // Writes a single audio channel pair as a LaserDisc digital audio channel
-// stream next to the CVBS output. The file holds one unsigned byte per pit or
-// land run length (T3 to T11, IEC 60908-1999, clause 13), starting at the first
-// frame sync, and is the only core component that drives the EFM module.
+// stream next to the CVBS output, as the two-file EFM extension defined by the
+// CVBS File Format Specification (extensions/efm-extension-format.md): the
+// binary stream `<basename>.efm` plus its own SQLite sidecar
+// `<basename>.efm.meta` holding the per-frame index. The binary file holds one
+// unsigned byte per pit or land run length (T3 to T11, IEC 60908-1999, clause
+// 13), starting at the first frame sync, and this is the only core component
+// that drives the EFM module.
+//
+// The extension is self-describing: no EFM metadata is written into the core
+// `<basename>.meta` database, which has no EFM concept.
 //
 // The first appended sample is synchronous with the first stored video frame;
 // callers must append exactly the per-frame sample count
@@ -36,10 +43,17 @@ namespace videosynth {
 // and right buffers must be the same length.
 //
 // Streaming contract: BeginWrite (opens the file and adopts the track table) ->
-// repeated AppendFrameAudio -> FinalizeWrite (flushes the CIRC pipeline and
-// closes the file). The output path is derived from output.video_path by
-// stripping a trailing ".composite" or ".y" suffix and appending
-// "_audio_<pair>.efm".
+// repeated AppendFrameAudio -> FinalizeWrite (flushes the CIRC pipeline, closes
+// the file and writes the sidecar). Both paths are derived from
+// output.video_path by stripping a trailing ".composite" or ".y" suffix and
+// appending ".efm" / ".efm.meta"; the extension requires the sidecar basename
+// to match the CVBS basename, so the channel pair is not part of the name.
+//
+// Each AppendFrameAudio call contributes one efm_frame row: the CIRC pipeline
+// latency means a frame's t-values are not the encoding of that frame's own
+// samples, but the index stays contiguous and covers the whole file. The
+// residue flushed by FinalizeWrite is attributed to the final frame so that the
+// row set accounts for every byte written.
 //
 // Thread-safety: AudioEfmWriter is NOT thread-safe. Its file stream and encoder
 // state are mutated by AppendFrameAudio; it must not be called concurrently
@@ -63,32 +77,48 @@ class AudioEfmWriter {
                         const std::vector<std::int32_t>& right,
                         std::vector<std::string>* errors);
 
-  // Flushes the encoder pipeline, writes the remaining T values and closes the
-  // file. Returns false and appends a message to errors on any failure.
+  // Flushes the encoder pipeline, writes the remaining T values, closes the
+  // binary file and writes the `<basename>.efm.meta` sidecar. Returns false and
+  // appends a message to errors on any failure.
   bool FinalizeWrite(std::vector<std::string>* errors);
 
   // Abandons the current write session: closes the stream and removes the
-  // partially-written EFM file. No-op when no session is open.
+  // partially-written EFM file and any sidecar left by an earlier run. No-op
+  // when no session is open.
   void AbortWrite();
 
-  // Derives the EFM track path for `channel_pair` from a CVBS output path.
-  // Strips a trailing ".composite" or ".y" suffix (if present) and appends
-  // "_audio_<pair>.efm".
-  static std::string DeriveAudioPath(const std::string& video_path,
-                                     int channel_pair);
+  // Derives the EFM binary path from a CVBS output path: strips a trailing
+  // ".composite" or ".y" suffix (if present) and appends ".efm".
+  static std::string DeriveAudioPath(const std::string& video_path);
+
+  // Derives the EFM sidecar path from a CVBS output path: as DeriveAudioPath
+  // but appending ".efm.meta".
+  static std::string DeriveSidecarPath(const std::string& video_path);
 
  private:
+  // Per-frame index row destined for the sidecar's efm_frame table.
+  struct FrameIndexRow {
+    std::uint64_t offset = 0;
+    std::uint64_t count = 0;
+  };
+
   // Writes `t_values` to the open stream. Returns false and appends a message
   // to errors when the stream fails.
   bool WriteTValues(const std::vector<std::uint8_t>& t_values,
                     std::vector<std::string>* errors);
 
+  // Creates the sidecar database and inserts one efm_frame row per appended
+  // frame. Returns false and appends a message to errors on any failure.
+  bool WriteSidecar(std::vector<std::string>* errors);
+
   ILogger* logger_;
   std::ofstream stream_;
   std::string audio_path_;
+  std::string sidecar_path_;
   efm::EfmStreamEncoder encoder_;
   bool session_open_ = false;
   std::uint64_t t_value_count_ = 0;
+  std::vector<FrameIndexRow> frame_index_;
 };
 
 }  // namespace videosynth

@@ -1,14 +1,16 @@
 /*
  * File:        test_audio_efm_writer.cpp
  * Module:      audio_efm_writer_tests
- * Purpose:     Validates AudioEfmWriter path derivation and the T-value stream
- *              it writes beside the CVBS output.
+ * Purpose:     Validates AudioEfmWriter path derivation, the T-value stream it
+ *              writes beside the CVBS output, and the conformance of the
+ *              `.efm.meta` frame-index sidecar.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Simon Inns
  */
 
 #include <gtest/gtest.h>
+#include <sqlite3.h>
 
 #include <cstddef>
 #include <cstdint>
@@ -31,6 +33,60 @@ std::vector<std::uint8_t> ReadFileBytes(const std::filesystem::path& path) {
   const std::vector<char> bytes((std::istreambuf_iterator<char>(stream)),
                                 std::istreambuf_iterator<char>());
   return std::vector<std::uint8_t>(bytes.begin(), bytes.end());
+}
+
+// One row of the sidecar's efm_frame table.
+struct EfmFrameRow {
+  int cvbs_file_id = 0;
+  std::int64_t frame_id = 0;
+  std::int64_t t_value_offset = 0;
+  std::int64_t t_value_count = 0;
+};
+
+std::vector<EfmFrameRow> ReadEfmFrameRows(const std::filesystem::path& path) {
+  std::vector<EfmFrameRow> rows;
+  sqlite3* db = nullptr;
+  if (sqlite3_open(path.c_str(), &db) != SQLITE_OK) {
+    sqlite3_close(db);
+    return rows;
+  }
+  const char* query_sql =
+      "SELECT cvbs_file_id, frame_id, t_value_offset, t_value_count "
+      "FROM efm_frame ORDER BY frame_id;";
+  sqlite3_stmt* stmt = nullptr;
+  if (sqlite3_prepare_v2(db, query_sql, -1, &stmt, nullptr) == SQLITE_OK) {
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+      EfmFrameRow row;
+      row.cvbs_file_id = sqlite3_column_int(stmt, 0);
+      row.frame_id = sqlite3_column_int64(stmt, 1);
+      row.t_value_offset = sqlite3_column_int64(stmt, 2);
+      row.t_value_count = sqlite3_column_int64(stmt, 3);
+      rows.push_back(row);
+    }
+  }
+  sqlite3_finalize(stmt);
+  sqlite3_close(db);
+  return rows;
+}
+
+// Reads PRAGMA user_version from a sidecar database.
+int ReadUserVersion(const std::filesystem::path& path) {
+  sqlite3* db = nullptr;
+  if (sqlite3_open(path.c_str(), &db) != SQLITE_OK) {
+    sqlite3_close(db);
+    return -1;
+  }
+  int version = -1;
+  sqlite3_stmt* stmt = nullptr;
+  if (sqlite3_prepare_v2(db, "PRAGMA user_version;", -1, &stmt, nullptr) ==
+      SQLITE_OK) {
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+      version = sqlite3_column_int(stmt, 0);
+    }
+  }
+  sqlite3_finalize(stmt);
+  sqlite3_close(db);
+  return version;
 }
 
 Project MakeAudioProject(Standard standard, const std::string& video_path) {
@@ -72,18 +128,21 @@ std::vector<std::int32_t> MakeFrameSamples(std::size_t count, int seed) {
 // ---------------------------------------------------------------------------
 
 TEST(AudioEfmWriterPathTest, StripsCompositeSuffix) {
-  EXPECT_EQ(AudioEfmWriter::DeriveAudioPath("out/clip.composite", 0),
-            "out/clip_audio_0.efm");
+  EXPECT_EQ(AudioEfmWriter::DeriveAudioPath("out/clip.composite"),
+            "out/clip.efm");
+  EXPECT_EQ(AudioEfmWriter::DeriveSidecarPath("out/clip.composite"),
+            "out/clip.efm.meta");
 }
 
 TEST(AudioEfmWriterPathTest, StripsLumaSuffix) {
-  EXPECT_EQ(AudioEfmWriter::DeriveAudioPath("out/clip.y", 3),
-            "out/clip_audio_3.efm");
+  EXPECT_EQ(AudioEfmWriter::DeriveAudioPath("out/clip.y"), "out/clip.efm");
+  EXPECT_EQ(AudioEfmWriter::DeriveSidecarPath("out/clip.y"),
+            "out/clip.efm.meta");
 }
 
 TEST(AudioEfmWriterPathTest, AppendsWhenNoKnownSuffix) {
-  EXPECT_EQ(AudioEfmWriter::DeriveAudioPath("out/clip", 7),
-            "out/clip_audio_7.efm");
+  EXPECT_EQ(AudioEfmWriter::DeriveAudioPath("out/clip"), "out/clip.efm");
+  EXPECT_EQ(AudioEfmWriter::DeriveSidecarPath("out/clip"), "out/clip.efm.meta");
 }
 
 // ---------------------------------------------------------------------------
@@ -94,8 +153,7 @@ TEST(AudioEfmWriterTest, WritesTValueStreamForTheSelectedPair) {
   const std::filesystem::path video_path =
       std::filesystem::temp_directory_path() / "videosynth_audio_efm.composite";
   const std::filesystem::path expected_audio_path =
-      std::filesystem::temp_directory_path() /
-      "videosynth_audio_efm_audio_2.efm";
+      std::filesystem::temp_directory_path() / "videosynth_audio_efm.efm";
   std::filesystem::remove(expected_audio_path);
 
   const Project project = MakeAudioProject(Standard::kPal, video_path.string());
@@ -139,6 +197,69 @@ TEST(AudioEfmWriterTest, WritesTValueStreamForTheSelectedPair) {
   EXPECT_GE(total_bits, expected_frames * efm::kChannelBitsPerFrame);
 
   std::filesystem::remove(expected_audio_path);
+  std::filesystem::remove(std::filesystem::temp_directory_path() /
+                          "videosynth_audio_efm.efm.meta");
+}
+
+TEST(AudioEfmWriterTest, WritesAConformantFrameIndexSidecar) {
+  const std::filesystem::path video_path =
+      std::filesystem::temp_directory_path() /
+      "videosynth_audio_efm_sidecar.composite";
+  const std::filesystem::path expected_audio_path =
+      std::filesystem::temp_directory_path() /
+      "videosynth_audio_efm_sidecar.efm";
+  const std::filesystem::path expected_sidecar_path =
+      std::filesystem::temp_directory_path() /
+      "videosynth_audio_efm_sidecar.efm.meta";
+  std::filesystem::remove(expected_audio_path);
+  std::filesystem::remove(expected_sidecar_path);
+
+  const Project project = MakeAudioProject(Standard::kPal, video_path.string());
+
+  AudioEfmWriter writer;
+  std::vector<std::string> errors;
+  ASSERT_TRUE(writer.BeginWrite(project, 2, MakeTrackTable(), &errors))
+      << (errors.empty() ? "" : errors.front());
+
+  constexpr int kFrameCount = 3;
+  constexpr std::size_t kSamplesPerFrame = 600;
+  for (int frame = 0; frame < kFrameCount; ++frame) {
+    ASSERT_TRUE(writer.AppendFrameAudio(
+        MakeFrameSamples(kSamplesPerFrame, frame),
+        MakeFrameSamples(kSamplesPerFrame, frame + 10), &errors))
+        << (errors.empty() ? "" : errors.front());
+  }
+  ASSERT_TRUE(writer.FinalizeWrite(&errors))
+      << (errors.empty() ? "" : errors.front());
+
+  // The extension is a two-file pair sharing the CVBS basename.
+  ASSERT_TRUE(std::filesystem::exists(expected_audio_path));
+  ASSERT_TRUE(std::filesystem::exists(expected_sidecar_path));
+  EXPECT_EQ(ReadUserVersion(expected_sidecar_path), 1);
+
+  const std::vector<EfmFrameRow> rows = ReadEfmFrameRows(expected_sidecar_path);
+  ASSERT_EQ(rows.size(), static_cast<std::size_t>(kFrameCount));
+
+  // Frame validity rules 1-4 of efm-extension-format.md: 0-based contiguous
+  // frame ids against the implicit default capture, with each offset equal to
+  // the sum of the preceding counts.
+  std::int64_t running_offset = 0;
+  for (std::size_t index = 0; index < rows.size(); ++index) {
+    EXPECT_EQ(rows[index].cvbs_file_id, 1);
+    EXPECT_EQ(rows[index].frame_id, static_cast<std::int64_t>(index));
+    EXPECT_EQ(rows[index].t_value_offset, running_offset);
+    EXPECT_GT(rows[index].t_value_count, 0);
+    running_offset += rows[index].t_value_count;
+  }
+
+  // Rule 6: the index accounts for every byte of the binary file, including
+  // the CIRC residue flushed on finalize.
+  const std::int64_t file_size = static_cast<std::int64_t>(
+      std::filesystem::file_size(expected_audio_path));
+  EXPECT_EQ(rows.back().t_value_offset + rows.back().t_value_count, file_size);
+
+  std::filesystem::remove(expected_audio_path);
+  std::filesystem::remove(expected_sidecar_path);
 }
 
 TEST(AudioEfmWriterTest, RejectsMismatchedChannelLengths) {
@@ -147,7 +268,7 @@ TEST(AudioEfmWriterTest, RejectsMismatchedChannelLengths) {
       "videosynth_audio_efm_mismatch.composite";
   const std::filesystem::path expected_audio_path =
       std::filesystem::temp_directory_path() /
-      "videosynth_audio_efm_mismatch_audio_0.efm";
+      "videosynth_audio_efm_mismatch.efm";
   std::filesystem::remove(expected_audio_path);
 
   const Project project = MakeAudioProject(Standard::kPal, video_path.string());
@@ -169,7 +290,7 @@ TEST(AudioEfmWriterTest, RejectsAnInvalidTrackTable) {
       "videosynth_audio_efm_bad_table.composite";
   const std::filesystem::path expected_audio_path =
       std::filesystem::temp_directory_path() /
-      "videosynth_audio_efm_bad_table_audio_1.efm";
+      "videosynth_audio_efm_bad_table.efm";
   std::filesystem::remove(expected_audio_path);
 
   const Project project = MakeAudioProject(Standard::kPal, video_path.string());
@@ -186,8 +307,7 @@ TEST(AudioEfmWriterTest, AbortRemovesThePartialFile) {
       std::filesystem::temp_directory_path() /
       "videosynth_audio_efm_abort.composite";
   const std::filesystem::path expected_audio_path =
-      std::filesystem::temp_directory_path() /
-      "videosynth_audio_efm_abort_audio_4.efm";
+      std::filesystem::temp_directory_path() / "videosynth_audio_efm_abort.efm";
   std::filesystem::remove(expected_audio_path);
 
   const Project project = MakeAudioProject(Standard::kPal, video_path.string());
@@ -202,6 +322,8 @@ TEST(AudioEfmWriterTest, AbortRemovesThePartialFile) {
   writer.AbortWrite();
 
   EXPECT_FALSE(std::filesystem::exists(expected_audio_path));
+  EXPECT_FALSE(std::filesystem::exists(std::filesystem::temp_directory_path() /
+                                       "videosynth_audio_efm_abort.efm.meta"));
   // A second abort is a no-op, and finalizing without a session fails.
   writer.AbortWrite();
   EXPECT_FALSE(writer.FinalizeWrite(&errors));

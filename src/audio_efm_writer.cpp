@@ -2,7 +2,8 @@
  * File:        audio_efm_writer.cpp
  * Module:      audio_efm_writer
  * Purpose:     Streams one audio channel pair to a LaserDisc digital audio
- *              (EFM) T-value file alongside the generated CVBS output.
+ *              (EFM) T-value file and its frame-index sidecar alongside the
+ *              generated CVBS output.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Simon Inns
@@ -10,19 +11,58 @@
 
 #include "videosynth/audio_efm_writer.h"
 
+#include <sqlite3.h>
+
+#include <cstdio>
 #include <filesystem>
+#include <string_view>
 #include <system_error>
 
-#include "videosynth/audio_output_paths.h"
 #include "videosynth/audio_sample_conversion.h"
 
 namespace videosynth {
 
+namespace {
+
+// Sidecar schema version per efm-extension-format.md §Versioning.
+constexpr int kSidecarSchemaVersion = 1;
+
+// The extension has no multi-capture concept here: the output stage writes a
+// single cvbs_file row, so every efm_frame row references capture 1
+// (efm-extension-format.md §Association with Core Metadata).
+constexpr int kCvbsFileId = 1;
+
+// Strips the CVBS payload suffix from a video path, leaving the basename the
+// EFM extension files must share with the capture.
+std::string StripVideoSuffix(const std::string& video_path) {
+  constexpr std::string_view kCompositeSuffix = ".composite";
+  constexpr std::string_view kLumaSuffix = ".y";
+
+  std::string base = video_path;
+  auto ends_with = [&](std::string_view suffix) {
+    return base.size() >= suffix.size() &&
+           base.compare(base.size() - suffix.size(), suffix.size(), suffix) ==
+               0;
+  };
+
+  if (ends_with(kCompositeSuffix)) {
+    base.resize(base.size() - kCompositeSuffix.size());
+  } else if (ends_with(kLumaSuffix)) {
+    base.resize(base.size() - kLumaSuffix.size());
+  }
+  return base;
+}
+
+}  // namespace
+
 AudioEfmWriter::AudioEfmWriter(ILogger* logger) : logger_(logger) {}
 
-std::string AudioEfmWriter::DeriveAudioPath(const std::string& video_path,
-                                            int channel_pair) {
-  return DeriveAudioTrackPath(video_path, channel_pair, ".efm");
+std::string AudioEfmWriter::DeriveAudioPath(const std::string& video_path) {
+  return StripVideoSuffix(video_path) + ".efm";
+}
+
+std::string AudioEfmWriter::DeriveSidecarPath(const std::string& video_path) {
+  return StripVideoSuffix(video_path) + ".efm.meta";
 }
 
 bool AudioEfmWriter::BeginWrite(const Project& project, int channel_pair,
@@ -36,8 +76,7 @@ bool AudioEfmWriter::BeginWrite(const Project& project, int channel_pair,
     return false;
   }
 
-  const std::string audio_path =
-      DeriveAudioPath(project.output.video_path, channel_pair);
+  const std::string audio_path = DeriveAudioPath(project.output.video_path);
   if (audio_path.empty()) {
     errors->push_back(
         "EFM audio output path could not be derived from video_path.");
@@ -68,11 +107,14 @@ bool AudioEfmWriter::BeginWrite(const Project& project, int channel_pair,
   }
 
   audio_path_ = audio_path;
+  sidecar_path_ = DeriveSidecarPath(project.output.video_path);
   t_value_count_ = 0;
+  frame_index_.clear();
   session_open_ = true;
 
   if (logger_ != nullptr) {
-    logger_->Trace("Opened EFM audio output file for writing: " + audio_path);
+    logger_->Trace("Opened EFM audio output file for writing: " + audio_path +
+                   " (channel pair " + std::to_string(channel_pair) + ")");
   }
   return true;
 }
@@ -116,7 +158,96 @@ bool AudioEfmWriter::AppendFrameAudio(const std::vector<std::int32_t>& left,
     errors->push_back("EFM audio encoder rejected samples for: " + audio_path_);
     return false;
   }
+
+  // One efm_frame row per appended frame, indexing the bytes this frame
+  // contributed. Recorded before the write so the offset is the pre-write file
+  // position; a failed write aborts the session and discards the index.
+  frame_index_.push_back(FrameIndexRow{t_value_count_, t_values.size()});
   return WriteTValues(t_values, errors);
+}
+
+bool AudioEfmWriter::WriteSidecar(std::vector<std::string>* errors) {
+  // Recreate from scratch: repeated runs on the same output path must never
+  // leave stale rows describing a previous stream.
+  std::remove(sidecar_path_.c_str());
+
+  sqlite3* db = nullptr;
+  if (sqlite3_open(sidecar_path_.c_str(), &db) != SQLITE_OK) {
+    errors->push_back("Failed to create EFM sidecar database: " +
+                      sidecar_path_);
+    sqlite3_close(db);
+    return false;
+  }
+
+  const std::string schema =
+      "PRAGMA user_version = " + std::to_string(kSidecarSchemaVersion) +
+      ";"
+      "CREATE TABLE efm_frame ("
+      "    cvbs_file_id    INTEGER NOT NULL,"
+      "    frame_id        INTEGER NOT NULL CHECK (frame_id >= 0),"
+      "    t_value_offset  INTEGER NOT NULL CHECK (t_value_offset >= 0),"
+      "    t_value_count   INTEGER NOT NULL CHECK (t_value_count >= 0),"
+      "    PRIMARY KEY (cvbs_file_id, frame_id)"
+      ");"
+      "CREATE INDEX idx_efm_frame_frame ON efm_frame (cvbs_file_id, frame_id);"
+      "BEGIN;";
+
+  char* error_msg = nullptr;
+  if (sqlite3_exec(db, schema.c_str(), nullptr, nullptr, &error_msg) !=
+      SQLITE_OK) {
+    const std::string msg = error_msg != nullptr ? error_msg : "unknown error";
+    sqlite3_free(error_msg);
+    errors->push_back("Failed to create EFM sidecar schema in " +
+                      sidecar_path_ + ": " + msg);
+    sqlite3_close(db);
+    return false;
+  }
+
+  sqlite3_stmt* insert_stmt = nullptr;
+  const char* insert_sql =
+      "INSERT INTO efm_frame "
+      "(cvbs_file_id, frame_id, t_value_offset, t_value_count) "
+      "VALUES (?, ?, ?, ?);";
+  if (sqlite3_prepare_v2(db, insert_sql, -1, &insert_stmt, nullptr) !=
+      SQLITE_OK) {
+    errors->push_back("Failed to prepare EFM sidecar insert for: " +
+                      sidecar_path_);
+    sqlite3_close(db);
+    return false;
+  }
+
+  for (std::size_t frame_id = 0; frame_id < frame_index_.size(); ++frame_id) {
+    const FrameIndexRow& row = frame_index_[frame_id];
+    sqlite3_reset(insert_stmt);
+    sqlite3_bind_int(insert_stmt, 1, kCvbsFileId);
+    sqlite3_bind_int64(insert_stmt, 2, static_cast<sqlite3_int64>(frame_id));
+    sqlite3_bind_int64(insert_stmt, 3, static_cast<sqlite3_int64>(row.offset));
+    sqlite3_bind_int64(insert_stmt, 4, static_cast<sqlite3_int64>(row.count));
+    if (sqlite3_step(insert_stmt) != SQLITE_DONE) {
+      errors->push_back("Failed to insert EFM sidecar row for frame " +
+                        std::to_string(frame_id) + " into: " + sidecar_path_);
+      sqlite3_finalize(insert_stmt);
+      sqlite3_close(db);
+      return false;
+    }
+  }
+  sqlite3_finalize(insert_stmt);
+
+  if (sqlite3_exec(db, "COMMIT;", nullptr, nullptr, &error_msg) != SQLITE_OK) {
+    const std::string msg = error_msg != nullptr ? error_msg : "unknown error";
+    sqlite3_free(error_msg);
+    errors->push_back("Failed to commit EFM sidecar " + sidecar_path_ + ": " +
+                      msg);
+    sqlite3_close(db);
+    return false;
+  }
+
+  sqlite3_close(db);
+  if (logger_ != nullptr) {
+    logger_->Info("Wrote EFM frame index sidecar: " + sidecar_path_ + " (" +
+                  std::to_string(frame_index_.size()) + " frames)");
+  }
+  return true;
 }
 
 bool AudioEfmWriter::FinalizeWrite(std::vector<std::string>* errors) {
@@ -135,6 +266,15 @@ bool AudioEfmWriter::FinalizeWrite(std::vector<std::string>* errors) {
     session_open_ = false;
     return false;
   }
+  // Rule 6 of the extension's frame validity rules: the index must account for
+  // every byte in the file, so the CIRC-pipeline residue extends the last
+  // frame's run rather than becoming an unindexed tail.
+  if (!frame_index_.empty()) {
+    frame_index_.back().count += t_values.size();
+  } else if (!t_values.empty()) {
+    frame_index_.push_back(FrameIndexRow{0, t_values.size()});
+  }
+
   if (!WriteTValues(t_values, errors)) {
     stream_.close();
     session_open_ = false;
@@ -154,6 +294,10 @@ bool AudioEfmWriter::FinalizeWrite(std::vector<std::string>* errors) {
     logger_->Info("Wrote EFM audio track: " + audio_path_ + " (" +
                   std::to_string(t_value_count_) + " T values)");
   }
+
+  if (!WriteSidecar(errors)) {
+    return false;
+  }
   return true;
 }
 
@@ -163,16 +307,21 @@ void AudioEfmWriter::AbortWrite() {
   }
 
   stream_.close();
-  // Removal failures are ignored: cleanup is best-effort on abort.
+  // Removal failures are ignored: cleanup is best-effort on abort. The sidecar
+  // is removed too, so a stale index from an earlier run cannot outlive the
+  // stream it described.
   std::error_code ec;
   std::filesystem::remove(audio_path_, ec);
+  std::filesystem::remove(sidecar_path_, ec);
 
   if (logger_ != nullptr) {
-    logger_->Info("EFM audio write session aborted; removed " + audio_path_);
+    logger_->Info("EFM audio write session aborted; removed " + audio_path_ +
+                  " and " + sidecar_path_);
   }
 
   session_open_ = false;
   t_value_count_ = 0;
+  frame_index_.clear();
   encoder_.Reset();
 }
 
