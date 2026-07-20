@@ -250,8 +250,8 @@ bool CircEncoder::Flush(std::vector<F2Frame>* frames) {
   if (frames == nullptr) {
     return false;
   }
-  frames->reserve(frames->size() + kCircPipelineLatencyFrames);
-  for (std::size_t index = 0; index < kCircPipelineLatencyFrames; ++index) {
+  frames->reserve(frames->size() + kCircDrainFrames);
+  for (std::size_t index = 0; index < kCircDrainFrames; ++index) {
     frames->push_back(EncodeFrame(kSilentF1Frame));
   }
   return true;

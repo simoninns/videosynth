@@ -376,8 +376,7 @@ void VerifyEfmOutput(Standard standard, const std::vector<SectionPlan>& plans,
   // Decode: the helper asserts a sync header every 588 channel bits.
   const std::vector<DecodedFrame> frames =
       TestChannelDecoder().Decode(t_values);
-  ASSERT_EQ(frames.size(),
-            expected_f1_frames + efm::kCircPipelineLatencyFrames);
+  ASSERT_EQ(frames.size(), expected_f1_frames + efm::kCircDrainFrames);
 
   // ---- Subcode ----
   EfmTrackLayout layout;

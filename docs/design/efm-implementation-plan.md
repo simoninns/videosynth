@@ -267,15 +267,31 @@ The contract is:
   only structural delay is the CIRC interleave: each input frame's bytes are
   spread over output frames n+3 to n+108 (ECMA-130, C.9).
 - **Documented decode invariant.** A complementary de-interleaving CIRC
-  decoder emits exactly 108 F1 frames — 648 stereo samples, ≈14.69 ms at
-  44.1 kHz — of pipeline warm-up silence before source sample 0. After
-  discarding that constant warm-up, decoded PCM is sample-exact against the
-  44.1 kHz source from t = 0, and therefore time-aligned with the WAV, since
-  both sample grids share the datum. The symmetric flush at end of stream
-  pushes the final in-flight bytes out with silence padding.
-- **Named constant.** The module exports `kCircPipelineLatencyFrames = 108`
-  (ECMA-130, C.9) so consumers discover the offset from the API rather than
-  measuring it empirically.
+  decoder emits a constant run of pipeline warm-up silence before source
+  sample 0. Its length depends on how the de-interleave is built:
+  - 108 F1 frames — 648 stereo samples, ≈14.69 ms at 44.1 kHz — for a
+    de-interleaver that reads the stream backwards, giving every symbol the
+    complement of its 3-to-108-frame encoder delay. This is the smallest
+    workable latency and the one the round-trip unit tests use.
+  - 111 F1 frames — 666 stereo samples, ≈15.10 ms — for a **mirror-delay**
+    decoder, built as the encoder's mirror image: inverse third delay
+    (1 frame), C1, inverse second delay (27 × D down to 0), C2, inverse first
+    delay (2 frames). Its latency is the constant 2 + 108 + 1. Streaming
+    decoders are built this way, so this is the figure real tooling reports.
+
+  After discarding that constant warm-up, decoded PCM is sample-exact against
+  the 44.1 kHz source from t = 0, and therefore time-aligned with the WAV,
+  since both sample grids share the datum.
+- **End-of-stream flush.** The flush appends 111 frames of digital silence,
+  not 108: a mirror-delay decoder emits the frame pushed at time t only once
+  output frame t + 111 has arrived, so a 108-frame flush would strand the
+  final three source frames in its delay registers even though their symbols
+  are all present in the stream.
+- **Named constants.** The module exports `kCircPipelineLatencyFrames = 108`
+  (ECMA-130, C.9, the encoder's longest symbol delay) and
+  `kCircDrainFrames = 111` (the mirror-delay decoder's latency, and the flush
+  length) so consumers discover the offsets from the API rather than measuring
+  them empirically.
 - **Documented, not pre-compensated.** The stream does not shift audio early
   to hide the warm-up: pre-compensation would break the shared datum against
   the subcode timeline and the WAV, and would make any decoder that trims its
@@ -343,7 +359,7 @@ error-correction encoding.
 | 3.2 | Implement `audio_frame_assembler`: six 16-bit stereo samples → one 24-byte frame, WmA = upper 8 bits / WmB = lower 8 bits per IEC 60908-1999, 16.2 | Unit tests verify byte order against hand-computed frames |
 | 3.3 | Implement `circ_encoder`: GF(2⁸) arithmetic (P(x) = x⁸+x⁴+x³+x²+1, α = 00000010 per IEC 60908-1999, 16.2), C2 (28,24) and C1 (32,28) parity generation (16.3), and the delay/interleave structure per ECMA-130 Annex C: two-frame delay on one word group (C.3), 0–27 × 4-frame interleave (C.5), one-frame alternate delay (C.8), parity inversion and 3/108-frame min/max delays (C.9). Encoder exposes priming/flush so stream start and end are padded with digital silence frames | Unit tests: all-zero input yields the known all-zero-with-inverted-parity pattern; single-impulse input lands at the byte positions given by the ECMA-130 figure C.4 output-sequence table; output is a pure function of input |
 | 3.4 | Define the module's error/reporting conventions (return values, no exceptions across the API boundary) consistent with core style, plus a `docs/design` note in this file kept current if the API shape changes | API documented in headers; clang-tidy clean |
-| 3.5 | Implement the Timing Alignment Contract in the encoder: delay registers initialised to digital silence, symmetric end-of-stream flush, and the exported constant `kCircPipelineLatencyFrames = 108` (ECMA-130, C.9) | Round-trip unit test: a complementary de-interleaving decoder emits exactly 108 F1 frames (648 stereo samples) of warm-up silence, and decoded PCM after the warm-up is sample-exact against the input from sample 0 through the final input sample |
+| 3.5 | Implement the Timing Alignment Contract in the encoder: delay registers initialised to digital silence, end-of-stream flush of `kCircDrainFrames`, and the exported constants `kCircPipelineLatencyFrames = 108` (ECMA-130, C.9) and `kCircDrainFrames = 111` | Round-trip unit tests: a backward-reading de-interleaver emits exactly 108 F1 frames (648 stereo samples) of warm-up silence, a mirror-delay de-interleaver exactly 111 (666 stereo samples), and in both cases decoded PCM after the warm-up is sample-exact against the input from sample 0 through the final input sample |
 
 **Validation:**
 - Module compiles and tests run with no dependency on core; suites registered

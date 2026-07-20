@@ -104,8 +104,8 @@ TEST(EfmStreamEncoderTest, EmitsOneChannelFrameForEverySixStereoSamples) {
   EXPECT_EQ(encoder.ChannelFrameCount(), 500U);
 
   ASSERT_TRUE(encoder.Flush(&t_values));
-  // The flush adds the CIRC pipeline latency in silent frames.
-  EXPECT_EQ(encoder.ChannelFrameCount(), 500U + kCircPipelineLatencyFrames);
+  // The flush adds the CIRC drain in silent frames.
+  EXPECT_EQ(encoder.ChannelFrameCount(), 500U + kCircDrainFrames);
 }
 
 TEST(EfmStreamEncoderTest, TValuesSpanOnlyTMinToTMax) {
@@ -173,7 +173,7 @@ TEST(EfmStreamEncoderTest, DecodedAudioIsSampleExactAfterTheWarmUp) {
 
   const std::vector<DecodedFrame> frames =
       TestChannelDecoder().Decode(EncodeStream(table, left, right));
-  ASSERT_EQ(frames.size(), kSourceFrames + kCircPipelineLatencyFrames);
+  ASSERT_EQ(frames.size(), kSourceFrames + kCircDrainFrames);
 
   const std::vector<F1Frame> f1_frames = Deinterleave(frames);
   std::vector<std::int16_t> decoded_left;
@@ -184,7 +184,8 @@ TEST(EfmStreamEncoderTest, DecodedAudioIsSampleExactAfterTheWarmUp) {
   // sample 0 (EFM implementation plan, Timing Alignment Contract).
   const std::size_t warm_up =
       kCircPipelineLatencyFrames * kStereoSamplesPerF1Frame;
-  ASSERT_EQ(decoded_left.size(), warm_up + left.size());
+  ASSERT_EQ(decoded_left.size(),
+            (kSourceFrames + kCircDrainFrames) * kStereoSamplesPerF1Frame);
   for (std::size_t index = 0; index < warm_up; ++index) {
     ASSERT_EQ(decoded_left[index], 0) << "warm-up sample " << index;
     ASSERT_EQ(decoded_right[index], 0) << "warm-up sample " << index;
@@ -205,7 +206,7 @@ TEST(EfmStreamEncoderTest, PartialFramesArePaddedWithDigitalSilenceOnFlush) {
 
   const std::vector<DecodedFrame> frames =
       TestChannelDecoder().Decode(EncodeStream(table, left, right));
-  ASSERT_EQ(frames.size(), 1U + kCircPipelineLatencyFrames);
+  ASSERT_EQ(frames.size(), 1U + kCircDrainFrames);
 
   std::vector<std::int16_t> decoded_left;
   std::vector<std::int16_t> decoded_right;

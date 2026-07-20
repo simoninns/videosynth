@@ -98,17 +98,21 @@ std::array<std::uint8_t, kCircParityBytes> Syndromes(
 }
 
 // Complementary de-interleaver: the mirror image of the encoder's delays, with
-// every symbol given the same total delay of kCircPipelineLatencyFrames
-// (ECMA-130, C.9, the encoder's longest delay). Decoded frame k therefore
-// carries the F1 frame pushed at frame time k - kCircPipelineLatencyFrames;
-// the first kCircPipelineLatencyFrames decoded frames are pipeline warm-up.
-// This is a test-only helper; it performs no error correction.
-std::vector<F1Frame> Deinterleave(const std::vector<F2Frame>& f2_frames) {
+// every symbol given the same total delay of `latency` frames. Decoded frame k
+// carries the F1 frame pushed at frame time k - latency; the first `latency`
+// decoded frames are pipeline warm-up. This is a test-only helper; it performs
+// no error correction.
+//
+// kCircPipelineLatencyFrames is the smallest workable latency (ECMA-130, C.9,
+// the encoder's longest delay) and models a de-interleaver that reads the
+// stream backwards. kCircDrainFrames models the mirror-delay de-interleaver a
+// streaming decoder is built from.
+std::vector<F1Frame> DeinterleaveWithLatency(
+    const std::vector<F2Frame>& f2_frames, std::size_t latency) {
   std::vector<F1Frame> f1_frames(f2_frames.size(), F1Frame{});
   for (std::size_t index = 0; index < f2_frames.size(); ++index) {
     for (const SymbolOrigin& origin : kFigureC4DataSymbols) {
-      const std::size_t lookback =
-          kCircPipelineLatencyFrames - origin.frame_delay;
+      const std::size_t lookback = latency - origin.frame_delay;
       if (index < lookback) {
         continue;  // Before the start of the stream: digital silence.
       }
@@ -117,6 +121,10 @@ std::vector<F1Frame> Deinterleave(const std::vector<F2Frame>& f2_frames) {
     }
   }
   return f1_frames;
+}
+
+std::vector<F1Frame> Deinterleave(const std::vector<F2Frame>& f2_frames) {
+  return DeinterleaveWithLatency(f2_frames, kCircPipelineLatencyFrames);
 }
 
 std::vector<F1Frame> MakePseudoRandomFrames(std::size_t count) {
@@ -134,7 +142,7 @@ std::vector<F1Frame> MakePseudoRandomFrames(std::size_t count) {
 std::vector<F2Frame> Encode(const std::vector<F1Frame>& input, bool flush) {
   CircEncoder encoder;
   std::vector<F2Frame> output;
-  output.reserve(input.size() + kCircPipelineLatencyFrames);
+  output.reserve(input.size() + kCircDrainFrames);
   for (const F1Frame& frame : input) {
     output.push_back(encoder.EncodeFrame(frame));
   }
@@ -240,7 +248,7 @@ TEST(EfmCircEncoderTest, C2CodewordsSatisfyParityCheckMatrix) {
 TEST(EfmCircEncoderTest, DeinterleavedStreamRecoversInputAfterWarmUp) {
   const std::vector<F1Frame> input = MakePseudoRandomFrames(500);
   const std::vector<F2Frame> output = Encode(input, /*flush=*/true);
-  ASSERT_EQ(output.size(), input.size() + kCircPipelineLatencyFrames);
+  ASSERT_EQ(output.size(), input.size() + kCircDrainFrames);
 
   const std::vector<F1Frame> decoded = Deinterleave(output);
   ASSERT_EQ(decoded.size(), output.size());
@@ -256,13 +264,33 @@ TEST(EfmCircEncoderTest, DeinterleavedStreamRecoversInputAfterWarmUp) {
   }
 }
 
-TEST(EfmCircEncoderTest, FlushEmitsPipelineLatencyFrames) {
+// A mirror-delay decoder emits the frame pushed at time t only once output
+// frame t + kCircDrainFrames has arrived, so the flush must extend the stream
+// by that many frames or the last source frames stay in its delay registers.
+TEST(EfmCircEncoderTest, MirrorDelayDecoderRecoversTheFinalSourceFrames) {
+  const std::vector<F1Frame> input = MakePseudoRandomFrames(500);
+  const std::vector<F2Frame> output = Encode(input, /*flush=*/true);
+
+  const std::vector<F1Frame> decoded =
+      DeinterleaveWithLatency(output, kCircDrainFrames);
+  ASSERT_EQ(decoded.size(), input.size() + kCircDrainFrames);
+
+  for (std::size_t index = 0; index < kCircDrainFrames; ++index) {
+    ASSERT_EQ(decoded[index], kSilentF1Frame) << "warm-up frame " << index;
+  }
+  for (std::size_t index = 0; index < input.size(); ++index) {
+    ASSERT_EQ(decoded[kCircDrainFrames + index], input[index])
+        << "source frame " << index;
+  }
+}
+
+TEST(EfmCircEncoderTest, FlushEmitsDrainFrames) {
   CircEncoder encoder;
   std::vector<F2Frame> frames;
 
   ASSERT_TRUE(encoder.Flush(&frames));
 
-  EXPECT_EQ(frames.size(), kCircPipelineLatencyFrames);
+  EXPECT_EQ(frames.size(), kCircDrainFrames);
 }
 
 TEST(EfmCircEncoderTest, FlushRejectsNullOutput) {

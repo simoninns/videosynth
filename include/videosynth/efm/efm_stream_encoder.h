@@ -33,9 +33,10 @@ namespace videosynth::efm {
 //
 // Timing alignment: the CIRC delay registers start at digital silence, so
 // source sample 0 shares its datum with subcode absolute time 00:00:00. A
-// de-interleaving decoder therefore emits kCircPipelineLatencyFrames frames of
-// warm-up silence before source sample 0 (see the EFM implementation plan,
-// Timing Alignment Contract).
+// de-interleaving decoder therefore emits warm-up silence before source
+// sample 0: kCircPipelineLatencyFrames frames for a backward-reading
+// de-interleaver, kCircDrainFrames for a mirror-delay one (see the EFM
+// implementation plan, Timing Alignment Contract).
 //
 // Error reporting: the module reports failure by return value and never throws
 // across its public API.

@@ -119,7 +119,8 @@ bool EfmStreamEncoder::Flush(std::vector<std::uint8_t>* t_values) {
   }
 
   // ECMA-130, C.9: the CIRC interleave spreads a frame over the following 108
-  // output frames, so the pipeline is flushed with digital silence before the
+  // output frames, and a mirror-delay decoder needs kCircDrainFrames of stream
+  // beyond it, so the pipeline is flushed with digital silence before the
   // stream ends.
   std::vector<F2Frame> flushed;
   if (!circ_encoder_.Flush(&flushed)) {

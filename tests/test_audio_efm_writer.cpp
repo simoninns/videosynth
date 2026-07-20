@@ -189,7 +189,7 @@ TEST(AudioEfmWriterTest, WritesTValueStreamForTheSelectedPair) {
   // frame per six stereo samples plus the flushed CIRC pipeline.
   const std::size_t expected_frames =
       ((2U * kSamplesPerFrame) / efm::kStereoSamplesPerF1Frame) +
-      efm::kCircPipelineLatencyFrames;
+      efm::kCircDrainFrames;
   std::size_t total_bits = 0;
   for (const std::uint8_t t_value : bytes) {
     total_bits += t_value;
