@@ -73,10 +73,83 @@ struct PlotRange {
   double max_mv = 0.0;
 };
 
+// Headroom above white for the standard range. Saturated chroma carries the
+// composite well past white: 100% colour bars peak at 933 mV for PAL
+// (ITU-R BT.1700 Annex 1 Part B) and at 131 IRE = 936 mV for NTSC
+// (SMPTE 170M-2004 Section 12.3), so 300 mV clears both with margin.
+constexpr double kStandardCeilingHeadroomMv = 300.0;
+
+// Headroom below sync tip for the standard range. The same colour bars trough
+// at -233 mV (PAL) and -33 IRE = -236 mV (NTSC), which sits above sync tip;
+// the headroom instead covers chroma riding on sync-level content and filter
+// undershoot around the sync edges. Excursions that deliberately go further
+// below sync tip need PlotRangeMode::kSubSync.
+constexpr double kStandardFloorHeadroomMv = 250.0;
+
 inline PlotRange DefaultPlotRange(const SignalLevels& levels) {
-  constexpr double kHeadroomMv = 150.0;
-  return PlotRange{levels.sync_tip_mv - kHeadroomMv,
-                   levels.white_mv + kHeadroomMv};
+  return PlotRange{levels.sync_tip_mv - kStandardFloorHeadroomMv,
+                   levels.white_mv + kStandardCeilingHeadroomMv};
+}
+
+// Selectable vertical ranges of the scope. The standard range spans every
+// valid PAL and NTSC composite level, but still cuts off signals that
+// deliberately swing below sync tip: the PAL pilot burst swings +/-300 mV
+// about sync tip, so its troughs reach -600 mV (see model.h
+// IsSubSyncCapableSampleEncodingPreset).
+enum class PlotRangeMode {
+  kStandard,        // all valid composite levels, with headroom
+  kSubSync,         // widened floor for pilot-burst troughs below sync tip
+  kBlankingDetail,  // zoomed about blanking for burst and VITS levels
+  kFit,             // fitted to the plotted samples
+};
+
+// Sub-sync floor headroom: the PAL pilot burst troughs at 300 mV below sync
+// tip (ITU-R BT.1700 Annex 1 Part B Table 2), plus 100 mV of margin.
+constexpr double kSubSyncHeadroomMv = 400.0;
+
+// Half-span about blanking for the zoomed range: clears the 300 mV p-p PAL
+// colour burst (ITU-R BT.1700 Annex 1 Part B Table 2 item 5) and the VITS
+// level bars with room to spare.
+constexpr double kBlankingDetailHalfSpanMv = 400.0;
+
+// Fitted range around the plotted samples' extremes. `min_mv` above `max_mv`
+// means there is nothing to plot, which falls back to the standard range.
+inline PlotRange FitPlotRange(const SignalLevels& levels, double min_mv,
+                              double max_mv) {
+  // A flat trace still needs a usable vertical span, and a fitted trace should
+  // not touch the plot edges.
+  constexpr double kMinimumSpanMv = 100.0;
+  constexpr double kPadFraction = 0.08;
+  if (min_mv > max_mv) {
+    return DefaultPlotRange(levels);
+  }
+  if (max_mv - min_mv < kMinimumSpanMv) {
+    const double centre_mv = (min_mv + max_mv) / 2.0;
+    min_mv = centre_mv - kMinimumSpanMv / 2.0;
+    max_mv = centre_mv + kMinimumSpanMv / 2.0;
+  }
+  const double padding_mv = (max_mv - min_mv) * kPadFraction;
+  return PlotRange{min_mv - padding_mv, max_mv + padding_mv};
+}
+
+// Vertical range for a mode. `min_mv`/`max_mv` are the plotted samples'
+// extremes and are only used by kFit.
+inline PlotRange PlotRangeForMode(PlotRangeMode mode,
+                                  const SignalLevels& levels, double min_mv,
+                                  double max_mv) {
+  switch (mode) {
+    case PlotRangeMode::kSubSync:
+      return PlotRange{levels.sync_tip_mv - kSubSyncHeadroomMv,
+                       DefaultPlotRange(levels).max_mv};
+    case PlotRangeMode::kBlankingDetail:
+      return PlotRange{levels.blanking_mv - kBlankingDetailHalfSpanMv,
+                       levels.blanking_mv + kBlankingDetailHalfSpanMv};
+    case PlotRangeMode::kFit:
+      return FitPlotRange(levels, min_mv, max_mv);
+    case PlotRangeMode::kStandard:
+      break;
+  }
+  return DefaultPlotRange(levels);
 }
 
 // Maps a signal level to a plot y coordinate (0 = top edge = max_mv).

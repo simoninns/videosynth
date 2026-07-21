@@ -10,6 +10,7 @@
 
 #include <gtest/gtest.h>
 
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -119,6 +120,80 @@ TEST(WaveformMappingTest, DefaultPlotRangeCoversLevelsWithHeadroom) {
   const PlotRange range = DefaultPlotRange(levels);
   EXPECT_LT(range.min_mv, levels.sync_tip_mv);
   EXPECT_GT(range.max_mv, levels.white_mv);
+}
+
+TEST(WaveformMappingTest, DefaultPlotRangeCoversFullScaleColourBars) {
+  // ITU-R BT.1700 Annex 1 Part B: PAL 100% colour bars peak at 933 mV and
+  // trough at -233 mV. SMPTE 170M-2004 Section 12.3: NTSC 100% bars peak at
+  // 131 IRE and trough at -33 IRE.
+  const PlotRange pal = DefaultPlotRange(GetSignalLevels(Standard::kPal));
+  EXPECT_GT(pal.max_mv, 933.0);
+  EXPECT_LT(pal.min_mv, -233.0);
+
+  const PlotRange ntsc = DefaultPlotRange(GetSignalLevels(Standard::kNtsc));
+  EXPECT_GT(ntsc.max_mv, IreToMillivolts(131.0));
+  EXPECT_LT(ntsc.min_mv, IreToMillivolts(-33.0));
+}
+
+TEST(WaveformMappingTest, DefaultPlotRangeClearsSyncTipOnBothStandards) {
+  for (const Standard standard : {Standard::kPal, Standard::kNtsc}) {
+    const SignalLevels levels = GetSignalLevels(standard);
+    const PlotRange range = DefaultPlotRange(levels);
+    EXPECT_LT(range.min_mv, levels.sync_tip_mv - 200.0);
+  }
+}
+
+TEST(WaveformMappingTest, SubSyncRangeCoversPalPilotBurstTroughs) {
+  const SignalLevels levels = GetSignalLevels(Standard::kPal);
+  // The PAL pilot burst swings +/-300 mV about sync tip, so troughs reach
+  // -600 mV; the standard range stops well above that.
+  const double trough_mv = levels.sync_tip_mv - 300.0;
+  EXPECT_GT(DefaultPlotRange(levels).min_mv, trough_mv);
+
+  const PlotRange range =
+      PlotRangeForMode(PlotRangeMode::kSubSync, levels, 0.0, 0.0);
+  EXPECT_LT(range.min_mv, trough_mv);
+  EXPECT_DOUBLE_EQ(range.max_mv, DefaultPlotRange(levels).max_mv);
+}
+
+TEST(WaveformMappingTest, BlankingDetailRangeIsCentredOnBlanking) {
+  const SignalLevels levels = GetSignalLevels(Standard::kNtsc);
+  const PlotRange range =
+      PlotRangeForMode(PlotRangeMode::kBlankingDetail, levels, 0.0, 0.0);
+  EXPECT_DOUBLE_EQ((range.min_mv + range.max_mv) / 2.0, levels.blanking_mv);
+  // The 300 mV p-p PAL burst about blanking must clear the zoomed range.
+  EXPECT_LT(range.min_mv, levels.blanking_mv - 150.0);
+  EXPECT_GT(range.max_mv, levels.blanking_mv + 150.0);
+  // Zoomed in means narrower than the standard range.
+  const PlotRange standard = DefaultPlotRange(levels);
+  EXPECT_LT(range.max_mv - range.min_mv, standard.max_mv - standard.min_mv);
+}
+
+TEST(WaveformMappingTest, FitRangeEnclosesSamplesWithPadding) {
+  const SignalLevels levels = GetSignalLevels(Standard::kPal);
+  const PlotRange range =
+      PlotRangeForMode(PlotRangeMode::kFit, levels, -600.0, 700.0);
+  EXPECT_LT(range.min_mv, -600.0);
+  EXPECT_GT(range.max_mv, 700.0);
+}
+
+TEST(WaveformMappingTest, FitRangeGivesFlatTraceAUsableSpan) {
+  const SignalLevels levels = GetSignalLevels(Standard::kPal);
+  const PlotRange range =
+      PlotRangeForMode(PlotRangeMode::kFit, levels, 0.0, 0.0);
+  EXPECT_GT(range.max_mv - range.min_mv, 0.0);
+  EXPECT_LT(range.min_mv, 0.0);
+  EXPECT_GT(range.max_mv, 0.0);
+}
+
+TEST(WaveformMappingTest, FitRangeFallsBackToStandardWhenThereAreNoSamples) {
+  const SignalLevels levels = GetSignalLevels(Standard::kPal);
+  const PlotRange range = PlotRangeForMode(
+      PlotRangeMode::kFit, levels, std::numeric_limits<double>::max(),
+      std::numeric_limits<double>::lowest());
+  const PlotRange standard = DefaultPlotRange(levels);
+  EXPECT_DOUBLE_EQ(range.min_mv, standard.min_mv);
+  EXPECT_DOUBLE_EQ(range.max_mv, standard.max_mv);
 }
 
 }  // namespace

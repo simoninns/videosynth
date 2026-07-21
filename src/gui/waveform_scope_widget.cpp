@@ -16,7 +16,9 @@
 #include <QPainterPath>
 #include <algorithm>
 #include <cstddef>
+#include <limits>
 #include <utility>
+#include <vector>
 
 #include "theme_color_tokens.h"
 
@@ -45,7 +47,7 @@ void WaveformScopeWidget::SetLineData(std::vector<double> y_mv,
   c_mv_ = std::move(c_mv);
   sample_rate_hz_ = sample_rate_hz;
   levels_ = levels;
-  range_ = DefaultPlotRange(levels);
+  RecomputeRange();
   update();
 }
 
@@ -54,7 +56,53 @@ void WaveformScopeWidget::SetTraceMode(TraceMode mode) {
     return;
   }
   trace_mode_ = mode;
+  RecomputeRange();
   update();
+}
+
+void WaveformScopeWidget::SetRangeMode(PlotRangeMode mode) {
+  if (range_mode_ == mode) {
+    return;
+  }
+  range_mode_ = mode;
+  RecomputeRange();
+  update();
+}
+
+std::vector<double> WaveformScopeWidget::CompositeMv() const {
+  std::vector<double> composite(y_mv_.size(), 0.0);
+  for (std::size_t i = 0; i < y_mv_.size(); ++i) {
+    composite[i] = y_mv_[i] + (i < c_mv_.size() ? c_mv_[i] : 0.0);
+  }
+  return composite;
+}
+
+void WaveformScopeWidget::RecomputeRange() {
+  // Only kFit needs the sample extremes, and gathering them means building the
+  // composite trace, so the fixed ranges skip the scan and leave the pair
+  // inverted — FitPlotRange reads that as "no samples".
+  double min_mv = std::numeric_limits<double>::max();
+  double max_mv = std::numeric_limits<double>::lowest();
+  if (range_mode_ == PlotRangeMode::kFit) {
+    std::vector<std::vector<double>> traces;
+    if (trace_mode_ == TraceMode::kComposite) {
+      traces.push_back(CompositeMv());
+    } else if (trace_mode_ == TraceMode::kLuma) {
+      traces.push_back(y_mv_);
+    } else if (trace_mode_ == TraceMode::kChroma) {
+      traces.push_back(c_mv_);
+    } else {
+      traces.push_back(y_mv_);
+      traces.push_back(c_mv_);
+    }
+    for (const std::vector<double>& trace : traces) {
+      for (const double sample_mv : trace) {
+        min_mv = std::min(min_mv, sample_mv);
+        max_mv = std::max(max_mv, sample_mv);
+      }
+    }
+  }
+  range_ = PlotRangeForMode(range_mode_, levels_, min_mv, max_mv);
 }
 
 void WaveformScopeWidget::SetDarkTheme(bool dark_theme) {
@@ -113,6 +161,12 @@ void WaveformScopeWidget::paintEvent(QPaintEvent* event) {
   const QColor grid_color = theme_tokens::GridLine(palette());
   const QColor label_color = theme_tokens::MutedText(palette());
   for (const SignalLevelAnchor& anchor : SignalLevelAnchors(levels_)) {
+    // A zoomed or fitted range can exclude a level entirely; drawing it would
+    // put the gridline and its label outside the plot area.
+    if (anchor.millivolts < range_.min_mv ||
+        anchor.millivolts > range_.max_mv) {
+      continue;
+    }
     const double y = plot.top() + MillivoltsToPlotY(anchor.millivolts, range_,
                                                     plot.height());
     painter.setPen(QPen(grid_color, 1.0));
@@ -125,12 +179,8 @@ void WaveformScopeWidget::paintEvent(QPaintEvent* event) {
 
   // Traces.
   if (trace_mode_ == TraceMode::kComposite) {
-    std::vector<double> composite(y_mv_.size(), 0.0);
-    for (std::size_t i = 0; i < y_mv_.size(); ++i) {
-      composite[i] = y_mv_[i] + (i < c_mv_.size() ? c_mv_[i] : 0.0);
-    }
     PaintTrace(
-        &painter, plot, composite,
+        &painter, plot, CompositeMv(),
         theme_tokens::PlotColor(theme_tokens::PlotColorToken::kCompositePrimary,
                                 dark_theme_));
   } else if (trace_mode_ == TraceMode::kLuma) {

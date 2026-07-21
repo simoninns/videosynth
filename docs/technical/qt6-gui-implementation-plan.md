@@ -50,9 +50,12 @@ Phase 5 (project settings tab) and Phase 7 (preview tab):
   `EditProjectDialog` for the dynamic project-level settings (everything except
   the standard, shown read-only) plus the disc-skips table. OK applies the
   changes to the document; Cancel discards them.
-- **Preview is a separate window.** `View > Preview` toggles a detached
-  top-level `PreviewWindow` hosting the `PreviewPane`, with its own persisted
-  geometry; "preview this section" from the Sections dock opens/raises it.
+- **Preview and line scope are docks.** One `PreviewPane` drives two docks in
+  the right-hand column — Preview (navigator plus picture views) and Line Scope
+  (the pane's scope panel) — so both always track the same frame and line.
+  They toggle from `View > Panels` like every other panel, and "preview this
+  section" from the Sections dock shows/raises the Preview dock. The Log dock
+  starts hidden and is raised automatically when a run fails.
 
 ## Architectural Decisions
 
@@ -488,7 +491,7 @@ what will be written.
 
 ### Task 7.2 — Source and encoded picture views
 
-- Tabbed central preview area with a frame/field navigator (slider +
+- Tabbed preview area with a frame/field navigator (slider +
   spinbox, field 1/2 selection):
   - **Source view:** the section's decoded progressive frame.
   - **Encoded picture view:** the synthesised frame rendered as a raster
@@ -515,6 +518,12 @@ what will be written.
   composite, Y, C, or Y+C overlay with token-based colours; line selection
   by clicking the picture view or via spinbox; cursor readout of
   sample index ↔ µs ↔ mV (and IRE for NTSC).
+- Selectable vertical range: Standard (sync tip −250 mV to white +300 mV,
+  covering every valid PAL/NTSC composite level including 100% colour-bar
+  peaks), Sub-sync (floor lowered 400 mV below sync tip so PAL pilot-burst
+  troughs at −600 mV stay on screen), Blanking detail (±400 mV about blanking for
+  burst and VITS levels), and Fit to trace (fitted to the plotted samples).
+  Level gridlines outside the selected range are not drawn.
 - **Acceptance criteria:**
   - Gridline values match the standard-specific tables (PAL −300/0/700 mV;
     NTSC −285.7/0/53.6/714.3 mV, IRE readout using 7.143 mV/IRE).

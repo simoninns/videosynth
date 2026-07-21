@@ -218,8 +218,6 @@ if(VIDEOSYNTH_BUILD_GUI)
         src/gui/preview_pane.h
         src/gui/preview_render.cpp
         src/gui/preview_render.h
-        src/gui/preview_window.cpp
-        src/gui/preview_window.h
         src/gui/project_document.cpp
         src/gui/project_document.h
         src/gui/project_settings_editor.cpp

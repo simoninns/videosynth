@@ -81,15 +81,26 @@ MainWindow::MainWindow(ThemeController* theme_controller, QWidget* parent)
           new LogMessageModel(LogMessageModel::kDefaultMaxEntries, this)) {
   setWindowIcon(QIcon(QStringLiteral(":/videosynth-gui/icon.png")));
 
+  // The right-hand column (preview and line scope) runs the full window height;
+  // the issues and log docks keep the bottom strip to themselves.
+  setCorner(Qt::TopRightCorner, Qt::RightDockWidgetArea);
+  setCorner(Qt::BottomRightCorner, Qt::RightDockWidgetArea);
+
+  // The status bar is built first: the preview docks report their status into
+  // it as soon as they are constructed.
+  statusBar()->showMessage(tr("Ready"));
+  BuildGenerationStatusWidgets();
+  preview_status_label_ = new QLabel(this);
+  statusBar()->addPermanentWidget(preview_status_label_);
+  validation_status_label_ = new QLabel(this);
+  statusBar()->addPermanentWidget(validation_status_label_);
+
   BuildCentralArea();
   BuildSectionsDock();
+  BuildPreviewDocks();
   BuildIssuesDock();
   BuildLogDock();
   BuildMenus();
-  statusBar()->showMessage(tr("Ready"));
-  BuildGenerationStatusWidgets();
-  validation_status_label_ = new QLabel(this);
-  statusBar()->addPermanentWidget(validation_status_label_);
   ConnectGenerationController();
 
   connect(document_, &ProjectDocument::DocumentChanged, this, [this] {
@@ -218,17 +229,14 @@ void MainWindow::BuildMenus() {
   cancel_generation_action_->setEnabled(false);
 
   QMenu* view_menu = menuBar()->addMenu(tr("&View"));
-  preview_action_ = view_menu->addAction(tr("&Preview"));
-  preview_action_->setCheckable(true);
-  connect(preview_action_, &QAction::toggled, this,
-          &MainWindow::OnTogglePreview);
-  view_menu->addSeparator();
 
   // Toggle actions for the dockable panels. Each action is checkable, shows or
   // hides its dock, and auto-unchecks when the dock is closed via its title-bar
   // button, so the menu always reflects the current layout.
   QMenu* panels_menu = view_menu->addMenu(tr("&Panels"));
   panels_menu->addAction(sections_dock_->toggleViewAction());
+  panels_menu->addAction(preview_dock_->toggleViewAction());
+  panels_menu->addAction(scope_dock_->toggleViewAction());
   panels_menu->addAction(issues_dock_->toggleViewAction());
   panels_menu->addAction(log_dock_->toggleViewAction());
   view_menu->addSeparator();
@@ -291,14 +299,67 @@ void MainWindow::BuildSectionsDock() {
   addDockWidget(Qt::LeftDockWidgetArea, sections_dock_);
 
   connect(section_list_dock_, &SectionListDock::CurrentSectionChanged, this,
-          [this](int index) { section_editor_->SetCurrentSection(index); });
+          [this](int index) {
+            section_editor_->SetCurrentSection(index);
+            // Selecting a section also moves the preview to that section's
+            // first output frame. Unlike the explicit "preview this section"
+            // action this does not surface the dock: a hidden preview stays
+            // hidden and picks the frame up when it is next shown. A selection
+            // the preview itself drove is skipped: the frame already belongs to
+            // that section, so jumping would undo the user's scrub.
+            if (index >= 0 && !selecting_section_from_preview_) {
+              preview_pane_->ShowSectionFirstFrame(index);
+            }
+          });
   connect(section_list_dock_, &SectionListDock::PreviewSectionRequested, this,
           [this](int index) {
-            EnsurePreviewWindow();
-            preview_window_->show();
-            preview_window_->raise();
-            preview_window_->activateWindow();
-            preview_window_->ShowSectionFirstFrame(index);
+            preview_dock_->show();
+            preview_dock_->raise();
+            preview_pane_->ShowSectionFirstFrame(index);
+          });
+}
+
+void MainWindow::BuildPreviewDocks() {
+  // One pane drives both docks: the pane widget holds the navigator and picture
+  // views, and hands over its line-scope panel for the second dock, so the two
+  // always show the same frame and line selection.
+  preview_pane_ = new PreviewPane(document_, theme_controller_, this);
+  // The section editor's minimum width would otherwise squeeze the right-hand
+  // column down to its controls; keep enough room for a legible picture and
+  // waveform.
+  preview_pane_->setMinimumWidth(380);
+  preview_pane_->scope_panel()->setMinimumHeight(200);
+
+  preview_dock_ = new QDockWidget(tr("Preview"), this);
+  preview_dock_->setObjectName(QStringLiteral("preview_dock"));
+  preview_dock_->setWidget(preview_pane_);
+  addDockWidget(Qt::RightDockWidgetArea, preview_dock_);
+
+  scope_dock_ = new QDockWidget(tr("Line Scope"), this);
+  scope_dock_->setObjectName(QStringLiteral("scope_dock"));
+  scope_dock_->setWidget(preview_pane_->scope_panel());
+  addDockWidget(Qt::RightDockWidgetArea, scope_dock_);
+  splitDockWidget(preview_dock_, scope_dock_, Qt::Vertical);
+
+  // Stale/error status goes to the status bar rather than an inline banner, so
+  // the preview content never reflows.
+  connect(preview_pane_, &PreviewPane::StatusMessageChanged, this,
+          [this](const QString& message) {
+            preview_status_label_->setText(message);
+          });
+
+  // Scrubbing the navigator into another section selects it in the list, so the
+  // editor always describes the frame on screen. The guard keeps the resulting
+  // CurrentSectionChanged from snapping the navigator back to that section's
+  // first frame, which would undo the user's scrub.
+  connect(preview_pane_, &PreviewPane::CurrentSectionChanged, this,
+          [this](int index) {
+            if (index < 0 || index == section_list_dock_->current_section()) {
+              return;
+            }
+            selecting_section_from_preview_ = true;
+            section_list_dock_->SelectSection(index);
+            selecting_section_from_preview_ = false;
           });
 }
 
@@ -333,6 +394,9 @@ void MainWindow::BuildLogDock() {
 
   log_dock_->setWidget(view);
   addDockWidget(Qt::BottomDockWidgetArea, log_dock_);
+  // Hidden by default to leave the editor and preview more room; the run
+  // failure path and View > Panels both point the user back to it.
+  log_dock_->hide();
 }
 
 void MainWindow::BuildGenerationStatusWidgets() {
@@ -387,28 +451,16 @@ void MainWindow::UpdateProjectOpenState() {
   project_validate_action_->setEnabled(open);
   // Keep Generate disabled while a run is already in progress.
   generate_action_->setEnabled(open && !generation_controller_->is_running());
-  preview_action_->setEnabled(open);
   if (sections_dock_ != nullptr) {
     sections_dock_->setEnabled(open);
   }
-
-  if (!open && preview_window_ != nullptr) {
-    preview_window_->hide();
+  if (preview_dock_ != nullptr) {
+    preview_dock_->setEnabled(open);
+    scope_dock_->setEnabled(open);
   }
-}
-
-void MainWindow::EnsurePreviewWindow() {
-  if (preview_window_ != nullptr) {
-    return;
+  if (!open) {
+    preview_status_label_->clear();
   }
-  preview_window_ = new PreviewWindow(document_, theme_controller_, this);
-  connect(preview_window_, &PreviewWindow::VisibilityChanged, this,
-          [this](bool visible) {
-            if (preview_action_->isChecked() != visible) {
-              const QSignalBlocker blocker(preview_action_);
-              preview_action_->setChecked(visible);
-            }
-          });
 }
 
 void MainWindow::OnPreferences() {
@@ -495,6 +547,10 @@ void MainWindow::OnGenerationFinished(GenerationController::RunStatus status) {
       break;
     case GenerationController::RunStatus::kFailed:
       statusBar()->showMessage(tr("Generation failed"), 5000);
+      // The Log dock is hidden by default; surface it so the details the
+      // message points at are actually on screen.
+      log_dock_->show();
+      log_dock_->raise();
       QMessageBox::critical(
           this, tr("Generation Failed"),
           tr("The generation run failed. See the Log panel for details."));
@@ -532,8 +588,13 @@ void MainWindow::RestoreWindowGeometry() {
   if (!geometry.isEmpty()) {
     restoreGeometry(geometry);
   } else {
-    resize(1024, 768);
+    resize(1440, 900);
   }
+
+  // Dock sizes are not persisted, so give the right-hand column a usable
+  // starting width and let the preview picture take twice the scope's height.
+  resizeDocks({preview_dock_}, {width() * 2 / 5}, Qt::Horizontal);
+  resizeDocks({preview_dock_, scope_dock_}, {2, 1}, Qt::Vertical);
 }
 
 void MainWindow::OnNewProject() {
@@ -617,22 +678,6 @@ void MainWindow::OnEditProject() {
   document_->SetOutputTargets(edited.output);
   document_->SetDiscSkips(edited.disc_skips);
   statusBar()->showMessage(tr("Project settings updated"), 3000);
-}
-
-void MainWindow::OnTogglePreview(bool checked) {
-  if (checked && !document_->is_open()) {
-    const QSignalBlocker blocker(preview_action_);
-    preview_action_->setChecked(false);
-    return;
-  }
-  EnsurePreviewWindow();
-  if (checked) {
-    preview_window_->show();
-    preview_window_->raise();
-    preview_window_->activateWindow();
-  } else {
-    preview_window_->hide();
-  }
 }
 
 void MainWindow::OnIssueActivated(const QModelIndex& index) {

@@ -21,8 +21,10 @@ namespace videosynth::gui {
 // Plots one video line's samples in millivolts. Horizontal gridlines anchor
 // the standard's signal levels (sync tip, blanking, black setup, white);
 // traces are selectable as composite (Y+C), Y, C, or a Y+C overlay of both
-// channels. Mouse movement reports the cursor position as sample index, µs,
-// and mV through CursorMoved for the readout label.
+// channels. The vertical range is selectable too, so sub-sync excursions such
+// as the PAL pilot burst stay on screen (see PlotRangeMode). Mouse movement
+// reports the cursor position as sample index, µs, and mV through CursorMoved
+// for the readout label.
 //
 // Thread-safety: NOT thread-safe. GUI (main) thread only.
 class WaveformScopeWidget : public QWidget {
@@ -46,6 +48,12 @@ class WaveformScopeWidget : public QWidget {
   void SetTraceMode(TraceMode mode);
   TraceMode trace_mode() const { return trace_mode_; }
 
+  // Selects the plotted vertical range; kFit follows the current trace mode's
+  // samples, so changing either recomputes the range.
+  void SetRangeMode(PlotRangeMode mode);
+  PlotRangeMode range_mode() const { return range_mode_; }
+  PlotRange range() const { return range_; }
+
   // Dark/light trace palette (see theme_color_tokens.h).
   void SetDarkTheme(bool dark_theme);
 
@@ -67,6 +75,11 @@ class WaveformScopeWidget : public QWidget {
   void PaintTrace(QPainter* painter, const QRect& plot,
                   const std::vector<double>& trace_mv,
                   const QColor& color) const;
+  // Per-sample sum of the Y and C channels (the composite trace).
+  std::vector<double> CompositeMv() const;
+  // Recomputes range_ from the range mode and, for kFit, the samples the
+  // current trace mode plots.
+  void RecomputeRange();
 
   std::vector<double> y_mv_;
   std::vector<double> c_mv_;
@@ -74,6 +87,7 @@ class WaveformScopeWidget : public QWidget {
   SignalLevels levels_ = {};
   PlotRange range_ = {};
   TraceMode trace_mode_ = TraceMode::kComposite;
+  PlotRangeMode range_mode_ = PlotRangeMode::kStandard;
   bool dark_theme_ = false;
   int cursor_sample_ = -1;
 };

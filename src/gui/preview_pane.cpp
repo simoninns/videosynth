@@ -1,8 +1,8 @@
 /*
  * File:        preview_pane.cpp
  * Module:      gui
- * Purpose:     Central preview tab: frame/field navigator, source and
- *              encoded picture views, and the line waveform scope
+ * Purpose:     Dockable signal preview: frame navigator, source and encoded
+ *              picture views, and a separately mountable line scope panel
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Simon Inns
@@ -13,7 +13,6 @@
 #include <QComboBox>
 #include <QDir>
 #include <QFileInfo>
-#include <QGroupBox>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QScrollArea>
@@ -175,27 +174,46 @@ void PreviewPane::BuildUi() {
   frame_info_label_ = new QLabel(this);
   layout->addWidget(frame_info_label_);
 
-  // Line waveform scope.
-  auto* scope_group = new QGroupBox(tr("Line Waveform"), this);
-  auto* scope_layout = new QVBoxLayout(scope_group);
+  BuildScopePanel();
+}
+
+// The scope lives in its own panel so the host can dock it separately from the
+// picture views; it stays wired to this pane's frame data and line selection.
+void PreviewPane::BuildScopePanel() {
+  scope_panel_ = new QWidget(this);
+  scope_panel_->installEventFilter(this);
+  auto* scope_layout = new QVBoxLayout(scope_panel_);
+  scope_layout->setContentsMargins(0, 0, 0, 0);
+
   auto* scope_controls = new QHBoxLayout();
-  scope_controls->addWidget(new QLabel(tr("Line:"), scope_group));
-  line_spinbox_ = new QSpinBox(scope_group);
+  scope_controls->addWidget(new QLabel(tr("Line:"), scope_panel_));
+  line_spinbox_ = new QSpinBox(scope_panel_);
   line_spinbox_->setRange(1, 1);
   scope_controls->addWidget(line_spinbox_);
-  scope_controls->addWidget(new QLabel(tr("Trace:"), scope_group));
-  trace_combo_ = new QComboBox(scope_group);
+  scope_controls->addWidget(new QLabel(tr("Trace:"), scope_panel_));
+  trace_combo_ = new QComboBox(scope_panel_);
   trace_combo_->addItem(tr("Composite"));
   trace_combo_->addItem(tr("Y"));
   trace_combo_->addItem(tr("C"));
   trace_combo_->addItem(tr("Y+C overlay"));
   scope_controls->addWidget(trace_combo_);
-  readout_label_ = new QLabel(scope_group);
-  scope_controls->addWidget(readout_label_, 1);
+  scope_controls->addWidget(new QLabel(tr("Range:"), scope_panel_));
+  range_combo_ = new QComboBox(scope_panel_);
+  range_combo_->addItem(tr("Standard"));
+  range_combo_->addItem(tr("Sub-sync"));
+  range_combo_->addItem(tr("Blanking detail"));
+  range_combo_->addItem(tr("Fit to trace"));
+  range_combo_->setToolTip(
+      tr("Vertical range. Sub-sync lowers the floor so excursions below sync "
+         "tip (such as the PAL pilot burst) stay on screen."));
+  scope_controls->addWidget(range_combo_);
+  scope_controls->addStretch();
   scope_layout->addLayout(scope_controls);
-  scope_ = new WaveformScopeWidget(scope_group);
-  scope_layout->addWidget(scope_);
-  layout->addWidget(scope_group);
+
+  scope_ = new WaveformScopeWidget(scope_panel_);
+  scope_layout->addWidget(scope_, 1);
+  readout_label_ = new QLabel(scope_panel_);
+  scope_layout->addWidget(readout_label_);
 
   connect(line_spinbox_, &QSpinBox::valueChanged, this,
           &PreviewPane::OnScopeLineChanged);
@@ -216,6 +234,23 @@ void PreviewPane::BuildUi() {
             break;
         }
       });
+  connect(range_combo_, &QComboBox::currentIndexChanged, this,
+          [this](int index) {
+            switch (index) {
+              case 1:
+                scope_->SetRangeMode(PlotRangeMode::kSubSync);
+                break;
+              case 2:
+                scope_->SetRangeMode(PlotRangeMode::kBlankingDetail);
+                break;
+              case 3:
+                scope_->SetRangeMode(PlotRangeMode::kFit);
+                break;
+              default:
+                scope_->SetRangeMode(PlotRangeMode::kStandard);
+                break;
+            }
+          });
   connect(scope_, &WaveformScopeWidget::CursorMoved, this,
           &PreviewPane::OnCursorMoved);
 }
@@ -227,12 +262,24 @@ void PreviewPane::showEvent(QShowEvent* event) {
   }
 }
 
+bool PreviewPane::eventFilter(QObject* watched, QEvent* event) {
+  if (watched == scope_panel_ && event->type() == QEvent::Show &&
+      needs_refresh_) {
+    refresh_timer_.start();
+  }
+  return QWidget::eventFilter(watched, event);
+}
+
+bool PreviewPane::IsAnyPanelVisible() const {
+  return isVisible() || (scope_panel_ != nullptr && scope_panel_->isVisible());
+}
+
 void PreviewPane::OnDocumentChanged() {
   needs_refresh_ = true;
   if (current_frame_ != nullptr) {
     SetStatusMessage(tr("Preview is out of date — updating…"));
   }
-  if (isVisible()) {
+  if (IsAnyPanelVisible()) {
     refresh_timer_.start();
   }
 }
@@ -307,6 +354,12 @@ void PreviewPane::OnFrameReady(std::shared_ptr<const PreviewFrameData> frame) {
   UpdatePictures();
   UpdateScope();
   UpdateFrameInfoLabel();
+  // Scrubbing the navigator across a section boundary re-selects that section
+  // in the host, so the list and editor always describe the frame on screen.
+  if (current_frame_->section_index != reported_section_index_) {
+    reported_section_index_ = current_frame_->section_index;
+    emit CurrentSectionChanged(reported_section_index_);
+  }
 }
 
 void PreviewPane::OnPreviewFailed(quint64 revision, const QString& message) {

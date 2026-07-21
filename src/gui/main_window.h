@@ -16,7 +16,7 @@
 
 #include "generation_controller.h"
 #include "log_message_model.h"
-#include "preview_window.h"
+#include "preview_pane.h"
 #include "project_document.h"
 #include "section_editor.h"
 #include "section_list_dock.h"
@@ -36,13 +36,15 @@ class QStackedWidget;
 namespace videosynth::gui {
 
 // Main window shell: menu bar (File / Edit / Project / Generate / View /
-// Help), status bar, and docks (sections, issues, log). The central area is a
-// stack that shows a welcome surface when no project is open and the
-// per-section editor once one is. Project creation runs through the New
-// Project dialog and project-level settings through the Edit Project dialog;
-// the signal preview lives in its own top-level PreviewWindow. Generation runs
-// in-process on a worker thread through GenerationController with progress,
-// logging, and cancellation.
+// Help), status bar, and docks (sections, preview, line scope, issues, log).
+// The central area is a stack that shows a welcome surface when no project is
+// open and the per-section editor once one is. Project creation runs through
+// the New Project dialog and project-level settings through the Edit Project
+// dialog. The signal preview and its line scope are two docks on the right,
+// sharing one PreviewPane so they track the same frame; the Log dock starts
+// hidden to leave the editor more room. Generation runs in-process on a worker
+// thread through GenerationController with progress, logging, and
+// cancellation.
 //
 // Thread-safety: NOT thread-safe. GUI (main) thread only.
 class MainWindow : public QMainWindow {
@@ -71,7 +73,6 @@ class MainWindow : public QMainWindow {
   bool OnSave();
   bool OnSaveAs();
   void OnEditProject();
-  void OnTogglePreview(bool checked);
   void OnIssueActivated(const QModelIndex& index);
   void OnPreferences();
   void OnGenerate();
@@ -81,6 +82,7 @@ class MainWindow : public QMainWindow {
   void BuildMenus();
   void BuildCentralArea();
   void BuildSectionsDock();
+  void BuildPreviewDocks();
   void BuildIssuesDock();
   void BuildLogDock();
   void BuildGenerationStatusWidgets();
@@ -91,8 +93,6 @@ class MainWindow : public QMainWindow {
   // Enables/disables the project-dependent actions and docks and selects the
   // welcome or section-editor page to match the document's open state.
   void UpdateProjectOpenState();
-  // Lazily creates the detached preview window bound to the document.
-  void EnsurePreviewWindow();
 
   // Returns false when the user cancels an unsaved-changes prompt.
   bool MaybeSave();
@@ -121,6 +121,10 @@ class MainWindow : public QMainWindow {
   // completed validation run to show the pass/fail result modal.
   bool explicit_validation_requested_ = false;
   QProgressBar* generation_progress_bar_ = nullptr;
+  QLabel* preview_status_label_ = nullptr;
+  // Set while the preview's own frame-to-section report drives the list
+  // selection, so the selection handler does not move the navigator back.
+  bool selecting_section_from_preview_ = false;
 
   // Project-dependent actions, disabled while no project is open.
   QAction* save_action_ = nullptr;
@@ -129,14 +133,15 @@ class MainWindow : public QMainWindow {
   QAction* project_validate_action_ = nullptr;
   QAction* generate_action_ = nullptr;
   QAction* cancel_generation_action_ = nullptr;
-  QAction* preview_action_ = nullptr;
 
   QStackedWidget* central_stack_ = nullptr;
   WelcomePage* welcome_page_ = nullptr;
   SectionEditor* section_editor_ = nullptr;
-  PreviewWindow* preview_window_ = nullptr;
+  PreviewPane* preview_pane_ = nullptr;
   SectionListDock* section_list_dock_ = nullptr;
   QDockWidget* sections_dock_ = nullptr;
+  QDockWidget* preview_dock_ = nullptr;
+  QDockWidget* scope_dock_ = nullptr;
   QDockWidget* issues_dock_ = nullptr;
   QDockWidget* log_dock_ = nullptr;
 
