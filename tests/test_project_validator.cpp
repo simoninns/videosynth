@@ -1645,10 +1645,12 @@ TEST(ProjectValidatorTest, WarnsWhenEfmAudioPairIsNotDeclared) {
 TEST(ProjectValidatorTest, RejectsMoreEfmTracksThanTheDiscLimit) {
   Project project = MakeEfmProject();
   // 80 programme-area sections exceeds the 79-track limit of IEC 60856 Amd 2
-  // 13.5.3.3 / IEC 60857 Amd 2 13.6.3.3.
+  // 13.5.3.3 / IEC 60857 Amd 2 13.6.3.3. Insert before the lead_out so the
+  // section ordering stays valid.
   for (int index = 1; index < 80; ++index) {
-    project.sections.push_back(MakeEfmSection(
-        "Track" + std::to_string(index + 1), SectionType::kProgrammeArea, 200));
+    project.sections.insert(project.sections.end() - 1,
+                            MakeEfmSection("Track" + std::to_string(index + 1),
+                                           SectionType::kProgrammeArea, 200));
   }
 
   ProjectValidator validator;
@@ -1661,9 +1663,11 @@ TEST(ProjectValidatorTest, RejectsMoreEfmTracksThanTheDiscLimit) {
 
 TEST(ProjectValidatorTest, AcceptsExactlyTheEfmTrackLimit) {
   Project project = MakeEfmProject();
+  // Insert before the lead_out so the section ordering stays valid.
   for (int index = 1; index < 79; ++index) {
-    project.sections.push_back(MakeEfmSection(
-        "Track" + std::to_string(index + 1), SectionType::kProgrammeArea, 200));
+    project.sections.insert(project.sections.end() - 1,
+                            MakeEfmSection("Track" + std::to_string(index + 1),
+                                           SectionType::kProgrammeArea, 200));
   }
 
   ProjectValidator validator;

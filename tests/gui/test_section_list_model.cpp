@@ -291,7 +291,9 @@ TEST(SectionListModelTest, DuplicateNamesStayUnique) {
 }
 
 // Every typed section template must produce a structurally valid project
-// for its standard (warnings allowed; errors not).
+// for its standard (warnings allowed; errors not). The untyped progressive
+// template is validated in its own project: section ordering forbids
+// untyped sections inside a lead_in/lead_out disc structure.
 TEST(SectionListModelTest, SectionTemplatesValidateStructurally) {
   for (const Standard standard : {Standard::kPal, Standard::kNtsc}) {
     Project project;
@@ -302,13 +304,23 @@ TEST(SectionListModelTest, SectionTemplatesValidateStructurally) {
     project.sections.push_back(MakeLaserdiscLeadInSectionTemplate(standard));
     project.sections.push_back(MakeLaserdiscProgrammeSectionTemplate(standard));
     project.sections.push_back(MakeLaserdiscLeadOutSectionTemplate(standard));
-    project.sections.push_back(MakeProgressiveSectionTemplate(4));
 
     ProjectValidator validator;
     const ValidationResult result = validator.Validate(project);
     EXPECT_TRUE(result.is_valid)
         << "standard " << StandardToString(standard) << ": "
         << (result.errors.empty() ? "" : result.errors.front());
+
+    Project plain_project;
+    plain_project.cvbs_presets.video_standard_preset = standard;
+    plain_project.output.video_path = "out/video.composite";
+    plain_project.output.metadata_path = "out/video.meta";
+    plain_project.sections.push_back(MakeProgressiveSectionTemplate(1));
+
+    const ValidationResult plain_result = validator.Validate(plain_project);
+    EXPECT_TRUE(plain_result.is_valid)
+        << "standard " << StandardToString(standard) << ": "
+        << (plain_result.errors.empty() ? "" : plain_result.errors.front());
   }
 }
 

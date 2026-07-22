@@ -354,6 +354,7 @@ add_executable(videosynth_tests
     tests/test_yaml_project_parser.cpp
     tests/test_timing_constants.cpp
     tests/test_biphase_validation.cpp
+    tests/test_section_ordering_validation.cpp
     tests/test_cross_injection_validation.cpp
     tests/test_ntsc_virs_validation.cpp
     tests/test_biphase_integration.cpp
@@ -509,6 +510,7 @@ set(videosynth_unit_test_patterns
     "^ValidationIssuesModelTest\\."
     "^WaveformMappingTest\\."
     "^BiphaseValidationTest\\."
+    "^SectionOrderingValidationTest\\."
     "^CrossInjectionValidationTest\\."
     "^NtscVirsValidationTest\\."
     "^BiphaseIntegrationTest\\."

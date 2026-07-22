@@ -1452,6 +1452,118 @@ void ValidateEfmAudioOutput(const videosynth::Project& project,
   }
 }
 
+// Validates disc-structure section ordering. When lead_in, lead_out, or
+// programme_area section types are declared, the section sequence must be
+// [lead_in] programme_area... [lead_out]: no section may precede the lead_in,
+// no section may follow the lead_out, and every section after a lead_in or
+// before a lead_out must be programme_area. Out-of-order sections would break
+// the monotonic picture-number and time-code generation (IEC 60856/60857).
+void ValidateSectionOrdering(const videosynth::Project& project,
+                             videosynth::ValidationResult* result) {
+  if (result == nullptr) {
+    return;
+  }
+
+  const std::size_t section_count = project.sections.size();
+  std::size_t lead_in_count = 0;
+  std::size_t lead_out_count = 0;
+  std::size_t lead_in_index = 0;
+  std::size_t lead_out_index = 0;
+  for (std::size_t i = 0; i < section_count; ++i) {
+    switch (project.sections[i].section_type) {
+      case videosynth::SectionType::kLeadIn:
+        if (lead_in_count == 0) {
+          lead_in_index = i;
+        }
+        ++lead_in_count;
+        break;
+      case videosynth::SectionType::kLeadOut:
+        lead_out_index = i;  // Track the last occurrence.
+        ++lead_out_count;
+        break;
+      default:
+        break;
+    }
+  }
+
+  if (lead_in_count == 0 && lead_out_count == 0) {
+    return;
+  }
+
+  if (lead_in_count > 1) {
+    result->is_valid = false;
+    result->errors.push_back(
+        "Section ordering validation error: only one lead_in section is "
+        "allowed; found " +
+        std::to_string(lead_in_count) + ".");
+  }
+  if (lead_out_count > 1) {
+    result->is_valid = false;
+    result->errors.push_back(
+        "Section ordering validation error: only one lead_out section is "
+        "allowed; found " +
+        std::to_string(lead_out_count) + ".");
+  }
+
+  // No section may precede the lead_in.
+  if (lead_in_count > 0) {
+    for (std::size_t i = 0; i < lead_in_index; ++i) {
+      result->is_valid = false;
+      result->errors.push_back(
+          "Section ordering validation error: section '" +
+          project.sections[i].name +
+          "' must not appear before the lead_in section '" +
+          project.sections[lead_in_index].name + "'.");
+    }
+  }
+
+  // No section may follow the lead_out.
+  if (lead_out_count > 0) {
+    for (std::size_t i = lead_out_index + 1; i < section_count; ++i) {
+      result->is_valid = false;
+      result->errors.push_back(
+          "Section ordering validation error: section '" +
+          project.sections[i].name +
+          "' must not appear after the lead_out section '" +
+          project.sections[lead_out_index].name + "'.");
+    }
+  }
+
+  // Every section after the lead_in and before the lead_out must be
+  // programme_area. Each bound applies on its own so a partial disc structure
+  // (only a lead_in, or only a lead_out) is still checked. Duplicate
+  // lead_in/lead_out sections are skipped here; the count checks above
+  // already report them.
+  const std::size_t region_begin =
+      lead_in_count > 0 ? lead_in_index + 1 : static_cast<std::size_t>(0);
+  const std::size_t region_end =
+      lead_out_count > 0 ? lead_out_index : section_count;
+  if (lead_in_count > 0 || lead_out_count > 0) {
+    for (std::size_t i = region_begin; i < region_end && i < section_count;
+         ++i) {
+      const videosynth::Section& section = project.sections[i];
+      if (section.section_type == videosynth::SectionType::kProgrammeArea ||
+          section.section_type == videosynth::SectionType::kLeadIn ||
+          section.section_type == videosynth::SectionType::kLeadOut) {
+        continue;
+      }
+      std::string position;
+      if (lead_in_count > 0 && lead_out_count > 0) {
+        position = "between the lead_in and lead_out sections";
+      } else if (lead_in_count > 0) {
+        position = "after the lead_in section";
+      } else {
+        position = "before the lead_out section";
+      }
+      result->is_valid = false;
+      result->errors.push_back(
+          "Section ordering validation error: section '" + section.name +
+          "' must have section_type 'programme_area' because it is " +
+          position + ".");
+    }
+  }
+}
+
 }  // namespace
 
 namespace videosynth {
@@ -1555,6 +1667,9 @@ ValidationResult ProjectValidator::Validate(const Project& project) {
     result.is_valid = false;
     result.errors.push_back("Project must contain at least one section.");
   }
+
+  // Disc-structure ordering: [lead_in] programme_area... [lead_out].
+  ValidateSectionOrdering(project, &result);
 
   // Validate the project-wide line_injections block (disc_type + VITS set)
   // before the per-section pass; the section pass relies on the project

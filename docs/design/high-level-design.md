@@ -1903,6 +1903,7 @@ The current validator enforces a narrower subset than the full design intent in 
 - Implemented: standard selection, locked `4fsc` preset constraints, output-path requirements (including `signal_type` validation and `.y`-suffix enforcement for Y/C mode), progressive source profile checks, accepted raster checks, NTSC black-setup constraints, and validator-side VITS/line-injection compatibility checks including overlap detection, laserdisc reserved-range conflicts, and VITC/laserdisc incompatibility.
 - Implemented: full laserdisc biphase validation including section_type/code_type matrix enforcement, IEC value range constraints (picture_number, chapter_number, users_code X₁, CLV picture number digits, programme time code BCD), CAV minimum duration checks (lead-in ≥ 938 frames, lead-out ≥ 1250 frames), minimum chapter length (30 tracks), the NTSC VIRS mandatory presence check (a `virs` entry in the project-level `line_injections.vits`), and VITS/biphase reserved-range line conflict detection.
 - Implemented: per-section noise parameter validation (range, spread floor, mutual dependency).
+- Implemented: disc-structure section ordering. When any section declares a `section_type`, the section sequence must be `[lead_in] programme_area... [lead_out]`: at most one `lead_in` (first) and one `lead_out` (last), no section may precede the `lead_in` or follow the `lead_out`, and every section after a `lead_in` or before a `lead_out` must be `programme_area`. Out-of-order sections would break monotonic picture-number and time-code generation (IEC 60856/60857). The GUI surfaces these errors through the shared validator in the validation issues dock.
 - Not yet implemented in the validator/runtime pair: VITC and custom per-line content runtime paths.
 
 The rule set below remains the intended validation contract for VITC and custom per-line content, which are not yet implemented.
@@ -1934,6 +1935,11 @@ The rule set below remains the intended validation contract for VITC and custom 
   - **Scaling/resizing of progressive sources is not supported**.
   - **Ingestion must preserve the full source raster geometry (`720x576` or `720x486`) with no horizontal crop, no vertical crop, and no sample-rate conversion.**
   - **Ingestion must not apply implicit width normalization or ad-hoc crop/remap operations**.
+  - **Disc-structure section ordering** (applies when any section declares a `section_type`):
+    - At most one `lead_in` section; if present, it must be the **first** section (no section may precede it).
+    - At most one `lead_out` section; if present, it must be the **last** section (no section may follow it).
+    - Every section after a `lead_in` or before a `lead_out` must be `programme_area`.
+    - Violations are **errors**: out-of-order sections would break monotonic picture-number and time-code generation (IEC 60856/60857).
 3. **Line Injection Constraints**:
   - `target_lines` must be within the valid range for the standard (1-625 for PAL, 1-525 for NTSC).
   - `target_lines` must **not** be specified for `laserdisc` injection types; specifying it is a validation error.
