@@ -1144,22 +1144,23 @@ void ValidateOsdConfig(const videosynth::Section& section,
       return;
     }
 
-    if (ov.fg_luma < 0.0 || ov.fg_luma > 1.0) {
+    if (ov.fg_level == videosynth::OsdFgLevel::kUnknown) {
       result->is_valid = false;
       result->errors.push_back(
           "OSD validation error in section '" + section.name +
-          "': overlay fg_luma must be in [0.0, 1.0]; got " +
-          std::to_string(ov.fg_luma) + ".");
+          "': overlay fg_luma '" + ov.fg_level_text +
+          "' is not supported; must be one of white, light_grey, dark_grey, "
+          "black.");
       return;
     }
 
-    if (ov.bg_luma != -1.0 && (ov.bg_luma < 0.0 || ov.bg_luma > 1.0)) {
+    if (ov.bg_level == videosynth::OsdBgLevel::kUnknown) {
       result->is_valid = false;
       result->errors.push_back(
           "OSD validation error in section '" + section.name +
-          "': overlay bg_luma must be -1.0 (transparent) or in [0.0, 1.0]; "
-          "got " +
-          std::to_string(ov.bg_luma) + ".");
+          "': overlay bg_luma '" + ov.bg_level_text +
+          "' is not supported; must be one of transparent, white, "
+          "light_grey, dark_grey, black.");
       return;
     }
 

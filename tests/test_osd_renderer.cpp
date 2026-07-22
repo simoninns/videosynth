@@ -69,15 +69,16 @@ SampleFixed ExpectedSample(double luma) {
 
 // Builds a minimal OsdConfig with a single overlay.
 OsdConfig MakeSingleOverlay(const std::string& text, int x = 0, int y = 0,
-                            int scale = 1, double fg = 1.0, double bg = -1.0) {
+                            int scale = 1, OsdFgLevel fg = OsdFgLevel::kWhite,
+                            OsdBgLevel bg = OsdBgLevel::kTransparent) {
   OsdConfig cfg;
   OsdOverlay ov;
   ov.text = text;
   ov.x = x;
   ov.y = y;
   ov.scale = scale;
-  ov.fg_luma = fg;
-  ov.bg_luma = bg;
+  ov.fg_level = fg;
+  ov.bg_level = bg;
   cfg.overlays.push_back(ov);
   return cfg;
 }
@@ -95,7 +96,8 @@ TEST(OsdRendererTest, WritesCorrectGlyphAtOriginScale1) {
   auto buf = MakeBuffer(SampleFixed{0});
   auto cbuf = MakeBuffer(SampleFixed{0});
   const auto offsets = MakeLineOffsets();
-  const auto cfg = MakeSingleOverlay("A", 0, 0, 1, 1.0, -1.0);
+  const auto cfg = MakeSingleOverlay("A", 0, 0, 1, OsdFgLevel::kWhite,
+                                     OsdBgLevel::kTransparent);
   const SignalLevels lvl = PalLevels();
 
   renderer.Render(cfg, {cfg.overlays[0].text}, &buf, &cbuf, 0, offsets,
@@ -116,6 +118,70 @@ TEST(OsdRendererTest, WritesCorrectGlyphAtOriginScale1) {
   EXPECT_EQ(SampleAt(buf, 3, 7), blank);  // bit 0 clear
 }
 
+// OsdRenderer_MapsFgLevels_ToDiscreteLuma
+// Each of the four supported foreground levels must render at its defined
+// E_Y' luma step: white=1.0, light_grey=0.75, dark_grey=0.25, black=0.0.
+TEST(OsdRendererTest, MapsFgLevelsToDiscreteLuma) {
+  const struct {
+    OsdFgLevel level;
+    double luma;
+  } kCases[] = {
+      {OsdFgLevel::kWhite, 1.0},
+      {OsdFgLevel::kLightGrey, 0.75},
+      {OsdFgLevel::kDarkGrey, 0.25},
+      {OsdFgLevel::kBlack, 0.0},
+  };
+  for (const auto& c : kCases) {
+    OsdRenderer renderer;
+    auto buf = MakeBuffer(SampleFixed{0});
+    auto cbuf = MakeBuffer(SampleFixed{0});
+    const auto offsets = MakeLineOffsets();
+    const auto cfg =
+        MakeSingleOverlay("A", 0, 0, 1, c.level, OsdBgLevel::kTransparent);
+    const SignalLevels lvl = PalLevels();
+
+    renderer.Render(cfg, {cfg.overlays[0].text}, &buf, &cbuf, 0, offsets,
+                    kActiveLineStart, kActiveLineEnd, kActiveSampleStart,
+                    kActiveSampleEnd, lvl);
+
+    // Glyph row 3 of 'A' is 0x7E: col 1 is a foreground pixel.
+    EXPECT_EQ(SampleAt(buf, 3, 1), ExpectedSample(c.luma))
+        << "fg level " << OsdFgLevelToString(c.level);
+  }
+}
+
+// OsdRenderer_MapsBgLevels_ToDiscreteLuma
+// Each of the four opaque background levels must render at its defined E_Y'
+// luma step: white=1.0, light_grey=0.75, dark_grey=0.25, black=0.0.
+TEST(OsdRendererTest, MapsBgLevelsToDiscreteLuma) {
+  const struct {
+    OsdBgLevel level;
+    double luma;
+  } kCases[] = {
+      {OsdBgLevel::kWhite, 1.0},
+      {OsdBgLevel::kLightGrey, 0.75},
+      {OsdBgLevel::kDarkGrey, 0.25},
+      {OsdBgLevel::kBlack, 0.0},
+  };
+  for (const auto& c : kCases) {
+    OsdRenderer renderer;
+    auto buf = MakeBuffer(SampleFixed{42});
+    auto cbuf = MakeBuffer(SampleFixed{42});
+    const auto offsets = MakeLineOffsets();
+    const auto cfg =
+        MakeSingleOverlay("A", 0, 0, 1, OsdFgLevel::kWhite, c.level);
+    const SignalLevels lvl = PalLevels();
+
+    renderer.Render(cfg, {cfg.overlays[0].text}, &buf, &cbuf, 0, offsets,
+                    kActiveLineStart, kActiveLineEnd, kActiveSampleStart,
+                    kActiveSampleEnd, lvl);
+
+    // Glyph row 3 of 'A' is 0x7E: col 0 is a background pixel.
+    EXPECT_EQ(SampleAt(buf, 3, 0), ExpectedSample(c.luma))
+        << "bg level " << OsdBgLevelToString(c.level);
+  }
+}
+
 // OsdRenderer_ScalesGlyphCorrectly_Scale2
 // Render '0' at scale=2 and verify that the top-left 16×16 pixel block
 // is exactly double the glyph row width.  Glyph row 0 of '0' is 0x3C =
@@ -125,7 +191,8 @@ TEST(OsdRendererTest, ScalesGlyphCorrectlyAtScale2) {
   auto buf = MakeBuffer(SampleFixed{0});
   auto cbuf = MakeBuffer(SampleFixed{0});
   const auto offsets = MakeLineOffsets();
-  const auto cfg = MakeSingleOverlay("0", 0, 0, 2, 1.0, 0.0);
+  const auto cfg =
+      MakeSingleOverlay("0", 0, 0, 2, OsdFgLevel::kWhite, OsdBgLevel::kBlack);
   const SignalLevels lvl = PalLevels();
 
   renderer.Render(cfg, {cfg.overlays[0].text}, &buf, &cbuf, 0, offsets,
@@ -154,7 +221,7 @@ TEST(OsdRendererTest, ScalesGlyphCorrectlyAtScale2) {
 // glyph may be written; nothing may fall at x>=100.
 TEST(OsdRendererTest, ClampsAtRightEdge) {
   OsdRenderer renderer;
-  // Use a string of spaces so fg_luma writes are distinct from the fill.
+  // Use a string of spaces so foreground writes are distinct from the fill.
   // Actually use 'I' whose row 0 is 0x3C = cols 2–5 foreground; at x=96
   // cols 2–3 land at samples 98–99 (in range) and cols 4–5 at 100–101
   // (clipped).
@@ -162,7 +229,8 @@ TEST(OsdRendererTest, ClampsAtRightEdge) {
   auto cbuf = MakeBuffer(SampleFixed{0});
   const auto offsets = MakeLineOffsets();
   const std::string text(10, 'I');  // 10 glyphs
-  const auto cfg = MakeSingleOverlay(text, 96, 0, 1, 1.0, -1.0);
+  const auto cfg = MakeSingleOverlay(text, 96, 0, 1, OsdFgLevel::kWhite,
+                                     OsdBgLevel::kTransparent);
   const SignalLevels lvl = PalLevels();
 
   renderer.Render(cfg, {cfg.overlays[0].text}, &buf, &cbuf, 0, offsets,
@@ -194,7 +262,8 @@ TEST(OsdRendererTest, SkipsOverlayWhenYOutOfRange) {
   auto cbuf = MakeBuffer(chromaFill);
   const auto offsets = MakeLineOffsets();
   // y = kLines puts the first row one past the last valid line.
-  const auto cfg = MakeSingleOverlay("A", 0, kLines, 1, 1.0, 0.0);
+  const auto cfg = MakeSingleOverlay("A", 0, kLines, 1, OsdFgLevel::kWhite,
+                                     OsdBgLevel::kBlack);
   const SignalLevels lvl = PalLevels();
 
   renderer.Render(cfg, {cfg.overlays[0].text}, &buf, &cbuf, 0, offsets,
@@ -211,15 +280,16 @@ TEST(OsdRendererTest, SkipsOverlayWhenYOutOfRange) {
 }
 
 // OsdRenderer_TransparentBackground_LeavesUnsetPixels
-// With bg_luma = -1.0, only foreground (set-bit) pixels are written; all
-// unset-bit positions retain their original fill value.
+// With a transparent background, only foreground (set-bit) pixels are written;
+// all unset-bit positions retain their original fill value.
 TEST(OsdRendererTest, TransparentBackgroundLeavesUnsetPixels) {
   OsdRenderer renderer;
   const SampleFixed fill = MillivoltsToSampleFixed(350.0);  // mid-grey sentinel
   auto buf = MakeBuffer(fill);
   auto cbuf = MakeBuffer(SampleFixed{0});
   const auto offsets = MakeLineOffsets();
-  const auto cfg = MakeSingleOverlay("A", 0, 0, 1, 1.0, -1.0);
+  const auto cfg = MakeSingleOverlay("A", 0, 0, 1, OsdFgLevel::kWhite,
+                                     OsdBgLevel::kTransparent);
   const SignalLevels lvl = PalLevels();
 
   renderer.Render(cfg, {cfg.overlays[0].text}, &buf, &cbuf, 0, offsets,
@@ -246,7 +316,8 @@ TEST(OsdRendererTest, EmptyTextProducesNoWrites) {
   auto buf = MakeBuffer(fill);
   auto cbuf = MakeBuffer(SampleFixed{0});
   const auto offsets = MakeLineOffsets();
-  const auto cfg = MakeSingleOverlay("", 0, 0, 1, 1.0, 0.0);
+  const auto cfg =
+      MakeSingleOverlay("", 0, 0, 1, OsdFgLevel::kWhite, OsdBgLevel::kBlack);
   const SignalLevels lvl = PalLevels();
 
   renderer.Render(cfg, {""}, &buf, &cbuf, 0, offsets, kActiveLineStart,
@@ -270,7 +341,8 @@ TEST(OsdRendererTest, ChromaZeroedAtOsdPixels) {
   const auto offsets = MakeLineOffsets();
   // Render a single glyph with solid background so every pixel in the 8×8
   // glyph cell is written (bg covers unset bits, fg covers set bits).
-  const auto cfg = MakeSingleOverlay("0", 0, 0, 1, 1.0, 0.0);
+  const auto cfg =
+      MakeSingleOverlay("0", 0, 0, 1, OsdFgLevel::kWhite, OsdBgLevel::kBlack);
   const SignalLevels lvl = PalLevels();
 
   renderer.Render(cfg, {cfg.overlays[0].text}, &buf, &cbuf, 0, offsets,

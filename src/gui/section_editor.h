@@ -109,6 +109,12 @@ class SectionEditor : public QWidget {
   // Refreshes the "N frames x R = T total" duration hint from the latest probe
   // result and the current repeat multiplier.
   void UpdateDurationSummary();
+  // The project standard's frame rate, or 0.0 when no standard is set.
+  double ProjectFrameRateHz() const;
+  // Mirrors the frame count into the read-along seconds spinbox without
+  // re-triggering the frames spinbox (seconds is display-only convenience;
+  // the stored duration is always frames).
+  void SyncDurationSecondsFromFrames();
   // Base directory relative source paths anchor to: the project file's folder,
   // or the working directory for a never-saved project.
   QString ProjectBaseDir() const;
@@ -140,6 +146,7 @@ class SectionEditor : public QWidget {
   QCheckBox* source_relative_check_ = nullptr;
   QLabel* source_resolved_hint_ = nullptr;
   QSpinBox* duration_spin_ = nullptr;
+  QDoubleSpinBox* duration_seconds_spin_ = nullptr;
   QCheckBox* duration_all_check_ = nullptr;
   QSpinBox* duration_repeat_spin_ = nullptr;
   QLabel* duration_repeat_label_ = nullptr;

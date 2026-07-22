@@ -665,8 +665,14 @@ ParseResult ParseYamlNode(const YAML::Node& root, ILogger* logger) {
             overlay.x = ov_node["x"].as<int>(0);
             overlay.y = ov_node["y"].as<int>(0);
             overlay.scale = ov_node["scale"].as<int>(1);
-            overlay.fg_luma = ov_node["fg_luma"].as<double>(1.0);
-            overlay.bg_luma = ov_node["bg_luma"].as<double>(-1.0);
+            if (ov_node["fg_luma"]) {
+              overlay.fg_level_text = ov_node["fg_luma"].as<std::string>("");
+              overlay.fg_level = OsdFgLevelFromString(overlay.fg_level_text);
+            }
+            if (ov_node["bg_luma"]) {
+              overlay.bg_level_text = ov_node["bg_luma"].as<std::string>("");
+              overlay.bg_level = OsdBgLevelFromString(overlay.bg_level_text);
+            }
             section.osd.overlays.push_back(overlay);
           }
         }

@@ -73,8 +73,8 @@ sections:
           x: 8
           y: 32
           scale: 1
-          fg_luma: 1.0
-          bg_luma: 0.0
+          fg_luma: white
+          bg_luma: black
 
   # ---------------------------------------------------------------------------
   # PNs 9–16: UK test card F
@@ -110,8 +110,8 @@ sections:
           x: 8
           y: 32
           scale: 1
-          fg_luma: 1.0
-          bg_luma: 0.0
+          fg_luma: white
+          bg_luma: black
 
   # ---------------------------------------------------------------------------
   # PNs 17–24: multi-burst
@@ -147,8 +147,8 @@ sections:
           x: 8
           y: 32
           scale: 1
-          fg_luma: 1.0
-          bg_luma: 0.0
+          fg_luma: white
+          bg_luma: black
 
   # ---------------------------------------------------------------------------
   # PNs 25–27: tartan (first play; player rewinds after PN 27)
@@ -184,8 +184,8 @@ sections:
           x: 8
           y: 32
           scale: 1
-          fg_luma: 1.0
-          bg_luma: 0.0
+          fg_luma: white
+          bg_luma: black
 
   # ---------------------------------------------------------------------------
   # PNs 25–32: tartan replay (backward skip — same start_value, fresh noise)
@@ -221,8 +221,8 @@ sections:
           x: 8
           y: 32
           scale: 1
-          fg_luma: 1.0
-          bg_luma: 0.0
+          fg_luma: white
+          bg_luma: black
 
   # ---------------------------------------------------------------------------
   # PNs 33–34: YCbCr ramps (player skips forward after PN 34)
@@ -258,8 +258,8 @@ sections:
           x: 8
           y: 32
           scale: 1
-          fg_luma: 1.0
-          bg_luma: 0.0
+          fg_luma: white
+          bg_luma: black
 
   # ---------------------------------------------------------------------------
   # PNs 37–40: YCbCr ramps resumed after forward skip (gap of 2: PNs 35–36 absent)
@@ -295,5 +295,5 @@ sections:
           x: 8
           y: 32
           scale: 1
-          fg_luma: 1.0
-          bg_luma: 0.0
+          fg_luma: white
+          bg_luma: black

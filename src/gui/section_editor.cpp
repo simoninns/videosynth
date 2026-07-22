@@ -39,6 +39,7 @@
 #include "section_list_model.h"
 #include "source_path_model.h"
 #include "videosynth/path_resolution.h"
+#include "videosynth/timing_constants.h"
 
 namespace videosynth::gui {
 
@@ -203,6 +204,20 @@ QWidget* SectionEditor::BuildGeneralGroup() {
 
   duration_spin_ = new QSpinBox(group);
   duration_spin_->setRange(1, kMaxDurationFrames);
+  duration_spin_->setSuffix(tr(" frames"));
+  // Read-along seconds mirror of the frame count: purely a convenience view,
+  // the stored duration is always frames.
+  duration_seconds_spin_ = new QDoubleSpinBox(group);
+  duration_seconds_spin_->setDecimals(3);
+  duration_seconds_spin_->setSuffix(tr(" s"));
+  duration_seconds_spin_->setRange(0.0, kMaxDurationFrames);
+  // Convert on Enter/focus-out/arrow steps rather than every keystroke so a
+  // half-typed value never rounds to frames mid-edit.
+  duration_seconds_spin_->setKeyboardTracking(false);
+  duration_seconds_spin_->setToolTip(
+      tr("The same duration in seconds at the project standard's frame rate. "
+         "The stored duration is always frames; editing either field updates "
+         "the other."));
   duration_all_check_ = new QCheckBox(tr("All source frames"), group);
   duration_repeat_label_ = new QLabel(tr("repeat"), group);
   duration_repeat_spin_ = new QSpinBox(group);
@@ -212,11 +227,12 @@ QWidget* SectionEditor::BuildGeneralGroup() {
       tr("How many times the whole source is replayed in this section."));
   auto* duration_row = new QHBoxLayout();
   duration_row->addWidget(duration_spin_);
+  duration_row->addWidget(duration_seconds_spin_);
   duration_row->addWidget(duration_all_check_);
   duration_row->addWidget(duration_repeat_label_);
   duration_row->addWidget(duration_repeat_spin_);
   duration_row->addStretch();
-  form->addRow(tr("Duration (frames):"), duration_row);
+  form->addRow(tr("Duration:"), duration_row);
 
   // Live summary of the resolved source length and the repeat multiplier.
   duration_summary_label_ = new QLabel(group);
@@ -256,12 +272,30 @@ QWidget* SectionEditor::BuildGeneralGroup() {
           [commit_source](bool) { commit_source(); });
   connect(browse, &QPushButton::clicked, this, &SectionEditor::OnBrowseSource);
   connect(duration_spin_, &QSpinBox::valueChanged, this, [this](int) {
+    SyncDurationSecondsFromFrames();
     if (!updating_) {
       CommitSection();
     }
   });
+  connect(duration_seconds_spin_, &QDoubleSpinBox::valueChanged, this,
+          [this](double seconds) {
+            const double rate = ProjectFrameRateHz();
+            if (rate <= 0.0) {
+              return;
+            }
+            // Blocked so the frames handler does not rewrite the seconds
+            // field mid-interaction; the deferred reload after the commit
+            // normalises the display to the stored frame count.
+            const QSignalBlocker blocker(duration_spin_);
+            duration_spin_->setValue(
+                DurationSecondsToFrames(seconds, rate, kMaxDurationFrames));
+            if (!updating_) {
+              CommitSection();
+            }
+          });
   connect(duration_all_check_, &QCheckBox::toggled, this, [this](bool all) {
     duration_spin_->setEnabled(!all);
+    duration_seconds_spin_->setEnabled(!all && ProjectFrameRateHz() > 0.0);
     duration_repeat_label_->setEnabled(all);
     duration_repeat_spin_->setEnabled(all);
     UpdateDurationSummary();
@@ -384,9 +418,10 @@ QWidget* SectionEditor::BuildDropoutsGroup() {
     }
   };
 
-  const auto build_block = [&](const QString& title, QGroupBox** out_group,
-                               QSpinBox** out_scale, QCheckBox** out_check,
-                               QLineEdit** out_edit) {
+  const auto build_block = [&](const QString& title,
+                               const QString& scale_tool_tip,
+                               QGroupBox** out_group, QSpinBox** out_scale,
+                               QCheckBox** out_check, QLineEdit** out_edit) {
     auto* block = new QGroupBox(title, group);
     block->setCheckable(true);
     auto* outer = new QVBoxLayout(block);
@@ -396,6 +431,7 @@ QWidget* SectionEditor::BuildDropoutsGroup() {
     auto* scale = new QSpinBox(body);
     scale->setRange(editor_limits::kDropoutScaleMin,
                     editor_limits::kDropoutScaleMax);
+    scale->setToolTip(scale_tool_tip);
     form->addRow(tr("Scale:"), scale);
     auto* check = new QCheckBox(tr("Fixed seed"), body);
     auto* edit = new QLineEdit(body);
@@ -424,10 +460,21 @@ QWidget* SectionEditor::BuildDropoutsGroup() {
     layout->addWidget(block);
   };
 
-  build_block(tr("Random (Poisson)"), &random_dropouts_group_,
-              &random_scale_spin_, &random_seed_check_, &random_seed_edit_);
-  build_block(tr("Scratch"), &scratch_dropouts_group_, &scratch_scale_spin_,
-              &scratch_seed_check_, &scratch_seed_edit_);
+  build_block(
+      tr("Random (Poisson)"),
+      tr("Severity level, not a physical unit: 1 = rare, short dropouts; "
+         "20 = frequent, longer ones. Each step raises the expected dropouts "
+         "per frame and their length in samples exponentially."),
+      &random_dropouts_group_, &random_scale_spin_, &random_seed_check_,
+      &random_seed_edit_);
+  build_block(
+      tr("Scratch"),
+      tr("Severity level, not a physical unit: 1 = a couple of brief, narrow "
+         "scratches; 20 = many long-lived, wide ones. Each step raises the "
+         "scratch count, lifetime in frames, and width in samples "
+         "exponentially."),
+      &scratch_dropouts_group_, &scratch_scale_spin_, &scratch_seed_check_,
+      &scratch_seed_edit_);
   return group;
 }
 
@@ -569,9 +616,12 @@ void SectionEditor::LoadFromDocument() {
   LoadSourceWidgets(section.source);
   duration_all_check_->setChecked(section.duration_frames_all);
   duration_spin_->setEnabled(!section.duration_frames_all);
+  duration_seconds_spin_->setEnabled(!section.duration_frames_all &&
+                                     ProjectFrameRateHz() > 0.0);
   if (section.duration_frames > 0) {
     duration_spin_->setValue(section.duration_frames);
   }
+  SyncDurationSecondsFromFrames();
   duration_repeat_spin_->setValue(std::max(1, section.duration_frames_repeat));
   duration_repeat_label_->setEnabled(section.duration_frames_all);
   duration_repeat_spin_->setEnabled(section.duration_frames_all);
@@ -667,23 +717,29 @@ void SectionEditor::LoadOsdTable(const Section& section) {
     make_int_spin(kOsdScaleColumn, editor_limits::kOsdScaleMin,
                   editor_limits::kOsdScaleMax, overlay.scale);
 
-    auto* fg_spin = new QDoubleSpinBox(osd_table_);
-    fg_spin->setRange(editor_limits::kLumaMin, editor_limits::kLumaMax);
-    fg_spin->setSingleStep(0.05);
-    fg_spin->setDecimals(2);
-    fg_spin->setValue(overlay.fg_luma);
-    connect(fg_spin, &QDoubleSpinBox::valueChanged, this, commit);
-    osd_table_->setCellWidget(row, kOsdFgColumn, fg_spin);
+    auto* fg_combo = new QComboBox(osd_table_);
+    fg_combo->addItem(tr("White"), static_cast<int>(OsdFgLevel::kWhite));
+    fg_combo->addItem(tr("Light grey"),
+                      static_cast<int>(OsdFgLevel::kLightGrey));
+    fg_combo->addItem(tr("Dark grey"), static_cast<int>(OsdFgLevel::kDarkGrey));
+    fg_combo->addItem(tr("Black"), static_cast<int>(OsdFgLevel::kBlack));
+    const int fg_index = fg_combo->findData(static_cast<int>(overlay.fg_level));
+    fg_combo->setCurrentIndex(fg_index >= 0 ? fg_index : 0);
+    connect(fg_combo, &QComboBox::currentIndexChanged, this, commit);
+    osd_table_->setCellWidget(row, kOsdFgColumn, fg_combo);
 
-    auto* bg_spin = new QDoubleSpinBox(osd_table_);
-    // -1 is the "transparent background" sentinel accepted by the validator.
-    bg_spin->setRange(-1.0, editor_limits::kLumaMax);
-    bg_spin->setSingleStep(0.05);
-    bg_spin->setDecimals(2);
-    bg_spin->setSpecialValueText(tr("transparent"));
-    bg_spin->setValue(overlay.bg_luma);
-    connect(bg_spin, &QDoubleSpinBox::valueChanged, this, commit);
-    osd_table_->setCellWidget(row, kOsdBgColumn, bg_spin);
+    auto* bg_combo = new QComboBox(osd_table_);
+    bg_combo->addItem(tr("Transparent"),
+                      static_cast<int>(OsdBgLevel::kTransparent));
+    bg_combo->addItem(tr("White"), static_cast<int>(OsdBgLevel::kWhite));
+    bg_combo->addItem(tr("Light grey"),
+                      static_cast<int>(OsdBgLevel::kLightGrey));
+    bg_combo->addItem(tr("Dark grey"), static_cast<int>(OsdBgLevel::kDarkGrey));
+    bg_combo->addItem(tr("Black"), static_cast<int>(OsdBgLevel::kBlack));
+    const int bg_index = bg_combo->findData(static_cast<int>(overlay.bg_level));
+    bg_combo->setCurrentIndex(bg_index >= 0 ? bg_index : 0);
+    connect(bg_combo, &QComboBox::currentIndexChanged, this, commit);
+    osd_table_->setCellWidget(row, kOsdBgColumn, bg_combo);
   }
   remove_overlay_button_->setEnabled(!section.osd.overlays.empty());
 }
@@ -759,16 +815,19 @@ Section SectionEditor::SectionFromWidgets() const {
             qobject_cast<QSpinBox*>(osd_table_->cellWidget(row, column));
         return spin != nullptr ? spin->value() : fallback;
       };
-      const auto double_value = [this, row](int column, double fallback) {
-        auto* spin =
-            qobject_cast<QDoubleSpinBox*>(osd_table_->cellWidget(row, column));
-        return spin != nullptr ? spin->value() : fallback;
-      };
       overlay.x = int_value(kOsdXColumn, 0);
       overlay.y = int_value(kOsdYColumn, 0);
       overlay.scale = int_value(kOsdScaleColumn, 1);
-      overlay.fg_luma = double_value(kOsdFgColumn, 1.0);
-      overlay.bg_luma = double_value(kOsdBgColumn, -1.0);
+      if (auto* fg_combo = qobject_cast<QComboBox*>(
+              osd_table_->cellWidget(row, kOsdFgColumn))) {
+        overlay.fg_level =
+            static_cast<OsdFgLevel>(fg_combo->currentData().toInt());
+      }
+      if (auto* bg_combo = qobject_cast<QComboBox*>(
+              osd_table_->cellWidget(row, kOsdBgColumn))) {
+        overlay.bg_level =
+            static_cast<OsdBgLevel>(bg_combo->currentData().toInt());
+      }
       section.osd.overlays.push_back(overlay);
     }
   }
@@ -898,6 +957,21 @@ void SectionEditor::UpdateDurationSummary() {
                                        .arg(source_frames)
                                        .arg(repeat)
                                        .arg(static_cast<qlonglong>(total)));
+}
+
+double SectionEditor::ProjectFrameRateHz() const {
+  const Standard standard =
+      document_->project().cvbs_presets.video_standard_preset;
+  if (standard == Standard::kUnknown) {
+    return 0.0;
+  }
+  return GetTimingConstants(standard).frame_rate_hz;
+}
+
+void SectionEditor::SyncDurationSecondsFromFrames() {
+  const QSignalBlocker blocker(duration_seconds_spin_);
+  duration_seconds_spin_->setValue(
+      DurationFramesToSeconds(duration_spin_->value(), ProjectFrameRateHz()));
 }
 
 void SectionEditor::OnBrowseSource() {

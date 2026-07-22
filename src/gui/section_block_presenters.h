@@ -31,11 +31,10 @@ inline constexpr double kNoiseDbMax = 61.0;
 // as "block disabled", so editors offer 1–20).
 inline constexpr int kDropoutScaleMin = 1;
 inline constexpr int kDropoutScaleMax = 20;
-// OSD: glyph scale and luma ranges enforced by ValidateOsdConfig.
+// OSD: glyph scale range enforced by ValidateOsdConfig (fg/bg levels are
+// discrete enums chosen from dropdowns, so no numeric bounds).
 inline constexpr int kOsdScaleMin = 1;
 inline constexpr int kOsdScaleMax = 4;
-inline constexpr double kLumaMin = 0.0;
-inline constexpr double kLumaMax = 1.0;
 // Audio: audio-generation-design.md bounds enforced by
 // ValidateAudioParameters.
 inline constexpr double kAudioFrequencyMinHz = 0.0;
@@ -88,6 +87,15 @@ struct OsdTokenHelp {
   std::string description;
 };
 std::vector<OsdTokenHelp> OsdTokenCatalogue();
+
+// Frames <-> seconds convenience conversion for the duration editor. The
+// stored duration is always frames; seconds is a display-only mirror derived
+// from the project standard's frame rate. FramesToSeconds returns 0.0 when
+// the rate is not positive; SecondsToFrames rounds to the nearest frame and
+// clamps the result to [1, max_frames].
+double DurationFramesToSeconds(int frames, double frame_rate_hz);
+int DurationSecondsToFrames(double seconds, double frame_rate_hz,
+                            int max_frames);
 
 // Multi-select batch editing: mirrors onto `target` exactly the editor-visible
 // fields that differ between `before` and `after` (an edit applied to the

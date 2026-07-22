@@ -532,14 +532,14 @@ TEST(YamlProjectParserTest, ParsesOsdOverlayBlock) {
       "          x: 10\n"
       "          y: 5\n"
       "          scale: 2\n"
-      "          fg_luma: 1.0\n"
-      "          bg_luma: 0.0\n"
+      "          fg_luma: white\n"
+      "          bg_luma: black\n"
       "        - text: \"PN:{picture_number}\"\n"
       "          x: 0\n"
       "          y: 20\n"
       "          scale: 1\n"
-      "          fg_luma: 0.8\n"
-      "          bg_luma: -1.0\n";
+      "          fg_luma: light_grey\n"
+      "          bg_luma: transparent\n";
 
   YamlProjectParser parser;
   const ParseResult result = parser.ParseString(yaml);
@@ -553,15 +553,15 @@ TEST(YamlProjectParserTest, ParsesOsdOverlayBlock) {
   EXPECT_EQ(osd.overlays[0].x, 10);
   EXPECT_EQ(osd.overlays[0].y, 5);
   EXPECT_EQ(osd.overlays[0].scale, 2);
-  EXPECT_DOUBLE_EQ(osd.overlays[0].fg_luma, 1.0);
-  EXPECT_DOUBLE_EQ(osd.overlays[0].bg_luma, 0.0);
+  EXPECT_EQ(osd.overlays[0].fg_level, OsdFgLevel::kWhite);
+  EXPECT_EQ(osd.overlays[0].bg_level, OsdBgLevel::kBlack);
 
   EXPECT_EQ(osd.overlays[1].text, "PN:{picture_number}");
   EXPECT_EQ(osd.overlays[1].x, 0);
   EXPECT_EQ(osd.overlays[1].y, 20);
   EXPECT_EQ(osd.overlays[1].scale, 1);
-  EXPECT_DOUBLE_EQ(osd.overlays[1].fg_luma, 0.8);
-  EXPECT_DOUBLE_EQ(osd.overlays[1].bg_luma, -1.0);
+  EXPECT_EQ(osd.overlays[1].fg_level, OsdFgLevel::kLightGrey);
+  EXPECT_EQ(osd.overlays[1].bg_level, OsdBgLevel::kTransparent);
 }
 
 TEST(YamlProjectParserTest, OsdOverlayDefaultsApplied) {
@@ -594,8 +594,45 @@ TEST(YamlProjectParserTest, OsdOverlayDefaultsApplied) {
   EXPECT_EQ(osd.overlays[0].x, 0);
   EXPECT_EQ(osd.overlays[0].y, 0);
   EXPECT_EQ(osd.overlays[0].scale, 1);
-  EXPECT_DOUBLE_EQ(osd.overlays[0].fg_luma, 1.0);
-  EXPECT_DOUBLE_EQ(osd.overlays[0].bg_luma, -1.0);
+  EXPECT_EQ(osd.overlays[0].fg_level, OsdFgLevel::kWhite);
+  EXPECT_EQ(osd.overlays[0].bg_level, OsdBgLevel::kTransparent);
+}
+
+TEST(YamlProjectParserTest, OsdOverlayNumericFgLumaParsesAsUnknownLevel) {
+  const std::string yaml =
+      "project:\n"
+      "  name: OsdLegacyFg\n"
+      "  version: \"1.0\"\n"
+      "cvbs_presets:\n"
+      "  video_standard_preset: PAL\n"
+      "  sample_encoding_preset: CVBS_U10_4FSC\n"
+      "  signal_state_preset: STANDARD_TBC_LOCKED\n"
+      "output:\n"
+      "  video_path: out.composite\n"
+      "sections:\n"
+      "  - name: OsdSection\n"
+      "    type: progressive\n"
+      "    source: fixture.exr\n"
+      "    duration_frames: 4\n"
+      "    osd:\n"
+      "      overlays:\n"
+      "        - text: \"ONLY TEXT\"\n"
+      "          fg_luma: 0.8\n"
+      "          bg_luma: -1.0\n";
+
+  YamlProjectParser parser;
+  const ParseResult result = parser.ParseString(yaml);
+
+  // Legacy numeric fg_luma/bg_luma values parse (for a clear validation
+  // message) but map to kUnknown so the validator rejects them.
+  ASSERT_TRUE(result.ok);
+  ASSERT_EQ(result.project.sections.size(), 1U);
+  const OsdConfig& osd = result.project.sections[0].osd;
+  ASSERT_EQ(osd.overlays.size(), 1U);
+  EXPECT_EQ(osd.overlays[0].fg_level, OsdFgLevel::kUnknown);
+  EXPECT_EQ(osd.overlays[0].fg_level_text, "0.8");
+  EXPECT_EQ(osd.overlays[0].bg_level, OsdBgLevel::kUnknown);
+  EXPECT_EQ(osd.overlays[0].bg_level_text, "-1.0");
 }
 
 TEST(YamlProjectParserTest, OsdBlockNotAMapReturnsError) {

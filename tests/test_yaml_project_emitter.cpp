@@ -470,8 +470,8 @@ sections:
           x: 32
           y: 48
           scale: 2
-          fg_luma: 0.75
-          bg_luma: 0.125
+          fg_luma: light_grey
+          bg_luma: dark_grey
         - text: "plain"
 )");
 }

@@ -85,10 +85,13 @@ void OsdRenderer::Render(
       continue;
     }
 
-    const SampleFixed fg_sample = LumaToSample(overlay.fg_luma, levels);
-    const bool has_bg = (overlay.bg_luma >= 0.0);
+    const SampleFixed fg_sample =
+        LumaToSample(OsdFgLevelToLuma(overlay.fg_level), levels);
+    const bool has_bg = (overlay.bg_level != OsdBgLevel::kTransparent &&
+                         overlay.bg_level != OsdBgLevel::kUnknown);
     const SampleFixed bg_sample =
-        has_bg ? LumaToSample(overlay.bg_luma, levels) : SampleFixed{0};
+        has_bg ? LumaToSample(OsdBgLevelToLuma(overlay.bg_level), levels)
+               : SampleFixed{0};
 
     const int char_width_px = kGlyphSize * overlay.scale;
 

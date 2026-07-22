@@ -69,8 +69,8 @@ sections:
           x: 8
           y: 32
           scale: 1
-          fg_luma: 1.0
-          bg_luma: 0.0
+          fg_luma: white
+          bg_luma: black
 
   # ---------------------------------------------------------------------------
   # PNs 9–16: UK test card F
@@ -104,8 +104,8 @@ sections:
           x: 8
           y: 32
           scale: 1
-          fg_luma: 1.0
-          bg_luma: 0.0
+          fg_luma: white
+          bg_luma: black
 
   # ---------------------------------------------------------------------------
   # PNs 17–20: multi-burst (player skips forward after PN 20)
@@ -139,8 +139,8 @@ sections:
           x: 8
           y: 32
           scale: 1
-          fg_luma: 1.0
-          bg_luma: 0.0
+          fg_luma: white
+          bg_luma: black
 
   # ---------------------------------------------------------------------------
   # PNs 23–24: multi-burst resumed after forward skip (gap of 2: PNs 21–22 absent)
@@ -174,8 +174,8 @@ sections:
           x: 8
           y: 32
           scale: 1
-          fg_luma: 1.0
-          bg_luma: 0.0
+          fg_luma: white
+          bg_luma: black
 
   # ---------------------------------------------------------------------------
   # PNs 25–32: tartan
@@ -209,8 +209,8 @@ sections:
           x: 8
           y: 32
           scale: 1
-          fg_luma: 1.0
-          bg_luma: 0.0
+          fg_luma: white
+          bg_luma: black
 
   # ---------------------------------------------------------------------------
   # PNs 33–40: YCbCr ramps
@@ -244,5 +244,5 @@ sections:
           x: 8
           y: 32
           scale: 1
-          fg_luma: 1.0
-          bg_luma: 0.0
+          fg_luma: white
+          bg_luma: black

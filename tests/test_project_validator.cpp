@@ -1050,8 +1050,8 @@ TEST(ProjectValidatorTest, AcceptsValidOsdOverlay) {
   overlay.x = 0;
   overlay.y = 0;
   overlay.scale = 2;
-  overlay.fg_luma = 1.0;
-  overlay.bg_luma = 0.0;
+  overlay.fg_level = OsdFgLevel::kWhite;
+  overlay.bg_level = OsdBgLevel::kBlack;
   project.sections[0].osd.overlays.push_back(overlay);
 
   ProjectValidator validator;
@@ -1064,8 +1064,8 @@ TEST(ProjectValidatorTest, RejectsOsdOverlayScaleTooLow) {
   OsdOverlay overlay;
   overlay.text = "LABEL";
   overlay.scale = 0;
-  overlay.fg_luma = 1.0;
-  overlay.bg_luma = -1.0;
+  overlay.fg_level = OsdFgLevel::kWhite;
+  overlay.bg_level = OsdBgLevel::kTransparent;
   project.sections[0].osd.overlays.push_back(overlay);
 
   ProjectValidator validator;
@@ -1080,8 +1080,8 @@ TEST(ProjectValidatorTest, RejectsOsdOverlayScaleTooHigh) {
   OsdOverlay overlay;
   overlay.text = "LABEL";
   overlay.scale = 5;
-  overlay.fg_luma = 1.0;
-  overlay.bg_luma = -1.0;
+  overlay.fg_level = OsdFgLevel::kWhite;
+  overlay.bg_level = OsdBgLevel::kTransparent;
   project.sections[0].osd.overlays.push_back(overlay);
 
   ProjectValidator validator;
@@ -1091,13 +1091,14 @@ TEST(ProjectValidatorTest, RejectsOsdOverlayScaleTooHigh) {
   EXPECT_NE(result.errors[0].find("scale"), std::string::npos);
 }
 
-TEST(ProjectValidatorTest, RejectsOsdOverlayFgLumaOutOfRange) {
+TEST(ProjectValidatorTest, RejectsOsdOverlayFgLevelUnknown) {
   Project project = MakeValidProject();
   OsdOverlay overlay;
   overlay.text = "LABEL";
   overlay.scale = 1;
-  overlay.fg_luma = 1.5;
-  overlay.bg_luma = -1.0;
+  overlay.fg_level = OsdFgLevel::kUnknown;
+  overlay.fg_level_text = "0.5";
+  overlay.bg_level = OsdBgLevel::kTransparent;
   project.sections[0].osd.overlays.push_back(overlay);
 
   ProjectValidator validator;
@@ -1107,13 +1108,14 @@ TEST(ProjectValidatorTest, RejectsOsdOverlayFgLumaOutOfRange) {
   EXPECT_NE(result.errors[0].find("fg_luma"), std::string::npos);
 }
 
-TEST(ProjectValidatorTest, RejectsOsdOverlayBgLumaInvalidNegative) {
+TEST(ProjectValidatorTest, RejectsOsdOverlayBgLevelUnknown) {
   Project project = MakeValidProject();
   OsdOverlay overlay;
   overlay.text = "LABEL";
   overlay.scale = 1;
-  overlay.fg_luma = 1.0;
-  overlay.bg_luma = -0.5;
+  overlay.fg_level = OsdFgLevel::kWhite;
+  overlay.bg_level = OsdBgLevel::kUnknown;
+  overlay.bg_level_text = "-0.5";
   project.sections[0].osd.overlays.push_back(overlay);
 
   ProjectValidator validator;
@@ -1128,8 +1130,8 @@ TEST(ProjectValidatorTest, AcceptsOsdOverlayTransparentBackground) {
   OsdOverlay overlay;
   overlay.text = "LABEL";
   overlay.scale = 1;
-  overlay.fg_luma = 1.0;
-  overlay.bg_luma = -1.0;
+  overlay.fg_level = OsdFgLevel::kWhite;
+  overlay.bg_level = OsdBgLevel::kTransparent;
   project.sections[0].osd.overlays.push_back(overlay);
 
   ProjectValidator validator;
@@ -1142,8 +1144,8 @@ TEST(ProjectValidatorTest, RejectsOsdOverlayWithUnknownToken) {
   OsdOverlay overlay;
   overlay.text = "VALUE:{unknown_token}";
   overlay.scale = 1;
-  overlay.fg_luma = 1.0;
-  overlay.bg_luma = -1.0;
+  overlay.fg_level = OsdFgLevel::kWhite;
+  overlay.bg_level = OsdBgLevel::kTransparent;
   project.sections[0].osd.overlays.push_back(overlay);
 
   ProjectValidator validator;
@@ -1158,8 +1160,8 @@ TEST(ProjectValidatorTest, AcceptsAllFourSupportedTokens) {
   OsdOverlay overlay;
   overlay.text = "{picture_number} {biphase_hex} {phase_id} {section_name}";
   overlay.scale = 1;
-  overlay.fg_luma = 1.0;
-  overlay.bg_luma = -1.0;
+  overlay.fg_level = OsdFgLevel::kWhite;
+  overlay.bg_level = OsdBgLevel::kTransparent;
   project.sections[0].osd.overlays.push_back(overlay);
 
   ProjectValidator validator;

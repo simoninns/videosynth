@@ -24,8 +24,8 @@ namespace {
 // A field equal to its parse-time default is omitted so emitted files stay
 // minimal; re-parsing restores the identical value.
 constexpr int kDefaultOverlayScale = 1;
-constexpr double kDefaultOverlayFgLuma = 1.0;
-constexpr double kDefaultOverlayBgLuma = -1.0;
+constexpr OsdFgLevel kDefaultOverlayFgLevel = OsdFgLevel::kWhite;
+constexpr OsdBgLevel kDefaultOverlayBgLevel = OsdBgLevel::kTransparent;
 constexpr double kDefaultAudioFrequencyHz = 1000.0;
 constexpr double kDefaultAudioAmplitude = 0.5;
 
@@ -235,11 +235,13 @@ void EmitOsd(YAML::Emitter& out, const OsdConfig& osd) {
     if (overlay.scale != kDefaultOverlayScale) {
       out << YAML::Key << "scale" << YAML::Value << overlay.scale;
     }
-    if (overlay.fg_luma != kDefaultOverlayFgLuma) {
-      out << YAML::Key << "fg_luma" << YAML::Value << overlay.fg_luma;
+    if (overlay.fg_level != kDefaultOverlayFgLevel) {
+      out << YAML::Key << "fg_luma" << YAML::Value
+          << OsdFgLevelToString(overlay.fg_level);
     }
-    if (overlay.bg_luma != kDefaultOverlayBgLuma) {
-      out << YAML::Key << "bg_luma" << YAML::Value << overlay.bg_luma;
+    if (overlay.bg_level != kDefaultOverlayBgLevel) {
+      out << YAML::Key << "bg_luma" << YAML::Value
+          << OsdBgLevelToString(overlay.bg_level);
     }
     out << YAML::EndMap;
   }

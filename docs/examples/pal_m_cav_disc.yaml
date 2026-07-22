@@ -68,8 +68,8 @@ sections:
           x: 8
           y: 8
           scale: 2
-          fg_luma: 1.0
-          bg_luma: 0.0
+          fg_luma: white
+          bg_luma: black
 
   - name: Chapter1Ramps
     type: progressive

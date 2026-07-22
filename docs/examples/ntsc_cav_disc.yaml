@@ -83,14 +83,14 @@ sections:
           x: 8
           y: 8
           scale: 2
-          fg_luma: 1.0
-          bg_luma: 0.0
+          fg_luma: white
+          bg_luma: black
         - text: "PN:{picture_number} PHASE:{phase_id}"
           x: 8
           y: 28
           scale: 1
-          fg_luma: 1.0
-          bg_luma: 0.0
+          fg_luma: white
+          bg_luma: black
     audio:
       channel_pairs:
         - pair: 0

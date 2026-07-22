@@ -201,6 +201,128 @@ struct DropoutParameters {
   ScratchDropoutParameters scratch = {};
 };
 
+// On-screen display foreground level. Only four discrete levels are
+// supported; kUnknown marks an unrecognised YAML value so the validator can
+// reject it with a clear message.
+enum class OsdFgLevel { kWhite, kLightGrey, kDarkGrey, kBlack, kUnknown };
+
+inline OsdFgLevel OsdFgLevelFromString(const std::string& value) {
+  if (value == "white") {
+    return OsdFgLevel::kWhite;
+  }
+  if (value == "light_grey") {
+    return OsdFgLevel::kLightGrey;
+  }
+  if (value == "dark_grey") {
+    return OsdFgLevel::kDarkGrey;
+  }
+  if (value == "black") {
+    return OsdFgLevel::kBlack;
+  }
+  return OsdFgLevel::kUnknown;
+}
+
+inline std::string OsdFgLevelToString(OsdFgLevel level) {
+  switch (level) {
+    case OsdFgLevel::kWhite:
+      return "white";
+    case OsdFgLevel::kLightGrey:
+      return "light_grey";
+    case OsdFgLevel::kDarkGrey:
+      return "dark_grey";
+    case OsdFgLevel::kBlack:
+      return "black";
+    case OsdFgLevel::kUnknown:
+      break;
+  }
+  return {};
+}
+
+// Maps an OSD foreground level to its luma value E_Y'. kUnknown is rejected
+// by validation before rendering; it maps to white as a safe fallback.
+inline double OsdFgLevelToLuma(OsdFgLevel level) {
+  switch (level) {
+    case OsdFgLevel::kLightGrey:
+      return 0.75;
+    case OsdFgLevel::kDarkGrey:
+      return 0.25;
+    case OsdFgLevel::kBlack:
+      return 0.0;
+    case OsdFgLevel::kWhite:
+    case OsdFgLevel::kUnknown:
+      break;
+  }
+  return 1.0;
+}
+
+// On-screen display background level: the four discrete luma steps plus
+// kTransparent (no background write). kUnknown marks an unrecognised YAML
+// value so the validator can reject it with a clear message.
+enum class OsdBgLevel {
+  kTransparent,
+  kWhite,
+  kLightGrey,
+  kDarkGrey,
+  kBlack,
+  kUnknown
+};
+
+inline OsdBgLevel OsdBgLevelFromString(const std::string& value) {
+  if (value == "transparent") {
+    return OsdBgLevel::kTransparent;
+  }
+  if (value == "white") {
+    return OsdBgLevel::kWhite;
+  }
+  if (value == "light_grey") {
+    return OsdBgLevel::kLightGrey;
+  }
+  if (value == "dark_grey") {
+    return OsdBgLevel::kDarkGrey;
+  }
+  if (value == "black") {
+    return OsdBgLevel::kBlack;
+  }
+  return OsdBgLevel::kUnknown;
+}
+
+inline std::string OsdBgLevelToString(OsdBgLevel level) {
+  switch (level) {
+    case OsdBgLevel::kTransparent:
+      return "transparent";
+    case OsdBgLevel::kWhite:
+      return "white";
+    case OsdBgLevel::kLightGrey:
+      return "light_grey";
+    case OsdBgLevel::kDarkGrey:
+      return "dark_grey";
+    case OsdBgLevel::kBlack:
+      return "black";
+    case OsdBgLevel::kUnknown:
+      break;
+  }
+  return {};
+}
+
+// Maps an OSD background level to its luma value E_Y'. Only meaningful for
+// the four opaque levels; kTransparent/kUnknown map to black as a safe
+// fallback (the renderer skips transparent backgrounds entirely).
+inline double OsdBgLevelToLuma(OsdBgLevel level) {
+  switch (level) {
+    case OsdBgLevel::kWhite:
+      return 1.0;
+    case OsdBgLevel::kLightGrey:
+      return 0.75;
+    case OsdBgLevel::kDarkGrey:
+      return 0.25;
+    case OsdBgLevel::kBlack:
+    case OsdBgLevel::kTransparent:
+    case OsdBgLevel::kUnknown:
+      break;
+  }
+  return 0.0;
+}
+
 // Thread-safety: OsdOverlay and OsdConfig are plain data containers with no
 // mutable state. They may be read concurrently from multiple threads.
 struct OsdOverlay {
@@ -213,10 +335,17 @@ struct OsdOverlay {
   int y = 0;
   // Glyph scale factor: 1 = 8×8 px per glyph, 2 = 16×16 px. Range [1, 4].
   int scale = 1;
-  // Foreground luma E_Y' in [0.0, 1.0].
-  double fg_luma = 1.0;
-  // Background luma E_Y' in [0.0, 1.0], or -1.0 for transparent (no write).
-  double bg_luma = -1.0;
+  // Foreground level: one of the four supported OSD luma steps.
+  OsdFgLevel fg_level = OsdFgLevel::kWhite;
+  // Raw YAML fg_luma value retained for validation error messages only;
+  // excluded from equality and never re-emitted.
+  std::string fg_level_text;
+  // Background level: transparent (no write) or one of the four supported
+  // OSD luma steps.
+  OsdBgLevel bg_level = OsdBgLevel::kTransparent;
+  // Raw YAML bg_luma value retained for validation error messages only;
+  // excluded from equality and never re-emitted.
+  std::string bg_level_text;
 };
 
 struct OsdConfig {
@@ -472,7 +601,7 @@ inline bool operator==(const DropoutParameters& a, const DropoutParameters& b) {
 
 inline bool operator==(const OsdOverlay& a, const OsdOverlay& b) {
   return a.text == b.text && a.x == b.x && a.y == b.y && a.scale == b.scale &&
-         a.fg_luma == b.fg_luma && a.bg_luma == b.bg_luma;
+         a.fg_level == b.fg_level && a.bg_level == b.bg_level;
 }
 
 inline bool operator==(const OsdConfig& a, const OsdConfig& b) {

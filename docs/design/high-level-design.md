@@ -359,7 +359,7 @@ The `OsdRenderer` class writes monochrome bitmap-font text overlays into the lum
 
 **Data model** (defined in `model.h`):
 
-- `OsdOverlay` — one text string (literal or token template), active-area pixel position (`x`, `y`), glyph scale factor (`scale` in [1, 4]), foreground luma (`fg_luma`, E_Y' ∈ [0.0, 1.0]), and optional background luma (`bg_luma`; -1.0 = transparent).
+- `OsdOverlay` — one text string (literal or token template), active-area pixel position (`x`, `y`), glyph scale factor (`scale` in [1, 4]), foreground level (`fg_level`, one of four discrete luma steps: `white` = 1.0, `light_grey` = 0.75, `dark_grey` = 0.25, `black` = 0.0), and background level (`bg_level`, the same four steps plus `transparent` = no background write; default `transparent`).
 - `OsdConfig` — a list of zero or more `OsdOverlay` objects per section.  Stored as `Section::osd`.
 
 **Rendering** (`OsdRenderer`, `src/osd_renderer.cpp`):
@@ -393,9 +393,9 @@ The `OsdRenderer` class writes monochrome bitmap-font text overlays into the lum
 - Tokens are resolved from `biphase_manager_.GetLastFrameContext()`.
 - `Render()` is called twice per frame — once for field 1 and once for field 2 — so overlays appear in both fields at the same y-offset within each field's active picture area.
 
-**YAML** (`src/yaml_project_parser.cpp`): sections may include an `osd:` block with an `overlays:` list; each overlay supports `text`, `x`, `y`, `scale`, `fg_luma`, and `bg_luma`.
+**YAML** (`src/yaml_project_parser.cpp`): sections may include an `osd:` block with an `overlays:` list; each overlay supports `text`, `x`, `y`, `scale`, `fg_luma` (string enum: `white`, `light_grey`, `dark_grey`, or `black`), and `bg_luma` (string enum: `transparent`, `white`, `light_grey`, `dark_grey`, or `black`).
 
-**Validation** (`src/project_validator.cpp`): `scale` ∈ [1, 4]; `fg_luma` ∈ [0.0, 1.0]; `bg_luma` = -1.0 or ∈ [0.0, 1.0]; token names must be one of the four above.
+**Validation** (`src/project_validator.cpp`): `scale` ∈ [1, 4]; `fg_luma` must be one of `white`, `light_grey`, `dark_grey`, `black`; `bg_luma` must be one of `transparent`, `white`, `light_grey`, `dark_grey`, `black`; token names must be one of the four above.
 
 
 ### **Inputs**

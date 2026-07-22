@@ -81,8 +81,8 @@ sections:
           x: 8
           y: 8
           scale: 1
-          fg_luma: 1.0
-          bg_luma: 0.0
+          fg_luma: white
+          bg_luma: black
 
   # Scratch dropouts plus a square tone at higher amplitude.
   - name: ScratchDropouts

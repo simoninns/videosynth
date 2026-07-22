@@ -71,8 +71,8 @@ sections:
           x: 8
           y: 32
           scale: 1
-          fg_luma: 1.0
-          bg_luma: 0.0
+          fg_luma: white
+          bg_luma: black
 
   - name: Testcard_C
     type: progressive
@@ -105,8 +105,8 @@ sections:
           x: 8
           y: 32
           scale: 1
-          fg_luma: 1.0
-          bg_luma: 0.0
+          fg_luma: white
+          bg_luma: black
 
   - name: MultiBurst_C
     type: progressive
@@ -139,8 +139,8 @@ sections:
           x: 8
           y: 32
           scale: 1
-          fg_luma: 1.0
-          bg_luma: 0.0
+          fg_luma: white
+          bg_luma: black
 
   - name: Tartan_C
     type: progressive
@@ -173,8 +173,8 @@ sections:
           x: 8
           y: 32
           scale: 1
-          fg_luma: 1.0
-          bg_luma: 0.0
+          fg_luma: white
+          bg_luma: black
 
   - name: Ramps_C
     type: progressive
@@ -207,8 +207,8 @@ sections:
           x: 8
           y: 32
           scale: 1
-          fg_luma: 1.0
-          bg_luma: 0.0
+          fg_luma: white
+          bg_luma: black
 
 disc_skips:
   # Skip PNs 1–4: capture starts at PN 5.

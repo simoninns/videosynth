@@ -332,5 +332,38 @@ TEST(SectionBlockPresenterTest, OsdTokenCatalogueMatchesResolverTokens) {
   }
 }
 
+TEST(SectionBlockPresenterTest,
+     DurationFramesToSecondsDividesByRateWhenRatePositive) {
+  // ITU-R BT.1700 Annex 1 Part B Table 1 item 3: PAL is 25 frames/s.
+  EXPECT_DOUBLE_EQ(DurationFramesToSeconds(250, 25.0), 10.0);
+  // SMPTE 170M-2004 Section 11.3: NTSC is 30000/1001 frames/s.
+  EXPECT_NEAR(DurationFramesToSeconds(30, 30000.0 / 1001.0), 1.001, 1e-9);
+}
+
+TEST(SectionBlockPresenterTest,
+     DurationFramesToSecondsReturnsZeroWhenRateNotPositive) {
+  EXPECT_DOUBLE_EQ(DurationFramesToSeconds(250, 0.0), 0.0);
+  EXPECT_DOUBLE_EQ(DurationFramesToSeconds(250, -25.0), 0.0);
+}
+
+TEST(SectionBlockPresenterTest, DurationSecondsToFramesRoundsToNearestFrame) {
+  EXPECT_EQ(DurationSecondsToFrames(10.0, 25.0, 1000000), 250);
+  // 1 s of NTSC is 29.97 frames -> rounds to 30.
+  EXPECT_EQ(DurationSecondsToFrames(1.0, 30000.0 / 1001.0, 1000000), 30);
+  // 0.02 s of PAL is exactly half a frame -> rounds away from zero to 1.
+  EXPECT_EQ(DurationSecondsToFrames(0.02, 25.0, 1000000), 1);
+}
+
+TEST(SectionBlockPresenterTest,
+     DurationSecondsToFramesClampsToValidFrameRange) {
+  // Below one frame (and negative input) clamps up to the 1-frame minimum.
+  EXPECT_EQ(DurationSecondsToFrames(0.0, 25.0, 1000000), 1);
+  EXPECT_EQ(DurationSecondsToFrames(-5.0, 25.0, 1000000), 1);
+  // Above the editor maximum clamps down to it.
+  EXPECT_EQ(DurationSecondsToFrames(1000.0, 25.0, 100), 100);
+  // A non-positive rate cannot convert; the safe minimum is returned.
+  EXPECT_EQ(DurationSecondsToFrames(10.0, 0.0, 100), 1);
+}
+
 }  // namespace
 }  // namespace videosynth::gui

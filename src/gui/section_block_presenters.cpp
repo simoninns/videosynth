@@ -10,6 +10,10 @@
 
 #include "section_block_presenters.h"
 
+#include <algorithm>
+#include <cmath>
+#include <cstdint>
+
 namespace videosynth::gui {
 
 namespace {
@@ -154,8 +158,8 @@ OsdOverlay MakeDefaultOsdOverlay() {
   overlay.x = 0;
   overlay.y = 0;
   overlay.scale = 1;
-  overlay.fg_luma = 1.0;
-  overlay.bg_luma = -1.0;
+  overlay.fg_level = OsdFgLevel::kWhite;
+  overlay.bg_level = OsdBgLevel::kTransparent;
   return overlay;
 }
 
@@ -165,6 +169,23 @@ std::vector<std::string> AudioWaveformOptions() {
 
 std::vector<std::string> AudioRampModeOptions() {
   return {"up", "down", "bounce"};
+}
+
+double DurationFramesToSeconds(int frames, double frame_rate_hz) {
+  if (frame_rate_hz <= 0.0) {
+    return 0.0;
+  }
+  return static_cast<double>(frames) / frame_rate_hz;
+}
+
+int DurationSecondsToFrames(double seconds, double frame_rate_hz,
+                            int max_frames) {
+  if (frame_rate_hz <= 0.0) {
+    return 1;
+  }
+  const int64_t frames = std::llround(seconds * frame_rate_hz);
+  return static_cast<int>(
+      std::clamp<int64_t>(frames, 1, std::max(1, max_frames)));
 }
 
 Section ApplySectionEditDelta(const Section& before, const Section& after,
