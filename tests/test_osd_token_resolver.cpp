@@ -55,10 +55,10 @@ TEST(OsdTokenResolverTest, PictureNumberMaxFiveDigits) {
   EXPECT_EQ(resolver.Resolve("{picture_number}", ctx, "S"), "99999");
 }
 
-TEST(OsdTokenResolverTest, PictureNumberZeroShowsDashes) {
+TEST(OsdTokenResolverTest, PictureNumberZeroShowsZeroPlaceholder) {
   OsdTokenResolver resolver;
   const PerFrameContext ctx = MakeContext(0, {}, 0);
-  EXPECT_EQ(resolver.Resolve("{picture_number}", ctx, "S"), "-----");
+  EXPECT_EQ(resolver.Resolve("{picture_number}", ctx, "S"), "00000");
 }
 
 TEST(OsdTokenResolverTest, BiphaseHexSingleWord) {
@@ -77,10 +77,10 @@ TEST(OsdTokenResolverTest, BiphaseHexMultipleWordsSpaceSeparated) {
   EXPECT_EQ(resolver.Resolve("{biphase_hex}", ctx, "S"), "ABCDEF 001234");
 }
 
-TEST(OsdTokenResolverTest, BiphaseHexEmptyShowsDashes) {
+TEST(OsdTokenResolverTest, BiphaseHexEmptyShowsZeroWord) {
   OsdTokenResolver resolver;
   const PerFrameContext ctx = MakeContext(0, {}, 0);
-  EXPECT_EQ(resolver.Resolve("{biphase_hex}", ctx, "S"), "--------");
+  EXPECT_EQ(resolver.Resolve("{biphase_hex}", ctx, "S"), "000000");
 }
 
 TEST(OsdTokenResolverTest, PhaseIdReplacedWithIndex) {
@@ -108,18 +108,18 @@ TEST(OsdTokenResolverTest, AllTokensCombined) {
             "PN:00007 HEX:F00007 PH:2 S:Alpha");
 }
 
-TEST(OsdTokenResolverTest, FrameNumberReplaced) {
+TEST(OsdTokenResolverTest, FrameNumberZeroPadded) {
   OsdTokenResolver resolver;
   PerFrameContext ctx = MakeContext(0, {}, 0);
   ctx.frame_number = 137;
-  EXPECT_EQ(resolver.Resolve("F:{frame_number}", ctx, "S"), "F:137");
+  EXPECT_EQ(resolver.Resolve("F:{frame_number}", ctx, "S"), "F:00137");
 }
 
 TEST(OsdTokenResolverTest, FrameNumberFirstFrameIsOne) {
   OsdTokenResolver resolver;
   PerFrameContext ctx = MakeContext(0, {}, 0);
   ctx.frame_number = 1;
-  EXPECT_EQ(resolver.Resolve("{frame_number}", ctx, "S"), "1");
+  EXPECT_EQ(resolver.Resolve("{frame_number}", ctx, "S"), "00001");
 }
 
 TEST(OsdTokenResolverTest, TimecodeFormattedHhMmSsFf) {
@@ -140,10 +140,10 @@ TEST(OsdTokenResolverTest, TimecodeZeroPadsAllFields) {
   EXPECT_EQ(resolver.Resolve("{timecode}", ctx, "S"), "00:00:00:00");
 }
 
-TEST(OsdTokenResolverTest, TimecodeUnavailableShowsDashes) {
+TEST(OsdTokenResolverTest, TimecodeUnavailableShowsZeroPlaceholder) {
   OsdTokenResolver resolver;
   const PerFrameContext ctx = MakeContext(0, {}, 0);
-  EXPECT_EQ(resolver.Resolve("{timecode}", ctx, "S"), "--:--:--:--");
+  EXPECT_EQ(resolver.Resolve("{timecode}", ctx, "S"), "00:00:00:00");
 }
 
 TEST(OsdTokenResolverTest, UnknownTokenPassesThrough) {

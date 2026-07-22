@@ -18,14 +18,20 @@ namespace videosynth {
 // Resolves per-frame template tokens embedded in OSD overlay text strings.
 //
 // Supported tokens (delimited by braces):
-//   {picture_number} — zero-padded 5-digit CAV picture number; "-----" when 0.
-//   {biphase_hex}    — space-separated 6-digit hex biphase words; "--------"
+//   {picture_number} — zero-padded 5-digit CAV picture number (IEC 60856/60857
+//                      max 99999); "00000" when no picture-number code is
+//                      active.
+//   {biphase_hex}    — space-separated 6-digit hex biphase words; "000000"
 //                      when the active-generator list is empty.
 //   {phase_id}       — colour-frame sequence index as a single decimal digit.
 //   {section_name}   — the section's name field verbatim.
 //   {timecode}       — CLV programme timecode HH:MM:SS:FF from the output frame
-//                      position; "--:--:--:--" on non-CLV discs.
-//   {frame_number}   — 1-based sequential frame position in the whole output.
+//                      position; "00:00:00:00" on non-CLV discs.
+//   {frame_number}   — 1-based sequential frame position in the whole output,
+//                      zero-padded to 5 digits.
+//
+// Unavailable values render as all-zero fields of the same width as a real
+// value so overlay layout never shifts between preview and disc variants.
 //
 // Static text (no token braces) is returned unchanged.  Unknown token names
 // (e.g. {foo}) are caught at project-validation time by HasOnlyKnownTokens()

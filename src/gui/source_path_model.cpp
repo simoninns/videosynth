@@ -46,7 +46,7 @@ SourceSelection ParseSourceSelection(const std::string& source) {
     return selection;
   }
 
-  // My own file.
+  // Local file.
   if (source.rfind(kProjectPrefix, 0) == 0) {
     // Show the path under the project; the "relative" flag conveys the anchor.
     selection.relative = true;

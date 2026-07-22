@@ -24,7 +24,10 @@ namespace {
 // NOLINTBEGIN(readability-magic-numbers)
 std::string FormatPictureNumber(int picture_number) {
   if (picture_number <= 0) {
-    return "-----";
+    // IEC 60856/60857: max picture number 99999, so a real value is always
+    // five digits; render an all-zero field of the same width when no CAV
+    // picture-number code is active.
+    return "00000";
   }
   // Buffer sized for sign + 10 digits + NUL; the 5-digit zero-pad is the
   // normal case (max valid picture number is 99999) but we don't truncate.
@@ -33,9 +36,20 @@ std::string FormatPictureNumber(int picture_number) {
   return std::string(buf);
 }
 
+// Zero-pads the 1-based sequential output frame number to the same 5-digit
+// width as the CAV picture number (IEC 60856/60857 max 99999); larger values
+// are not truncated.
+std::string FormatFrameNumber(int frame_number) {
+  char buf[12];
+  std::snprintf(buf, sizeof(buf), "%05d", frame_number);
+  return std::string(buf);
+}
+
 std::string FormatBiphaseHex(const std::vector<uint32_t>& words) {
   if (words.empty()) {
-    return "--------";
+    // One 24-bit code word renders as six hex digits; show an all-zero word
+    // of the same width when no generators are active.
+    return "000000";
   }
   std::string result;
   bool first = true;
@@ -53,7 +67,9 @@ std::string FormatBiphaseHex(const std::vector<uint32_t>& words) {
 
 std::string FormatClvTimecode(const PerFrameContext& ctx) {
   if (!ctx.has_clv_timecode) {
-    return "--:--:--:--";
+    // Same HH:MM:SS:FF shape as a real value so overlay layout is unchanged
+    // on non-CLV discs.
+    return "00:00:00:00";
   }
   // HH:MM:SS:FF; buffer sized for four zero-padded fields plus separators.
   char buf[16];
@@ -102,7 +118,7 @@ std::string OsdTokenResolver::Resolve(const std::string& text,
     } else if (token == "timecode") {
       result += FormatClvTimecode(ctx);
     } else if (token == "frame_number") {
-      result += std::to_string(ctx.frame_number);
+      result += FormatFrameNumber(ctx.frame_number);
     } else {
       result += text.substr(i, close - i + 1);
     }

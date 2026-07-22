@@ -85,6 +85,7 @@ void ProjectSettingsEditor::BuildUi() {
   auto* project_group = new QGroupBox(tr("Project"), this);
   auto* project_form = new QFormLayout(project_group);
   name_edit_ = new QLineEdit(project_group);
+  name_edit_->setMinimumWidth(name_edit_->sizeHint().width() * 2);
   version_edit_ = new QLineEdit(project_group);
   description_edit_ = new QPlainTextEdit(project_group);
   description_edit_->setFixedHeight(60);

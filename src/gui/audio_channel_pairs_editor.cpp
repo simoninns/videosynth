@@ -68,6 +68,9 @@ AudioChannelPairsEditor::AudioChannelPairsEditor(QWidget* parent)
   header_form->addRow(tr("Channel pair:"), pair_spin_);
   description_edit_ = new QLineEdit(form_panel_);
   description_edit_->setPlaceholderText(tr("e.g. Analogue stereo"));
+  // Twice the default hint so longer descriptions stay readable; the platform
+  // form layout may otherwise keep the field at its narrow size hint.
+  description_edit_->setMinimumWidth(description_edit_->sizeHint().width() * 2);
   header_form->addRow(tr("Description:"), description_edit_);
   channel_mode_ = new QComboBox(form_panel_);
   channel_mode_->addItem(tr("Same tone on both channels"));

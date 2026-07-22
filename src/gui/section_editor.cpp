@@ -126,6 +126,7 @@ QWidget* SectionEditor::BuildGeneralGroup() {
   auto* form = new QFormLayout(group);
 
   name_edit_ = new QLineEdit(group);
+  name_edit_->setMinimumWidth(name_edit_->sizeHint().width() * 2);
   form->addRow(tr("Name:"), name_edit_);
 
   section_type_combo_ = new QComboBox(group);
@@ -135,19 +136,19 @@ QWidget* SectionEditor::BuildGeneralGroup() {
   section_type_combo_->addItem(QStringLiteral("lead_out"));
   form->addRow(tr("Disc section type:"), section_type_combo_);
 
-  // Source: a two-way choice between a built-in (shipped) asset and the user's
-  // own file. Built-in composes {bundled}/<type>/<raster>/<file> from the
-  // project raster so only the filename is a real choice; My own file is a
+  // Source: a two-way choice between a built-in (shipped) asset and a local
+  // file. Built-in composes {bundled}/<type>/<raster>/<file> from the
+  // project raster so only the filename is a real choice; Local file is a
   // browsed path stored project-relative or absolute.
   source_mode_combo_ = new QComboBox(group);
   source_mode_combo_->setObjectName(QStringLiteral("sourceModeCombo"));
   source_mode_combo_->addItem(tr("Built-in asset"), QStringLiteral("builtin"));
-  source_mode_combo_->addItem(tr("My own file"), QStringLiteral("own"));
+  source_mode_combo_->addItem(tr("Local file"), QStringLiteral("own"));
   source_mode_combo_->setToolTip(
       tr("Built-in = an asset shipped with videosynth (only the file name is "
-         "yours to pick; the folder follows the project's video standard). My "
-         "own file = any file on disk, stored relative to the project or as a "
-         "full path."));
+         "yours to pick; the folder follows the project's video standard). "
+         "Local file = any file on disk, stored relative to the project or as "
+         "a full path."));
   form->addRow(tr("Source:"), source_mode_combo_);
 
   source_stack_ = new QStackedWidget(group);
@@ -860,7 +861,7 @@ void SectionEditor::UpdateDurationSummary() {
 }
 
 void SectionEditor::OnBrowseSource() {
-  // Only reachable in "My own file" mode (Built-in uses a dropdown). Open the
+  // Only reachable in "Local file" mode (Built-in uses a dropdown). Open the
   // dialog at the current source's resolved location, falling back to the
   // project directory.
   QString start;

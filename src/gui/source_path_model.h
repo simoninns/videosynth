@@ -18,7 +18,7 @@ namespace videosynth::gui {
 //   - Built-in: an asset shipped with videosynth, addressed as
 //     {bundled}/<type>/<raster>/<file>. Only <type> (exr/mkv) and <file> are
 //     the user's to choose; <raster> follows the project's video standard.
-//   - My own file: any other path — a {project}-relative path, an absolute
+//   - Local file: any other path — a {project}-relative path, an absolute
 //     path, or another preserved logical token (e.g. {user}/…).
 // SourceSelection is the widget-agnostic form of that choice, so the string
 // parsing and composition can be unit-tested without a live Qt widget.
