@@ -24,7 +24,7 @@
 # 4 s thereafter) apply to production masters and are surfaced as validator
 # warnings.
 #
-# CVBS_S16_FSC preserves the full pilot-burst waveform (its trough reaches
+# CVBS_S16_4FSC preserves the full pilot-burst waveform (its trough reaches
 # -600 mV, below the -300 mV legal-code floor of the U10/U16/TPG21 presets).
 #
 # See docs/user/biphase-design.md for full documentation.
@@ -36,7 +36,7 @@ project:
 
 cvbs_presets:
   video_standard_preset: PAL
-  sample_encoding_preset: CVBS_S16_FSC
+  sample_encoding_preset: CVBS_S16_4FSC
   signal_state_preset: STANDARD_TBC_LOCKED
   pal_laserdisc_pilot_burst: true
 

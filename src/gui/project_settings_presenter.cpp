@@ -80,7 +80,7 @@ ProjectSettingsFormState BuildProjectSettingsFormState(const Project& project) {
   state.standard_options = {"PAL", "NTSC", "PAL_M"};
   // The supported preset set from model.h (IsSupportedSampleEncodingPreset).
   state.sample_encoding_options = {"CVBS_U10_4FSC",   "CVBS_U16_4FSC",
-                                   "CVBS_TPG21_4FSC", "CVBS_S16_FSC",
+                                   "CVBS_TPG21_4FSC", "CVBS_S16_4FSC",
                                    "RAW_S16_28M",     "RAW_S16_40M"};
   // ProjectValidator only accepts the locked TBC state.
   state.signal_state_options = {"STANDARD_TBC_LOCKED"};

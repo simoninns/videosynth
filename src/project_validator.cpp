@@ -411,7 +411,7 @@ void ValidateDeferredLaserdiscPresetFlags(
         "pal_laserdisc_pilot_burst warning: preset '" +
         project.cvbs_presets.sample_encoding_preset +
         "' clips sub-sync excursions below -300 mV; the pilot burst trough "
-        "reaches -600 mV. Use CVBS_S16_FSC or RAW_S16_28M/RAW_S16_40M to "
+        "reaches -600 mV. Use CVBS_S16_4FSC or RAW_S16_28M/RAW_S16_40M to "
         "preserve the full burst waveform.");
   }
 

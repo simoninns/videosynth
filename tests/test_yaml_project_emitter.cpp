@@ -225,7 +225,7 @@ TEST(YamlProjectEmitterTest, PalPilotBurstRoundTrips) {
   ExpectRoundTrip(R"(
 cvbs_presets:
   video_standard_preset: PAL
-  sample_encoding_preset: CVBS_S16_FSC
+  sample_encoding_preset: CVBS_S16_4FSC
   pal_laserdisc_pilot_burst: true
 output:
   video_path: out/video.composite

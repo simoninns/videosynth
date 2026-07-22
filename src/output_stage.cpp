@@ -61,7 +61,7 @@ bool ResolveOutputEncoding(const std::string& preset,
     return true;
   }
 
-  if (preset == "CVBS_S16_FSC") {
+  if (preset == "CVBS_S16_4FSC") {
     *output_encoding = OutputEncoding::kCvbsS16Fsc;
     return true;
   }
@@ -133,14 +133,15 @@ std::int16_t EncodeCompositeSample(OutputEncoding encoding,
   }
 
   if (encoding == OutputEncoding::kCvbsS16Fsc) {
-    // S16_FSC can represent sub-sync excursions (e.g. pilot burst troughs at
+    // S16_4FSC can represent sub-sync excursions (e.g. pilot burst troughs at
     // −600 mV) that lie below the 10-bit legal-code floor. Use the unclamped
     // mapped code and saturate only to prevent int16 overflow.
-    const int s16_fsc_raw = (mapped - profile.blanking_code) * 32;
-    const int s16_fsc_clamped = std::clamp(
-        s16_fsc_raw, static_cast<int>(std::numeric_limits<std::int16_t>::min()),
-        static_cast<int>(std::numeric_limits<std::int16_t>::max()));
-    return static_cast<std::int16_t>(s16_fsc_clamped);
+    const int s16_4fsc_raw = (mapped - profile.blanking_code) * 32;
+    const int s16_4fsc_clamped =
+        std::clamp(s16_4fsc_raw,
+                   static_cast<int>(std::numeric_limits<std::int16_t>::min()),
+                   static_cast<int>(std::numeric_limits<std::int16_t>::max()));
+    return static_cast<std::int16_t>(s16_4fsc_clamped);
   }
 
   return static_cast<std::int16_t>(quantized_code);
@@ -173,11 +174,12 @@ std::int16_t EncodeChromaSample(OutputEncoding encoding,
   }
 
   if (encoding == OutputEncoding::kCvbsS16Fsc) {
-    const int s16_fsc_raw = (chroma_code - profile.blanking_code) * 32;
-    const int s16_fsc_clamped = std::clamp(
-        s16_fsc_raw, static_cast<int>(std::numeric_limits<std::int16_t>::min()),
-        static_cast<int>(std::numeric_limits<std::int16_t>::max()));
-    return static_cast<std::int16_t>(s16_fsc_clamped);
+    const int s16_4fsc_raw = (chroma_code - profile.blanking_code) * 32;
+    const int s16_4fsc_clamped =
+        std::clamp(s16_4fsc_raw,
+                   static_cast<int>(std::numeric_limits<std::int16_t>::min()),
+                   static_cast<int>(std::numeric_limits<std::int16_t>::max()));
+    return static_cast<std::int16_t>(s16_4fsc_clamped);
   }
 
   return static_cast<std::int16_t>(quantized_code);
@@ -241,7 +243,7 @@ bool WriteMetadataDatabase(const Project& project, std::size_t frame_count,
       "    sample_encoding_preset      TEXT    NOT NULL"
       "        CHECK (sample_encoding_preset IN ('CVBS_U10_4FSC', "
       "'CVBS_U16_4FSC', 'RAW_S16_28M', 'RAW_S16_40M', 'CVBS_TPG21_4FSC', "
-      "'CVBS_S16_FSC')),"
+      "'CVBS_S16_4FSC')),"
       "    signal_state_preset         TEXT    NOT NULL"
       "        CHECK (signal_state_preset IN ("
       "            'STANDARD_TBC_LOCKED',"

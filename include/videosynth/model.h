@@ -133,7 +133,7 @@ inline bool IsSupportedNtscBlackSetupIre(double setup_ire) {
 
 inline bool Is4fscSampleEncodingPreset(const std::string& preset) {
   return preset == "CVBS_U10_4FSC" || preset == "CVBS_U16_4FSC" ||
-         preset == "CVBS_TPG21_4FSC" || preset == "CVBS_S16_FSC";
+         preset == "CVBS_TPG21_4FSC" || preset == "CVBS_S16_4FSC";
 }
 
 inline bool IsSupportedSampleEncodingPreset(const std::string& preset) {
@@ -144,9 +144,9 @@ inline bool IsSupportedSampleEncodingPreset(const std::string& preset) {
 // Returns true if the preset can represent sub-sync excursions (below -300 mV).
 // The PAL pilot burst swings ±300 mV about sync tip, so troughs reach -600 mV.
 // U10/U16/TPG21 presets clamp at the 10-bit legal-code floor (~-300 mV);
-// CVBS_S16_FSC and RAW_S16_* presets carry the full excursion.
+// CVBS_S16_4FSC and RAW_S16_* presets carry the full excursion.
 inline bool IsSubSyncCapableSampleEncodingPreset(const std::string& preset) {
-  return preset == "CVBS_S16_FSC" || preset == "RAW_S16_28M" ||
+  return preset == "CVBS_S16_4FSC" || preset == "RAW_S16_28M" ||
          preset == "RAW_S16_40M";
 }
 

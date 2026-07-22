@@ -269,7 +269,7 @@ TEST(OutputStageTest, WritesCompositeSamplesUsingTpg21EncodingPreset) {
 TEST(OutputStageTest, WritesCompositeSamplesUsingS16FscEncodingPresetPal) {
   OutputStage output;
   Project project = MakeProject(Standard::kPal);
-  project.cvbs_presets.sample_encoding_preset = "CVBS_S16_FSC";
+  project.cvbs_presets.sample_encoding_preset = "CVBS_S16_4FSC";
   const std::size_t frame_span =
       static_cast<std::size_t>(SamplesPerFrame4fsc(Standard::kPal));
 
@@ -282,10 +282,10 @@ TEST(OutputStageTest, WritesCompositeSamplesUsingS16FscEncodingPresetPal) {
 
   const std::filesystem::path video_path =
       std::filesystem::temp_directory_path() /
-      "videosynth_output_stage_s16_fsc_pal.composite";
+      "videosynth_output_stage_s16_4fsc_pal.composite";
   const std::filesystem::path metadata_path =
       std::filesystem::temp_directory_path() /
-      "videosynth_output_stage_s16_fsc_pal.meta";
+      "videosynth_output_stage_s16_4fsc_pal.meta";
   project.output.video_path = video_path.string();
   project.output.metadata_path = metadata_path.string();
   std::filesystem::remove(video_path);
@@ -309,7 +309,7 @@ TEST(OutputStageTest, WritesCompositeSamplesUsingS16FscEncodingPresetPal) {
 
   CvbsMetadata metadata;
   ASSERT_TRUE(ReadCvbsMetadata(metadata_path, &metadata));
-  EXPECT_EQ(metadata.sample_encoding_preset, "CVBS_S16_FSC");
+  EXPECT_EQ(metadata.sample_encoding_preset, "CVBS_S16_4FSC");
   EXPECT_EQ(metadata.preset, "PAL");
 
   std::filesystem::remove(video_path);
@@ -319,7 +319,7 @@ TEST(OutputStageTest, WritesCompositeSamplesUsingS16FscEncodingPresetPal) {
 TEST(OutputStageTest, WritesCompositeSamplesUsingS16FscEncodingPresetNtsc) {
   OutputStage output;
   Project project = MakeProject(Standard::kNtsc);
-  project.cvbs_presets.sample_encoding_preset = "CVBS_S16_FSC";
+  project.cvbs_presets.sample_encoding_preset = "CVBS_S16_4FSC";
   const std::size_t frame_span =
       static_cast<std::size_t>(SamplesPerFrame4fsc(Standard::kNtsc));
 
@@ -331,10 +331,10 @@ TEST(OutputStageTest, WritesCompositeSamplesUsingS16FscEncodingPresetNtsc) {
 
   const std::filesystem::path video_path =
       std::filesystem::temp_directory_path() /
-      "videosynth_output_stage_s16_fsc_ntsc.composite";
+      "videosynth_output_stage_s16_4fsc_ntsc.composite";
   const std::filesystem::path metadata_path =
       std::filesystem::temp_directory_path() /
-      "videosynth_output_stage_s16_fsc_ntsc.meta";
+      "videosynth_output_stage_s16_4fsc_ntsc.meta";
   project.output.video_path = video_path.string();
   project.output.metadata_path = metadata_path.string();
   std::filesystem::remove(video_path);
@@ -354,7 +354,7 @@ TEST(OutputStageTest, WritesCompositeSamplesUsingS16FscEncodingPresetNtsc) {
 
   CvbsMetadata metadata;
   ASSERT_TRUE(ReadCvbsMetadata(metadata_path, &metadata));
-  EXPECT_EQ(metadata.sample_encoding_preset, "CVBS_S16_FSC");
+  EXPECT_EQ(metadata.sample_encoding_preset, "CVBS_S16_4FSC");
   EXPECT_EQ(metadata.preset, "NTSC");
 
   std::filesystem::remove(video_path);

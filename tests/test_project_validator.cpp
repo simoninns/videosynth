@@ -146,7 +146,7 @@ TEST(ProjectValidatorTest, AcceptsTpg21SampleEncodingPreset) {
 TEST(ProjectValidatorTest, AcceptsSupportedSampleEncodingPresets) {
   const std::vector<std::string> presets = {"CVBS_U10_4FSC",   "CVBS_U16_4FSC",
                                             "RAW_S16_28M",     "RAW_S16_40M",
-                                            "CVBS_TPG21_4FSC", "CVBS_S16_FSC"};
+                                            "CVBS_TPG21_4FSC", "CVBS_S16_4FSC"};
 
   for (const std::string& preset : presets) {
     Project project = MakeValidProject();
@@ -274,7 +274,7 @@ TEST(ProjectValidatorTest, WarnsPalPilotBurstClippingWithU10Preset) {
   EXPECT_EQ(result.warnings[0],
             "pal_laserdisc_pilot_burst warning: preset 'CVBS_U10_4FSC' clips "
             "sub-sync excursions below -300 mV; the pilot burst trough reaches "
-            "-600 mV. Use CVBS_S16_FSC or RAW_S16_28M/RAW_S16_40M to preserve "
+            "-600 mV. Use CVBS_S16_4FSC or RAW_S16_28M/RAW_S16_40M to preserve "
             "the full burst waveform.");
 }
 
@@ -292,7 +292,7 @@ TEST(ProjectValidatorTest, WarnsPalPilotBurstClippingWithU16Preset) {
   EXPECT_EQ(result.warnings[0],
             "pal_laserdisc_pilot_burst warning: preset 'CVBS_U16_4FSC' clips "
             "sub-sync excursions below -300 mV; the pilot burst trough reaches "
-            "-600 mV. Use CVBS_S16_FSC or RAW_S16_28M/RAW_S16_40M to preserve "
+            "-600 mV. Use CVBS_S16_4FSC or RAW_S16_28M/RAW_S16_40M to preserve "
             "the full burst waveform.");
 }
 
@@ -310,14 +310,14 @@ TEST(ProjectValidatorTest, WarnsPalPilotBurstClippingWithTpg21Preset) {
   EXPECT_EQ(result.warnings[0],
             "pal_laserdisc_pilot_burst warning: preset 'CVBS_TPG21_4FSC' clips "
             "sub-sync excursions below -300 mV; the pilot burst trough reaches "
-            "-600 mV. Use CVBS_S16_FSC or RAW_S16_28M/RAW_S16_40M to preserve "
+            "-600 mV. Use CVBS_S16_4FSC or RAW_S16_28M/RAW_S16_40M to preserve "
             "the full burst waveform.");
 }
 
 TEST(ProjectValidatorTest, NoPilotBurstClippingWarningWithS16FscPreset) {
   Project project = MakeValidProject();
   project.cvbs_presets.pal_laserdisc_pilot_burst = true;
-  project.cvbs_presets.sample_encoding_preset = "CVBS_S16_FSC";
+  project.cvbs_presets.sample_encoding_preset = "CVBS_S16_4FSC";
 
   ProjectValidator validator;
   const ValidationResult result = validator.Validate(project);
