@@ -70,6 +70,111 @@ TEST(SectionListModelTest, AllDurationRowWithRepeatShowsMultiplier) {
   EXPECT_EQ(rows[1].DurationText(), QStringLiteral("all frames x4"));
 }
 
+TEST(SectionListModelTest, FrameRangeTextFormatsKnownAndUnknownEnd) {
+  EXPECT_EQ(FrameRangeText(0, 249), QStringLiteral("0 – 249"));
+  EXPECT_EQ(FrameRangeText(100, 100), QStringLiteral("100 – 100"));
+  // End below start = unresolved "all source frames" duration.
+  EXPECT_EQ(FrameRangeText(150, 149), QStringLiteral("150 – ?"));
+}
+
+TEST(SectionListModelTest, DiscRangeTitleNamesTheDiscFormat) {
+  EXPECT_EQ(DiscRangeTitle(DiscType::kCAV),
+            QStringLiteral("CAV picture numbers:"));
+  EXPECT_EQ(DiscRangeTitle(DiscType::kCLV), QStringLiteral("CLV timecode:"));
+  EXPECT_TRUE(DiscRangeTitle(DiscType::kUnknown).isEmpty());
+}
+
+TEST(SectionListModelTest, CavDiscRangeShowsOneBasedPictureNumbers) {
+  // Disc frame offset 0 = picture number 00001, five digits.
+  EXPECT_EQ(DiscRangeText(DiscType::kCAV, Standard::kPal, 0, 249),
+            QStringLiteral("00001 – 00250"));
+  EXPECT_EQ(DiscRangeText(DiscType::kCAV, Standard::kPal, 150, 149),
+            QStringLiteral("00151 – ?"));
+}
+
+TEST(SectionListModelTest, ClvDiscRangeShowsProgrammeTimecodes) {
+  // PAL: 25 fps — offset 250 is 00:00:10:00; NTSC: 30 fps.
+  EXPECT_EQ(DiscRangeText(DiscType::kCLV, Standard::kPal, 0, 250),
+            QStringLiteral("00:00:00:00 – 00:00:10:00"));
+  EXPECT_EQ(DiscRangeText(DiscType::kCLV, Standard::kNtsc, 30, 3629),
+            QStringLiteral("00:00:01:00 – 00:02:00:29"));
+  EXPECT_EQ(DiscRangeText(DiscType::kCLV, Standard::kPal, 150, 149),
+            QStringLiteral("00:00:06:00 – ?"));
+}
+
+TEST(SectionListModelTest, DiscRangeIsEmptyForNonLaserdiscProjects) {
+  EXPECT_TRUE(
+      DiscRangeText(DiscType::kUnknown, Standard::kPal, 0, 100).isEmpty());
+}
+
+TEST(SectionListModelTest, DiscFrameOffsetsAnchorAtProgrammeAreaStart) {
+  // lead_in (100) → programme (50) → programme (25) → lead_out.
+  Project project = MakeProject();
+  project.sections[0].section_type = SectionType::kLeadIn;
+  project.sections[1].section_type = SectionType::kProgrammeArea;
+  project.sections[2].section_type = SectionType::kProgrammeArea;
+  project.sections.push_back(MakeSection("Out", 10));
+  project.sections[3].section_type = SectionType::kLeadOut;
+
+  const std::vector<int> offsets =
+      BuildDiscFrameOffsets(project, DiscType::kCAV);
+  ASSERT_EQ(offsets.size(), 4U);
+  // IEC 60856/60857: lead-in and lead-out carry no picture numbers, and the
+  // lead-in's 100 frames are not counted — numbering starts at the first
+  // programme_area section.
+  EXPECT_EQ(offsets[0], -1);
+  EXPECT_EQ(offsets[1], 0);
+  EXPECT_EQ(offsets[2], 50);
+  EXPECT_EQ(offsets[3], -1);
+}
+
+TEST(SectionListModelTest, DiscFrameOffsetsSkipUntypedSectionsBeforeAnchor) {
+  // Untyped sections before the programme area are not counted; an untyped
+  // section between programme sections still occupies disc frames (the
+  // engine's timekeeping generators persist across section boundaries).
+  Project project = MakeProject();
+  project.sections[1].section_type = SectionType::kProgrammeArea;
+  project.sections.push_back(MakeSection("Fourth", 10));
+  project.sections[3].section_type = SectionType::kProgrammeArea;
+
+  const std::vector<int> offsets =
+      BuildDiscFrameOffsets(project, DiscType::kCLV);
+  ASSERT_EQ(offsets.size(), 4U);
+  EXPECT_EQ(offsets[0], -1);
+  EXPECT_EQ(offsets[1], 0);
+  EXPECT_EQ(offsets[2], -1);  // Untyped: no disc position of its own...
+  EXPECT_EQ(offsets[3], 75);  // ...but its 25 frames stay in the count.
+}
+
+TEST(SectionListModelTest, DiscFrameOffsetsHonourCavStartValueAnchor) {
+  Project project = MakeProject();
+  project.sections[0].section_type = SectionType::kProgrammeArea;
+  project.sections[1].section_type = SectionType::kProgrammeArea;
+  Section::LineInjectionCode code;
+  code.code_type = "picture_number";
+  code.start_value = 1000;
+  code.start_value_specified = true;
+  Section::LineInjection injection;
+  injection.type = "laserdisc";
+  injection.codes.push_back(code);
+  project.sections[1].line_injections.push_back(injection);
+
+  const std::vector<int> offsets =
+      BuildDiscFrameOffsets(project, DiscType::kCAV);
+  EXPECT_EQ(offsets[0], 0);
+  // Explicit start_value 1000 re-anchors: offset 999 = picture 01000.
+  EXPECT_EQ(offsets[1], 999);
+  EXPECT_EQ(offsets[2], -1);
+}
+
+TEST(SectionListModelTest, DiscFrameOffsetsAllUnknownForNonLaserdisc) {
+  Project project = MakeProject();
+  project.sections[0].section_type = SectionType::kProgrammeArea;
+  const std::vector<int> offsets =
+      BuildDiscFrameOffsets(project, DiscType::kUnknown);
+  EXPECT_EQ(offsets, std::vector<int>({-1, -1, -1}));
+}
+
 TEST(SectionListModelTest, ModelTracksDocumentMutations) {
   ProjectDocument document;
   document.ResetProject(MakeProject(), QString());

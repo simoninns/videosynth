@@ -21,6 +21,7 @@
 class QCheckBox;
 class QComboBox;
 class QDoubleSpinBox;
+class QFormLayout;
 class QGroupBox;
 class QLabel;
 class QLineEdit;
@@ -109,6 +110,12 @@ class SectionEditor : public QWidget {
   // Refreshes the "N frames x R = T total" duration hint from the latest probe
   // result and the current repeat multiplier.
   void UpdateDurationSummary();
+  // Refreshes the section's frame range and, for programme_area sections of
+  // laserdisc projects, the CAV picture-number / CLV timecode range (anchored
+  // at the programme area start; see BuildDiscFrameOffsets). The end of an
+  // "all source frames" section resolves from the latest probe report; "?"
+  // until then.
+  void UpdateFrameRangeDisplay();
   // The project standard's frame rate, or 0.0 when no standard is set.
   double ProjectFrameRateHz() const;
   // Mirrors the frame count into the read-along seconds spinbox without
@@ -151,7 +158,14 @@ class SectionEditor : public QWidget {
   QSpinBox* duration_repeat_spin_ = nullptr;
   QLabel* duration_repeat_label_ = nullptr;
   QLabel* duration_summary_label_ = nullptr;
-  QLabel* start_frame_label_ = nullptr;
+  // General-group form layout, kept for toggling the disc-range row.
+  QFormLayout* general_form_ = nullptr;
+  QLabel* frame_range_label_ = nullptr;
+  // Disc position range row ("CAV picture numbers:" / "CLV timecode:");
+  // hidden for non-laserdisc projects and for sections outside the
+  // programme area (lead-in/lead-out carry no picture numbers or timecodes).
+  QLabel* disc_range_title_ = nullptr;
+  QLabel* disc_range_label_ = nullptr;
 
   // Probe.
   QLabel* probe_status_label_ = nullptr;

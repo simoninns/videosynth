@@ -239,8 +239,15 @@ QWidget* SectionEditor::BuildGeneralGroup() {
   duration_summary_label_->setEnabled(false);
   form->addRow(QString(), duration_summary_label_);
 
-  start_frame_label_ = new QLabel(group);
-  form->addRow(tr("Start frame:"), start_frame_label_);
+  frame_range_label_ = new QLabel(group);
+  form->addRow(tr("Frame range:"), frame_range_label_);
+
+  // Disc position range: only meaningful when the project settings select a
+  // laserdisc format, so the row is hidden otherwise.
+  disc_range_title_ = new QLabel(group);
+  disc_range_label_ = new QLabel(group);
+  form->addRow(disc_range_title_, disc_range_label_);
+  general_form_ = form;
 
   connect(name_edit_, &QLineEdit::editingFinished, this,
           &SectionEditor::CommitSection);
@@ -627,9 +634,7 @@ void SectionEditor::LoadFromDocument() {
   duration_repeat_spin_->setEnabled(section.duration_frames_all);
   UpdateDurationSummary();
 
-  const std::vector<SectionListRow> rows = BuildSectionListRows(project);
-  start_frame_label_->setText(QStringLiteral("%1").arg(
-      rows[static_cast<std::size_t>(section_index_)].start_frame));
+  UpdateFrameRangeDisplay();
 
   // Audio (block present exactly when it carries channel pairs).
   audio_group_->setChecked(!section.audio_channel_pairs.empty());
@@ -913,18 +918,19 @@ void SectionEditor::UpdateProbeDisplay() {
   if (!report.probe_ok) {
     probe_status_label_->setText(tr("Probe failed"));
     probe_detail_label_->setText(report.probe_error);
-    return;
-  }
-  if (report.profile_issues.isEmpty()) {
+  } else if (report.profile_issues.isEmpty()) {
     probe_status_label_->setText(tr("Source profile OK"));
     probe_detail_label_->setText(FormatSourceProfileSummary(report.profile));
-    return;
+  } else {
+    probe_status_label_->setText(tr("Source profile incompatible"));
+    probe_detail_label_->setText(
+        FormatSourceProfileSummary(report.profile) + QStringLiteral("\n") +
+        report.profile_issues.join(QStringLiteral("\n")));
   }
-  probe_status_label_->setText(tr("Source profile incompatible"));
-  probe_detail_label_->setText(
-      FormatSourceProfileSummary(report.profile) + QStringLiteral("\n") +
-      report.profile_issues.join(QStringLiteral("\n")));
+  // The probed frame count resolves "all source frames" durations, so the
+  // derived displays refresh on every report regardless of the verdict.
   UpdateDurationSummary();
+  UpdateFrameRangeDisplay();
 }
 
 void SectionEditor::UpdateDurationSummary() {
@@ -957,6 +963,63 @@ void SectionEditor::UpdateDurationSummary() {
                                        .arg(source_frames)
                                        .arg(repeat)
                                        .arg(static_cast<qlonglong>(total)));
+}
+
+void SectionEditor::UpdateFrameRangeDisplay() {
+  if (section_index_ < 0 || section_index_ >= document_->section_count()) {
+    return;
+  }
+  const Project& project = document_->project();
+  const Section& section =
+      project.sections[static_cast<std::size_t>(section_index_)];
+
+  // Cumulative start frame recalculated exactly as the sections list shows it
+  // (preceding "all source frames" sections are open-ended there too).
+  const std::vector<SectionListRow> rows = BuildSectionListRows(project);
+  const int start_frame =
+      rows[static_cast<std::size_t>(section_index_)].start_frame;
+
+  // Duration: fixed durations are known immediately; an "all source frames"
+  // duration resolves from the probed source length, so it stays unknown
+  // until a successful probe report arrives.
+  int64_t duration = -1;
+  if (!section.duration_frames_all) {
+    if (section.duration_frames > 0) {
+      duration = section.duration_frames;
+    }
+  } else if (probe_controller_->has_report()) {
+    const SourceProbeReport& report = probe_controller_->report();
+    if (report.probe_ok && report.profile.frame_count > 0) {
+      const int repeat = std::max(1, section.duration_frames_repeat);
+      duration = static_cast<int64_t>(report.profile.frame_count) * repeat;
+    }
+  }
+  // An end below the start renders as "?" (unknown duration).
+  const int end_frame = duration > 0
+                            ? static_cast<int>(start_frame + duration - 1)
+                            : start_frame - 1;
+
+  frame_range_label_->setText(FrameRangeText(start_frame, end_frame));
+
+  // Disc positions exist for programme_area sections only (IEC 60856/60857:
+  // lead-in and lead-out carry no picture numbers or timecodes), so the row
+  // hides for those sections and for non-laserdisc projects.
+  const DiscType disc_type =
+      DiscTypeFromString(project.line_injections.disc_type);
+  const std::vector<int> disc_offsets =
+      BuildDiscFrameOffsets(project, disc_type);
+  const int disc_start = disc_offsets[static_cast<std::size_t>(section_index_)];
+  const bool show_disc_range = disc_start >= 0;
+  general_form_->setRowVisible(disc_range_label_, show_disc_range);
+  if (show_disc_range) {
+    const int disc_end = duration > 0
+                             ? static_cast<int>(disc_start + duration - 1)
+                             : disc_start - 1;
+    disc_range_title_->setText(DiscRangeTitle(disc_type));
+    disc_range_label_->setText(
+        DiscRangeText(disc_type, project.cvbs_presets.video_standard_preset,
+                      disc_start, disc_end));
+  }
 }
 
 double SectionEditor::ProjectFrameRateHz() const {

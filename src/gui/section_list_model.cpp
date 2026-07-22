@@ -9,7 +9,27 @@
 
 #include "section_list_model.h"
 
+#include "videosynth/clv_code_generator.h"
+
 namespace videosynth::gui {
+
+namespace {
+
+// IEC 60856/60857: max picture number 99999, so a real value is always five
+// digits; larger values are not truncated.
+QString FormatCavPictureNumber(int picture_number) {
+  return QStringLiteral("%1").arg(picture_number, 5, 10, QLatin1Char('0'));
+}
+
+QString FormatClvTimecodeText(const ClvTimecode& timecode) {
+  return QStringLiteral("%1:%2:%3:%4")
+      .arg(timecode.hours, 2, 10, QLatin1Char('0'))
+      .arg(timecode.minutes, 2, 10, QLatin1Char('0'))
+      .arg(timecode.seconds, 2, 10, QLatin1Char('0'))
+      .arg(timecode.frames, 2, 10, QLatin1Char('0'));
+}
+
+}  // namespace
 
 QString SectionListRow::DurationText() const {
   if (duration_all) {
@@ -44,6 +64,90 @@ std::vector<SectionListRow> BuildSectionListRows(const Project& project) {
     }
   }
   return rows;
+}
+
+QString FrameRangeText(int start_frame, int end_frame) {
+  if (end_frame < start_frame) {
+    return QStringLiteral("%1 – ?").arg(start_frame);
+  }
+  return QStringLiteral("%1 – %2").arg(start_frame).arg(end_frame);
+}
+
+QString DiscRangeTitle(DiscType disc_type) {
+  switch (disc_type) {
+    case DiscType::kCAV:
+      return QStringLiteral("CAV picture numbers:");
+    case DiscType::kCLV:
+      return QStringLiteral("CLV timecode:");
+    case DiscType::kUnknown:
+      return {};
+  }
+  return {};
+}
+
+std::vector<int> BuildDiscFrameOffsets(const Project& project,
+                                       DiscType disc_type) {
+  std::vector<int> offsets(project.sections.size(), -1);
+  if (disc_type == DiscType::kUnknown) {
+    return offsets;
+  }
+
+  // Running 0-based disc frame offset; -1 until the first programme_area
+  // section starts the count (IEC 60856/60857: lead-in carries no picture
+  // numbers or timecodes, so its frames are never counted).
+  int counter = -1;
+  for (std::size_t i = 0; i < project.sections.size(); ++i) {
+    const Section& section = project.sections[i];
+    if (section.section_type == SectionType::kProgrammeArea) {
+      if (disc_type == DiscType::kCAV) {
+        // An explicit picture_number start_value re-anchors the CAV count at
+        // this section, overriding any continued counter (mirrors
+        // BiphaseInjectionManager::InitializeSection).
+        for (const Section::LineInjection& injection :
+             section.line_injections) {
+          for (const Section::LineInjectionCode& code : injection.codes) {
+            if (code.code_type == "picture_number" &&
+                code.start_value_specified) {
+              counter = code.start_value - 1;
+            }
+          }
+        }
+      }
+      if (counter < 0) {
+        counter = 0;
+      }
+      offsets[i] = counter;
+    }
+    // Once started, the count runs across every later section (the engine's
+    // timekeeping generators persist across boundaries); open-ended "all"
+    // durations contribute nothing, as in BuildSectionListRows.
+    if (counter >= 0 && !section.duration_frames_all) {
+      counter += section.duration_frames;
+    }
+  }
+  return offsets;
+}
+
+QString DiscRangeText(DiscType disc_type, Standard standard, int start_offset,
+                      int end_offset) {
+  const bool end_known = end_offset >= start_offset;
+  if (disc_type == DiscType::kCAV) {
+    // Picture number == disc frame offset + 1 (numbering starts at 00001).
+    const QString first = FormatCavPictureNumber(start_offset + 1);
+    return end_known ? QStringLiteral("%1 – %2").arg(
+                           first, FormatCavPictureNumber(end_offset + 1))
+                     : QStringLiteral("%1 – ?").arg(first);
+  }
+  if (disc_type == DiscType::kCLV) {
+    const QString first = FormatClvTimecodeText(
+        ClvTimecodeForFrame(static_cast<std::size_t>(start_offset), standard));
+    return end_known ? QStringLiteral("%1 – %2").arg(
+                           first,
+                           FormatClvTimecodeText(ClvTimecodeForFrame(
+                               static_cast<std::size_t>(end_offset), standard)))
+                     : QStringLiteral("%1 – ?").arg(first);
+  }
+  return {};
 }
 
 SectionListModel::SectionListModel(ProjectDocument* document, QObject* parent)
