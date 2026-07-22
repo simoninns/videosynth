@@ -97,13 +97,15 @@ TEST(SectionBlockPresenterTest, AddChannelPairEmitsBlockClearRemovesIt) {
   EXPECT_EQ(EmitYaml(project).find("audio:"), std::string::npos);
 }
 
-TEST(SectionBlockPresenterTest, DefaultChannelPairHasActiveLeftSilentRight) {
+TEST(SectionBlockPresenterTest, DefaultChannelPairHasIdenticalStereoChannels) {
   const AudioChannelPair channel_pair = MakeDefaultAudioChannelPair(4);
   EXPECT_EQ(channel_pair.pair, 4);
   EXPECT_TRUE(channel_pair.pair_specified);
   EXPECT_TRUE(channel_pair.left.enabled);
   EXPECT_EQ(channel_pair.left.waveform, AudioWaveform::kSine);
-  EXPECT_FALSE(channel_pair.right.enabled);
+  // Identical channels are what the editor infers as its linked
+  // "same tone on both channels" mode.
+  EXPECT_TRUE(channel_pair.right == channel_pair.left);
 }
 
 TEST(SectionBlockPresenterTest, ChannelRampEnableSeedsValidRamp) {

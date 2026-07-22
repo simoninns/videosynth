@@ -2,7 +2,7 @@
  * File:        audio_channel_pairs_editor.cpp
  * Module:      gui
  * Purpose:     Editor for a section's audio channel pairs (up to eight stereo
- *              pairs, each with independent left/right test tones)
+ *              pairs, each with one shared or two independent test tones)
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Simon Inns
@@ -26,6 +26,14 @@
 #include "section_block_presenters.h"
 
 namespace videosynth::gui {
+
+namespace {
+
+// Indices of the channel-mode combo box entries.
+constexpr int kChannelModeLinked = 0;       // One tone on both channels.
+constexpr int kChannelModeIndependent = 1;  // Separate left/right tones.
+
+}  // namespace
 
 AudioChannelPairsEditor::AudioChannelPairsEditor(QWidget* parent)
     : QWidget(parent) {
@@ -61,10 +69,19 @@ AudioChannelPairsEditor::AudioChannelPairsEditor(QWidget* parent)
   description_edit_ = new QLineEdit(form_panel_);
   description_edit_->setPlaceholderText(tr("e.g. Analogue stereo"));
   header_form->addRow(tr("Description:"), description_edit_);
+  channel_mode_ = new QComboBox(form_panel_);
+  channel_mode_->addItem(tr("Same tone on both channels"));
+  channel_mode_->addItem(tr("Independent left and right"));
+  channel_mode_->setToolTip(
+      tr("With one tone the left settings apply to both channels; independent "
+         "mode edits the left and right tones separately."));
+  header_form->addRow(tr("Channels:"), channel_mode_);
   form_layout->addLayout(header_form);
 
-  form_layout->addWidget(BuildChannelEditor(tr("Left channel"), &left_));
+  form_layout->addWidget(
+      BuildChannelEditor(tr("Tone (both channels)"), &left_));
   form_layout->addWidget(BuildChannelEditor(tr("Right channel"), &right_));
+  right_.group->setVisible(false);
   form_layout->addStretch();
   layout->addWidget(form_panel_, 2);
 
@@ -78,6 +95,10 @@ AudioChannelPairsEditor::AudioChannelPairsEditor(QWidget* parent)
   connect(pair_spin_, &QSpinBox::valueChanged, this,
           [commit](int) { commit(); });
   connect(description_edit_, &QLineEdit::editingFinished, this, commit);
+  // activated (not currentIndexChanged) so programmatic LoadForm updates do
+  // not re-enter the mode switch.
+  connect(channel_mode_, &QComboBox::activated, this,
+          &AudioChannelPairsEditor::OnChannelModeChanged);
 
   LoadForm();
 }
@@ -175,6 +196,25 @@ QWidget* AudioChannelPairsEditor::BuildChannelEditor(const QString& title,
   return group;
 }
 
+void AudioChannelPairsEditor::ApplyChannelMode(bool independent) {
+  left_.group->setTitle(independent ? tr("Left channel")
+                                    : tr("Tone (both channels)"));
+  right_.group->setVisible(independent);
+}
+
+void AudioChannelPairsEditor::OnChannelModeChanged(int index) {
+  const bool independent = index == kChannelModeIndependent;
+  if (independent) {
+    // Seed the right channel from the left so splitting starts from a copy
+    // instead of forcing the user to re-enter matching settings.
+    updating_ = true;
+    LoadChannel(right_, ChannelFromWidgets(left_));
+    updating_ = false;
+  }
+  ApplyChannelMode(independent);
+  CommitForm();
+}
+
 void AudioChannelPairsEditor::SetChannelPairs(
     std::vector<AudioChannelPair> pairs) {
   // Preserve the selected row across a refresh. Editing a channel round-trips
@@ -245,6 +285,13 @@ void AudioChannelPairsEditor::LoadForm() {
 
   pair_spin_->setValue(channel_pair->pair);
   description_edit_->setText(QString::fromStdString(channel_pair->description));
+  // Linked mode is inferred, not stored: identical left/right descriptors edit
+  // as one tone; any difference (including one silent channel) edits as
+  // independent channels.
+  const bool independent = !(channel_pair->left == channel_pair->right);
+  channel_mode_->setCurrentIndex(independent ? kChannelModeIndependent
+                                             : kChannelModeLinked);
+  ApplyChannelMode(independent);
   LoadChannel(left_, channel_pair->left);
   LoadChannel(right_, channel_pair->right);
   updating_ = false;
@@ -288,7 +335,9 @@ void AudioChannelPairsEditor::CommitForm() {
   channel_pair->pair_specified = true;
   channel_pair->description = description_edit_->text().toStdString();
   channel_pair->left = ChannelFromWidgets(left_);
-  channel_pair->right = ChannelFromWidgets(right_);
+  channel_pair->right = channel_mode_->currentIndex() == kChannelModeIndependent
+                            ? ChannelFromWidgets(right_)
+                            : channel_pair->left;
 
   if (QListWidgetItem* item = pair_list_->currentItem()) {
     item->setText(PairSummary(*channel_pair));

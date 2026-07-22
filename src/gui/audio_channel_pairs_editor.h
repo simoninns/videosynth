@@ -2,7 +2,7 @@
  * File:        audio_channel_pairs_editor.h
  * Module:      gui
  * Purpose:     Editor for a section's audio channel pairs (up to eight stereo
- *              pairs, each with independent left/right test tones)
+ *              pairs, each with one shared or two independent test tones)
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Simon Inns
@@ -26,9 +26,12 @@ class QSpinBox;
 namespace videosynth::gui {
 
 // Edits a working copy of a section's audio channel-pair list. Each pair names
-// a channel-pair number 0–7 and carries independent left/right tone
-// descriptors; an unchecked channel is stored silent (all zeros) per the CVBS
-// File Format Specification (Audio Data). The owner reads back channel_pairs()
+// a channel-pair number 0–7 and carries left/right tone descriptors; an
+// unchecked channel is stored silent (all zeros) per the CVBS File Format
+// Specification (Audio Data). A pair is edited either as one tone applied to
+// both channels (the default) or as independent left/right tones; the mode is
+// purely a GUI convenience inferred from the model (left == right → linked),
+// so the stored YAML format is unchanged. The owner reads back channel_pairs()
 // and commits after every ChannelPairsEdited signal.
 //
 // Thread-safety: NOT thread-safe. GUI (main) thread only.
@@ -62,6 +65,9 @@ class AudioChannelPairsEditor : public QWidget {
   };
 
   QWidget* BuildChannelEditor(const QString& title, ChannelWidgets* widgets);
+  // Retitles the left editor and shows/hides the right editor for the mode.
+  void ApplyChannelMode(bool independent);
+  void OnChannelModeChanged(int index);
   void RebuildList(int select_row);
   void LoadForm();
   void CommitForm();
@@ -84,6 +90,7 @@ class AudioChannelPairsEditor : public QWidget {
   QWidget* form_panel_ = nullptr;
   QSpinBox* pair_spin_ = nullptr;
   QLineEdit* description_edit_ = nullptr;
+  QComboBox* channel_mode_ = nullptr;
   ChannelWidgets left_;
   ChannelWidgets right_;
 };

@@ -84,8 +84,10 @@ AudioChannelPair MakeDefaultAudioChannelPair(int pair) {
   AudioChannelPair channel_pair;
   channel_pair.pair = pair;
   channel_pair.pair_specified = true;
+  // Both channels carry the same default tone; the editor treats identical
+  // left/right as "same tone on both channels" until the user splits them.
   channel_pair.left = MakeDefaultAudioChannel();
-  // Right channel stays disabled (silent) until the user enables it.
+  channel_pair.right = channel_pair.left;
   return channel_pair;
 }
 

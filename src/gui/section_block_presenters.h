@@ -58,8 +58,8 @@ void SetScratchDropoutsEnabled(Section* section, bool enabled);
 // A freshly-enabled audio channel (validator-clean fixed-frequency sine).
 AudioParameters MakeDefaultAudioChannel();
 
-// A freshly-added channel pair carrying `pair` with an active left channel and
-// a silent right channel.
+// A freshly-added channel pair carrying `pair` with the same default tone on
+// both channels (the editor's linked "same tone on both channels" mode).
 AudioChannelPair MakeDefaultAudioChannelPair(int pair);
 
 // Switching a channel to ramp mode seeds a validator-clean up-ramp; switching
