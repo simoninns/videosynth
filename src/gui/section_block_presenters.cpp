@@ -167,6 +167,46 @@ std::vector<std::string> AudioRampModeOptions() {
   return {"up", "down", "bounce"};
 }
 
+Section ApplySectionEditDelta(const Section& before, const Section& after,
+                              Section target) {
+  if (after.section_type != before.section_type) {
+    target.section_type = after.section_type;
+  }
+  if (after.source != before.source) {
+    target.source = after.source;
+  }
+  // The duration widgets couple these three fields (frame count vs "all
+  // frames" x repeat), so a change to any of them propagates all of them.
+  if (after.duration_frames_all != before.duration_frames_all ||
+      after.duration_frames != before.duration_frames ||
+      after.duration_frames_repeat != before.duration_frames_repeat) {
+    target.duration_frames_all = after.duration_frames_all;
+    target.duration_frames = after.duration_frames;
+    target.duration_frames_repeat = after.duration_frames_repeat;
+  }
+  if (!(after.noise == before.noise)) {
+    target.noise = after.noise;
+  }
+  // Random and scratch dropouts are independent blocks in the editor; diff
+  // them separately so toggling one never overwrites the other on targets.
+  if (!(after.dropouts.random == before.dropouts.random)) {
+    target.dropouts.random = after.dropouts.random;
+  }
+  if (!(after.dropouts.scratch == before.dropouts.scratch)) {
+    target.dropouts.scratch = after.dropouts.scratch;
+  }
+  if (!(after.osd == before.osd)) {
+    target.osd = after.osd;
+  }
+  if (!(after.audio_channel_pairs == before.audio_channel_pairs)) {
+    target.audio_channel_pairs = after.audio_channel_pairs;
+  }
+  if (!(after.line_injections == before.line_injections)) {
+    target.line_injections = after.line_injections;
+  }
+  return target;
+}
+
 std::vector<OsdTokenHelp> OsdTokenCatalogue() {
   return {
       {"{picture_number}",

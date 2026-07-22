@@ -10,6 +10,7 @@
 
 #pragma once
 
+#include <QList>
 #include <QWidget>
 
 #include "project_document.h"
@@ -22,7 +23,9 @@ namespace videosynth::gui {
 
 // Dock widget content for the ordered section list. Operations (add, remove,
 // duplicate, move up/down) are routed through ProjectDocument commands;
-// display sync comes from SectionListModel.
+// display sync comes from SectionListModel. The list allows extended
+// (Ctrl/Shift) selection: Remove and Duplicate act on every selected row,
+// while Preview and Up/Down act on the current row only.
 //
 // Thread-safety: NOT thread-safe. GUI (main) thread only.
 class SectionListDock : public QWidget {
@@ -33,14 +36,21 @@ class SectionListDock : public QWidget {
   explicit SectionListDock(ProjectDocument* document,
                            QWidget* parent = nullptr);
 
-  // Currently selected section index, or -1.
+  // Current (primary) section index, or -1.
   int current_section() const;
+
+  // All selected section indices in ascending order (empty when none).
+  QList<int> selected_sections() const;
 
   // Programmatic selection (issue navigation); emits CurrentSectionChanged.
   void SelectSection(int index);
 
  signals:
   void CurrentSectionChanged(int index);
+
+  // Fires whenever the selected row set changes (including collapsing back to
+  // a single row); carries the ascending selected section indices.
+  void SelectedSectionsChanged(const QList<int>& indices);
 
   // "Preview this section": the preview should jump to the section's first
   // output frame.
@@ -54,6 +64,8 @@ class SectionListDock : public QWidget {
   void OnMoveDown();
 
   void AddSection(Section section);
+  // Selects rows [first, last] and makes `first` current.
+  void SelectSectionRange(int first, int last);
   void UpdateButtonStates();
 
   ProjectDocument* document_;

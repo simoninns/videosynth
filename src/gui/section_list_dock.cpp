@@ -16,6 +16,8 @@
 #include <QTableView>
 #include <QToolButton>
 #include <QVBoxLayout>
+#include <algorithm>
+#include <utility>
 
 #include "project_templates.h"
 
@@ -57,7 +59,9 @@ SectionListDock::SectionListDock(ProjectDocument* document, QWidget* parent)
   view_ = new QTableView(this);
   view_->setModel(model_);
   view_->setSelectionBehavior(QAbstractItemView::SelectRows);
-  view_->setSelectionMode(QAbstractItemView::SingleSelection);
+  // Ctrl/Shift multi-selection: the section editor mirrors edits made to the
+  // current section onto every selected section.
+  view_->setSelectionMode(QAbstractItemView::ExtendedSelection);
   view_->setEditTriggers(QAbstractItemView::NoEditTriggers);
   view_->horizontalHeader()->setStretchLastSection(true);
   view_->horizontalHeader()->setSectionResizeMode(
@@ -86,10 +90,16 @@ SectionListDock::SectionListDock(ProjectDocument* document, QWidget* parent)
             UpdateButtonStates();
             emit CurrentSectionChanged(current.isValid() ? current.row() : -1);
           });
+  connect(view_->selectionModel(), &QItemSelectionModel::selectionChanged, this,
+          [this](const QItemSelection&, const QItemSelection&) {
+            UpdateButtonStates();
+            emit SelectedSectionsChanged(selected_sections());
+          });
   // Model resets clear the selection; keep button state consistent.
   connect(model_, &SectionListModel::modelReset, this, [this] {
     UpdateButtonStates();
     emit CurrentSectionChanged(current_section());
+    emit SelectedSectionsChanged(selected_sections());
   });
 
   UpdateButtonStates();
@@ -100,6 +110,17 @@ int SectionListDock::current_section() const {
   return current.isValid() ? current.row() : -1;
 }
 
+QList<int> SectionListDock::selected_sections() const {
+  QList<int> rows;
+  const QModelIndexList selected = view_->selectionModel()->selectedRows();
+  rows.reserve(selected.size());
+  for (const QModelIndex& index : selected) {
+    rows.append(index.row());
+  }
+  std::sort(rows.begin(), rows.end());
+  return rows;
+}
+
 void SectionListDock::SelectSection(int index) {
   if (index < 0 || index >= model_->rowCount()) {
     view_->clearSelection();
@@ -108,29 +129,59 @@ void SectionListDock::SelectSection(int index) {
   view_->setCurrentIndex(model_->index(index, 0));
 }
 
+void SectionListDock::SelectSectionRange(int first, int last) {
+  // setCurrentIndex clears any prior selection and makes `first` current;
+  // the range select then extends the selection through `last`.
+  view_->setCurrentIndex(model_->index(first, 0));
+  if (last > first) {
+    const QItemSelection selection(
+        model_->index(first, 0),
+        model_->index(last, model_->columnCount() - 1));
+    view_->selectionModel()->select(
+        selection,
+        QItemSelectionModel::ClearAndSelect | QItemSelectionModel::Rows);
+  }
+}
+
 void SectionListDock::OnAddSection() {
   AddSection(MakeProgressiveSectionTemplate(document_->section_count() + 1));
 }
 
 void SectionListDock::OnRemove() {
-  const int index = current_section();
-  if (index < 0) {
+  QList<int> rows = selected_sections();
+  if (rows.isEmpty() && current_section() >= 0) {
+    rows.append(current_section());
+  }
+  if (rows.isEmpty()) {
     return;
   }
-  document_->RemoveSection(index);
-  SelectSection(qMin(index, model_->rowCount() - 1));
+  // Remove from the highest row down so earlier indices stay valid.
+  for (auto it = rows.crbegin(); it != rows.crend(); ++it) {
+    document_->RemoveSection(*it);
+  }
+  SelectSection(qMin(rows.first(), model_->rowCount() - 1));
 }
 
 void SectionListDock::OnDuplicate() {
-  const int index = current_section();
-  if (index < 0) {
+  QList<int> rows = selected_sections();
+  if (rows.isEmpty() && current_section() >= 0) {
+    rows.append(current_section());
+  }
+  if (rows.isEmpty()) {
     return;
   }
-  const Project& project = document_->project();
-  Section duplicate = MakeDuplicateSection(
-      project.sections[static_cast<std::size_t>(index)], project.sections);
-  document_->InsertSection(index + 1, std::move(duplicate));
-  SelectSection(index + 1);
+  // Copies are inserted as one block after the last selected row (keeping a
+  // duplicated run of sections contiguous), then become the new selection.
+  const int insert_at = rows.last() + 1;
+  int inserted = 0;
+  for (int row : rows) {
+    const Project& project = document_->project();
+    Section duplicate = MakeDuplicateSection(
+        project.sections[static_cast<std::size_t>(row)], project.sections);
+    document_->InsertSection(insert_at + inserted, std::move(duplicate));
+    ++inserted;
+  }
+  SelectSectionRange(insert_at, insert_at + inserted - 1);
 }
 
 void SectionListDock::OnMoveUp() {
@@ -159,8 +210,11 @@ void SectionListDock::AddSection(Section section) {
 void SectionListDock::UpdateButtonStates() {
   const int index = current_section();
   const int count = model_->rowCount();
-  remove_button_->setEnabled(index >= 0);
-  duplicate_button_->setEnabled(index >= 0);
+  const bool has_selection = view_->selectionModel()->hasSelection();
+  // Remove and Duplicate act on the whole selection; Preview and Up/Down act
+  // on the current row only.
+  remove_button_->setEnabled(has_selection || index >= 0);
+  duplicate_button_->setEnabled(has_selection || index >= 0);
   preview_button_->setEnabled(index >= 0);
   up_button_->setEnabled(index > 0);
   down_button_->setEnabled(index >= 0 && index < count - 1);

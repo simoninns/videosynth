@@ -11,6 +11,7 @@
 #pragma once
 
 #include <QWidget>
+#include <vector>
 
 #include "audio_channel_pairs_editor.h"
 #include "line_injections_editor.h"
@@ -39,6 +40,11 @@ namespace videosynth::gui {
 // single title row instead of cluttering the form. Source probing runs on the
 // SourceProbeController worker and never blocks the UI.
 //
+// Multi-select batch editing: when the sections list holds a multi-row
+// selection (SetSelectedSections), the editor still displays the current
+// section, but every commit mirrors the changed fields onto the other
+// selected sections via ApplySectionEditDelta (names stay individual).
+//
 // Thread-safety: NOT thread-safe. GUI (main) thread only.
 class SectionEditor : public QWidget {
   Q_OBJECT
@@ -54,6 +60,11 @@ class SectionEditor : public QWidget {
   void SetCurrentSection(int index);
   int current_section() const { return section_index_; }
 
+  // Full selection from the sections list (ascending, includes the current
+  // section). Edits are mirrored onto every listed section; an empty or
+  // single-entry list restores plain single-section editing.
+  void SetSelectedSections(std::vector<int> indices);
+
  private:
   void BuildUi();
   QWidget* BuildGeneralGroup();
@@ -68,6 +79,11 @@ class SectionEditor : public QWidget {
   void LoadOsdTable(const Section& section);
   // Reads the staged widget state into a Section and commits it.
   void CommitSection();
+  // Commits `section` to the current section and mirrors the changed fields
+  // onto the other selected sections. Returns true when the document changed.
+  bool CommitSectionToDocument(const Section& section);
+  // Shows/hides the batch-editing banner above the form.
+  void UpdateMultiEditHint();
   Section SectionFromWidgets() const;
   void RequestProbe();
   void UpdateProbeDisplay();
@@ -100,6 +116,8 @@ class SectionEditor : public QWidget {
   ProjectDocument* document_;
   SourceProbeController* probe_controller_;
   int section_index_ = -1;
+  // Full sections-list selection (ascending). Size > 1 enables batch editing.
+  std::vector<int> selected_sections_ = {};
   bool updating_ = false;
   bool committing_ = false;
   // Guards against queuing more than one deferred reload at a time (see
@@ -109,6 +127,7 @@ class SectionEditor : public QWidget {
 
   QWidget* content_ = nullptr;
   QLabel* placeholder_ = nullptr;
+  QLabel* multi_edit_hint_ = nullptr;
 
   // General.
   QLineEdit* name_edit_ = nullptr;

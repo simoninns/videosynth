@@ -89,4 +89,13 @@ struct OsdTokenHelp {
 };
 std::vector<OsdTokenHelp> OsdTokenCatalogue();
 
+// Multi-select batch editing: mirrors onto `target` exactly the editor-visible
+// fields that differ between `before` and `after` (an edit applied to the
+// primary selected section), leaving everything else in `target` untouched.
+// The name is never mirrored — it identifies the individual section. The three
+// duration fields propagate as a unit because the editor's widgets couple
+// them (frames vs "all frames" x repeat). Returns the updated target.
+Section ApplySectionEditDelta(const Section& before, const Section& after,
+                              Section target);
+
 }  // namespace videosynth::gui

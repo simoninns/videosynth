@@ -222,6 +222,102 @@ TEST(SectionBlockPresenterTest, AudioLimitsMirrorValidator) {
   EXPECT_FALSE(ProjectIsValid(project, nullptr));
 }
 
+TEST(SectionBlockPresenterTest, ApplySectionEditDeltaMirrorsOnlyChangedFields) {
+  Section before;
+  before.name = "Primary";
+  before.source = "assets/bars.exr";
+  before.duration_frames = 200;
+  before.section_type = SectionType::kUnknown;
+
+  // The edit: section type changed, nothing else.
+  Section after = before;
+  after.section_type = SectionType::kProgrammeArea;
+
+  Section target;
+  target.name = "Other";
+  target.source = "assets/sweep.mkv";
+  target.duration_frames = 50;
+  SetNoiseBlockEnabled(&target, true);
+
+  const Section result = ApplySectionEditDelta(before, after, target);
+  EXPECT_EQ(result.section_type, SectionType::kProgrammeArea);
+  // Untouched fields keep the target's own values.
+  EXPECT_EQ(result.name, "Other");
+  EXPECT_EQ(result.source, "assets/sweep.mkv");
+  EXPECT_EQ(result.duration_frames, 50);
+  EXPECT_TRUE(result.noise.enabled);
+}
+
+TEST(SectionBlockPresenterTest, ApplySectionEditDeltaNeverMirrorsName) {
+  Section before;
+  before.name = "Primary";
+  Section after = before;
+  after.name = "Primary renamed";
+
+  Section target;
+  target.name = "Other";
+  const Section result = ApplySectionEditDelta(before, after, target);
+  EXPECT_EQ(result.name, "Other");
+}
+
+TEST(SectionBlockPresenterTest,
+     ApplySectionEditDeltaDurationFieldsPropagateAsUnit) {
+  Section before;
+  before.duration_frames = 200;
+  Section after = before;
+  after.duration_frames = 0;
+  after.duration_frames_all = true;
+  after.duration_frames_repeat = 3;
+
+  Section target;
+  target.duration_frames = 50;
+  const Section result = ApplySectionEditDelta(before, after, target);
+  EXPECT_TRUE(result.duration_frames_all);
+  EXPECT_EQ(result.duration_frames, 0);
+  EXPECT_EQ(result.duration_frames_repeat, 3);
+}
+
+TEST(SectionBlockPresenterTest,
+     ApplySectionEditDeltaDropoutBlocksDiffIndependently) {
+  Section before;
+  SetScratchDropoutsEnabled(&before, true);
+  before.dropouts.scratch.scale = 5;
+
+  // The edit: enable random dropouts; scratch untouched.
+  Section after = before;
+  SetRandomDropoutsEnabled(&after, true);
+  after.dropouts.random.scale = 7;
+
+  // The target has its own scratch configuration that must survive.
+  Section target;
+  SetScratchDropoutsEnabled(&target, true);
+  target.dropouts.scratch.scale = 12;
+
+  const Section result = ApplySectionEditDelta(before, after, target);
+  EXPECT_TRUE(result.dropouts.random.enabled);
+  EXPECT_EQ(result.dropouts.random.scale, 7);
+  EXPECT_TRUE(result.dropouts.scratch.enabled);
+  EXPECT_EQ(result.dropouts.scratch.scale, 12);
+}
+
+TEST(SectionBlockPresenterTest,
+     ApplySectionEditDeltaOptionalBlocksMirrorOnChange) {
+  Section before;
+  Section after = before;
+  SetNoiseBlockEnabled(&after, true);
+  after.noise.noise_db = 30.0;
+  after.osd.overlays.push_back(MakeDefaultOsdOverlay());
+  after.audio_channel_pairs.push_back(MakeDefaultAudioChannelPair(0));
+
+  Section target;
+  const Section result = ApplySectionEditDelta(before, after, target);
+  EXPECT_TRUE(result.noise.enabled);
+  EXPECT_DOUBLE_EQ(result.noise.noise_db, 30.0);
+  ASSERT_EQ(result.osd.overlays.size(), 1u);
+  ASSERT_EQ(result.audio_channel_pairs.size(), 1u);
+  EXPECT_EQ(result.audio_channel_pairs[0].pair, 0);
+}
+
 TEST(SectionBlockPresenterTest, OsdTokenCatalogueMatchesResolverTokens) {
   Project project = MakeValidProject();
   // Every documented token must be accepted by OSD validation when used in

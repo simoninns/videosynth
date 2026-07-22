@@ -18,6 +18,7 @@
 #include <QFileInfo>
 #include <QKeySequence>
 #include <QLabel>
+#include <QList>
 #include <QListView>
 #include <QMenu>
 #include <QMenuBar>
@@ -31,6 +32,7 @@
 #include <QStringList>
 #include <QTimer>
 #include <QUrl>
+#include <vector>
 
 #include "asset_roots.h"
 #include "edit_project_dialog.h"
@@ -310,6 +312,13 @@ void MainWindow::BuildSectionsDock() {
             if (index >= 0 && !selecting_section_from_preview_) {
               preview_pane_->ShowSectionFirstFrame(index);
             }
+          });
+  // Multi-row selections put the editor in batch mode: edits to the current
+  // section are mirrored onto every selected section.
+  connect(section_list_dock_, &SectionListDock::SelectedSectionsChanged, this,
+          [this](const QList<int>& indices) {
+            section_editor_->SetSelectedSections(
+                std::vector<int>(indices.begin(), indices.end()));
           });
   connect(section_list_dock_, &SectionListDock::PreviewSectionRequested, this,
           [this](int index) {

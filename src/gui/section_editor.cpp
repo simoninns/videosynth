@@ -31,6 +31,7 @@
 #include <QVBoxLayout>
 #include <algorithm>
 #include <string>
+#include <utility>
 
 #include "asset_roots.h"
 #include "project_templates.h"
@@ -107,6 +108,13 @@ void SectionEditor::BuildUi() {
   scroll->setFrameShape(QFrame::NoFrame);
   content_ = new QWidget(scroll);
   auto* layout = new QVBoxLayout(content_);
+
+  // Batch-editing banner: visible only while the sections list holds a
+  // multi-row selection.
+  multi_edit_hint_ = new QLabel(content_);
+  multi_edit_hint_->setWordWrap(true);
+  multi_edit_hint_->setVisible(false);
+  layout->addWidget(multi_edit_hint_);
 
   layout->addWidget(BuildGeneralGroup());
   layout->addWidget(BuildProbeGroup());
@@ -305,9 +313,7 @@ QWidget* SectionEditor::BuildAudioGroup() {
     if (checked && audio_editor_->channel_pairs().empty()) {
       Section section = SectionFromWidgets();
       section.audio_channel_pairs.push_back(MakeDefaultAudioChannelPair(0));
-      committing_ = true;
-      document_->SetSection(section_index_, section);
-      committing_ = false;
+      CommitSectionToDocument(section);
       LoadFromDocument();
       return;
     }
@@ -527,6 +533,22 @@ void SectionEditor::SetCurrentSection(int index) {
     LoadFromDocument();
     RequestProbe();
   }
+}
+
+void SectionEditor::SetSelectedSections(std::vector<int> indices) {
+  selected_sections_ = std::move(indices);
+  UpdateMultiEditHint();
+}
+
+void SectionEditor::UpdateMultiEditHint() {
+  const int count = static_cast<int>(selected_sections_.size());
+  if (count > 1) {
+    multi_edit_hint_->setText(
+        tr("Editing %1 selected sections: changes made here apply to all of "
+           "them (names stay individual).")
+            .arg(count));
+  }
+  multi_edit_hint_->setVisible(count > 1);
 }
 
 void SectionEditor::LoadFromDocument() {
@@ -759,14 +781,32 @@ Section SectionEditor::SectionFromWidgets() const {
   return section;
 }
 
+bool SectionEditor::CommitSectionToDocument(const Section& section) {
+  // Snapshot the pre-edit state before the primary commit so the delta the
+  // user just made can be mirrored onto the other selected sections.
+  const Section before =
+      document_->project().sections[static_cast<std::size_t>(section_index_)];
+  committing_ = true;
+  bool changed = document_->SetSection(section_index_, section);
+  for (const int index : selected_sections_) {
+    if (index == section_index_ || index < 0 ||
+        index >= document_->section_count()) {
+      continue;
+    }
+    Section target = ApplySectionEditDelta(
+        before, section,
+        document_->project().sections[static_cast<std::size_t>(index)]);
+    changed = document_->SetSection(index, std::move(target)) || changed;
+  }
+  committing_ = false;
+  return changed;
+}
+
 void SectionEditor::CommitSection() {
   if (updating_ || section_index_ < 0) {
     return;
   }
-  Section section = SectionFromWidgets();
-  committing_ = true;
-  const bool changed = document_->SetSection(section_index_, section);
-  committing_ = false;
+  const bool changed = CommitSectionToDocument(SectionFromWidgets());
 
   if (changed && !reload_pending_) {
     // Refresh derived displays (start frame, block defaults seeded by the
@@ -986,9 +1026,7 @@ void SectionEditor::OnAddOverlay() {
   }
   Section section = SectionFromWidgets();
   section.osd.overlays.push_back(MakeDefaultOsdOverlay());
-  committing_ = true;
-  document_->SetSection(section_index_, section);
-  committing_ = false;
+  CommitSectionToDocument(section);
   LoadFromDocument();
 }
 
@@ -1002,9 +1040,7 @@ void SectionEditor::OnRemoveOverlay() {
     return;
   }
   section.osd.overlays.erase(section.osd.overlays.begin() + row);
-  committing_ = true;
-  document_->SetSection(section_index_, section);
-  committing_ = false;
+  CommitSectionToDocument(section);
   LoadFromDocument();
 }
 
