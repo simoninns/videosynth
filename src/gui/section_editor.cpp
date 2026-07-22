@@ -34,6 +34,7 @@
 #include <utility>
 
 #include "asset_roots.h"
+#include "form_field_width.h"
 #include "project_templates.h"
 #include "section_block_presenters.h"
 #include "section_list_model.h"
@@ -377,6 +378,7 @@ QWidget* SectionEditor::BuildNoiseGroup() {
                            editor_limits::kNoiseDbMax);
   noise_db_spin_->setDecimals(1);
   noise_db_spin_->setSuffix(tr(" dB"));
+  CapFieldWidthAtSizeHint(noise_db_spin_);
   form->addRow(tr("Noise floor (Black PSNR):"), noise_db_spin_);
 
   noise_spread_spin_ = new QDoubleSpinBox(body);
@@ -385,13 +387,16 @@ QWidget* SectionEditor::BuildNoiseGroup() {
       0.0, editor_limits::kNoiseDbMax - editor_limits::kNoiseDbMin);
   noise_spread_spin_->setDecimals(1);
   noise_spread_spin_->setSuffix(tr(" dB"));
+  CapFieldWidthAtSizeHint(noise_spread_spin_);
   form->addRow(tr("White spread:"), noise_spread_spin_);
 
   noise_seed_check_ = new QCheckBox(tr("Fixed seed"), body);
   noise_seed_edit_ = new QLineEdit(body);
+  CapFieldWidthToText(noise_seed_edit_, QStringLiteral("10,000,000"));
   auto* seed_row = new QHBoxLayout();
   seed_row->addWidget(noise_seed_check_);
   seed_row->addWidget(noise_seed_edit_);
+  seed_row->addStretch();
   form->addRow(seed_row);
   outer->addWidget(body);
 
@@ -439,12 +444,15 @@ QWidget* SectionEditor::BuildDropoutsGroup() {
     scale->setRange(editor_limits::kDropoutScaleMin,
                     editor_limits::kDropoutScaleMax);
     scale->setToolTip(scale_tool_tip);
+    CapFieldWidthAtSizeHint(scale);
     form->addRow(tr("Scale:"), scale);
     auto* check = new QCheckBox(tr("Fixed seed"), body);
     auto* edit = new QLineEdit(body);
+    CapFieldWidthToText(edit, QStringLiteral("10,000,000"));
     auto* seed_row = new QHBoxLayout();
     seed_row->addWidget(check);
     seed_row->addWidget(edit);
+    seed_row->addStretch();
     form->addRow(seed_row);
     outer->addWidget(body);
 

@@ -264,9 +264,19 @@ Signals the player to stop at a specific frame (freeze-frame marker). Generated 
 
 Identifies the current chapter. Contains an encoded **stop-bit** that controls whether the player can use this chapter as a still-frame search stop point. See [Chapter System](#6-chapter-system) for stop-bit rules.
 
+`chapter` is **optional**:
+
+- **Omit it** to continue the previous section's chapter — the chapter number and its stop-bit track counter carry across the section boundary (if no earlier section set a chapter, numbering begins at 0).
+- **Set it** to start a new chapter at that section; the stop-bit track counter restarts for the new chapter per IEC 60856/60857 §10.1.5.
+
 ```yaml
+# First programme section: start chapter 0 (or omit chapter to default to 0).
 - code_type: chapter_number
   chapter: 0           # Chapter number 0–79
+
+# Later section: omit chapter to continue the previous section's chapter,
+# or set it to start a new chapter here.
+- code_type: chapter_number
 ```
 
 ---

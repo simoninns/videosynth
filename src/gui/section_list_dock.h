@@ -25,7 +25,7 @@ namespace videosynth::gui {
 // duplicate, move up/down) are routed through ProjectDocument commands;
 // display sync comes from SectionListModel. The list allows extended
 // (Ctrl/Shift) selection: Remove and Duplicate act on every selected row,
-// while Preview and Up/Down act on the current row only.
+// while Up/Down act on the current row only.
 //
 // Thread-safety: NOT thread-safe. GUI (main) thread only.
 class SectionListDock : public QWidget {
@@ -52,10 +52,6 @@ class SectionListDock : public QWidget {
   // a single row); carries the ascending selected section indices.
   void SelectedSectionsChanged(const QList<int>& indices);
 
-  // "Preview this section": the preview should jump to the section's first
-  // output frame.
-  void PreviewSectionRequested(int index);
-
  private:
   void OnAddSection();
   void OnRemove();
@@ -73,7 +69,6 @@ class SectionListDock : public QWidget {
   QTableView* view_ = nullptr;
   QToolButton* remove_button_ = nullptr;
   QToolButton* duplicate_button_ = nullptr;
-  QToolButton* preview_button_ = nullptr;
   QToolButton* up_button_ = nullptr;
   QToolButton* down_button_ = nullptr;
 };

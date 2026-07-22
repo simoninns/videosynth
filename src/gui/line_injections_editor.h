@@ -20,6 +20,7 @@ class QCheckBox;
 class QGridLayout;
 class QLabel;
 class QLineEdit;
+class QToolButton;
 
 namespace videosynth::gui {
 
@@ -73,11 +74,13 @@ class LineInjectionsEditor : public QWidget {
  private:
   // One checklist row: a code type, its tick box, and (for codes that carry a
   // parameter) the value editor beside it. `value` is null for value-less
-  // codes such as lead_in/lead_out/clv_code.
+  // codes such as lead_in/lead_out/clv_code. `configure` is the flag-picker
+  // button beside the programme_status hex field, null for other codes.
   struct CodeRow {
     std::string code_type;
     QCheckBox* check = nullptr;
     QLineEdit* value = nullptr;
+    QToolButton* configure = nullptr;
   };
 
   void LoadInjectionForm();
@@ -92,6 +95,10 @@ class LineInjectionsEditor : public QWidget {
   // Rebuilds injection->codes from the current tick/value state (canonical
   // order) and emits InjectionsEdited when it changed.
   void OnChecklistChanged();
+
+  // Opens the programme-status flag picker seeded from `value_edit` and, on
+  // accept, writes the composed hex word back and commits the change.
+  void OnConfigureProgrammeStatus(QLineEdit* value_edit);
 
   Standard standard_ = Standard::kUnknown;
   SectionType section_type_ = SectionType::kUnknown;

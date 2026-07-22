@@ -13,11 +13,14 @@
 #include <QGridLayout>
 #include <QLabel>
 #include <QLineEdit>
+#include <QToolButton>
 #include <QVBoxLayout>
 #include <algorithm>
 #include <utility>
 
+#include "form_field_width.h"
 #include "line_injection_presenter.h"
+#include "programme_status_dialog.h"
 
 namespace videosynth::gui {
 
@@ -48,7 +51,7 @@ QString CodeValuePlaceholder(const std::string& code_type) {
     return QStringLiteral("start_value (blank = continue)");
   }
   if (CodeTypeUsesChapter(code_type)) {
-    return QStringLiteral("chapter 0–79");
+    return QStringLiteral("chapter 0–79 (blank = continue)");
   }
   if (CodeTypeUsesProgrammeStatus(code_type)) {
     return QStringLiteral("hex status (e.g. 0x8DC000)");
@@ -134,7 +137,9 @@ LineInjectionsEditor::LineInjectionsEditor(QWidget* parent) : QWidget(parent) {
   auto* checklist_host = new QWidget(this);
   checklist_layout_ = new QGridLayout(checklist_host);
   checklist_layout_->setContentsMargins(0, 0, 0, 0);
-  checklist_layout_->setColumnStretch(1, 1);
+  // Stretch an empty trailing column so the checkbox, value, and configure
+  // button pack together on the left.
+  checklist_layout_->setColumnStretch(3, 1);
   layout->addWidget(checklist_host);
   layout->addStretch();
 
@@ -241,6 +246,7 @@ void LineInjectionsEditor::RebuildCodeChecklist() {
     checklist_layout_->addWidget(check, row, 0);
 
     QLineEdit* value = nullptr;
+    QToolButton* configure = nullptr;
     if (CodeTypeTakesValue(code_type)) {
       value = new QLineEdit();
       value->setText(existing != nullptr ? CodeValueText(*existing)
@@ -248,12 +254,31 @@ void LineInjectionsEditor::RebuildCodeChecklist() {
       value->setPlaceholderText(CodeValuePlaceholder(code_type));
       value->setToolTip(help);
       value->setEnabled(ticked);
+      // Wide enough for the placeholder hint; the values themselves (chapter
+      // numbers, hex words) are much shorter.
+      CapFieldWidthToText(value, value->placeholderText());
       connect(value, &QLineEdit::editingFinished, this,
               [this] { OnChecklistChanged(); });
-      checklist_layout_->addWidget(value, row, 1);
+      // Left-aligned so rows with a narrower value edit do not centre it
+      // within the column set by the widest one.
+      checklist_layout_->addWidget(value, row, 1, Qt::AlignLeft);
+
+      // The programme status word is composed of Amendment 2 flag fields, so
+      // offer a picker dialog beside the raw hex edit.
+      if (CodeTypeUsesProgrammeStatus(code_type)) {
+        configure = new QToolButton();
+        configure->setText(QStringLiteral("…"));
+        configure->setToolTip(
+            tr("Configure the programme status flags (IEC 60856/60857 "
+               "Amendment 2)."));
+        configure->setEnabled(ticked);
+        connect(configure, &QToolButton::clicked, this,
+                [this, value] { OnConfigureProgrammeStatus(value); });
+        checklist_layout_->addWidget(configure, row, 2);
+      }
     }
 
-    code_rows_.push_back({code_type, check, value});
+    code_rows_.push_back({code_type, check, value, configure});
     ++row;
   }
 }
@@ -277,6 +302,9 @@ void LineInjectionsEditor::OnChecklistChanged() {
     if (code_row.value != nullptr) {
       code_row.value->setEnabled(code_row.check->isChecked());
     }
+    if (code_row.configure != nullptr) {
+      code_row.configure->setEnabled(code_row.check->isChecked());
+    }
     if (!code_row.check->isChecked()) {
       continue;
     }
@@ -292,6 +320,17 @@ void LineInjectionsEditor::OnChecklistChanged() {
     injection->codes = std::move(new_codes);
     AnnounceEdit();
   }
+}
+
+void LineInjectionsEditor::OnConfigureProgrammeStatus(QLineEdit* value_edit) {
+  // Seed the flag picker from the current hex text; on accept write the
+  // composed word back and commit through the normal checklist path.
+  ProgrammeStatusDialog dialog(standard_, value_edit->text(), this);
+  if (dialog.exec() != QDialog::Accepted) {
+    return;
+  }
+  value_edit->setText(dialog.hex_text());
+  OnChecklistChanged();
 }
 
 void LineInjectionsEditor::AnnounceEdit() {

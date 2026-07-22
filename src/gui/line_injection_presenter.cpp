@@ -212,7 +212,9 @@ std::string CodeTypeHelp(const std::string& code_type) {
     return "Flags a still/stop frame in this section. Carries no value.";
   }
   if (code_type == "chapter_number") {
-    return "Chapter number (0–79) stamped on this section's frames.";
+    return "Chapter number (0–79) stamped on this section's frames. Leave "
+           "the value blank to continue the previous section's chapter; set "
+           "a chapter to start a new one here.";
   }
   if (code_type == "programme_status") {
     return "24-bit programme status word, entered as hex (e.g. 0x8DC000).";

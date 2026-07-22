@@ -320,12 +320,6 @@ void MainWindow::BuildSectionsDock() {
             section_editor_->SetSelectedSections(
                 std::vector<int>(indices.begin(), indices.end()));
           });
-  connect(section_list_dock_, &SectionListDock::PreviewSectionRequested, this,
-          [this](int index) {
-            preview_dock_->show();
-            preview_dock_->raise();
-            preview_pane_->ShowSectionFirstFrame(index);
-          });
 }
 
 void MainWindow::BuildPreviewDocks() {

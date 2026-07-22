@@ -21,14 +21,15 @@ enum class CxMode : uint8_t {
 };
 
 // Audio/video mode for the programme status code X4 nibble.
-// IEC 60856/60857 Amendment 2 Appendix C: 8 defined modes (X41–X44).
+// IEC 60856/60857 Amendment 2 Appendix C.1: X41–X44 audio/video mode table.
 // Modes 4–7 and 9–15 are reserved for future use.
 enum class AudioVideoMode : uint8_t {
-  kStandardVideoStereo = 0x0,   // Standard video, stereo audio
-  kStandardVideoStereoB = 0x1,  // Standard video, stereo channel 2
-  kStandardVideoStereoC = 0x2,  // Standard video, stereo channel 3
-  kStandardVideoStereoD = 0x3,  // Standard video, stereo channel 4
-  kMonoDump = 0x8,              // Mono dump (bilingual first language)
+  kStereo = 0x0,               // Standard video, stereo audio
+  kMono = 0x1,                 // Standard video, mono audio
+  kAudioSubcarriersOff = 0x2,  // Standard video, audio subcarriers off
+                               // (IEC 60856 Amd. 2; future use on System M)
+  kBilingual = 0x3,            // Standard video, bilingual audio
+  kMonoDump = 0x8,             // Standard video, mono dump
   // Modes 4–7 and 9–15: future use (valid as raw nibble values)
 };
 
@@ -77,7 +78,10 @@ class ProgrammeStatusCodeBuilder {
   static uint8_t ComputeHammingCheck(uint8_t x4);
 
   // Builds the X₃ nibble from the copy_permitted flag.
-  // X₃₄ (LSB of X₃) = copy_permitted; upper bits are 0 (reserved).
+  // X₃₄ (LSB of X₃) = copy_permitted; the upper bits (X₃₁ disc size, X₃₂ disc
+  // side, X₃₃ teletext per Amendment 2 Appendix C.1) are left 0 here — callers
+  // needing them compose the full nibble themselves (see the GUI
+  // programme_status_presenter).
   static uint8_t BuildX3(bool copy_permitted);
 
   // Returns the two-nibble CX pattern at bits 19–12:

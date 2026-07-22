@@ -26,6 +26,7 @@
 #include <utility>
 
 #include "asset_roots.h"
+#include "form_field_width.h"
 #include "line_injection_presenter.h"
 #include "project_settings_presenter.h"
 #include "project_templates.h"
@@ -87,6 +88,7 @@ void ProjectSettingsEditor::BuildUi() {
   name_edit_ = new QLineEdit(project_group);
   name_edit_->setMinimumWidth(name_edit_->sizeHint().width() * 2);
   version_edit_ = new QLineEdit(project_group);
+  CapFieldWidthToText(version_edit_, QStringLiteral("10,000,000"));
   description_edit_ = new QPlainTextEdit(project_group);
   description_edit_->setFixedHeight(60);
   description_edit_->setTabChangesFocus(true);
@@ -186,7 +188,9 @@ void ProjectSettingsEditor::BuildUi() {
   auto* vits_host = new QWidget(injections_group);
   vits_checklist_layout_ = new QGridLayout(vits_host);
   vits_checklist_layout_->setContentsMargins(0, 0, 0, 0);
-  vits_checklist_layout_->setColumnStretch(1, 1);
+  // Stretch an empty trailing column so each checkbox and its lines edit
+  // pack together on the left.
+  vits_checklist_layout_->setColumnStretch(2, 1);
   injections_layout->addWidget(vits_host);
   layout->addWidget(injections_group);
 
@@ -407,6 +411,8 @@ void ProjectSettingsEditor::RebuildVitsChecklist() {
         line_locked ? tr("Fixed placement line for this signal (set by the "
                          "standard).")
                     : tr("Target VBI line(s), comma-separated."));
+    // Wide enough for a comma-separated handful of VBI line numbers.
+    CapFieldWidthToText(lines_edit, QStringLiteral("999, 999, 999, 999"));
     connect(lines_edit, &QLineEdit::editingFinished, this,
             [this, row] { OnVitsLineEdited(row); });
     vits_checklist_layout_->addWidget(lines_edit, row, kVitsLinesColumn);

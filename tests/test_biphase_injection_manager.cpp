@@ -17,6 +17,7 @@
 
 #include "videosynth/biphase_injection_manager.h"
 #include "videosynth/biphase_types.h"
+#include "videosynth/cav_code_generator.h"
 #include "videosynth/fixed_point.h"
 #include "videosynth/line_placement_engine.h"
 #include "videosynth/model.h"
@@ -496,6 +497,102 @@ TEST(BiphaseInjectionManagerPalCavTest,
   // An explicit start_value re-anchors the count for the new section.
   EXPECT_EQ(ProcessCavFrameGetPictureNumber(&manager, section_b), 100);
   EXPECT_EQ(ProcessCavFrameGetPictureNumber(&manager, section_b), 101);
+}
+
+// ---------------------------------------------------------------------------
+// PAL CAV: chapter_number continues across section boundaries unless a
+// section re-anchors it with an explicit chapter.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Processes one PAL CAV frame of `section` and returns the chapter number
+// stamped on it, decoded from the chapter biphase word 8X₁X₂DDD (-1 when no
+// chapter_number generator is active).
+int ProcessCavFrameGetChapterNumber(BiphaseInjectionManager* manager,
+                                    const Section& section) {
+  std::vector<int> offsets, counts;
+  BuildLineLayout(Standard::kPal, &offsets, &counts);
+  const auto frame_lines = BuildFrameTimingPrimitives(Standard::kPal);
+  const TimingConstants timing = GetTimingConstants(Standard::kPal);
+  auto y = MakeBlankingBuffer(Standard::kPal);
+  std::vector<std::string> errors;
+  EXPECT_TRUE(manager->ProcessFrame(&y, 0, offsets, counts, section,
+                                    Standard::kPal, timing.sample_rate_4fsc_hz,
+                                    frame_lines, 177,
+                                    ActiveWindowEnd(Standard::kPal), &errors));
+  for (const uint32_t word : manager->GetLastFrameContext().biphase_words) {
+    // IEC 60856 §10.1.5: chapter codes end in the constant DDD pattern.
+    if ((word & 0x000FFFu) == ChapterNumberGenerator::kDddPattern) {
+      return ChapterNumberGenerator::DecodeChapterNumber(word);
+    }
+  }
+  return -1;
+}
+
+}  // namespace
+
+TEST(BiphaseInjectionManagerPalCavTest, ChapterNumberContinuesAcrossSections) {
+  // Section A starts chapter 5; section B (a distinct Section, so the manager
+  // re-initialises) omits the chapter and must continue chapter 5 rather than
+  // restart at 0.
+  Section::LineInjectionCode anchored;
+  anchored.code_type = "chapter_number";
+  anchored.chapter = 5;
+  anchored.chapter_specified = true;
+  const Section section_a = MakeLaserdiscSection(SectionType::kProgrammeArea,
+                                                 DiscType::kCAV, {anchored});
+
+  Section::LineInjectionCode continued;
+  continued.code_type = "chapter_number";  // chapter left unspecified
+  const Section section_b = MakeLaserdiscSection(SectionType::kProgrammeArea,
+                                                 DiscType::kCAV, {continued});
+
+  BiphaseInjectionManager manager;
+  manager.SetProjectDiscType(DiscType::kCAV);
+
+  EXPECT_EQ(ProcessCavFrameGetChapterNumber(&manager, section_a), 5);
+  // Crossing into section B without a chapter continues the chapter.
+  EXPECT_EQ(ProcessCavFrameGetChapterNumber(&manager, section_b), 5);
+  EXPECT_EQ(ProcessCavFrameGetChapterNumber(&manager, section_b), 5);
+}
+
+TEST(BiphaseInjectionManagerPalCavTest,
+     ChapterNumberReanchorsOnExplicitChapter) {
+  Section::LineInjectionCode chapter_five;
+  chapter_five.code_type = "chapter_number";
+  chapter_five.chapter = 5;
+  chapter_five.chapter_specified = true;
+  const Section section_a = MakeLaserdiscSection(
+      SectionType::kProgrammeArea, DiscType::kCAV, {chapter_five});
+
+  Section::LineInjectionCode chapter_six;
+  chapter_six.code_type = "chapter_number";
+  chapter_six.chapter = 6;
+  chapter_six.chapter_specified = true;
+  const Section section_b = MakeLaserdiscSection(SectionType::kProgrammeArea,
+                                                 DiscType::kCAV, {chapter_six});
+
+  BiphaseInjectionManager manager;
+  manager.SetProjectDiscType(DiscType::kCAV);
+
+  EXPECT_EQ(ProcessCavFrameGetChapterNumber(&manager, section_a), 5);
+  // An explicit chapter starts the new chapter at the section boundary.
+  EXPECT_EQ(ProcessCavFrameGetChapterNumber(&manager, section_b), 6);
+}
+
+TEST(BiphaseInjectionManagerPalCavTest,
+     ChapterNumberDefaultsToZeroWhenNeverSpecified) {
+  Section::LineInjectionCode unspecified;
+  unspecified.code_type = "chapter_number";  // chapter left unspecified
+  const Section section = MakeLaserdiscSection(SectionType::kProgrammeArea,
+                                               DiscType::kCAV, {unspecified});
+
+  BiphaseInjectionManager manager;
+  manager.SetProjectDiscType(DiscType::kCAV);
+
+  // No earlier section carried a chapter: numbering begins at 0.
+  EXPECT_EQ(ProcessCavFrameGetChapterNumber(&manager, section), 0);
 }
 
 // ---------------------------------------------------------------------------

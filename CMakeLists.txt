@@ -192,6 +192,7 @@ if(VIDEOSYNTH_BUILD_GUI)
         src/gui/edit_project_dialog.h
         src/gui/audio_channel_pairs_editor.cpp
         src/gui/audio_channel_pairs_editor.h
+        src/gui/form_field_width.h
         src/gui/forwarding_logger.cpp
         src/gui/forwarding_logger.h
         src/gui/generation_controller.cpp
@@ -218,6 +219,10 @@ if(VIDEOSYNTH_BUILD_GUI)
         src/gui/preview_pane.h
         src/gui/preview_render.cpp
         src/gui/preview_render.h
+        src/gui/programme_status_dialog.cpp
+        src/gui/programme_status_dialog.h
+        src/gui/programme_status_presenter.cpp
+        src/gui/programme_status_presenter.h
         src/gui/project_document.cpp
         src/gui/project_document.h
         src/gui/project_settings_editor.cpp
@@ -404,6 +409,7 @@ if(VIDEOSYNTH_BUILD_GUI)
         tests/gui/test_preview_frame_service.cpp
         tests/gui/test_preview_functional.cpp
         tests/gui/test_preview_render.cpp
+        tests/gui/test_programme_status_presenter.cpp
         tests/gui/test_project_document.cpp
         tests/gui/test_qt_message_bridge.cpp
         tests/gui/test_project_file_lifecycle.cpp
@@ -504,6 +510,7 @@ set(videosynth_unit_test_patterns
     "^SectionBlockPresenterTest\\."
     "^SourcePathModelTest\\."
     "^LineInjectionPresenterTest\\."
+    "^ProgrammeStatusPresenterTest\\."
     "^DiscSkipsModelTest\\."
     "^SourceProbeControllerTest\\."
     "^ValidationControllerTest\\."

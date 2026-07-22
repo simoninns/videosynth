@@ -23,6 +23,7 @@
 #include <QVBoxLayout>
 #include <utility>
 
+#include "form_field_width.h"
 #include "section_block_presenters.h"
 
 namespace videosynth::gui {
@@ -65,6 +66,7 @@ AudioChannelPairsEditor::AudioChannelPairsEditor(QWidget* parent)
   pair_spin_->setRange(0, kMaxAudioChannelPairs - 1);
   pair_spin_->setToolTip(
       tr("Channel-pair number 0–7 (names the _audio_<pair>.wav file)."));
+  CapFieldWidthAtSizeHint(pair_spin_);
   header_form->addRow(tr("Channel pair:"), pair_spin_);
   description_edit_ = new QLineEdit(form_panel_);
   description_edit_->setPlaceholderText(tr("e.g. Analogue stereo"));
@@ -127,6 +129,7 @@ QWidget* AudioChannelPairsEditor::BuildChannelEditor(const QString& title,
   widgets->frequency->setSuffix(tr(" Hz"));
   widgets->frequency->setDecimals(1);
   widgets->frequency->setValue(1000.0);
+  CapFieldWidthAtSizeHint(widgets->frequency);
   form->addRow(tr("Frequency:"), widgets->frequency);
 
   widgets->amplitude = new QDoubleSpinBox(group);
@@ -135,6 +138,7 @@ QWidget* AudioChannelPairsEditor::BuildChannelEditor(const QString& title,
   widgets->amplitude->setSingleStep(0.05);
   widgets->amplitude->setDecimals(2);
   widgets->amplitude->setValue(0.5);
+  CapFieldWidthAtSizeHint(widgets->amplitude);
   form->addRow(tr("Amplitude:"), widgets->amplitude);
 
   widgets->ramp_group = new QGroupBox(tr("Frequency ramp"), group);
@@ -160,6 +164,9 @@ QWidget* AudioChannelPairsEditor::BuildChannelEditor(const QString& title,
   widgets->ramp_period->setDecimals(3);
   widgets->ramp_period->setSuffix(tr(" s"));
   widgets->ramp_period->setSpecialValueText(tr("whole section"));
+  CapFieldWidthAtSizeHint(widgets->ramp_start);
+  CapFieldWidthAtSizeHint(widgets->ramp_end);
+  CapFieldWidthAtSizeHint(widgets->ramp_period);
   ramp_form->addRow(tr("Start:"), widgets->ramp_start);
   ramp_form->addRow(tr("End:"), widgets->ramp_end);
   ramp_form->addRow(tr("Mode:"), widgets->ramp_mode);

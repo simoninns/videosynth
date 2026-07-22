@@ -16,6 +16,7 @@
 #include <QPushButton>
 #include <QTableView>
 #include <QVBoxLayout>
+#include <algorithm>
 
 #include "line_injection_presenter.h"
 
@@ -58,8 +59,17 @@ DiscSkipsEditor::DiscSkipsEditor(ProjectDocument* document, QWidget* parent)
   view_->setModel(model_);
   view_->setSelectionBehavior(QAbstractItemView::SelectRows);
   view_->setSelectionMode(QAbstractItemView::SingleSelection);
-  view_->horizontalHeader()->setStretchLastSection(true);
   view_->verticalHeader()->setVisible(false);
+  // Columns hold at most eight-figure frame counts (or a direction word), so
+  // size them for that instead of stretching the last one across the panel.
+  const int numeric_width =
+      view_->fontMetrics().horizontalAdvance(QStringLiteral("10,000,000")) + 24;
+  for (int column = 0; column < DiscSkipsModel::kColumnCount; ++column) {
+    // Never narrower than the header label needs.
+    view_->setColumnWidth(
+        column, std::max(numeric_width,
+                         view_->horizontalHeader()->sectionSizeHint(column)));
+  }
   view_->setItemDelegateForColumn(DiscSkipsModel::kDirectionColumn,
                                   new DiscSkipDirectionDelegate(view_));
   layout->addWidget(view_);

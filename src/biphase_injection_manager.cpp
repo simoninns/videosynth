@@ -418,9 +418,13 @@ bool BiphaseInjectionManager::InitializeSection(
   // starts them over. The CAV picture_number counter is preserved the same way
   // so it numbers frames continuously across all sections by default; a section
   // that specifies an explicit start_value re-anchors it (handled below).
+  // The chapter_number generator is likewise preserved so a section with no
+  // explicit chapter continues the previous section's chapter (and its
+  // stop-bit track counter); an explicit chapter re-anchors it.
   std::unique_ptr<CodeGenerator> saved_ptc;
   std::unique_ptr<CodeGenerator> saved_cpn;
   std::unique_ptr<CodeGenerator> saved_pn;
+  std::unique_ptr<CodeGenerator> saved_ch;
   {
     auto it = generators_.find("programme_time_code");
     if (it != generators_.end()) {
@@ -433,6 +437,10 @@ bool BiphaseInjectionManager::InitializeSection(
     it = generators_.find("picture_number");
     if (it != generators_.end()) {
       saved_pn = std::move(it->second);
+    }
+    it = generators_.find("chapter_number");
+    if (it != generators_.end()) {
+      saved_ch = std::move(it->second);
     }
   }
 
@@ -456,6 +464,9 @@ bool BiphaseInjectionManager::InitializeSection(
   }
   if (saved_pn) {
     generators_["picture_number"] = std::move(saved_pn);
+  }
+  if (saved_ch) {
+    generators_["chapter_number"] = std::move(saved_ch);
   }
 
   const Section::LineInjection* injection = nullptr;
@@ -516,8 +527,20 @@ bool BiphaseInjectionManager::InitializeSection(
           std::make_unique<PictureStopCodeGenerator>();
 
     } else if (code.code_type == "chapter_number") {
-      generators_["chapter_number"] =
-          std::make_unique<ChapterNumberGenerator>(code.chapter);
+      if (code.chapter_specified) {
+        // Explicit chapter: (re)start the chapter code at this section,
+        // resetting the IEC 60856/60857 §10.1.5 stop-bit track counter for
+        // the new chapter, overriding any continued chapter.
+        generators_["chapter_number"] =
+            std::make_unique<ChapterNumberGenerator>(code.chapter);
+      } else if (generators_.find("chapter_number") == generators_.end()) {
+        // No chapter carried over from an earlier section (this is the first
+        // section to carry a chapter): begin at 0. When a chapter was
+        // preserved above, leave it running so the chapter number and its
+        // stop-bit state continue across the boundary.
+        generators_["chapter_number"] =
+            std::make_unique<ChapterNumberGenerator>(0);
+      }
 
     } else if (code.code_type == "programme_status") {
       if (code.programme_status_specified) {
