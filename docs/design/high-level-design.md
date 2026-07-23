@@ -2060,6 +2060,24 @@ videosynth --project pal_test.yaml --log-level debug --log-file out/videosynth.l
 
 ---
 
+### **GUI logging options**
+
+`videosynth-gui` accepts the same `--log-level <level>` and `--log-file
+<filename>` options (both `--option value` and `--option=value` forms). They
+configure the application logger — which also receives Qt's own diagnostics
+via the message bridge — and, for the lifetime of the session, override the
+persisted generation preferences for every pipeline run started from the GUI.
+When the options are absent, the application logger stays at `info` on stderr
+and generation runs follow the Preferences dialog settings. An invalid level
+or missing value exits with code 2, matching the CLI.
+
+```bash
+# Run the GUI with trace logging captured to a file
+videosynth-gui --log-level trace --log-file out/videosynth-gui.log
+```
+
+---
+
 ---
 
 ## **15. Build and Packaging**

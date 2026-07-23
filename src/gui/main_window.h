@@ -16,6 +16,7 @@
 
 #include "generation_controller.h"
 #include "log_message_model.h"
+#include "logging_options.h"
 #include "preview_pane.h"
 #include "project_document.h"
 #include "section_editor.h"
@@ -52,8 +53,11 @@ class MainWindow : public QMainWindow {
 
  public:
   // Does not take ownership of `theme_controller`; it must outlive the
-  // window.
+  // window. `logging_overrides` carries the command-line --log-level/
+  // --log-file values, applied over the persisted preferences for every
+  // generation run this session.
   explicit MainWindow(ThemeController* theme_controller,
+                      const LoggingOptions& logging_overrides = {},
                       QWidget* parent = nullptr);
 
   ProjectDocument* document() { return document_; }
@@ -111,6 +115,8 @@ class MainWindow : public QMainWindow {
   void AddToRecentFiles(const QString& path);
 
   ThemeController* theme_controller_;
+  // Command-line logging overrides applied to every generation run.
+  LoggingOptions logging_overrides_;
   ProjectDocument* document_;
   ValidationController* validation_controller_;
   ValidationIssuesModel* issues_model_;

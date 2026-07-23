@@ -205,6 +205,8 @@ if(VIDEOSYNTH_BUILD_GUI)
         src/gui/line_injections_editor.h
         src/gui/log_message_model.cpp
         src/gui/log_message_model.h
+        src/gui/logging_options.cpp
+        src/gui/logging_options.h
         src/gui/main_window.cpp
         src/gui/main_window.h
         src/gui/new_project_dialog.cpp
@@ -406,6 +408,7 @@ if(VIDEOSYNTH_BUILD_GUI)
         tests/gui/test_generation_preferences.cpp
         tests/gui/test_line_injection_presenter.cpp
         tests/gui/test_log_message_model.cpp
+        tests/gui/test_logging_options.cpp
         tests/gui/test_preview_frame_service.cpp
         tests/gui/test_preview_functional.cpp
         tests/gui/test_preview_render.cpp
@@ -497,6 +500,7 @@ set(videosynth_unit_test_patterns
     "^GenerationControllerTest\\."
     "^GenerationPreferencesTest\\."
     "^LogMessageModelTest\\."
+    "^LoggingOptionsTest\\."
     "^PipelineTest\\."
     "^PreviewFrameServiceTest\\."
     "^PreviewRenderTest\\."

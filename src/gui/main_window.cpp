@@ -71,9 +71,11 @@ bool AnySectionEnablesDropouts(const Project& project) {
 
 }  // namespace
 
-MainWindow::MainWindow(ThemeController* theme_controller, QWidget* parent)
+MainWindow::MainWindow(ThemeController* theme_controller,
+                       const LoggingOptions& logging_overrides, QWidget* parent)
     : QMainWindow(parent),
       theme_controller_(theme_controller),
+      logging_overrides_(logging_overrides),
       document_(new ProjectDocument(this)),
       validation_controller_(new ValidationController({}, this)),
       issues_model_(new ValidationIssuesModel(this)),
@@ -548,8 +550,8 @@ void MainWindow::OnGenerate() {
   }
 
   const QSettings settings;
-  const RunOptions options =
-      MakeRunOptions(LoadGenerationPreferences(settings));
+  const RunOptions options = ApplyLoggingOverrides(
+      MakeRunOptions(LoadGenerationPreferences(settings)), logging_overrides_);
   log_model_->Clear();
   generation_controller_->StartGeneration(project, options);
 }
