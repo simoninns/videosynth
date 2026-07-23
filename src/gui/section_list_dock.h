@@ -12,6 +12,7 @@
 
 #include <QList>
 #include <QWidget>
+#include <vector>
 
 #include "project_document.h"
 #include "section_list_model.h"
@@ -24,8 +25,9 @@ namespace videosynth::gui {
 // Dock widget content for the ordered section list. Operations (add, remove,
 // duplicate, move up/down) are routed through ProjectDocument commands;
 // display sync comes from SectionListModel. The list allows extended
-// (Ctrl/Shift) selection: Remove and Duplicate act on every selected row,
-// while Up/Down act on the current row only.
+// (Ctrl/Shift) selection: Remove, Duplicate, and Up/Down act on every
+// selected row (moves follow the PlanMoveSectionsUp/Down block semantics,
+// reselecting the rows at their new positions).
 //
 // Thread-safety: NOT thread-safe. GUI (main) thread only.
 class SectionListDock : public QWidget {
@@ -62,6 +64,10 @@ class SectionListDock : public QWidget {
   void AddSection(Section section);
   // Selects rows [first, last] and makes `first` current.
   void SelectSectionRange(int first, int last);
+  // The rows an Up/Down move acts on: the selection, or the current row.
+  std::vector<int> RowsForMove() const;
+  // Applies a reorder plan to the document and reselects the moved rows.
+  void ApplyMovePlan(const std::vector<SectionMoveStep>& steps);
   void UpdateButtonStates();
 
   ProjectDocument* document_;

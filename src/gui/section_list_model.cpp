@@ -150,6 +150,39 @@ QString DiscRangeText(DiscType disc_type, Standard standard, int start_offset,
   return {};
 }
 
+std::vector<SectionMoveStep> PlanMoveSectionsUp(const std::vector<int>& rows) {
+  std::vector<SectionMoveStep> steps;
+  // Rows packed against the top (or against already-pinned selected rows)
+  // stay put; every other row shifts up one place. Ascending application
+  // order keeps later rows' indices valid: a move only shuffles rows below
+  // the ones still to come.
+  int boundary = 0;
+  for (const int row : rows) {
+    if (row > boundary) {
+      steps.push_back({row, row - 1});
+    } else {
+      boundary = row + 1;
+    }
+  }
+  return steps;
+}
+
+std::vector<SectionMoveStep> PlanMoveSectionsDown(const std::vector<int>& rows,
+                                                  int row_count) {
+  std::vector<SectionMoveStep> steps;
+  // Mirror of PlanMoveSectionsUp: walk from the bottom, pinning rows packed
+  // against the end of the list, and apply in descending order.
+  int boundary = row_count - 1;
+  for (auto it = rows.rbegin(); it != rows.rend(); ++it) {
+    if (*it < boundary) {
+      steps.push_back({*it, *it + 1});
+    } else {
+      boundary = *it - 1;
+    }
+  }
+  return steps;
+}
+
 SectionListModel::SectionListModel(ProjectDocument* document, QObject* parent)
     : QAbstractTableModel(parent), document_(document) {
   rows_ = BuildSectionListRows(document_->project());

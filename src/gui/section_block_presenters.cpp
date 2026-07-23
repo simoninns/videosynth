@@ -18,6 +18,18 @@ namespace videosynth::gui {
 
 namespace {
 
+// Finds the code of `code_type` in a code list, or nullptr.
+const Section::LineInjectionCode* FindCodeOfType(
+    const std::vector<Section::LineInjectionCode>& codes,
+    const std::string& code_type) {
+  for (const Section::LineInjectionCode& code : codes) {
+    if (code.code_type == code_type) {
+      return &code;
+    }
+  }
+  return nullptr;
+}
+
 // Mid-range noise floor for a freshly-enabled block: clearly audible in
 // preview measurements yet far from both validator bounds.
 constexpr double kDefaultNoiseDb = 48.0;
@@ -222,10 +234,83 @@ Section ApplySectionEditDelta(const Section& before, const Section& after,
   if (!(after.audio_channel_pairs == before.audio_channel_pairs)) {
     target.audio_channel_pairs = after.audio_channel_pairs;
   }
+  // Line injections mirror per code, filtered by the target's section type
+  // (which the section_type mirror above has already updated).
   if (!(after.line_injections == before.line_injections)) {
-    target.line_injections = after.line_injections;
+    target.line_injections = ApplyLineInjectionEditDelta(
+        before.line_injections, after.line_injections,
+        std::move(target.line_injections), target.section_type);
   }
   return target;
+}
+
+std::vector<Section::LineInjection> ApplyLineInjectionEditDelta(
+    const std::vector<Section::LineInjection>& before,
+    const std::vector<Section::LineInjection>& after,
+    std::vector<Section::LineInjection> target,
+    SectionType target_section_type) {
+  // The block was disabled on the edited section: mirror the disable.
+  if (after.empty()) {
+    return {};
+  }
+
+  // The editors collapse any legacy list to a single laserdisc injection, so
+  // the diff and the target both work on the first entry's codes.
+  static const std::vector<Section::LineInjectionCode> kNoCodes;
+  const std::vector<Section::LineInjectionCode>& before_codes =
+      before.empty() ? kNoCodes : before.front().codes;
+  const std::vector<Section::LineInjectionCode>& after_codes =
+      after.front().codes;
+
+  const bool target_had_injection = !target.empty();
+  Section::LineInjection working;
+  working.type = "laserdisc";
+  if (target_had_injection) {
+    working = std::move(target.front());
+  }
+
+  // Codes the edit unticked disappear from the target too.
+  working.codes.erase(
+      std::remove_if(
+          working.codes.begin(), working.codes.end(),
+          [&](const Section::LineInjectionCode& code) {
+            return FindCodeOfType(before_codes, code.code_type) != nullptr &&
+                   FindCodeOfType(after_codes, code.code_type) == nullptr;
+          }),
+      working.codes.end());
+
+  // Codes the edit ticked or revalued upsert into the target, but only where
+  // the target's section type accepts them.
+  for (const Section::LineInjectionCode& code : after_codes) {
+    const Section::LineInjectionCode* previous =
+        FindCodeOfType(before_codes, code.code_type);
+    if (previous != nullptr && *previous == code) {
+      continue;  // Untouched by this edit.
+    }
+    if (!IsCodeTypeValidForSectionType(code.code_type, target_section_type)) {
+      continue;
+    }
+    bool replaced = false;
+    for (Section::LineInjectionCode& existing : working.codes) {
+      if (existing.code_type == code.code_type) {
+        existing = code;
+        replaced = true;
+        break;
+      }
+    }
+    if (!replaced) {
+      working.codes.push_back(code);
+    }
+  }
+
+  if (!target_had_injection && working.codes.empty()) {
+    return {};
+  }
+  return {std::move(working)};
+}
+
+bool SectionTypeAllowsBatchAssignment(SectionType type) {
+  return type == SectionType::kProgrammeArea || type == SectionType::kUnknown;
 }
 
 std::vector<OsdTokenHelp> OsdTokenCatalogue() {

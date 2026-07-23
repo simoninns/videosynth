@@ -85,6 +85,9 @@ class SectionEditor : public QWidget {
   bool CommitSectionToDocument(const Section& section);
   // Shows/hides the batch-editing banner above the form.
   void UpdateMultiEditHint();
+  // The section types of the current multi-row selection, or empty when the
+  // selection holds fewer than two valid sections (single-section editing).
+  std::vector<SectionType> SelectedSectionTypes() const;
   Section SectionFromWidgets() const;
   void RequestProbe();
   void UpdateProbeDisplay();

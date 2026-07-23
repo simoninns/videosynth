@@ -28,13 +28,13 @@ bool IsSystemM(Standard standard) {
 
 Section MakeLaserdiscSectionBase(Standard standard, SectionType section_type,
                                  const std::string& name, int duration_frames) {
-  (void)standard;
   Section section;
   section.name = name;
   section.type = "progressive";
   section.section_type = section_type;
-  // Placeholder source; the user picks the real file in the section editor.
-  section.source = "assets/source.exr";
+  // Bundled colour-bar default so the section previews immediately; the user
+  // picks the real file in the section editor.
+  section.source = DefaultBundledSource(standard);
   section.duration_frames = duration_frames;
 
   // The disc format (CAV/CLV) and the VITS set are project-wide; a section
@@ -114,21 +114,19 @@ Project MakeDefaultProject(Standard standard) {
   project.output.video_path = "output/new_project.composite";
   project.output.metadata_path = "output/new_project.meta";
 
-  Section section = MakeProgressiveSectionTemplate(1);
-  section.source = DefaultBundledSource(resolved);
-  project.sections.push_back(section);
+  project.sections.push_back(MakeProgressiveSectionTemplate(1, resolved));
   return project;
 }
 
 Project MakeDefaultPalProject() { return MakeDefaultProject(Standard::kPal); }
 
-Section MakeProgressiveSectionTemplate(int ordinal) {
+Section MakeProgressiveSectionTemplate(int ordinal, Standard standard) {
   Section section;
   section.name = "Section " + std::to_string(ordinal);
   section.type = "progressive";
-  // Placeholder source; existence is only checked when generation probes the
-  // file, so a fresh template still validates structurally.
-  section.source = "assets/source.exr";
+  // Bundled colour-bar default for the standard's active raster so a fresh
+  // section previews immediately instead of pointing at a non-existent file.
+  section.source = DefaultBundledSource(standard);
   section.duration_frames = 25;
   return section;
 }

@@ -102,8 +102,30 @@ int DurationSecondsToFrames(double seconds, double frame_rate_hz,
 // primary selected section), leaving everything else in `target` untouched.
 // The name is never mirrored — it identifies the individual section. The three
 // duration fields propagate as a unit because the editor's widgets couple
-// them (frames vs "all frames" x repeat). Returns the updated target.
+// them (frames vs "all frames" x repeat). Line injections mirror per code via
+// ApplyLineInjectionEditDelta, never wholesale. Returns the updated target.
 Section ApplySectionEditDelta(const Section& before, const Section& after,
                               Section target);
+
+// Mirrors a line-injection edit onto a batch target without replacing the
+// target's list wholesale. Disabling the block (`after` empty) clears the
+// target; otherwise the per-code diff between `before` and `after` (codes
+// ticked, unticked, or revalued) is applied code by code, and a code is only
+// added or updated when IsCodeTypeValidForSectionType accepts it for
+// `target_section_type` — so a batch edit can never push a code into a
+// section whose type forbids it (IEC 60856/60857 Appendix D). Codes the edit
+// did not touch keep the target's own values, and no empty injection block is
+// created when nothing valid remains to add.
+std::vector<Section::LineInjection> ApplyLineInjectionEditDelta(
+    const std::vector<Section::LineInjection>& before,
+    const std::vector<Section::LineInjection>& after,
+    std::vector<Section::LineInjection> target,
+    SectionType target_section_type);
+
+// Whether `type` may be assigned to every section of a multi-section
+// selection at once. ValidateSectionOrdering permits at most one lead_in and
+// one lead_out per project, so batch-assigning either can never validate;
+// programme_area (and clearing the type) may repeat freely.
+bool SectionTypeAllowsBatchAssignment(SectionType type);
 
 }  // namespace videosynth::gui

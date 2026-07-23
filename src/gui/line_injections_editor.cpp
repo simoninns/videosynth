@@ -155,6 +155,15 @@ void LineInjectionsEditor::SetContext(Standard standard,
   LoadInjectionForm();
 }
 
+void LineInjectionsEditor::SetBatchSectionTypes(
+    std::vector<SectionType> section_types) {
+  if (batch_section_types_ == section_types) {
+    return;
+  }
+  batch_section_types_ = std::move(section_types);
+  LoadInjectionForm();
+}
+
 void LineInjectionsEditor::SetInjections(
     std::vector<Section::LineInjection> injections) {
   // Only one laserdisc injection per section is meaningful (the runtime uses
@@ -203,10 +212,10 @@ void LineInjectionsEditor::RebuildCodeChecklist() {
   ClearChecklist();
 
   Section::LineInjection* injection = CurrentInjection();
-  const std::vector<std::string> code_types =
+  const std::vector<std::string> own_code_types =
       AvailableLaserdiscCodeTypes(disc_type_, section_type_, standard_);
 
-  if (code_types.empty()) {
+  if (own_code_types.empty()) {
     empty_hint_label_->setText(
         disc_type_ == DiscType::kUnknown
             ? QString()
@@ -214,23 +223,44 @@ void LineInjectionsEditor::RebuildCodeChecklist() {
                  "area / lead-out) to choose its laserdisc codes."));
     return;
   }
-  empty_hint_label_->setText(
-      tr("Tick the laserdisc codes this section carries. The codes normally "
-         "expected for its section type are ticked by default."));
 
-  // Keep the working copy in step with what can actually be shown: drop any
+  // Keep the working copy in step with the section's own catalogue: drop any
   // code that is no longer valid for this disc format / section type (e.g.
   // after the section type changed) so the checklist and model never diverge.
   if (injection != nullptr) {
     auto& codes = injection->codes;
-    codes.erase(
-        std::remove_if(codes.begin(), codes.end(),
-                       [&code_types](const Section::LineInjectionCode& code) {
-                         return std::find(code_types.begin(), code_types.end(),
-                                          code.code_type) == code_types.end();
-                       }),
-        codes.end());
+    codes.erase(std::remove_if(
+                    codes.begin(), codes.end(),
+                    [&own_code_types](const Section::LineInjectionCode& code) {
+                      return std::find(own_code_types.begin(),
+                                       own_code_types.end(),
+                                       code.code_type) == own_code_types.end();
+                    }),
+                codes.end());
   }
+
+  // A batch selection mirrors ticked codes onto every selected section, so
+  // only the codes valid for all of the selected section types are offered
+  // (the section's other codes keep their state but grow no rows).
+  const bool batch_editing = !batch_section_types_.empty();
+  const std::vector<std::string> code_types =
+      batch_editing ? CommonLaserdiscCodeTypes(disc_type_, batch_section_types_,
+                                               standard_)
+                    : own_code_types;
+  if (code_types.empty()) {
+    empty_hint_label_->setText(
+        tr("The selected sections' disc section types share no laserdisc "
+           "codes, so none can be batch-edited; select the sections "
+           "individually to edit their codes."));
+    return;
+  }
+  empty_hint_label_->setText(
+      batch_editing
+          ? tr("Tick the laserdisc codes the selected sections carry. Only "
+               "codes valid for every selected section's type are shown.")
+          : tr("Tick the laserdisc codes this section carries. The codes "
+               "normally expected for its section type are ticked by "
+               "default."));
 
   int row = 0;
   for (const std::string& code_type : code_types) {
@@ -297,8 +327,24 @@ void LineInjectionsEditor::OnChecklistChanged() {
     injection = &injections_.front();
   }
 
+  // Rebuild in the section's own catalogue order. A batch selection narrows
+  // the shown rows to the codes common to every selected section type, so a
+  // code without a row keeps its current state rather than being dropped.
   std::vector<Section::LineInjectionCode> new_codes;
-  for (const CodeRow& code_row : code_rows_) {
+  for (const std::string& code_type :
+       AvailableLaserdiscCodeTypes(disc_type_, section_type_, standard_)) {
+    const auto row_it = std::find_if(code_rows_.begin(), code_rows_.end(),
+                                     [&code_type](const CodeRow& code_row) {
+                                       return code_row.code_type == code_type;
+                                     });
+    if (row_it == code_rows_.end()) {
+      if (const Section::LineInjectionCode* existing =
+              FindCode(*injection, code_type)) {
+        new_codes.push_back(*existing);
+      }
+      continue;
+    }
+    const CodeRow& code_row = *row_it;
     if (code_row.value != nullptr) {
       code_row.value->setEnabled(code_row.check->isChecked());
     }

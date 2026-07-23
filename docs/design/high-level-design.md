@@ -830,7 +830,7 @@ Resolution rules (shared by CLI and GUI via `ResolveProjectPaths` /
 - **Absolute or empty** → unchanged.
 - **Plain relative (no token)** → the **CLI** leaves it working-directory-relative (preserving the run-from-a-base-dir convention used by the fixtures and `videosynth-assets`); the **GUI** anchors it to the saved project file's directory so the source probe, preview, and generation resolve identically. Use `{project}/rest` for a plain relative path that must resolve the same under both.
 
-The CLI seeds `{bundled}`/`{user}` from the environment and install prefix and accepts repeatable `--asset-root <name>=<path>` overrides (also usable to register additional named roots). The GUI resolves them via `QStandardPaths`. New GUI projects are saved to disk as part of the create flow so the `{project}` anchor always exists, and their placeholder source uses `{bundled}` so a fresh project previews immediately.
+The CLI seeds `{bundled}`/`{user}` from the environment and install prefix and accepts repeatable `--asset-root <name>=<path>` overrides (also usable to register additional named roots). The GUI resolves them via `QStandardPaths`. New GUI projects are saved to disk as part of the create flow so the `{project}` anchor always exists, and their default source uses `{bundled}` so a fresh project previews immediately. Newly added sections (plain and laserdisc templates alike) default to the same bundled 75% colour-bar source for the project standard's active raster rather than a placeholder file path.
 
 Rather than expose these roots directly, the GUI section editor presents a section `source` as a two-way choice — **Built-in asset** or **Local file** — mapped onto the tokens above:
 

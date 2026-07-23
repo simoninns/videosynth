@@ -68,6 +68,27 @@ std::vector<std::string> AvailableLaserdiscCodeTypes(DiscType disc_type,
   return code_types;
 }
 
+std::vector<std::string> CommonLaserdiscCodeTypes(
+    DiscType disc_type, const std::vector<SectionType>& section_types,
+    Standard standard) {
+  if (section_types.empty()) {
+    return {};
+  }
+  std::vector<std::string> common =
+      AvailableLaserdiscCodeTypes(disc_type, section_types.front(), standard);
+  for (std::size_t i = 1; i < section_types.size() && !common.empty(); ++i) {
+    const std::vector<std::string> next =
+        AvailableLaserdiscCodeTypes(disc_type, section_types[i], standard);
+    common.erase(std::remove_if(common.begin(), common.end(),
+                                [&next](const std::string& code_type) {
+                                  return std::find(next.begin(), next.end(),
+                                                   code_type) == next.end();
+                                }),
+                 common.end());
+  }
+  return common;
+}
+
 std::vector<std::string> RecommendedLaserdiscCodeTypes(DiscType disc_type,
                                                        SectionType section_type,
                                                        Standard standard) {

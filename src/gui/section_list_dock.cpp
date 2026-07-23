@@ -17,6 +17,7 @@
 #include <QToolButton>
 #include <QVBoxLayout>
 #include <algorithm>
+#include <optional>
 #include <utility>
 
 #include "project_templates.h"
@@ -133,7 +134,9 @@ void SectionListDock::SelectSectionRange(int first, int last) {
 }
 
 void SectionListDock::OnAddSection() {
-  AddSection(MakeProgressiveSectionTemplate(document_->section_count() + 1));
+  AddSection(MakeProgressiveSectionTemplate(
+      document_->section_count() + 1,
+      document_->project().cvbs_presets.video_standard_preset));
 }
 
 void SectionListDock::OnRemove() {
@@ -144,10 +147,16 @@ void SectionListDock::OnRemove() {
   if (rows.isEmpty()) {
     return;
   }
+  // A multi-row removal undoes as one step.
+  std::optional<ScopedUndoBatch> batch;
+  if (rows.size() > 1) {
+    batch.emplace(document_, QStringLiteral("Remove sections"));
+  }
   // Remove from the highest row down so earlier indices stay valid.
   for (auto it = rows.crbegin(); it != rows.crend(); ++it) {
     document_->RemoveSection(*it);
   }
+  batch.reset();
   SelectSection(qMin(rows.first(), model_->rowCount() - 1));
 }
 
@@ -161,6 +170,11 @@ void SectionListDock::OnDuplicate() {
   }
   // Copies are inserted as one block after the last selected row (keeping a
   // duplicated run of sections contiguous), then become the new selection.
+  // A multi-row duplication undoes as one step.
+  std::optional<ScopedUndoBatch> batch;
+  if (rows.size() > 1) {
+    batch.emplace(document_, QStringLiteral("Duplicate sections"));
+  }
   const int insert_at = rows.last() + 1;
   int inserted = 0;
   for (int row : rows) {
@@ -170,25 +184,63 @@ void SectionListDock::OnDuplicate() {
     document_->InsertSection(insert_at + inserted, std::move(duplicate));
     ++inserted;
   }
+  batch.reset();
   SelectSectionRange(insert_at, insert_at + inserted - 1);
 }
 
-void SectionListDock::OnMoveUp() {
+std::vector<int> SectionListDock::RowsForMove() const {
+  const QList<int> selected = selected_sections();
+  if (!selected.isEmpty()) {
+    return std::vector<int>(selected.cbegin(), selected.cend());
+  }
   const int index = current_section();
-  if (index <= 0) {
+  return index >= 0 ? std::vector<int>{index} : std::vector<int>{};
+}
+
+void SectionListDock::ApplyMovePlan(const std::vector<SectionMoveStep>& steps) {
+  if (steps.empty()) {
     return;
   }
-  document_->MoveSection(index, index - 1);
-  SelectSection(index - 1);
+  const std::vector<int> rows = RowsForMove();
+  const int current = current_section();
+
+  // A multi-row move undoes as one step. Each document move resets the model
+  // and clears the view's selection, so the selection is rebuilt at the rows'
+  // new positions afterwards.
+  std::optional<ScopedUndoBatch> batch;
+  if (steps.size() > 1) {
+    batch.emplace(document_, QStringLiteral("Move sections"));
+  }
+  for (const SectionMoveStep& step : steps) {
+    document_->MoveSection(step.from, step.to);
+  }
+  batch.reset();
+
+  const auto moved_to = [&steps](int row) {
+    for (const SectionMoveStep& step : steps) {
+      if (step.from == row) {
+        return step.to;
+      }
+    }
+    return row;  // Pinned against the boundary.
+  };
+  view_->setCurrentIndex(
+      model_->index(moved_to(current >= 0 ? current : 0), 0));
+  for (const int row : rows) {
+    const int new_row = moved_to(row);
+    view_->selectionModel()->select(
+        QItemSelection(model_->index(new_row, 0),
+                       model_->index(new_row, model_->columnCount() - 1)),
+        QItemSelectionModel::Select | QItemSelectionModel::Rows);
+  }
+}
+
+void SectionListDock::OnMoveUp() {
+  ApplyMovePlan(PlanMoveSectionsUp(RowsForMove()));
 }
 
 void SectionListDock::OnMoveDown() {
-  const int index = current_section();
-  if (index < 0 || index >= model_->rowCount() - 1) {
-    return;
-  }
-  document_->MoveSection(index, index + 1);
-  SelectSection(index + 1);
+  ApplyMovePlan(PlanMoveSectionsDown(RowsForMove(), model_->rowCount()));
 }
 
 void SectionListDock::AddSection(Section section) {
@@ -198,14 +250,15 @@ void SectionListDock::AddSection(Section section) {
 
 void SectionListDock::UpdateButtonStates() {
   const int index = current_section();
-  const int count = model_->rowCount();
   const bool has_selection = view_->selectionModel()->hasSelection();
-  // Remove and Duplicate act on the whole selection; Up/Down act on the
-  // current row only.
+  // Every list operation acts on the whole selection; Up/Down disable when
+  // the selected block is already packed against the corresponding edge.
   remove_button_->setEnabled(has_selection || index >= 0);
   duplicate_button_->setEnabled(has_selection || index >= 0);
-  up_button_->setEnabled(index > 0);
-  down_button_->setEnabled(index >= 0 && index < count - 1);
+  const std::vector<int> rows = RowsForMove();
+  up_button_->setEnabled(!PlanMoveSectionsUp(rows).empty());
+  down_button_->setEnabled(
+      !PlanMoveSectionsDown(rows, model_->rowCount()).empty());
 }
 
 }  // namespace videosynth::gui

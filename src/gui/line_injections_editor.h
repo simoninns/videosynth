@@ -53,6 +53,13 @@ class LineInjectionsEditor : public QWidget {
   void SetContext(Standard standard, SectionType section_type,
                   DiscType disc_type);
 
+  // Batch-editing context: the section types of every selected section while
+  // a multi-row selection is active (empty restores single-section editing).
+  // Ticked codes are mirrored onto every selected section, so the checklist
+  // narrows to the codes valid for all of the listed types; the owning
+  // section's other codes keep their state but are not shown for editing.
+  void SetBatchSectionTypes(std::vector<SectionType> section_types);
+
   // Replaces the working copy (no InjectionsEdited emission). Any legacy list
   // of injections is collapsed to a single laserdisc injection.
   void SetInjections(std::vector<Section::LineInjection> injections);
@@ -103,6 +110,8 @@ class LineInjectionsEditor : public QWidget {
   Standard standard_ = Standard::kUnknown;
   SectionType section_type_ = SectionType::kUnknown;
   DiscType disc_type_ = DiscType::kUnknown;
+  // Section types of the active multi-row selection; empty in single mode.
+  std::vector<SectionType> batch_section_types_;
   std::vector<Section::LineInjection> injections_;
   bool updating_ = false;
 

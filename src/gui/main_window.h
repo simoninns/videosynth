@@ -93,6 +93,8 @@ class MainWindow : public QMainWindow {
   // Enables/disables the project-dependent actions and docks and selects the
   // welcome or section-editor page to match the document's open state.
   void UpdateProjectOpenState();
+  // Refreshes the Edit menu's Undo/Redo enablement and step descriptions.
+  void UpdateUndoActions();
 
   // Returns false when the user cancels an unsaved-changes prompt.
   bool MaybeSave();
@@ -129,6 +131,8 @@ class MainWindow : public QMainWindow {
   // Project-dependent actions, disabled while no project is open.
   QAction* save_action_ = nullptr;
   QAction* save_as_action_ = nullptr;
+  QAction* undo_action_ = nullptr;
+  QAction* redo_action_ = nullptr;
   QAction* edit_project_action_ = nullptr;
   QAction* project_validate_action_ = nullptr;
   QAction* generate_action_ = nullptr;

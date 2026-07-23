@@ -27,9 +27,11 @@
 #include <QSignalBlocker>
 #include <QSpinBox>
 #include <QStackedWidget>
+#include <QStandardItemModel>
 #include <QTableWidget>
 #include <QVBoxLayout>
 #include <algorithm>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -600,17 +602,48 @@ void SectionEditor::SetCurrentSection(int index) {
 void SectionEditor::SetSelectedSections(std::vector<int> indices) {
   selected_sections_ = std::move(indices);
   UpdateMultiEditHint();
+  injections_editor_->SetBatchSectionTypes(SelectedSectionTypes());
+}
+
+std::vector<SectionType> SectionEditor::SelectedSectionTypes() const {
+  if (selected_sections_.size() < 2) {
+    return {};
+  }
+  std::vector<SectionType> types;
+  for (const int index : selected_sections_) {
+    if (index >= 0 && index < document_->section_count()) {
+      types.push_back(document_->project()
+                          .sections[static_cast<std::size_t>(index)]
+                          .section_type);
+    }
+  }
+  return types.size() > 1 ? types : std::vector<SectionType>{};
 }
 
 void SectionEditor::UpdateMultiEditHint() {
   const int count = static_cast<int>(selected_sections_.size());
-  if (count > 1) {
+  const bool batch_editing = count > 1;
+  if (batch_editing) {
     multi_edit_hint_->setText(
         tr("Editing %1 selected sections: changes made here apply to all of "
-           "them (names stay individual).")
+           "them (names stay individual; lead_in and lead_out cannot be "
+           "applied to more than one section).")
             .arg(count));
   }
-  multi_edit_hint_->setVisible(count > 1);
+  multi_edit_hint_->setVisible(batch_editing);
+
+  // Batch editing mirrors the disc section type onto every selected section,
+  // so types limited to a single section (lead_in, lead_out) must not be
+  // offered while a multi-selection is active.
+  if (auto* model =
+          qobject_cast<QStandardItemModel*>(section_type_combo_->model())) {
+    for (int i = 0; i < model->rowCount(); ++i) {
+      const SectionType type =
+          SectionTypeFromString(section_type_combo_->itemText(i).toStdString());
+      model->item(i)->setEnabled(!batch_editing ||
+                                 SectionTypeAllowsBatchAssignment(type));
+    }
+  }
 }
 
 void SectionEditor::LoadFromDocument() {
@@ -694,6 +727,7 @@ void SectionEditor::LoadFromDocument() {
   injections_group_->setChecked(!section.line_injections.empty());
   injections_editor_->SetContext(project.cvbs_presets.video_standard_preset,
                                  section.section_type, project_disc_type);
+  injections_editor_->SetBatchSectionTypes(SelectedSectionTypes());
   injections_editor_->SetInjections(section.line_injections);
 
   updating_ = false;
@@ -859,6 +893,11 @@ bool SectionEditor::CommitSectionToDocument(const Section& section) {
   const Section before =
       document_->project().sections[static_cast<std::size_t>(section_index_)];
   committing_ = true;
+  // A batch-mirrored edit undoes as one step across every selected section.
+  std::optional<ScopedUndoBatch> batch;
+  if (selected_sections_.size() > 1) {
+    batch.emplace(document_, QStringLiteral("Edit sections"));
+  }
   bool changed = document_->SetSection(section_index_, section);
   for (const int index : selected_sections_) {
     if (index == section_index_ || index < 0 ||
@@ -870,6 +909,7 @@ bool SectionEditor::CommitSectionToDocument(const Section& section) {
         document_->project().sections[static_cast<std::size_t>(index)]);
     changed = document_->SetSection(index, std::move(target)) || changed;
   }
+  batch.reset();
   committing_ = false;
   return changed;
 }

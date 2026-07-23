@@ -164,6 +164,7 @@ QString ProjectDocument::display_name() const {
 void ProjectDocument::ResetProject(Project project, const QString& file_path) {
   project_ = std::move(project);
   open_ = true;
+  ClearUndoStack();
   SetFilePath(file_path);
   SetModified(false);
   emit DocumentReset();
@@ -175,12 +176,14 @@ void ProjectDocument::CloseProject() {
   }
   project_ = Project{};
   open_ = false;
+  ClearUndoStack();
   SetFilePath(QString());
   SetModified(false);
   emit DocumentReset();
 }
 
 void ProjectDocument::MarkSaved(const QString& file_path) {
+  saved_undo_index_ = undo_index_;
   SetFilePath(file_path);
   SetModified(false);
 }
@@ -311,11 +314,126 @@ bool ProjectDocument::ApplyCommand(std::unique_ptr<IDocumentCommand> command) {
   }
 
   const DocumentChange change = command->Apply(&project_);
-  SetModified(true);
+  if (batch_depth_ > 0) {
+    // Collected into one undo step when the outermost batch closes.
+    batch_commands_.push_back(std::move(command));
+    SetModified(true);
+  } else {
+    UndoEntry entry;
+    entry.description = command->Description();
+    entry.commands.push_back(std::move(command));
+    PushUndoEntry(std::move(entry));
+    UpdateModifiedFromUndoPosition();
+    emit UndoStateChanged();
+  }
   AnnounceChange(change);
-  // The command is discarded here; a future QUndoStack takes ownership at
-  // this point to gain Revert support.
   return true;
+}
+
+bool ProjectDocument::CanUndo() const {
+  return batch_depth_ == 0 && undo_index_ > 0;
+}
+
+bool ProjectDocument::CanRedo() const {
+  return batch_depth_ == 0 && undo_index_ < undo_stack_.size();
+}
+
+QString ProjectDocument::UndoDescription() const {
+  return CanUndo() ? undo_stack_[undo_index_ - 1].description : QString();
+}
+
+QString ProjectDocument::RedoDescription() const {
+  return CanRedo() ? undo_stack_[undo_index_].description : QString();
+}
+
+bool ProjectDocument::Undo() {
+  if (!CanUndo()) {
+    return false;
+  }
+  UndoEntry& entry = undo_stack_[--undo_index_];
+  // Revert the whole step before announcing, so listeners re-reading the
+  // document during any announcement always see the fully-reverted state.
+  std::vector<DocumentChange> changes;
+  changes.reserve(entry.commands.size());
+  for (auto it = entry.commands.rbegin(); it != entry.commands.rend(); ++it) {
+    changes.push_back((*it)->Revert(&project_));
+  }
+  UpdateModifiedFromUndoPosition();
+  for (const DocumentChange& change : changes) {
+    AnnounceChange(change);
+  }
+  emit UndoStateChanged();
+  return true;
+}
+
+bool ProjectDocument::Redo() {
+  if (!CanRedo()) {
+    return false;
+  }
+  UndoEntry& entry = undo_stack_[undo_index_++];
+  std::vector<DocumentChange> changes;
+  changes.reserve(entry.commands.size());
+  for (const std::unique_ptr<IDocumentCommand>& command : entry.commands) {
+    changes.push_back(command->Apply(&project_));
+  }
+  UpdateModifiedFromUndoPosition();
+  for (const DocumentChange& change : changes) {
+    AnnounceChange(change);
+  }
+  emit UndoStateChanged();
+  return true;
+}
+
+void ProjectDocument::BeginBatch(const QString& description) {
+  if (batch_depth_++ == 0) {
+    batch_description_ = description;
+  }
+}
+
+void ProjectDocument::EndBatch() {
+  if (batch_depth_ == 0) {
+    return;  // Unbalanced EndBatch; ignore.
+  }
+  if (--batch_depth_ > 0) {
+    return;  // Only the outermost pair closes the batch.
+  }
+  if (batch_commands_.empty()) {
+    return;  // Nothing was applied: no undo step.
+  }
+  UndoEntry entry;
+  entry.description = batch_description_;
+  entry.commands = std::move(batch_commands_);
+  batch_commands_.clear();
+  PushUndoEntry(std::move(entry));
+  UpdateModifiedFromUndoPosition();
+  emit UndoStateChanged();
+}
+
+void ProjectDocument::PushUndoEntry(UndoEntry entry) {
+  // A new edit discards the redo tail; if the saved state lived there it can
+  // no longer be reached by undo/redo alone.
+  if (saved_undo_index_ != kSavedStateUnreachable &&
+      saved_undo_index_ > undo_index_) {
+    saved_undo_index_ = kSavedStateUnreachable;
+  }
+  undo_stack_.resize(undo_index_);
+  undo_stack_.push_back(std::move(entry));
+  ++undo_index_;
+}
+
+void ProjectDocument::UpdateModifiedFromUndoPosition() {
+  SetModified(batch_depth_ > 0 || !batch_commands_.empty() ||
+              undo_index_ != saved_undo_index_);
+}
+
+void ProjectDocument::ClearUndoStack() {
+  undo_stack_.clear();
+  undo_index_ = 0;
+  saved_undo_index_ = 0;
+  batch_depth_ = 0;
+  batch_commands_.clear();
+  batch_description_.clear();
+  emit UndoStateChanged();
 }
 
 void ProjectDocument::AnnounceChange(const DocumentChange& change) {

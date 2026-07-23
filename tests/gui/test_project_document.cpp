@@ -295,6 +295,158 @@ TEST_F(ProjectDocumentTest, ModifiedStateChangedFiresOncePerTransition) {
   EXPECT_EQ(counter_->document_changed, 2);
 }
 
+TEST_F(ProjectDocumentTest, UndoRevertsLastEditAndEmitsGranularSignal) {
+  Section replacement = document_.project().sections[0];
+  replacement.duration_frames = 99;
+  ASSERT_TRUE(document_.SetSection(0, replacement));
+  ASSERT_TRUE(document_.CanUndo());
+  EXPECT_EQ(document_.UndoDescription(), QStringLiteral("Edit section"));
+
+  EXPECT_TRUE(document_.Undo());
+  EXPECT_EQ(document_.project().sections[0].duration_frames, 10);
+  EXPECT_EQ(counter_->section_edited, 2);  // Edit + its undo.
+  EXPECT_FALSE(document_.CanUndo());
+  EXPECT_TRUE(document_.CanRedo());
+  EXPECT_EQ(document_.RedoDescription(), QStringLiteral("Edit section"));
+}
+
+TEST_F(ProjectDocumentTest, RedoReappliesUndoneEdit) {
+  ASSERT_TRUE(document_.MoveSection(0, 1));
+  ASSERT_TRUE(document_.Undo());
+  EXPECT_EQ(document_.project().sections[0].name, "First");
+
+  EXPECT_TRUE(document_.Redo());
+  EXPECT_EQ(document_.project().sections[0].name, "Second");
+  EXPECT_FALSE(document_.CanRedo());
+  EXPECT_TRUE(document_.CanUndo());
+}
+
+TEST_F(ProjectDocumentTest, UndoOfRemoveRestoresSectionInPlace) {
+  ASSERT_TRUE(document_.RemoveSection(0));
+  ASSERT_EQ(document_.section_count(), 1);
+
+  EXPECT_TRUE(document_.Undo());
+  ASSERT_EQ(document_.section_count(), 2);
+  EXPECT_EQ(document_.project().sections[0].name, "First");
+  EXPECT_EQ(counter_->section_added, 1);  // The undo announces the re-add.
+}
+
+TEST_F(ProjectDocumentTest, NewEditDiscardsRedoTail) {
+  ASSERT_TRUE(document_.MoveSection(0, 1));
+  ASSERT_TRUE(document_.Undo());
+  ASSERT_TRUE(document_.CanRedo());
+
+  ASSERT_TRUE(document_.RemoveSection(1));
+  EXPECT_FALSE(document_.CanRedo());
+  EXPECT_TRUE(document_.CanUndo());
+  EXPECT_EQ(document_.UndoDescription(), QStringLiteral("Remove section"));
+}
+
+TEST_F(ProjectDocumentTest, UndoBackToSavePointClearsModifiedFlag) {
+  Section replacement = document_.project().sections[0];
+  replacement.duration_frames = 99;
+  ASSERT_TRUE(document_.SetSection(0, replacement));
+  ASSERT_TRUE(document_.is_modified());
+
+  EXPECT_TRUE(document_.Undo());
+  EXPECT_FALSE(document_.is_modified());  // Back at the loaded (saved) state.
+
+  EXPECT_TRUE(document_.Redo());
+  EXPECT_TRUE(document_.is_modified());
+}
+
+TEST_F(ProjectDocumentTest, MarkSavedMovesTheCleanPointForUndo) {
+  Section replacement = document_.project().sections[0];
+  replacement.duration_frames = 99;
+  ASSERT_TRUE(document_.SetSection(0, replacement));
+  document_.MarkSaved(QStringLiteral("/tmp/test.yaml"));
+  ASSERT_FALSE(document_.is_modified());
+
+  // Undoing past the save point dirties the document again; redoing back to
+  // it cleans it.
+  EXPECT_TRUE(document_.Undo());
+  EXPECT_TRUE(document_.is_modified());
+  EXPECT_TRUE(document_.Redo());
+  EXPECT_FALSE(document_.is_modified());
+}
+
+TEST_F(ProjectDocumentTest, BatchUndoesAsOneStep) {
+  {
+    ScopedUndoBatch batch(&document_, QStringLiteral("Move sections"));
+    ASSERT_TRUE(document_.MoveSection(0, 1));
+    ASSERT_TRUE(document_.MoveSection(1, 0));
+    ASSERT_TRUE(document_.MoveSection(0, 1));
+    // Undo/redo are unavailable while the batch is open.
+    EXPECT_FALSE(document_.CanUndo());
+  }
+  EXPECT_EQ(document_.project().sections[0].name, "Second");
+  ASSERT_TRUE(document_.CanUndo());
+  EXPECT_EQ(document_.UndoDescription(), QStringLiteral("Move sections"));
+
+  // One undo reverts all three moves; one redo reapplies them.
+  EXPECT_TRUE(document_.Undo());
+  EXPECT_EQ(document_.project().sections[0].name, "First");
+  EXPECT_FALSE(document_.CanUndo());
+  EXPECT_FALSE(document_.is_modified());
+
+  EXPECT_TRUE(document_.Redo());
+  EXPECT_EQ(document_.project().sections[0].name, "Second");
+}
+
+TEST_F(ProjectDocumentTest, BatchRestoresRemovedSectionsAsOneStep) {
+  {
+    ScopedUndoBatch batch(&document_, QStringLiteral("Remove sections"));
+    ASSERT_TRUE(document_.RemoveSection(1));
+    ASSERT_TRUE(document_.RemoveSection(0));
+  }
+  ASSERT_EQ(document_.section_count(), 0);
+
+  EXPECT_TRUE(document_.Undo());
+  ASSERT_EQ(document_.section_count(), 2);
+  EXPECT_EQ(document_.project().sections[0].name, "First");
+  EXPECT_EQ(document_.project().sections[1].name, "Second");
+}
+
+TEST_F(ProjectDocumentTest, EmptyBatchAddsNoUndoStep) {
+  {
+    ScopedUndoBatch batch(&document_, QStringLiteral("Nothing"));
+    EXPECT_FALSE(document_.MoveSection(0, 0));  // No-op never applies.
+  }
+  EXPECT_FALSE(document_.CanUndo());
+  EXPECT_FALSE(document_.is_modified());
+}
+
+TEST_F(ProjectDocumentTest, NestedBatchesCloseAsOneOuterStep) {
+  {
+    ScopedUndoBatch outer(&document_, QStringLiteral("Outer"));
+    ASSERT_TRUE(document_.MoveSection(0, 1));
+    {
+      ScopedUndoBatch inner(&document_, QStringLiteral("Inner"));
+      Section replacement = document_.project().sections[0];
+      replacement.duration_frames = 99;
+      ASSERT_TRUE(document_.SetSection(0, replacement));
+    }
+    // The inner batch closing must not create its own undo step.
+    EXPECT_FALSE(document_.CanUndo());
+  }
+  ASSERT_TRUE(document_.CanUndo());
+  EXPECT_EQ(document_.UndoDescription(), QStringLiteral("Outer"));
+
+  EXPECT_TRUE(document_.Undo());
+  EXPECT_EQ(document_.project().sections[0].name, "First");
+  EXPECT_EQ(document_.project().sections[1].duration_frames, 20);
+  EXPECT_FALSE(document_.CanUndo());
+}
+
+TEST_F(ProjectDocumentTest, ResetProjectClearsUndoHistory) {
+  ASSERT_TRUE(document_.MoveSection(0, 1));
+  ASSERT_TRUE(document_.CanUndo());
+
+  document_.ResetProject(MakeProject(), QString());
+  EXPECT_FALSE(document_.CanUndo());
+  EXPECT_FALSE(document_.CanRedo());
+}
+
 TEST(ProjectDocumentOpenStateTest, StartsClosed) {
   ProjectDocument document;
   EXPECT_FALSE(document.is_open());

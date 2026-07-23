@@ -204,6 +204,45 @@ TEST(LineInjectionPresenterTest, CodeTypeCatalogueMatchesValidatorMatrix) {
   }
 }
 
+TEST(LineInjectionPresenterTest, CommonCodeTypesIntersectSelectedSectionTypes) {
+  // A single type behaves like the plain catalogue.
+  EXPECT_EQ(CommonLaserdiscCodeTypes(
+                DiscType::kCAV, {SectionType::kProgrammeArea}, Standard::kPal),
+            AvailableLaserdiscCodeTypes(
+                DiscType::kCAV, SectionType::kProgrammeArea, Standard::kPal));
+
+  // Every offered code must be valid for every listed section type — nothing
+  // in a batch catalogue may fail the validator on any selected section.
+  const std::vector<SectionType> mixed = {
+      SectionType::kLeadIn, SectionType::kProgrammeArea, SectionType::kLeadOut};
+  for (const Standard standard : {Standard::kPal, Standard::kNtsc}) {
+    for (const DiscType disc_type : {DiscType::kCAV, DiscType::kCLV}) {
+      for (const std::string& code_type :
+           CommonLaserdiscCodeTypes(disc_type, mixed, standard)) {
+        for (const SectionType section_type : mixed) {
+          EXPECT_TRUE(IsCodeTypeValidForSectionType(code_type, section_type))
+              << code_type << " in " << SectionTypeToString(section_type);
+        }
+      }
+    }
+  }
+
+  // The user's failure case: users_code is valid for lead-in and lead-out but
+  // not programme_area, so a mixed selection must not offer it.
+  EXPECT_FALSE(
+      Contains(CommonLaserdiscCodeTypes(DiscType::kCAV, mixed, Standard::kPal),
+               "users_code"));
+  // Lead-in + lead-out alone do share users_code.
+  EXPECT_TRUE(Contains(
+      CommonLaserdiscCodeTypes(DiscType::kCAV,
+                               {SectionType::kLeadIn, SectionType::kLeadOut},
+                               Standard::kPal),
+      "users_code"));
+  // No selection, no catalogue.
+  EXPECT_TRUE(
+      CommonLaserdiscCodeTypes(DiscType::kCAV, {}, Standard::kPal).empty());
+}
+
 TEST(LineInjectionPresenterTest, CodeParameterMappingFollowsSchema) {
   EXPECT_TRUE(CodeTypeUsesStartValue("picture_number"));
   EXPECT_TRUE(CodeTypeUsesStartValue("fm_picture_number"));

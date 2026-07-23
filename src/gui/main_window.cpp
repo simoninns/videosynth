@@ -200,12 +200,14 @@ void MainWindow::BuildMenus() {
   file_menu->addAction(tr("E&xit"), QKeySequence::Quit, this,
                        &MainWindow::close);
 
-  // Edit: undo/redo lands with the undo-stack integration.
   QMenu* edit_menu = menuBar()->addMenu(tr("&Edit"));
-  edit_menu->addAction(tr("&Undo"), QKeySequence::Undo, this, [] {})
-      ->setEnabled(false);
-  edit_menu->addAction(tr("&Redo"), QKeySequence::Redo, this, [] {})
-      ->setEnabled(false);
+  undo_action_ = edit_menu->addAction(tr("&Undo"), QKeySequence::Undo, this,
+                                      [this] { document_->Undo(); });
+  redo_action_ = edit_menu->addAction(tr("&Redo"), QKeySequence::Redo, this,
+                                      [this] { document_->Redo(); });
+  connect(document_, &ProjectDocument::UndoStateChanged, this,
+          &MainWindow::UpdateUndoActions);
+  UpdateUndoActions();
   edit_menu->addSeparator();
   edit_menu->addAction(tr("&Preferences…"), QKeySequence::Preferences, this,
                        &MainWindow::OnPreferences);
@@ -464,6 +466,23 @@ void MainWindow::UpdateProjectOpenState() {
   if (!open) {
     preview_status_label_->clear();
   }
+  UpdateUndoActions();
+}
+
+void MainWindow::UpdateUndoActions() {
+  if (undo_action_ == nullptr || redo_action_ == nullptr) {
+    return;  // Menus not built yet (UndoStateChanged during startup reset).
+  }
+  const bool can_undo = document_->is_open() && document_->CanUndo();
+  const bool can_redo = document_->is_open() && document_->CanRedo();
+  undo_action_->setEnabled(can_undo);
+  undo_action_->setText(can_undo
+                            ? tr("&Undo %1").arg(document_->UndoDescription())
+                            : tr("&Undo"));
+  redo_action_->setEnabled(can_redo);
+  redo_action_->setText(can_redo
+                            ? tr("&Redo %1").arg(document_->RedoDescription())
+                            : tr("&Redo"));
 }
 
 void MainWindow::OnPreferences() {

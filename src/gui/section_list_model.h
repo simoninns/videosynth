@@ -84,6 +84,31 @@ std::vector<int> BuildDiscFrameOffsets(const Project& project,
 QString DiscRangeText(DiscType disc_type, Standard standard, int start_offset,
                       int end_offset);
 
+// One step of a multi-row reorder: MoveSection(from, to) on the document.
+struct SectionMoveStep {
+  int from = 0;
+  int to = 0;
+};
+
+inline bool operator==(const SectionMoveStep& a, const SectionMoveStep& b) {
+  return a.from == b.from && a.to == b.to;
+}
+
+// Plans a one-row move up/down for a multi-row selection. `rows` holds the
+// selected row indices in ascending order; `row_count` is the list length.
+// Every selected row shifts one place unless it is pinned against the list
+// edge or against a contiguous run of selected rows already at the edge, so
+// a block keeps its internal order and stops cleanly at the boundary. The
+// returned steps are ordered so that applying them sequentially via
+// MoveSection never disturbs a later step's indices (ascending for up,
+// descending for down). An empty plan means nothing can move (drives the
+// Up/Down button enablement).
+//
+// Thread-safety: thread-safe (pure functions).
+std::vector<SectionMoveStep> PlanMoveSectionsUp(const std::vector<int>& rows);
+std::vector<SectionMoveStep> PlanMoveSectionsDown(const std::vector<int>& rows,
+                                                  int row_count);
+
 // Read-only table model over the document's ordered section list. Stays in
 // sync with the document by listening to its granular change signals; edits
 // flow the other way through ProjectDocument commands (see SectionListDock).

@@ -43,6 +43,15 @@ std::vector<std::string> AvailableLaserdiscCodeTypes(DiscType disc_type,
                                                      SectionType section_type,
                                                      Standard standard);
 
+// The code types offered while batch-editing sections of `section_types`
+// together: the intersection of AvailableLaserdiscCodeTypes over every listed
+// type, in catalogue order. A batch edit mirrors ticked codes onto every
+// selected section, so only codes valid for all of them may be offered. An
+// empty `section_types` yields an empty catalogue.
+std::vector<std::string> CommonLaserdiscCodeTypes(
+    DiscType disc_type, const std::vector<SectionType>& section_types,
+    Standard standard);
+
 // The "expected" codes for a section — the subset of
 // AvailableLaserdiscCodeTypes an editor should pre-tick so a section of this
 // type starts with the codes it normally carries (lead-in → lead_in,

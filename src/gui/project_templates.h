@@ -17,8 +17,8 @@ namespace videosynth::gui {
 // Thread-safety: all functions in this module are thread-safe pure functions.
 
 // Returns a minimal project for `standard` that passes structural validation
-// (ProjectValidator without a source probe): one progressive section with a
-// placeholder source path the user is expected to replace. This is the
+// (ProjectValidator without a source probe): one progressive section sourced
+// from the bundled colour-bar EXR so it previews immediately. This is the
 // starting point File > New / the New Project dialog hands to the editors.
 Project MakeDefaultProject(Standard standard);
 
@@ -45,8 +45,9 @@ std::string DefaultBundledSource(Standard standard);
 int RemapBundledDefaultSources(Project* project, Standard standard);
 
 // Plain progressive section (no laserdisc VBI codes). `ordinal` seeds the
-// default name ("Section <ordinal>").
-Section MakeProgressiveSectionTemplate(int ordinal);
+// default name ("Section <ordinal>"); `standard` selects the bundled
+// colour-bar default source for the matching active raster.
+Section MakeProgressiveSectionTemplate(int ordinal, Standard standard);
 
 // Project-wide line_injections for a laserdisc project: the CAV disc format
 // and, for NTSC/PAL-M, the mandatory virs VITS colour reference

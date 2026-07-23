@@ -262,6 +262,57 @@ TEST(SectionListModelTest, ReorderEmitsYamlIdenticalToHandWritten) {
             emitter.EmitString(expected));
 }
 
+TEST(SectionListModelTest, MoveUpPlanShiftsEveryUnpinnedSelectedRow) {
+  // A contiguous block away from the top shifts as one; application order is
+  // ascending so each step's indices stay valid.
+  EXPECT_EQ(PlanMoveSectionsUp({2, 3}),
+            (std::vector<SectionMoveStep>{{2, 1}, {3, 2}}));
+  // Rows packed against the top stay put; the rest still move.
+  EXPECT_EQ(PlanMoveSectionsUp({0, 2}), (std::vector<SectionMoveStep>{{2, 1}}));
+  EXPECT_EQ(PlanMoveSectionsUp({0, 1, 3}),
+            (std::vector<SectionMoveStep>{{3, 2}}));
+  // A block already at the top cannot move at all (Up button disables).
+  EXPECT_TRUE(PlanMoveSectionsUp({0, 1}).empty());
+  EXPECT_TRUE(PlanMoveSectionsUp({}).empty());
+}
+
+TEST(SectionListModelTest, MoveDownPlanShiftsEveryUnpinnedSelectedRow) {
+  // Descending application order keeps each step's indices valid.
+  EXPECT_EQ(PlanMoveSectionsDown({1, 2}, 4),
+            (std::vector<SectionMoveStep>{{2, 3}, {1, 2}}));
+  // Rows packed against the bottom stay put; the rest still move.
+  EXPECT_EQ(PlanMoveSectionsDown({1, 3}, 4),
+            (std::vector<SectionMoveStep>{{1, 2}}));
+  // A block already at the bottom cannot move at all (Down button disables).
+  EXPECT_TRUE(PlanMoveSectionsDown({2, 3}, 4).empty());
+  EXPECT_TRUE(PlanMoveSectionsDown({}, 4).empty());
+}
+
+TEST(SectionListModelTest, MultiRowMovePlanReordersDocumentAsABlock) {
+  // Sections {Second, Third} move down one place: the block hops over the
+  // section below it and keeps its internal order.
+  ProjectDocument document;
+  Project project = MakeProject();
+  project.sections.push_back(MakeSection("Fourth", 10));
+  document.ResetProject(project, QString());
+
+  for (const SectionMoveStep& step : PlanMoveSectionsDown({1, 2}, 4)) {
+    document.MoveSection(step.from, step.to);
+  }
+  EXPECT_EQ(document.project().sections[0].name, "First");
+  EXPECT_EQ(document.project().sections[1].name, "Fourth");
+  EXPECT_EQ(document.project().sections[2].name, "Second");
+  EXPECT_EQ(document.project().sections[3].name, "Third");
+
+  // And back up again restores the original order.
+  for (const SectionMoveStep& step : PlanMoveSectionsUp({2, 3})) {
+    document.MoveSection(step.from, step.to);
+  }
+  EXPECT_EQ(document.project().sections[1].name, "Second");
+  EXPECT_EQ(document.project().sections[2].name, "Third");
+  EXPECT_EQ(document.project().sections[3].name, "Fourth");
+}
+
 TEST(SectionListModelTest, DuplicateEmitsYamlIdenticalToHandWritten) {
   ProjectDocument document;
   document.ResetProject(MakeProject(), QString());
@@ -315,12 +366,25 @@ TEST(SectionListModelTest, SectionTemplatesValidateStructurally) {
     plain_project.cvbs_presets.video_standard_preset = standard;
     plain_project.output.video_path = "out/video.composite";
     plain_project.output.metadata_path = "out/video.meta";
-    plain_project.sections.push_back(MakeProgressiveSectionTemplate(1));
+    plain_project.sections.push_back(
+        MakeProgressiveSectionTemplate(1, standard));
 
     const ValidationResult plain_result = validator.Validate(plain_project);
     EXPECT_TRUE(plain_result.is_valid)
         << "standard " << StandardToString(standard) << ": "
         << (plain_result.errors.empty() ? "" : plain_result.errors.front());
+  }
+}
+
+// New sections must default to the bundled colour-bar source for the
+// standard's active raster, not a non-existent local file path.
+TEST(SectionListModelTest, SectionTemplatesDefaultToBundledColourBar) {
+  for (const Standard standard : {Standard::kPal, Standard::kNtsc}) {
+    const std::string expected = DefaultBundledSource(standard);
+    EXPECT_EQ(MakeProgressiveSectionTemplate(1, standard).source, expected);
+    EXPECT_EQ(MakeLaserdiscLeadInSectionTemplate(standard).source, expected);
+    EXPECT_EQ(MakeLaserdiscProgrammeSectionTemplate(standard).source, expected);
+    EXPECT_EQ(MakeLaserdiscLeadOutSectionTemplate(standard).source, expected);
   }
 }
 

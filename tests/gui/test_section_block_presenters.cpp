@@ -318,6 +318,148 @@ TEST(SectionBlockPresenterTest,
   EXPECT_EQ(result.audio_channel_pairs[0].pair, 0);
 }
 
+namespace {
+
+// A single laserdisc injection carrying the listed code types (no values).
+std::vector<Section::LineInjection> MakeInjection(
+    const std::vector<std::string>& code_types) {
+  Section::LineInjection injection;
+  injection.type = "laserdisc";
+  for (const std::string& code_type : code_types) {
+    Section::LineInjectionCode code;
+    code.code_type = code_type;
+    injection.codes.push_back(std::move(code));
+  }
+  return {std::move(injection)};
+}
+
+std::vector<std::string> CodeTypesOf(
+    const std::vector<Section::LineInjection>& injections) {
+  std::vector<std::string> types;
+  if (!injections.empty()) {
+    for (const Section::LineInjectionCode& code : injections.front().codes) {
+      types.push_back(code.code_type);
+    }
+  }
+  return types;
+}
+
+}  // namespace
+
+TEST(SectionBlockPresenterTest,
+     LineInjectionDeltaSkipsCodesInvalidForTargetType) {
+  // The reported bug: users_code ticked on a lead-out primary must not land
+  // on a programme_area target, whose type forbids it.
+  const auto before = MakeInjection({"lead_out"});
+  const auto after = MakeInjection({"lead_out", "users_code"});
+  const auto target = MakeInjection({"picture_number", "chapter_number"});
+
+  const auto result = ApplyLineInjectionEditDelta(before, after, target,
+                                                  SectionType::kProgrammeArea);
+  EXPECT_EQ(CodeTypesOf(result),
+            (std::vector<std::string>{"picture_number", "chapter_number"}));
+}
+
+TEST(SectionBlockPresenterTest,
+     LineInjectionDeltaUpsertsValidCodesAndPreservesTargetCodes) {
+  // The same edit onto a lead-in target adds users_code (valid there) while
+  // keeping the target's own codes; the primary's lead_out marker — untouched
+  // by the edit — is never mirrored.
+  const auto before = MakeInjection({"lead_out"});
+  const auto after = MakeInjection({"lead_out", "users_code"});
+  const auto target = MakeInjection({"lead_in"});
+
+  const auto result =
+      ApplyLineInjectionEditDelta(before, after, target, SectionType::kLeadIn);
+  EXPECT_EQ(CodeTypesOf(result),
+            (std::vector<std::string>{"lead_in", "users_code"}));
+}
+
+TEST(SectionBlockPresenterTest, LineInjectionDeltaRemovesUntickedCodes) {
+  const auto before = MakeInjection({"lead_out", "users_code"});
+  const auto after = MakeInjection({"lead_out"});
+  const auto target = MakeInjection({"lead_in", "users_code"});
+
+  const auto result =
+      ApplyLineInjectionEditDelta(before, after, target, SectionType::kLeadIn);
+  EXPECT_EQ(CodeTypesOf(result), (std::vector<std::string>{"lead_in"}));
+}
+
+TEST(SectionBlockPresenterTest, LineInjectionDeltaMirrorsRevaluedCodes) {
+  auto before = MakeInjection({"chapter_number"});
+  auto after = MakeInjection({"chapter_number"});
+  after.front().codes.front().chapter = 5;
+  after.front().codes.front().chapter_specified = true;
+  const auto target = MakeInjection({"picture_number", "chapter_number"});
+
+  const auto result = ApplyLineInjectionEditDelta(before, after, target,
+                                                  SectionType::kProgrammeArea);
+  ASSERT_EQ(result.size(), 1u);
+  ASSERT_EQ(result.front().codes.size(), 2u);
+  EXPECT_EQ(result.front().codes[1].code_type, "chapter_number");
+  EXPECT_TRUE(result.front().codes[1].chapter_specified);
+  EXPECT_EQ(result.front().codes[1].chapter, 5);
+}
+
+TEST(SectionBlockPresenterTest, LineInjectionDeltaMirrorsBlockDisable) {
+  const auto before = MakeInjection({"lead_out"});
+  const std::vector<Section::LineInjection> after;
+  const auto target = MakeInjection({"picture_number"});
+
+  EXPECT_TRUE(ApplyLineInjectionEditDelta(before, after, target,
+                                          SectionType::kProgrammeArea)
+                  .empty());
+}
+
+TEST(SectionBlockPresenterTest, LineInjectionDeltaCreatesNoEmptyBlockOnTarget) {
+  // Enabling the block on a lead-out primary seeds its lead_out marker; a
+  // programme_area target with no injections gains nothing — not an empty
+  // injection block.
+  const std::vector<Section::LineInjection> before;
+  const auto after = MakeInjection({"lead_out"});
+  const std::vector<Section::LineInjection> target;
+
+  EXPECT_TRUE(ApplyLineInjectionEditDelta(before, after, target,
+                                          SectionType::kProgrammeArea)
+                  .empty());
+}
+
+TEST(SectionBlockPresenterTest,
+     ApplySectionEditDeltaFiltersInjectionsByMirroredSectionType) {
+  // The end-to-end path of the reported bug: a lead-out primary gains
+  // users_code while a programme_area section is also selected. The target
+  // must keep its own codes and must not receive users_code.
+  Section before;
+  before.section_type = SectionType::kLeadOut;
+  before.line_injections = MakeInjection({"lead_out"});
+  Section after = before;
+  after.line_injections = MakeInjection({"lead_out", "users_code"});
+
+  Section target;
+  target.name = "Programme";
+  target.section_type = SectionType::kProgrammeArea;
+  target.line_injections = MakeInjection({"picture_number"});
+
+  const Section result = ApplySectionEditDelta(before, after, target);
+  EXPECT_EQ(result.section_type, SectionType::kProgrammeArea);
+  EXPECT_EQ(CodeTypesOf(result.line_injections),
+            (std::vector<std::string>{"picture_number"}));
+}
+
+TEST(SectionBlockPresenterTest,
+     SectionTypeBatchAssignmentRejectsSingleInstanceTypes) {
+  // ValidateSectionOrdering permits at most one lead_in and one lead_out, so
+  // neither may be mirrored onto a multi-section selection.
+  EXPECT_FALSE(SectionTypeAllowsBatchAssignment(SectionType::kLeadIn));
+  EXPECT_FALSE(SectionTypeAllowsBatchAssignment(SectionType::kLeadOut));
+}
+
+TEST(SectionBlockPresenterTest,
+     SectionTypeBatchAssignmentAcceptsRepeatableTypes) {
+  EXPECT_TRUE(SectionTypeAllowsBatchAssignment(SectionType::kProgrammeArea));
+  EXPECT_TRUE(SectionTypeAllowsBatchAssignment(SectionType::kUnknown));
+}
+
 TEST(SectionBlockPresenterTest, OsdTokenCatalogueMatchesResolverTokens) {
   Project project = MakeValidProject();
   // Every documented token must be accepted by OSD validation when used in
