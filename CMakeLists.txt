@@ -6,6 +6,26 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# Generation is compute bound, so an unoptimised default build is never what a
+# developer wants. Single-config generators (Makefiles, plain Ninja) leave
+# CMAKE_BUILD_TYPE empty unless told otherwise, which compiles with no -O flag
+# at all; default those to Release. Multi-config generators (Ninja Multi-Config,
+# Visual Studio, Xcode) pick the configuration at build time and are left alone.
+get_property(VIDEOSYNTH_MULTI_CONFIG_GENERATOR GLOBAL
+    PROPERTY GENERATOR_IS_MULTI_CONFIG)
+
+if(VIDEOSYNTH_MULTI_CONFIG_GENERATOR)
+    message(STATUS "Build type: selected per build by the multi-config generator")
+else()
+    if(NOT CMAKE_BUILD_TYPE)
+        set(CMAKE_BUILD_TYPE "Release" CACHE STRING
+            "Build type (Debug, Release, RelWithDebInfo, MinSizeRel)" FORCE)
+    endif()
+    set_property(CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS
+        Debug Release RelWithDebInfo MinSizeRel)
+    message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
+endif()
+
 # Export compile_commands.json for IDE tooling (clangd, VS Code cpptools).
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 

@@ -1,0 +1,29 @@
+# PAL still-source generation benchmark
+#
+# Fixed 250-frame PAL run from a single EXR still — the repeat-source path that
+# dominates long-form projects. Deliberately free of impairments, audio and
+# line injections so the measurement reflects frame synthesis and output
+# writing only.
+#
+# Run through scripts/benchmark.sh; do not add sections without updating the
+# recorded baselines, since the frame count is part of the frames/second
+# figure.
+
+project:
+  name: PalStillBenchmark
+  version: "1.0"
+  description: PAL still-source generation benchmark — 250 frames, no impairments
+
+cvbs_presets:
+  video_standard_preset: PAL
+  sample_encoding_preset: CVBS_U10_4FSC
+  signal_state_preset: STANDARD_TBC_LOCKED
+
+output:
+  video_path: "{output}/videosynth_benchmark_pal_still.cvbs"
+
+sections:
+  - name: PalStillTestcard
+    type: progressive
+    source: "{bundled}/exr/720x576/TESTCARD-F.exr"
+    duration_frames: 250

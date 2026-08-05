@@ -74,18 +74,31 @@ git submodule update --init --recursive
 
 ```bash
 # Configure and build (CLI + GUI + tests)
-nix develop "path:$PWD" --command cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+nix develop "path:$PWD" --command cmake -S . -B build -G Ninja
 nix develop "path:$PWD" --command cmake --build build
 ```
 
 Binaries land in `build/videosynth` and `build/videosynth-gui`.
 
+Generation is compute bound, so a build without `CMAKE_BUILD_TYPE` set defaults
+to `Release` (`-O3 -DNDEBUG`) rather than to no optimisation at all; the chosen
+type is printed at configure time. Override it for debugging work:
+
+```bash
+# Unoptimised build with debug symbols
+nix develop "path:$PWD" --command cmake -S . -B build-debug -G Ninja -DCMAKE_BUILD_TYPE=Debug
+```
+
+Multi-config generators (Ninja Multi-Config, Visual Studio, Xcode) are left
+alone — they select the configuration at build time.
+
 Useful CMake options:
 
 | Option | Default | Effect |
 |--------|---------|--------|
+| `-DCMAKE_BUILD_TYPE=<type>` | `Release` | `Debug`, `Release`, `RelWithDebInfo` or `MinSizeRel` |
 | `-DVIDEOSYNTH_BUILD_GUI=OFF` | `ON` | Skip the Qt 6 GUI target |
-| `-DVIDEOSYNTH_ENABLE_CLANG_TIDY=ON` | `OFF` | Run clang-tidy as part of the build |
+| `-DVIDEOSYNTH_ENABLE_CLANG_TIDY=OFF` | `ON` | Skip clang-tidy static analysis during the build |
 | `-DVIDEOSYNTH_BUNDLED_ASSET_DIR=<dir>` | dev tree | Where `{bundled}` resolves for installed builds |
 | `-DBUILD_TESTING=OFF` | `ON` | Skip test targets |
 
@@ -226,6 +239,7 @@ Hand-authored projects live in [projects/](projects/):
 | [projects/general-yc/](projects/general-yc/) | Feature examples with Y/C output |
 | [projects/stacking/](projects/stacking/) | Laserdisc disc simulation, skip and multi-source stacking sets for PAL, PAL-M and NTSC |
 | [projects/long-form/](projects/long-form/) | Three-hour capture-sized PAL and NTSC examples (VITS, analogue stereo audio) for testing against realistic file sizes |
+| [projects/benchmark/](projects/benchmark/) | Fixed-length PAL/NTSC still, moving-source and noise projects used by [scripts/benchmark.sh](scripts/benchmark.sh) |
 | [projects/variants.json](projects/variants.json) | Rules for mechanically derived variants |
 
 The `long-form` projects write hundreds of gigabytes each (~383 GB PAL,
@@ -271,6 +285,40 @@ To run a single project by hand, invoke the binary directly; without
 
 ```bash
 ./build/videosynth --project projects/general/pal_progressive_exr.yaml
+```
+
+### Benchmarking and output comparison
+
+[scripts/benchmark.sh](scripts/benchmark.sh) times the fixed-length projects in
+[projects/benchmark/](projects/benchmark/) — PAL still, PAL still with noise,
+PAL moving source (MKV) and NTSC still — once per thread configuration, and
+prints a frames/second table. Frame counts come from the CLI's own log, and all
+media is written under `build/project-output/benchmark/` via `{output}`.
+
+```bash
+# Both thread configurations (1 and auto) over every benchmark project
+scripts/benchmark.sh
+
+# One project, best of three runs, results appended to a CSV
+scripts/benchmark.sh pal_still --repeat 3 --csv build/benchmark.csv
+
+# Single-threaded only
+scripts/benchmark.sh --threads "1"
+```
+
+[scripts/output-hashes.sh](scripts/output-hashes.sh) records and compares
+SHA-256 manifests of the generated media (`.cvbs`, `.cvbsy`, `.cvbsc`, audio
+`.wav`, and the `.meta` sidecar as its canonical `sqlite3 .dump`), so a change
+can be asserted byte-identical to a recorded baseline. It regenerates the suites
+through `run-projects.sh` unless `--skip-run` is given; manifests live in
+`build/output-hashes/`.
+
+```bash
+# On the known-good build: record the baseline
+scripts/output-hashes.sh --record
+
+# After a change: fails and lists the artefacts that differ
+scripts/output-hashes.sh
 ```
 
 ### Other scripts

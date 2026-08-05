@@ -1,0 +1,28 @@
+# PAL still-source generation benchmark with noise
+#
+# Identical to pal_still.yaml apart from the section noise block, so the
+# difference between the two runs isolates the cost of the noise injection
+# stage. The seed is fixed so the run stays deterministic and comparable.
+
+project:
+  name: PalStillNoiseBenchmark
+  version: "1.0"
+  description: PAL still-source generation benchmark — 250 frames with noise
+
+cvbs_presets:
+  video_standard_preset: PAL
+  sample_encoding_preset: CVBS_U10_4FSC
+  signal_state_preset: STANDARD_TBC_LOCKED
+
+output:
+  video_path: "{output}/videosynth_benchmark_pal_still_noise.cvbs"
+
+sections:
+  - name: PalStillTestcardNoisy
+    type: progressive
+    source: "{bundled}/exr/720x576/TESTCARD-F.exr"
+    duration_frames: 250
+    noise:
+      noise_db: 43.0
+      noise_spread_db: 4.0
+      noise_seed: 1001

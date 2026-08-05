@@ -1,0 +1,26 @@
+# PAL moving-source generation benchmark
+#
+# A 127-frame MKV clip replayed twice (254 frames), exercising the decode and
+# per-frame source delivery paths that stills do not. Impairments, audio and
+# line injections are omitted so the difference against pal_still.yaml is
+# attributable to source handling.
+
+project:
+  name: PalMkvBenchmark
+  version: "1.0"
+  description: PAL moving-source generation benchmark — 127-frame clip replayed twice
+
+cvbs_presets:
+  video_standard_preset: PAL
+  sample_encoding_preset: CVBS_U10_4FSC
+  signal_state_preset: STANDARD_TBC_LOCKED
+
+output:
+  video_path: "{output}/videosynth_benchmark_pal_mkv.cvbs"
+
+sections:
+  - name: PalMkvMovingZone
+    type: progressive
+    source: "{bundled}/mkv/720x576/MOVING_ZONE_2H.mkv"
+    duration_frames: all
+    duration_repeat: 2

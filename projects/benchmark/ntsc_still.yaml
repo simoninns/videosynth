@@ -1,0 +1,25 @@
+# NTSC still-source generation benchmark
+#
+# The NTSC counterpart of pal_still.yaml: 250 frames from a single EXR still,
+# no impairments, audio or line injections. NTSC has a shorter frame
+# (477,750 samples against 709,379 for PAL) and a two-frame colour sequence,
+# so it is measured separately rather than inferred from the PAL figures.
+
+project:
+  name: NtscStillBenchmark
+  version: "1.0"
+  description: NTSC still-source generation benchmark — 250 frames, no impairments
+
+cvbs_presets:
+  video_standard_preset: NTSC
+  sample_encoding_preset: CVBS_U10_4FSC
+  signal_state_preset: STANDARD_TBC_LOCKED
+
+output:
+  video_path: "{output}/videosynth_benchmark_ntsc_still.cvbs"
+
+sections:
+  - name: NtscStillSmpteBars
+    type: progressive
+    source: "{bundled}/exr/720x486/SMPTE_BARS_001.exr"
+    duration_frames: 250

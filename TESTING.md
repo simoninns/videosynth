@@ -181,6 +181,8 @@ runs; keep it that way.
 | `projects/general/` | Feature fixtures (audio, EFM, VITS, progressive sources) — composite |
 | `projects/general-yc/` | Feature fixtures — Y/C output |
 | `projects/stacking/` | Disc-simulation, skip, and stacking fixtures |
+| `projects/long-form/` | Capture-sized three-hour examples, run by hand only |
+| `projects/benchmark/` | Fixed-length performance projects for `scripts/benchmark.sh` |
 | `projects/variants.json` | Rules for the mechanically derived variants |
 
 Anything mechanically derivable is generated at build time by
@@ -195,6 +197,12 @@ directory is the caller's choice:
 
 - `scripts/run-projects.sh [general|stacking]` runs a suite end to end through
   the CLI into `build/project-output/<suite>/`.
+- `scripts/output-hashes.sh` regenerates those suites and compares SHA-256
+  manifests of the generated media against a recorded baseline
+  (`--record` to record one), which is how a change is asserted to be
+  byte-identical to the previous behaviour.
+- `scripts/benchmark.sh` times `projects/benchmark/` per thread configuration
+  into `build/project-output/benchmark/`.
 - The functional suites point `{output}` at a scratch directory, so
   `ctest -L functional` never writes into the source tree.
 - A bare `videosynth --project projects/general/pal_vits.yaml` writes beside
