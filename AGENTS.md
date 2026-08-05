@@ -45,9 +45,12 @@
   - Use interface-based dependency inversion and constructor injection.
   - Name tests by behaviour (e.g., `SyncGenerator_ProducesValidBurst_WhenGiven625LinePAL`).
 - Classification:
-  - **Every** new or modified test must be marked in `CMakeLists.txt` as **either** `unit` **or** `functional`.
+  - Classification follows the **directory**: sources under `tests/unit/` (and `tests/gui/unit/`) are labelled `unit`, those under `tests/functional/` (and `tests/gui/functional/`) are labelled `functional`. There is no list to update.
   - Use `functional` **only** when the objective cannot be met with a unit test.
   - Tests touching filesystem, real media, or full pipelines **must** be `functional`.
+  - A file whose tests would span both categories must be **split into two files**, one per tree.
+- Fixtures: project YAML lives in `projects/`, never in `tests/`. Anything mechanically derivable from another project belongs in `projects/variants.json` and is generated at build time — do not commit derived YAML.
+- Output: tests and scripts must write generated media through the `{output}` asset root, never into `projects/` or `tests/`.
 - CI: the default unit-test lane must stay fast and mocked; do **not** add functional tests to it.
 
 ### 3.2 Logging

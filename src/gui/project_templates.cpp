@@ -91,7 +91,7 @@ ProjectLineInjections MakeLaserdiscLineInjections(Standard standard) {
   ProjectLineInjections li;
   li.disc_type = "CAV";
   // NTSC/PAL-M laserdisc discs require a virs VITS colour reference
-  // (IEC 60857 §9.1.3); lines 19/282 follow docs/examples/ntsc_cav_disc.yaml.
+  // (IEC 60857 §9.1.3); lines 19/282 follow the NTSC CAV disc fixtures.
   if (IsSystemM(standard)) {
     VitsInjection virs;
     virs.vits_type = "virs";

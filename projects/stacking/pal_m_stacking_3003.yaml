@@ -1,0 +1,306 @@
+# PAL-M Stacking Test — Seed 3003
+#
+# 10 sections × 8 frames of tartan, progressing from clean (no degradation)
+# to maximum noise and dropout. Designed for stacking algorithm validation.
+#
+# Noise ramp (noise_db): none → 58 → 53 → 48 → 43 → 38 → 33 → 28 → 24 → 20
+# Dropout ramp (scale):  none →  2 →  4 →  6 →  8 → 10 → 12 → 14 → 17 → 20
+# Picture numbers:          1 →  9 → 17 → 25 → 33 → 41 → 49 → 57 → 65 → 73
+#
+# All noise and dropout sections use seed 3003 as the deterministic base.
+# Combine with pal_m_stacking_2002, pal_m_stacking_3003, pal_m_stacking_4004 to
+# produce four independent captures with different degradation patterns.
+#
+# VITS: VIRS on lines 19 and 282 (IEC 60857 §9.1.3).
+# FM codes: fm_picture_number and fm_white_flag per IEC 60857 §10.1.
+
+project:
+  name: PalMStacking3003
+  version: "1.0"
+  description: PAL-M stacking test — clean to max noise+dropout, seed 3003
+
+cvbs_presets:
+  video_standard_preset: PAL_M
+  sample_encoding_preset: CVBS_U10_4FSC
+  signal_state_preset: STANDARD_TBC_LOCKED
+
+output:
+  video_path: "{output}/videosynth_pal_m_stacking_3003.cvbs"
+
+line_injections:
+  disc_type: CAV
+  vits:
+    - vits_type: virs
+      target_lines: [19, 282]
+
+sections:
+
+  # ---------------------------------------------------------------------------
+  # Section 1: clean reference — no noise, no dropout
+  # ---------------------------------------------------------------------------
+  - name: CleanSource
+    type: progressive
+    source: "{bundled}/exr/720x486/TARTAN.exr"
+    duration_frames: 8
+    section_type: programme_area
+    line_injections:
+      - type: laserdisc
+        codes:
+          - code_type: picture_number
+            start_value: 1
+          - code_type: programme_status
+            programme_status: "0x8DC001"
+          - code_type: fm_picture_number
+          - code_type: fm_white_flag
+  # ---------------------------------------------------------------------------
+  # Section 2: near-quantisation noise, minimal dropout
+  # ---------------------------------------------------------------------------
+  - name: NearQuantisation
+    type: progressive
+    source: "{bundled}/exr/720x486/TARTAN.exr"
+    duration_frames: 8
+    section_type: programme_area
+    noise:
+      noise_db: 58.0
+      noise_spread_db: 4.0
+      noise_seed: 3003
+    dropouts:
+      random:
+        scale: 2
+        seed: 3003
+      scratch:
+        scale: 2
+        seed: 3003
+    line_injections:
+      - type: laserdisc
+        codes:
+          - code_type: picture_number
+            start_value: 9
+          - code_type: programme_status
+            programme_status: "0x8DC001"
+          - code_type: fm_picture_number
+          - code_type: fm_white_flag
+  # ---------------------------------------------------------------------------
+  # Section 3: excellent source quality
+  # ---------------------------------------------------------------------------
+  - name: ExcellentSource
+    type: progressive
+    source: "{bundled}/exr/720x486/TARTAN.exr"
+    duration_frames: 8
+    section_type: programme_area
+    noise:
+      noise_db: 53.0
+      noise_spread_db: 4.0
+      noise_seed: 3003
+    dropouts:
+      random:
+        scale: 4
+        seed: 3003
+      scratch:
+        scale: 4
+        seed: 3003
+    line_injections:
+      - type: laserdisc
+        codes:
+          - code_type: picture_number
+            start_value: 17
+          - code_type: programme_status
+            programme_status: "0x8DC001"
+          - code_type: fm_picture_number
+          - code_type: fm_white_flag
+  # ---------------------------------------------------------------------------
+  # Section 4: good source quality
+  # ---------------------------------------------------------------------------
+  - name: GoodSource
+    type: progressive
+    source: "{bundled}/exr/720x486/TARTAN.exr"
+    duration_frames: 8
+    section_type: programme_area
+    noise:
+      noise_db: 48.0
+      noise_spread_db: 4.0
+      noise_seed: 3003
+    dropouts:
+      random:
+        scale: 6
+        seed: 3003
+      scratch:
+        scale: 6
+        seed: 3003
+    line_injections:
+      - type: laserdisc
+        codes:
+          - code_type: picture_number
+            start_value: 25
+          - code_type: programme_status
+            programme_status: "0x8DC001"
+          - code_type: fm_picture_number
+          - code_type: fm_white_flag
+  # ---------------------------------------------------------------------------
+  # Section 5: fair source quality
+  # ---------------------------------------------------------------------------
+  - name: FairSource
+    type: progressive
+    source: "{bundled}/exr/720x486/TARTAN.exr"
+    duration_frames: 8
+    section_type: programme_area
+    noise:
+      noise_db: 43.0
+      noise_spread_db: 4.0
+      noise_seed: 3003
+    dropouts:
+      random:
+        scale: 8
+        seed: 3003
+      scratch:
+        scale: 8
+        seed: 3003
+    line_injections:
+      - type: laserdisc
+        codes:
+          - code_type: picture_number
+            start_value: 33
+          - code_type: programme_status
+            programme_status: "0x8DC001"
+          - code_type: fm_picture_number
+          - code_type: fm_white_flag
+  # ---------------------------------------------------------------------------
+  # Section 6: typical VHS quality
+  # ---------------------------------------------------------------------------
+  - name: TypicalVhs
+    type: progressive
+    source: "{bundled}/exr/720x486/TARTAN.exr"
+    duration_frames: 8
+    section_type: programme_area
+    noise:
+      noise_db: 38.0
+      noise_spread_db: 4.0
+      noise_seed: 3003
+    dropouts:
+      random:
+        scale: 10
+        seed: 3003
+      scratch:
+        scale: 10
+        seed: 3003
+    line_injections:
+      - type: laserdisc
+        codes:
+          - code_type: picture_number
+            start_value: 41
+          - code_type: programme_status
+            programme_status: "0x8DC001"
+          - code_type: fm_picture_number
+          - code_type: fm_white_flag
+  # ---------------------------------------------------------------------------
+  # Section 7: poor tape
+  # ---------------------------------------------------------------------------
+  - name: PoorTape
+    type: progressive
+    source: "{bundled}/exr/720x486/TARTAN.exr"
+    duration_frames: 8
+    section_type: programme_area
+    noise:
+      noise_db: 33.0
+      noise_spread_db: 4.0
+      noise_seed: 3003
+    dropouts:
+      random:
+        scale: 12
+        seed: 3003
+      scratch:
+        scale: 12
+        seed: 3003
+    line_injections:
+      - type: laserdisc
+        codes:
+          - code_type: picture_number
+            start_value: 49
+          - code_type: programme_status
+            programme_status: "0x8DC001"
+          - code_type: fm_picture_number
+          - code_type: fm_white_flag
+  # ---------------------------------------------------------------------------
+  # Section 8: very poor tape
+  # ---------------------------------------------------------------------------
+  - name: VeryPoor
+    type: progressive
+    source: "{bundled}/exr/720x486/TARTAN.exr"
+    duration_frames: 8
+    section_type: programme_area
+    noise:
+      noise_db: 28.0
+      noise_spread_db: 4.0
+      noise_seed: 3003
+    dropouts:
+      random:
+        scale: 14
+        seed: 3003
+      scratch:
+        scale: 14
+        seed: 3003
+    line_injections:
+      - type: laserdisc
+        codes:
+          - code_type: picture_number
+            start_value: 57
+          - code_type: programme_status
+            programme_status: "0x8DC001"
+          - code_type: fm_picture_number
+          - code_type: fm_white_flag
+  # ---------------------------------------------------------------------------
+  # Section 9: barely watchable
+  # ---------------------------------------------------------------------------
+  - name: BarelyWatchable
+    type: progressive
+    source: "{bundled}/exr/720x486/TARTAN.exr"
+    duration_frames: 8
+    section_type: programme_area
+    noise:
+      noise_db: 24.0
+      noise_spread_db: 4.0
+      noise_seed: 3003
+    dropouts:
+      random:
+        scale: 17
+        seed: 3003
+      scratch:
+        scale: 17
+        seed: 3003
+    line_injections:
+      - type: laserdisc
+        codes:
+          - code_type: picture_number
+            start_value: 65
+          - code_type: programme_status
+            programme_status: "0x8DC001"
+          - code_type: fm_picture_number
+          - code_type: fm_white_flag
+  # ---------------------------------------------------------------------------
+  # Section 10: sync-borderline — maximum noise and dropout
+  # ---------------------------------------------------------------------------
+  - name: SyncBorderline
+    type: progressive
+    source: "{bundled}/exr/720x486/TARTAN.exr"
+    duration_frames: 8
+    section_type: programme_area
+    noise:
+      noise_db: 20.0
+      noise_spread_db: 0.0
+      noise_seed: 3003
+    dropouts:
+      random:
+        scale: 20
+        seed: 3003
+      scratch:
+        scale: 20
+        seed: 3003
+    line_injections:
+      - type: laserdisc
+        codes:
+          - code_type: picture_number
+            start_value: 73
+          - code_type: programme_status
+            programme_status: "0x8DC001"
+          - code_type: fm_picture_number
+          - code_type: fm_white_flag

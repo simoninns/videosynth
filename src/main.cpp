@@ -61,7 +61,9 @@ void PrintUsage() {
       << "  --asset-root <name>=<path>  Map the {name}/… logical asset root "
          "to\n"
       << "              <path> (repeatable). Overrides the built-in bundled/"
-         "user roots.\n";
+         "user roots.\n"
+      << "  --output-root <path>  Directory the {output}/… root resolves to.\n"
+         "              Defaults to the project file's own directory.\n";
 }
 
 // Parses a --asset-root "name=path" argument into the root map. Returns false
@@ -128,6 +130,10 @@ int RunCli(int argc, char** argv) {
         PrintUsage();
         return 2;
       }
+    } else if (arg == "--output-root" && i + 1 < argc) {
+      // Sugar for "--asset-root output=<path>"; the {output} root is the one a
+      // batch run redirects most often, so it gets its own flag.
+      options.asset_roots.roots["output"] = argv[++i];
     } else {
       PrintUsage();
       return 2;

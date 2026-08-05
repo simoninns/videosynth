@@ -22,15 +22,16 @@ namespace videosynth {
 // over their inputs; AssetRootMap is a plain data container.
 
 // Logical asset roots: name -> base directory. A base may be absolute or, if
-// relative, is anchored to the project directory at resolution time. The name
-// "project" is always available (it maps to the project directory) and need
-// not be present in the map.
+// relative, is anchored to the project directory at resolution time. The names
+// "project" and "output" are always available and need not be present in the
+// map: "project" maps to the project directory, and "output" maps to the
+// project directory unless the map (or the environment) overrides it.
 struct AssetRootMap {
   std::map<std::string, std::string> roots;
 };
 
 // Names of the built-in roots understood by the resolver ("bundled", "user",
-// "project"). Used by the validator to flag unknown {name} tokens.
+// "project", "output"). Used by the validator to flag unknown {name} tokens.
 std::vector<std::string> BuiltinRootNames();
 
 // True if `name` is a built-in root name.
@@ -42,16 +43,19 @@ bool IsBuiltinRootName(const std::string& name);
 //             VIDEOSYNTH_BUNDLED_ASSET_DIR install/dev default.
 //   user    = $XDG_DATA_HOME/videosynth/assets, else
 //             $HOME/.local/share/videosynth/assets.
+//   output  = $VIDEOSYNTH_OUTPUT_DIR when set; otherwise left unset so that
+//             "{output}" falls back to the project directory.
 // The GUI starts from this map and may override bundled/user via
 // QStandardPaths. Empty when a location cannot be determined.
 AssetRootMap DefaultAssetRoots();
 
 // Resolves a single `path` for a section source or output target:
 //   - Leading "{name}" (optionally "{name}/rest"): resolved to
-//     `roots[name] / rest`. The built-in "project" root maps to `project_dir`.
-//     A root base that is itself relative is anchored to `project_dir`. When
-//     `name` is not a known root the path is returned unchanged (the validator
-//     surfaces the error).
+//     `roots[name] / rest`. The built-in "project" root maps to `project_dir`,
+//     as does "output" when the map carries no entry for it. A root base that
+//     is itself relative is anchored to `project_dir`. When `name` is not a
+//     known root the path is returned unchanged (the validator surfaces the
+//     error).
 //   - Absolute path: returned unchanged.
 //   - Plain relative path: resolved against `project_dir` when `anchor_unset`
 //     is true (the GUI), otherwise returned unchanged (the CLI, preserving the

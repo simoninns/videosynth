@@ -822,6 +822,7 @@ Built-in roots:
 | `{bundled}` | Read-only assets shipped with the application | `$VIDEOSYNTH_ASSET_DIR`, else the installed `share/videosynth/assets` (found via XDG data dirs / QStandardPaths — includes Flatpak `/app/share`), else the dev `videosynth-assets/assets` submodule. |
 | `{user}` | The user's own writable asset library | `$XDG_DATA_HOME/videosynth/assets`, else `~/.local/share/videosynth/assets`. |
 | `{project}` | The project file's own directory | Directory containing the `.yaml`. |
+| `{output}` | Where this run's generated media is written | `$VIDEOSYNTH_OUTPUT_DIR` or `--output-root <path>`, else the project file's own directory. |
 
 Resolution rules (shared by CLI and GUI via `ResolveProjectPaths` /
 `ResolveAssetPath` in `path_resolution.h`), for each source/output path:
@@ -830,7 +831,9 @@ Resolution rules (shared by CLI and GUI via `ResolveProjectPaths` /
 - **Absolute or empty** → unchanged.
 - **Plain relative (no token)** → the **CLI** leaves it working-directory-relative (preserving the run-from-a-base-dir convention used by the fixtures and `videosynth-assets`); the **GUI** anchors it to the saved project file's directory so the source probe, preview, and generation resolve identically. Use `{project}/rest` for a plain relative path that must resolve the same under both.
 
-The CLI seeds `{bundled}`/`{user}` from the environment and install prefix and accepts repeatable `--asset-root <name>=<path>` overrides (also usable to register additional named roots). The GUI resolves them via `QStandardPaths`. New GUI projects are saved to disk as part of the create flow so the `{project}` anchor always exists, and their default source uses `{bundled}` so a fresh project previews immediately. Newly added sections (plain and laserdisc templates alike) default to the same bundled 75% colour-bar source for the project standard's active raster rather than a placeholder file path.
+`{output}` separates *what a project is called* from *where a particular run puts it*: a project names its artefacts relative to `{output}`, and the caller decides the directory. It defaults to the project's own directory, so a project stays self-contained when run by hand, while a batch run redirects every project at once (`scripts/run-projects.sh` sends each suite to `build/project-output/<suite>/`) and the functional test suites redirect it to a scratch directory so a test run never writes into the checked-in project tree.
+
+The CLI seeds `{bundled}`/`{user}` from the environment and install prefix and accepts repeatable `--asset-root <name>=<path>` overrides (also usable to register additional named roots); `--output-root <path>` is shorthand for `--asset-root output=<path>`. The GUI resolves them via `QStandardPaths`. New GUI projects are saved to disk as part of the create flow so the `{project}` anchor always exists, and their default source uses `{bundled}` so a fresh project previews immediately. Newly added sections (plain and laserdisc templates alike) default to the same bundled 75% colour-bar source for the project standard's active raster rather than a placeholder file path.
 
 Rather than expose these roots directly, the GUI section editor presents a section `source` as a two-way choice — **Built-in asset** or **Local file** — mapped onto the tokens above:
 
@@ -2300,11 +2303,24 @@ videosynth/
 │       └── mkv/
 │           ├── 720x576/
 │           └── 720x486/
-├── tests/
-│   ├── test_yaml_parser.cpp
-│   ├── test_generation_stage.cpp
-│   ├── test_output_stage.cpp
+├── projects/                            # Hand-authored project fixtures (inputs only)
+│   ├── general/                         # Feature fixtures — composite
+│   ├── general-yc/                      # Feature fixtures — Y/C
+│   ├── stacking/                        # Disc-simulation / skip / stacking fixtures
+│   └── variants.json                    # Rules for the build-time derived variants
+├── scripts/
+│   ├── generate_test_projects.py        # Derives the Y/C and clean variants
+│   ├── run-projects.sh                  # Runs a fixture suite through the CLI
 │   └── ...
+├── tests/                               # Automated tests only — no YAML, no output
+│   ├── CMakeLists.txt                   # Owns every test target
+│   ├── support/                         # Shared helpers (fixture_paths.h, …)
+│   ├── unit/                            # Mocked and fast → ctest label "unit"
+│   ├── functional/                      # Filesystem/pipeline → label "functional"
+│   └── gui/
+│       ├── support/                     # Shared QCoreApplication entry point
+│       ├── unit/
+│       └── functional/
 └── README.md
 ```
 

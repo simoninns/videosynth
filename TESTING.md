@@ -144,3 +144,58 @@ If one mocks a class, side effects are possible (ie if one forgets to override a
 - Unit tests must remain deterministic and isolated from network/clock side effects.
 - Functional tests may use filesystem operations for install/relocation verification, but must remain deterministic and self-contained.
 - Runtime resource lookup failure behavior must produce deterministic hard-fail diagnostics.
+
+## Repository layout
+
+`tests/` holds automated tests and nothing else. Project YAML lives in
+`projects/`; generated media never lands in either tree.
+
+```
+tests/
+├── CMakeLists.txt        Owns every test target
+├── support/              Shared helpers: fixture_paths.h, efm_channel_decoder.h
+├── unit/                 → videosynth_unit_tests,           ctest label "unit"
+├── functional/           → videosynth_functional_tests,     label "functional"
+└── gui/
+    ├── support/          Shared QCoreApplication entry point
+    ├── unit/             → videosynth_gui_unit_tests,       label "unit"
+    └── functional/       → videosynth_gui_functional_tests, label "functional"
+```
+
+**Classification is the directory, not a list.** A source file under `unit/` is
+built into the unit binary and every test it declares is labelled `unit`; the
+same holds for `functional/`. Adding a test file is enough — there is no
+pattern list to keep in step. A file whose tests split across both categories
+must be split into two files, one per tree.
+
+Run one lane with `ctest -L unit` or `ctest -L functional`. The `unit` lane is
+the fast, mocked, hermetic one and is the only lane the packaged Nix build
+runs; keep it that way.
+
+## Project fixtures
+
+`projects/` holds only hand-authored projects:
+
+| Directory | Contents |
+|-----------|----------|
+| `projects/general/` | Feature fixtures (audio, EFM, VITS, progressive sources) — composite |
+| `projects/general-yc/` | Feature fixtures — Y/C output |
+| `projects/stacking/` | Disc-simulation, skip, and stacking fixtures |
+| `projects/variants.json` | Rules for the mechanically derived variants |
+
+Anything mechanically derivable is generated at build time by
+`scripts/generate_test_projects.py` into `build/generated-projects/` and is not
+committed — currently the impairment-free `stacking-clean` set and the Y/C
+`stacking-yc` set. Add a variant by editing `variants.json`, not by copying
+YAML. Generation needs a Python 3 interpreter; without one the build still
+succeeds and the suites simply cover the committed fixtures alone.
+
+Fixtures write through the `{output}` logical asset root, so a run's target
+directory is the caller's choice:
+
+- `scripts/run-projects.sh [general|stacking]` runs a suite end to end through
+  the CLI into `build/project-output/<suite>/`.
+- The functional suites point `{output}` at a scratch directory, so
+  `ctest -L functional` never writes into the source tree.
+- A bare `videosynth --project projects/general/pal_vits.yaml` writes beside
+  the YAML, which is what you usually want when running one by hand.

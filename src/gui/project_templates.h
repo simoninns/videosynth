@@ -55,7 +55,7 @@ Section MakeProgressiveSectionTemplate(int ordinal, Standard standard);
 // whose sections carry only their per-section biphase codes.
 ProjectLineInjections MakeLaserdiscLineInjections(Standard standard);
 
-// Laserdisc section templates modelled on docs/examples/. Each carries the
+// Laserdisc section templates modelled on the projects/ fixtures. Each carries
 // laserdisc code injection IEC 60856/60857 expects for its section type; NTSC
 // and PAL-M additionally get the mandatory FM white flag. The disc format and
 // VITS set are project-wide (see MakeLaserdiscLineInjections). Durations

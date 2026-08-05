@@ -88,26 +88,28 @@ bool EndsWith(const std::string& value, const std::string& suffix) {
          0;
 }
 
-// Rejects a source whose leading "{name}" logical-asset-root token is not a
-// known root, so token typos fail fast with a clear message.
-bool ValidateAssetRootToken(const std::string& source, std::string* error) {
-  if (source.empty() || source.front() != '{') {
+// Rejects a path whose leading "{name}" logical-asset-root token is not a
+// known root, so token typos fail fast with a clear message. `context`
+// prefixes the diagnostic (e.g. "Progressive section validation error") and
+// `field` names the offending setting (e.g. "source").
+bool ValidateAssetRootToken(const std::string& path, const std::string& context,
+                            const std::string& field, std::string* error) {
+  if (path.empty() || path.front() != '{') {
     return true;
   }
-  const std::size_t close = source.find('}');
+  const std::size_t close = path.find('}');
   if (close == std::string::npos) {
     if (error != nullptr) {
-      *error =
-          "Progressive section validation error: malformed asset root token "
-          "in source (missing '}').";
+      *error = context + ": malformed asset root token in " + field +
+               " (missing '}').";
     }
     return false;
   }
-  const std::string name = source.substr(1, close - 1);
+  const std::string name = path.substr(1, close - 1);
   if (!videosynth::IsBuiltinRootName(name)) {
     if (error != nullptr) {
-      *error = "Progressive section validation error: unknown asset root '" +
-               name + "' in source. Known roots: bundled, user, project.";
+      *error = context + ": unknown asset root '" + name + "' in " + field +
+               ". Known roots: bundled, user, project, output.";
     }
     return false;
   }
@@ -1639,6 +1641,14 @@ ValidationResult ProjectValidator::Validate(const Project& project) {
     result.is_valid = false;
     result.errors.push_back(
         "Project configuration error: output.video_path must be set.");
+  } else {
+    std::string output_root_error;
+    if (!ValidateAssetRootToken(project.output.video_path,
+                                "Project configuration error",
+                                "output.video_path", &output_root_error)) {
+      result.is_valid = false;
+      result.errors.push_back(output_root_error);
+    }
   }
 
   // The metadata sidecar path is always derived from video_path (colocated),
@@ -1746,7 +1756,9 @@ ValidationResult ProjectValidator::Validate(const Project& project) {
       }
 
       std::string asset_root_error;
-      if (!ValidateAssetRootToken(section.source, &asset_root_error)) {
+      if (!ValidateAssetRootToken(section.source,
+                                  "Progressive section validation error",
+                                  "source", &asset_root_error)) {
         result.is_valid = false;
         result.errors.push_back(asset_root_error);
         break;

@@ -321,283 +321,7 @@ endif()
 
 enable_testing()
 
-add_executable(videosynth_tests
-    tests/test_active_sample_mapping.cpp
-    tests/test_audio_fixture_projects.cpp
-    tests/test_audio_pipeline.cpp
-    tests/test_audio_sample_conversion.cpp
-    tests/test_audio_synthesizer.cpp
-    tests/test_audio_track_generator.cpp
-    tests/test_audio_efm_writer.cpp
-    tests/test_audio_wav_writer.cpp
-    tests/test_biphase_encoder.cpp
-    tests/test_cav_code_generators.cpp
-    tests/test_clv_code_generators.cpp
-    tests/test_fm_encoder.cpp
-    tests/test_frame_enrichment.cpp
-    tests/test_frame_synthesis_pool.cpp
-    tests/test_line_placement.cpp
-    tests/test_timecode_continuity.cpp
-    tests/test_chapter_stopbit.cpp
-    tests/test_ntsc_frozen.cpp
-    tests/test_biphase_injection_manager.cpp
-    tests/test_chroma_encoder.cpp
-    tests/test_compliance_harness.cpp
-    tests/test_progressive_frame_source.cpp
-    tests/test_fixture_projects.cpp
-    tests/test_generation_stage.cpp
-    tests/test_output_stage.cpp
-    tests/test_path_resolution.cpp
-    tests/test_pipeline.cpp
-    tests/test_signal_shaping.cpp
-    tests/test_signal_timing_model.cpp
-    tests/test_project_validator.cpp
-    tests/test_vits_generator_primitives.cpp
-    tests/test_vits_definition_provider.cpp
-    tests/test_vits_generator_pal.cpp
-    tests/test_vits_generator_ntsc.cpp
-    tests/test_line_injection_vits_integration.cpp
-    tests/test_yaml_project_emitter.cpp
-    tests/test_yaml_project_parser.cpp
-    tests/test_timing_constants.cpp
-    tests/test_biphase_validation.cpp
-    tests/test_section_ordering_validation.cpp
-    tests/test_cross_injection_validation.cpp
-    tests/test_ntsc_virs_validation.cpp
-    tests/test_biphase_integration.cpp
-    tests/test_fm_transitions.cpp
-    tests/test_value_constraints.cpp
-    tests/test_chapter_encoding.cpp
-    tests/test_biphase_system.cpp
-    tests/test_biphase_final.cpp
-    tests/test_noise_injection.cpp
-    tests/test_deterministic_output.cpp
-    tests/test_dropout_injection.cpp
-    tests/test_efm_audio_frame_assembler.cpp
-    tests/test_efm_circ_encoder.cpp
-    tests/test_efm_modulator.cpp
-    tests/test_efm_output_pipeline.cpp
-    tests/test_efm_stream_encoder.cpp
-    tests/test_efm_subcode_generator.cpp
-    tests/test_efm_track_layout.cpp
-    tests/test_osd_renderer.cpp
-    tests/test_osd_token_resolver.cpp
-)
-
-target_compile_definitions(videosynth_tests
-    PRIVATE
-        VIDEOSYNTH_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
-)
-
-target_link_libraries(videosynth_tests
-    PRIVATE
-        videosynth_core
-        GTest::gtest
-        GTest::gtest_main
-)
-
-include(GoogleTest)
-gtest_discover_tests(videosynth_tests TEST_LIST videosynth_discovered_tests)
-
-if(VIDEOSYNTH_BUILD_GUI)
-    add_executable(videosynth_gui_tests
-        tests/gui/gui_test_main.cpp
-        tests/gui/test_disc_skips_model.cpp
-        tests/gui/test_generation_controller.cpp
-        tests/gui/test_generation_parity.cpp
-        tests/gui/test_generation_preferences.cpp
-        tests/gui/test_line_injection_presenter.cpp
-        tests/gui/test_log_message_model.cpp
-        tests/gui/test_logging_options.cpp
-        tests/gui/test_preview_frame_service.cpp
-        tests/gui/test_preview_functional.cpp
-        tests/gui/test_preview_render.cpp
-        tests/gui/test_programme_status_presenter.cpp
-        tests/gui/test_project_document.cpp
-        tests/gui/test_qt_message_bridge.cpp
-        tests/gui/test_project_file_lifecycle.cpp
-        tests/gui/test_project_settings_presenter.cpp
-        tests/gui/test_project_templates.cpp
-        tests/gui/test_section_block_presenters.cpp
-        tests/gui/test_section_editing_roundtrip.cpp
-        tests/gui/test_section_list_model.cpp
-        tests/gui/test_source_path_model.cpp
-        tests/gui/test_source_probe_controller.cpp
-        tests/gui/test_theme_manager.cpp
-        tests/gui/test_theme_settings.cpp
-        tests/gui/test_validation_controller.cpp
-        tests/gui/test_validation_issues_model.cpp
-        tests/gui/test_waveform_mapping.cpp
-    )
-
-    target_compile_definitions(videosynth_gui_tests
-        PRIVATE
-            VIDEOSYNTH_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}"
-    )
-
-    target_link_libraries(videosynth_gui_tests
-        PRIVATE
-            videosynth_gui_lib
-            GTest::gtest
-    )
-
-    gtest_discover_tests(videosynth_gui_tests
-        TEST_LIST videosynth_gui_discovered_tests)
-endif()
-
-set(videosynth_functional_test_patterns
-    "^AudioFixtureProjectsTest\\."
-    "^AudioPipelineTest\\."
-    "^AudioTrackGeneratorTest\\."
-    "^AudioEfmWriterTest\\."
-    "^EfmOutputPipelineTest\\."
-    "^AudioWavWriterTest\\."
-    "^FrameSourceTest\\."
-    "^ProjectFixturesTest\\."
-    "^ComplianceHarnessTest\\."
-    "^DeterministicOutputTest\\."
-    "^GenerationParityTest\\."
-    "^GenerationPreferencesSettingsTest\\."
-    "^GenerationStageTest\\."
-    "^GenerationStageTimingTest\\."
-    "^GenerationStageChromaTest\\."
-    "^GenerationStageProgressiveTest\\."
-    "^LineInjectionVitsIntegrationTest\\."
-    "^OutputStageTest\\."
-    "^PreviewFunctionalTest\\."
-    "^ProjectFileLifecycleTest\\."
-    "^SectionEditingRoundTripTest\\."
-    "^ThemeSettingsTest\\."
-    "^YamlProjectEmitterFixturesTest\\."
-)
-
-set(videosynth_unit_test_patterns
-    "^ActiveSampleMappingTest\\."
-    "^AudioSampleConversionTest\\."
-    "^AudioSynthesizerTest\\."
-    "^AudioWavWriterPathTest\\."
-    "^BiphaseEncoderTest\\."
-    "^BiphaseUtilsTest\\."
-    "^CavCodeGeneratorTest\\."
-    "^ClvCodeGeneratorTest\\."
-    "^ClvTimecodeForFrameTest\\."
-    "^EfmTrackLayoutTest\\."
-    "^FmEncoderTest\\."
-    "^FrameEnrichmentTest\\."
-    "^FrameSynthesisPoolTest\\."
-    "^OrderedFrameReassemblyTest\\."
-    "^LinePlacementTest\\."
-    "^TimecodeContinuityTest\\."
-    "^ChapterStopBitTest\\."
-    "^NtscFrozenValuesTest\\."
-    "^BiphaseInjectionManagerTest\\."
-    "^BiphaseInjectionManagerPalCavTest\\."
-    "^BiphaseInjectionManagerPalClvTest\\."
-    "^BiphaseInjectionManagerNtscCavTest\\."
-    "^BiphaseInjectionManagerNtscClvTest\\."
-    "^ChromaEncoderTest\\."
-    "^ForwardingLoggerTest\\."
-    "^GenerationControllerTest\\."
-    "^GenerationPreferencesTest\\."
-    "^LogMessageModelTest\\."
-    "^LoggingOptionsTest\\."
-    "^PipelineTest\\."
-    "^PreviewFrameServiceTest\\."
-    "^PreviewRenderTest\\."
-    "^ProjectDocumentTest\\."
-    "^ProjectDocumentOpenStateTest\\."
-    "^ProjectSettingsPresenterTest\\."
-    "^ProjectTemplatesTest\\."
-    "^ProjectValidatorTest\\."
-    "^QtMessageBridgeTest\\."
-    "^SectionListModelTest\\."
-    "^SectionBlockPresenterTest\\."
-    "^SourcePathModelTest\\."
-    "^LineInjectionPresenterTest\\."
-    "^ProgrammeStatusPresenterTest\\."
-    "^DiscSkipsModelTest\\."
-    "^SourceProbeControllerTest\\."
-    "^ValidationControllerTest\\."
-    "^ValidationIssuesModelTest\\."
-    "^WaveformMappingTest\\."
-    "^BiphaseValidationTest\\."
-    "^SectionOrderingValidationTest\\."
-    "^CrossInjectionValidationTest\\."
-    "^NtscVirsValidationTest\\."
-    "^BiphaseIntegrationTest\\."
-    "^FmTransitionTest\\."
-    "^ValueConstraintsTest\\."
-    "^ChapterEncodingTest\\."
-    "^BiphaseSystemTest\\."
-    "^BiphaseFinalTest\\."
-    "^NoiseInjectionTest\\."
-    "^DropoutInjectionTest\\."
-    "^EfmAudioFrameAssemblerTest\\."
-    "^AudioEfmWriterPathTest\\."
-    "^EfmCircEncoderTest\\."
-    "^EfmModulatorTest\\."
-    "^EfmStreamEncoderTest\\."
-    "^EfmSubcodeGeneratorTest\\."
-    "^OsdRendererTest\\."
-    "^OsdTokenResolverTest\\."
-    "^PathResolutionTest\\."
-    "^SignalShapingTest\\."
-    "^SignalTimingModelTest\\."
-    "^TimingConstantsTest\\."
-    "^SignalLevelsTest\\."
-    "^VitsDefinitionProviderTest\\."
-    "^VitsGeneratorTest\\."
-    "^VitsGeneratorPalTest\\."
-    "^VitsGeneratorNtscTest\\."
-    "^ThemeManagerTest\\."
-    "^YamlProjectEmitterTest\\."
-    "^YamlProjectParserTest\\."
-)
-
-set(videosynth_test_label_script "set(videosynth_functional_test_patterns\n")
-foreach(pattern IN LISTS videosynth_functional_test_patterns)
-    string(APPEND videosynth_test_label_script "  [=[${pattern}]=]\n")
-endforeach()
-string(APPEND videosynth_test_label_script ")\n\n")
-
-string(APPEND videosynth_test_label_script "set(videosynth_unit_test_patterns\n")
-foreach(pattern IN LISTS videosynth_unit_test_patterns)
-    string(APPEND videosynth_test_label_script "  [=[${pattern}]=]\n")
-endforeach()
-string(APPEND videosynth_test_label_script ")\n\n")
-
-string(APPEND videosynth_test_label_script
-    "foreach(test_name IN LISTS videosynth_discovered_tests videosynth_gui_discovered_tests)\n"
-    "  set(test_classification \"\")\n"
-    "\n"
-    "  foreach(pattern IN LISTS videosynth_functional_test_patterns)\n"
-    "    if(\"\${test_name}\" MATCHES \"\${pattern}\")\n"
-    "      set(test_classification \"functional\")\n"
-    "      break()\n"
-    "    endif()\n"
-    "  endforeach()\n"
-    "\n"
-    "  if(test_classification STREQUAL \"\")\n"
-    "    foreach(pattern IN LISTS videosynth_unit_test_patterns)\n"
-    "      if(\"\${test_name}\" MATCHES \"\${pattern}\")\n"
-    "        set(test_classification \"unit\")\n"
-    "        break()\n"
-    "      endif()\n"
-    "    endforeach()\n"
-    "  endif()\n"
-    "\n"
-    "  if(test_classification STREQUAL \"\")\n"
-    "    message(FATAL_ERROR \"Discovered test '\${test_name}' is not classified as unit or functional. Update CMakeLists.txt test label patterns.\")\n"
-    "  endif()\n"
-    "\n"
-    "  set_tests_properties(\"\${test_name}\" PROPERTIES LABELS \"\${test_classification}\")\n"
-    "endforeach()\n")
-
-file(GENERATE
-    OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/videosynth_test_labels.cmake"
-    CONTENT "${videosynth_test_label_script}")
-set_property(DIRECTORY APPEND PROPERTY TEST_INCLUDE_FILES
-    "${CMAKE_CURRENT_BINARY_DIR}/videosynth_test_labels.cmake")
+add_subdirectory(tests)
 
 find_program(CLANG_FORMAT_EXE NAMES clang-format)
 
@@ -631,10 +355,14 @@ if(CLANG_FORMAT_EXE)
 
     add_custom_target(clang_format_check ALL DEPENDS ${FORMAT_STAMPS})
     add_dependencies(videosynth clang_format_check)
-    add_dependencies(videosynth_tests clang_format_check)
+    foreach(test_target IN LISTS videosynth_test_targets)
+        add_dependencies(${test_target} clang_format_check)
+    endforeach()
     if(VIDEOSYNTH_BUILD_GUI)
         add_dependencies(videosynth-gui clang_format_check)
-        add_dependencies(videosynth_gui_tests clang_format_check)
+        foreach(test_target IN LISTS videosynth_gui_test_targets)
+            add_dependencies(${test_target} clang_format_check)
+        endforeach()
     endif()
 else()
     message(STATUS "clang-format not found — format checks disabled")
@@ -653,12 +381,12 @@ if(VIDEOSYNTH_ENABLE_CLANG_TIDY)
 
     if(CLANG_TIDY_EXE)
         set_target_properties(videosynth_efm videosynth_core videosynth
-            videosynth_tests
+            ${videosynth_test_targets}
             PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_EXE}"
         )
         if(VIDEOSYNTH_BUILD_GUI)
             set_target_properties(videosynth_gui_lib videosynth-gui
-                videosynth_gui_tests
+                ${videosynth_gui_test_targets}
                 PROPERTIES CXX_CLANG_TIDY "${CLANG_TIDY_EXE}"
             )
         endif()

@@ -1,2 +1,337 @@
 # videosynth
-A video signal synthesizer for PAL and NTSC
+
+A video signal synthesizer for PAL, PAL-M and NTSC.
+
+**videosynth** generates analogue composite (CVBS) and Y/C video signals as
+sample files, closely following the published analogue video standards
+(ITU-R BT.470/BT.1700, SMPTE 170M/244M, IEC 60856/60857, IEC 60461). It is
+aimed at video engineers and media-preservation developers who need
+known-good, reproducible test signals — including laserdisc-style discs with
+VBI codes, noise, dropouts and player tracking errors — to exercise decoders,
+time base correctors and restoration tools.
+
+The project ships two front ends built from the same pipeline:
+
+- `videosynth` — the command-line generator.
+- `videosynth-gui` — a Qt 6 desktop application for authoring projects,
+  previewing frames and running generation.
+
+---
+
+## Features
+
+- **Standards-based signal generation** for PAL, PAL-M and NTSC, generated in
+  the time domain from the standards' timing and level definitions.
+- **Sample encodings**: 4fsc (`CVBS_U10_4FSC`, `CVBS_U16_4FSC`,
+  `CVBS_TPG21_4FSC`, `CVBS_S16_4FSC`) and raw high-rate (`RAW_S16_28M`,
+  `RAW_S16_40M`). The signed and raw presets carry sub-sync excursions such as
+  the laserdisc pilot burst.
+- **Composite or Y/C output** (`output.signal_type: composite | yc`).
+- **Frame content** from validated progressive source profiles (EXR stills and
+  MKV video).
+- **Line injections** for VBI content: VITS test signals, laserdisc biphase and
+  FM codes (IEC 60856/60857), and VITC timecode (SMPTE 12M).
+- **Laserdisc disc simulation**: CAV/CLV picture numbers, chapters, programme
+  status codes, lead-in/out, picture stop, PAL pilot burst, NTSC VBI burst.
+- **Per-section impairments**: two-component Gaussian noise (floor plus
+  proportional) and dropout injection (random surface dropouts and persistent
+  scratches) with a SQLite dropout sidecar.
+- **Disc skip simulation**: frame-accurate forward and backward player tracking
+  failures, with burst phase and colour-frame index kept consistent across
+  simulated capture sources.
+- **Multi-track audio**: up to eight stereo channel pairs at 48 kHz/24-bit,
+  plus EFM audio for laserdisc projects.
+- **On-screen display** text with substitution tokens (picture number, CLV
+  timecode, frame number).
+- **Deterministic multi-threaded generation** — output is byte-identical
+  regardless of thread count.
+
+---
+
+## Requirements
+
+The Nix flake is the authoritative environment; the development shell supplies
+CMake, Ninja, a C++17 toolchain, yaml-cpp, spdlog, Google Test, SQLite,
+OpenEXR, zlib, FFmpeg, Qt 6 and Python 3 (with NumPy).
+
+```bash
+git clone --recurse-submodules https://github.com/simoninns/videosynth
+cd videosynth
+```
+
+Submodules provide the specification documents under [docs/](docs/) and the
+media assets in [videosynth-assets/](videosynth-assets/). If you already
+cloned without them:
+
+```bash
+git submodule update --init --recursive
+```
+
+---
+
+## Build
+
+```bash
+# Configure and build (CLI + GUI + tests)
+nix develop "path:$PWD" --command cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+nix develop "path:$PWD" --command cmake --build build
+```
+
+Binaries land in `build/videosynth` and `build/videosynth-gui`.
+
+Useful CMake options:
+
+| Option | Default | Effect |
+|--------|---------|--------|
+| `-DVIDEOSYNTH_BUILD_GUI=OFF` | `ON` | Skip the Qt 6 GUI target |
+| `-DVIDEOSYNTH_ENABLE_CLANG_TIDY=ON` | `OFF` | Run clang-tidy as part of the build |
+| `-DVIDEOSYNTH_BUNDLED_ASSET_DIR=<dir>` | dev tree | Where `{bundled}` resolves for installed builds |
+| `-DBUILD_TESTING=OFF` | `ON` | Skip test targets |
+
+To build and run the packaged derivation instead of the dev shell:
+
+```bash
+nix run '.?submodules=1' -- --project projects/general/pal_vits.yaml
+```
+
+The `?submodules=1` form is needed because the bundled media assets live in a
+submodule.
+
+---
+
+## Run
+
+### Command line
+
+```bash
+nix develop "path:$PWD" --command ./build/videosynth --project projects/general/pal_vits.yaml
+```
+
+Options:
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--project <path>` | YAML project file (required) | — |
+| `--validate` | Validate only; generate nothing | off |
+| `--version` | Print the build version (git commit hash) | — |
+| `--threads <n>` | Frame synthesis workers: `auto` or a positive integer (`1` = sequential) | `auto` |
+| `--log-level <level>` | `info`, `debug` or `trace` | `info` |
+| `--log-file <path>` | Also write logs to a file | none |
+| `--asset-root <name>=<path>` | Map the `{name}/…` logical asset root | built-ins |
+| `--output-root <path>` | Where `{output}/…` resolves (sugar for `--asset-root output=<path>`) | project dir |
+
+Examples:
+
+```bash
+# Validate without generating
+./build/videosynth --project projects/general/ntsc_vits.yaml --validate
+
+# Sequential generation with debug logging to a file
+./build/videosynth --project projects/general/pal_audio.yaml \
+    --threads 1 --log-level debug --log-file out/videosynth.log
+
+# Send all generated media to a scratch directory
+./build/videosynth --project projects/stacking/pal_discsim_A.yaml \
+    --output-root /tmp/videosynth-out
+```
+
+### GUI
+
+```bash
+nix develop "path:$PWD" --command ./build/videosynth-gui
+```
+
+`videosynth-gui` accepts the same `--log-level` and `--log-file` options, which
+override the persisted preferences for the session. It opens on a welcome page:
+create a project (the video standard is fixed at creation time), add sections,
+edit line injections, impairments and audio, preview frames in a detached
+preview window, then generate. Validation runs continuously in the background
+and reports into the issues dock.
+
+---
+
+## Projects
+
+A project is a YAML file describing the output, the global line injections and
+an ordered list of sections. A minimal example:
+
+```yaml
+project:
+  name: PALVitsFixture
+  version: "1.0"
+  description: PAL VITS fixture
+
+cvbs_presets:
+  video_standard_preset: PAL          # PAL | PAL_M | NTSC
+  sample_encoding_preset: CVBS_TPG21_4FSC
+  signal_state_preset: STANDARD_TBC_LOCKED
+
+output:
+  video_path: "{output}/videosynth_pal_vits.cvbs"
+
+line_injections:
+  vits:
+    - vits_type: vits17
+      target_lines: [17]
+
+sections:
+  - name: PalVits
+    type: progressive
+    source: "{bundled}/exr/720x576/100_BARS.exr"
+    duration_frames: 1
+```
+
+The full schema is documented in
+[docs/design/high-level-design.md](docs/design/high-level-design.md) §7–§11;
+laserdisc biphase authoring is covered in
+[docs/user/biphase-design.md](docs/user/biphase-design.md).
+
+### Logical asset roots
+
+Source and output paths use `{name}/…` brace tokens rather than machine-specific
+paths, so projects stay portable between the CLI, the GUI and packaged builds:
+
+| Root | Resolves to | Override |
+|------|-------------|----------|
+| `{bundled}` | Installed/bundled media assets | `VIDEOSYNTH_ASSET_DIR`, `--asset-root bundled=…` |
+| `{user}` | `$XDG_DATA_HOME/videosynth/assets` (else `~/.local/share/videosynth/assets`) | `--asset-root user=…` |
+| `{project}` | Directory holding the project file | — |
+| `{output}` | Project directory unless overridden | `VIDEOSYNTH_OUTPUT_DIR`, `--output-root` |
+
+Always use `{bundled}/…` for fixture sources: a bare relative path resolves
+against the working directory in the CLI but against the project directory in
+the GUI.
+
+### Output artefacts
+
+All artefacts are colocated with `output.video_path`:
+
+| File | Contents |
+|------|----------|
+| `<name>.cvbs` | Composite samples |
+| `<name>.cvbsy` / `<name>.cvbsc` | Y/C luma and chroma samples |
+| `<name>.meta` | SQLite metadata sidecar, including dropouts (schema v5) |
+| `<name>_audio_<pair>.wav` | 48 kHz/24-bit stereo audio per channel pair |
+
+---
+
+## Example projects
+
+Hand-authored projects live in [projects/](projects/):
+
+| Directory | Contents |
+|-----------|----------|
+| [projects/general/](projects/general/) | Feature examples — audio, EFM audio, VITS, progressive EXR/MKV sources, PAL pilot burst (composite) |
+| [projects/general-yc/](projects/general-yc/) | Feature examples with Y/C output |
+| [projects/stacking/](projects/stacking/) | Laserdisc disc simulation, skip and multi-source stacking sets for PAL, PAL-M and NTSC |
+| [projects/variants.json](projects/variants.json) | Rules for mechanically derived variants |
+
+Derived variants (the impairment-free `stacking-clean` set and the Y/C
+`stacking-yc` set) are generated into `build/generated-projects/` at build time
+by [scripts/generate_test_projects.py](scripts/generate_test_projects.py) and
+are not committed. Add a variant by editing `variants.json`, not by copying
+YAML.
+
+### Running the example suites
+
+[scripts/run-projects.sh](scripts/run-projects.sh) runs whole suites through the
+CLI. It re-execs itself inside the Nix dev shell when needed (the MKV fixtures
+need ffprobe), and writes everything into `build/project-output/<suite>/` via
+the `{output}` root, so nothing lands in the source tree.
+
+```bash
+# List the suites and the directories each covers
+scripts/run-projects.sh --list
+
+# Run everything (general + stacking)
+scripts/run-projects.sh
+
+# Run one suite
+scripts/run-projects.sh general
+scripts/run-projects.sh stacking
+
+# Pass extra arguments through to videosynth
+scripts/run-projects.sh general -- --threads 1 --log-level trace
+```
+
+Build first — the script expects `build/videosynth` and picks up the generated
+variants from the build tree. Set `VIDEOSYNTH_BUILD_DIR` to use a build
+directory other than `build/`. The script reports `PASS`/`FAIL` per project and
+exits non-zero if any run fails.
+
+To run a single project by hand, invoke the binary directly; without
+`--output-root` the media is written beside the YAML:
+
+```bash
+./build/videosynth --project projects/general/pal_progressive_exr.yaml
+```
+
+### Other scripts
+
+| Script | Purpose |
+|--------|---------|
+| [scripts/generate_test_projects.py](scripts/generate_test_projects.py) | Derive variant projects from `projects/` (run automatically by the build) |
+| [scripts/compare_frames.py](scripts/compare_frames.py) | Bit-exact comparison of a picture number across stacking sources |
+| [scripts/compare_frames_detail.py](scripts/compare_frames_detail.py) | As above, split by VBI vs active video |
+| [scripts/convert_progressive_raw_to_exr.py](scripts/convert_progressive_raw_to_exr.py) | Convert raw yuv422p10le stills to OpenEXR fixtures |
+| [scripts/run_stage1_raw_to_exr_conversion.sh](scripts/run_stage1_raw_to_exr_conversion.sh) | Run the EXR conversion in an ad-hoc Nix shell |
+| [scripts/render-icons.sh](scripts/render-icons.sh) | Render the application icon PNG set from the logo SVG |
+
+---
+
+## Tests
+
+```bash
+# Build every test binary
+nix develop "path:$PWD" --command cmake --build build --target videosynth_tests
+
+# Fast, mocked, hermetic lane
+nix develop "path:$PWD" --command ctest --test-dir build -L unit --output-on-failure
+
+# Filesystem, real media and full-pipeline tests (needs the assets submodule)
+nix develop "path:$PWD" --command ctest --test-dir build -L functional --output-on-failure
+```
+
+Classification follows the directory: sources under `tests/unit/` and
+`tests/gui/unit/` are labelled `unit`, those under `tests/functional/` and
+`tests/gui/functional/` are labelled `functional`. See
+[TESTING.md](TESTING.md) for the testing strategy and conventions.
+
+---
+
+## Repository layout
+
+```
+include/videosynth/   Public headers (pipeline, model, encoders, generators)
+src/                  CLI and library implementation
+src/gui/              Qt 6 GUI application
+tests/                Unit and functional test suites
+projects/             Hand-authored example/fixture projects
+scripts/              Project runners and maintenance utilities
+assets/               Application logo and icons
+videosynth-assets/    Media assets submodule (source stills and video)
+docs/design/          High-level design specification
+docs/user/            User-facing feature documentation
+docs/*-specification/ Specification submodules (CVBS format, analogue video)
+```
+
+---
+
+## Documentation
+
+- [docs/design/high-level-design.md](docs/design/high-level-design.md) — design
+  specification and YAML project reference.
+- [docs/user/biphase-design.md](docs/user/biphase-design.md) — laserdisc
+  biphase/FM code authoring.
+- [docs/cvbs-file-format-specification/](docs/cvbs-file-format-specification/) —
+  CVBS file format and its extensions.
+- [docs/analogue-video-specifications/](docs/analogue-video-specifications/) —
+  the analogue video and laserdisc standards the implementation cites.
+- [TESTING.md](TESTING.md) — testing vision, strategy and repository rules.
+- [AGENTS.md](AGENTS.md) — contribution and coding standards.
+
+---
+
+## Licence
+
+GNU General Public License v3.0 or later. See [LICENSE](LICENSE).

@@ -1,0 +1,217 @@
+# PAL Skip Test — Source B (seed 6006)
+#
+# Simulates a capture that starts at PN 3 (PNs 1–2 not captured), ends at PN 38
+# (PNs 39–40 not captured), and includes a backward skip at PN 25 replaying
+# PNs 23–25.
+#
+# Output stream: PNs 3–25, PNs 23–25 (replay), PNs 26–38 — 39 frames total.
+# All 40 disc frames are generated to maintain burst-phase continuity.
+#
+# Content layout (identical across A–D):
+#   PNs  1– 8:  75_BARS.exr
+#   PNs  9–16:  TESTCARD-F.exr
+#   PNs 17–24:  MULTIBURST.exr
+#   PNs 25–32:  TARTAN.exr
+#   PNs 33–40:  Y_CB_CR_RAMPS.exr
+#
+# Noise/dropout: moderate, seed 6006.
+# Skips:
+#   forward  at PN  1, count 2 → PNs 1–2 withheld from output
+#   backward at PN 25, count 3 → PNs 23–25 replayed after PN 25
+#   forward  at PN 39, count 2 → PNs 39–40 withheld from output
+
+project:
+  name: PalSkipB
+  version: "1.0"
+  description: PAL skip-test source B — seed 6006, start PN 3, end PN 38, backward skip at PN 25
+
+cvbs_presets:
+  video_standard_preset: PAL
+  sample_encoding_preset: CVBS_U10_4FSC
+  signal_state_preset: STANDARD_TBC_LOCKED
+  pal_laserdisc_pilot_burst: true
+
+output:
+  video_path: "{output}/videosynth_pal_skip_B.cvbs"
+
+line_injections:
+  disc_type: CAV
+  vits:
+    - vits_type: uk-national
+      target_lines: [19]
+
+sections:
+
+  - name: Bars_B
+    type: progressive
+    source: "{bundled}/exr/720x576/75_BARS.exr"
+    duration_frames: 8
+    section_type: programme_area
+    noise:
+      noise_db: 43.0
+      noise_spread_db: 4.0
+      noise_seed: 6006
+    dropouts:
+      random:
+        scale: 8
+        seed: 6006
+      scratch:
+        scale: 8
+        seed: 6006
+    line_injections:
+      - type: laserdisc
+        codes:
+          - code_type: picture_number
+            start_value: 1
+          - code_type: programme_status
+            programme_status: "0x8DC000"
+    osd:
+      overlays:
+        - text: "PN:{picture_number} HEX:{biphase_hex} PHASE:{phase_id}"
+          x: 8
+          y: 32
+          scale: 1
+          fg_luma: white
+          bg_luma: black
+
+  - name: Testcard_B
+    type: progressive
+    source: "{bundled}/exr/720x576/TESTCARD-F.exr"
+    duration_frames: 8
+    section_type: programme_area
+    noise:
+      noise_db: 43.0
+      noise_spread_db: 4.0
+      noise_seed: 6006
+    dropouts:
+      random:
+        scale: 8
+        seed: 6006
+      scratch:
+        scale: 8
+        seed: 6006
+    line_injections:
+      - type: laserdisc
+        codes:
+          - code_type: picture_number
+            start_value: 9
+          - code_type: programme_status
+            programme_status: "0x8DC000"
+    osd:
+      overlays:
+        - text: "PN:{picture_number} HEX:{biphase_hex} PHASE:{phase_id}"
+          x: 8
+          y: 32
+          scale: 1
+          fg_luma: white
+          bg_luma: black
+
+  - name: MultiBurst_B
+    type: progressive
+    source: "{bundled}/exr/720x576/MULTIBURST.exr"
+    duration_frames: 8
+    section_type: programme_area
+    noise:
+      noise_db: 43.0
+      noise_spread_db: 4.0
+      noise_seed: 6006
+    dropouts:
+      random:
+        scale: 8
+        seed: 6006
+      scratch:
+        scale: 8
+        seed: 6006
+    line_injections:
+      - type: laserdisc
+        codes:
+          - code_type: picture_number
+            start_value: 17
+          - code_type: programme_status
+            programme_status: "0x8DC000"
+    osd:
+      overlays:
+        - text: "PN:{picture_number} HEX:{biphase_hex} PHASE:{phase_id}"
+          x: 8
+          y: 32
+          scale: 1
+          fg_luma: white
+          bg_luma: black
+
+  - name: Tartan_B
+    type: progressive
+    source: "{bundled}/exr/720x576/TARTAN.exr"
+    duration_frames: 8
+    section_type: programme_area
+    noise:
+      noise_db: 43.0
+      noise_spread_db: 4.0
+      noise_seed: 6006
+    dropouts:
+      random:
+        scale: 8
+        seed: 6006
+      scratch:
+        scale: 8
+        seed: 6006
+    line_injections:
+      - type: laserdisc
+        codes:
+          - code_type: picture_number
+            start_value: 25
+          - code_type: programme_status
+            programme_status: "0x8DC000"
+    osd:
+      overlays:
+        - text: "PN:{picture_number} HEX:{biphase_hex} PHASE:{phase_id}"
+          x: 8
+          y: 32
+          scale: 1
+          fg_luma: white
+          bg_luma: black
+
+  - name: Ramps_B
+    type: progressive
+    source: "{bundled}/exr/720x576/Y_CB_CR_RAMPS.exr"
+    duration_frames: 8
+    section_type: programme_area
+    noise:
+      noise_db: 43.0
+      noise_spread_db: 4.0
+      noise_seed: 6006
+    dropouts:
+      random:
+        scale: 8
+        seed: 6006
+      scratch:
+        scale: 8
+        seed: 6006
+    line_injections:
+      - type: laserdisc
+        codes:
+          - code_type: picture_number
+            start_value: 33
+          - code_type: programme_status
+            programme_status: "0x8DC000"
+    osd:
+      overlays:
+        - text: "PN:{picture_number} HEX:{biphase_hex} PHASE:{phase_id}"
+          x: 8
+          y: 32
+          scale: 1
+          fg_luma: white
+          bg_luma: black
+
+disc_skips:
+  # Skip PNs 1–2: capture starts at PN 3.
+  - at_frame: 1
+    direction: forward
+    count: 2
+  # After PN 25, rewind and replay PNs 23–25 as bit-identical copies.
+  - at_frame: 25
+    direction: backward
+    count: 3
+  # Skip PNs 39–40: capture ends at PN 38.
+  - at_frame: 39
+    direction: forward
+    count: 2

@@ -1,0 +1,32 @@
+{
+  "_comment": [
+    "Declarative derivation rules for the generated project fixtures.",
+    "scripts/generate_test_projects.py reads this file and writes the derived",
+    "projects into the build tree; nothing here is committed as YAML.",
+    "Variants are processed in order and each variant's 'sources' globs are",
+    "resolved against the committed project tree first and then against the",
+    "already-generated variants, so a variant may build on an earlier one."
+  ],
+  "variants": [
+    {
+      "name": "stacking-clean",
+      "description": "Disc-simulation sources with the impairment blocks removed, for reference comparisons against the noisy captures.",
+      "sources": [
+        "stacking/pal_discsim_?.yaml",
+        "stacking/pal_m_discsim_?.yaml",
+        "stacking/ntsc_discsim_?.yaml"
+      ],
+      "name_suffix": "_clean",
+      "remove_section_blocks": ["noise", "dropouts", "osd"]
+    },
+    {
+      "name": "stacking-yc",
+      "description": "Y/C (separate luma/chroma) renderings of every stacking project, composite and clean alike.",
+      "sources": [
+        "stacking/*.yaml",
+        "stacking-clean/*.yaml"
+      ],
+      "signal_type": "yc"
+    }
+  ]
+}

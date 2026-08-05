@@ -56,7 +56,7 @@ std::optional<std::pair<std::string, std::string>> SplitRootToken(
 }  // namespace
 
 std::vector<std::string> BuiltinRootNames() {
-  return {"bundled", "user", "project"};
+  return {"bundled", "user", "project", "output"};
 }
 
 std::string DeriveMetadataPath(const std::string& video_path) {
@@ -130,6 +130,13 @@ AssetRootMap DefaultAssetRoots() {
                             .string();
   }
 
+  // Left unset when the environment does not name an output directory, so that
+  // "{output}" resolves alongside the project file (see ResolveAssetPath).
+  if (const std::optional<std::string> output_dir =
+          Env("VIDEOSYNTH_OUTPUT_DIR")) {
+    map.roots["output"] = *output_dir;
+  }
+
   return map;
 }
 
@@ -144,8 +151,13 @@ std::string ResolveAssetPath(const std::string& path, const AssetRootMap& roots,
     const std::string& name = token->first;
     const std::string& rest = token->second;
 
-    // "project" is always available and maps to the project directory.
-    if (name == "project") {
+    // "project" is always available and maps to the project directory, and so
+    // does "output" until something (the environment, --output-root, or a
+    // caller-supplied map) points it elsewhere. This keeps a project that
+    // writes to "{output}/..." self-contained by default while letting a batch
+    // runner redirect every project's output with one setting.
+    if (name == "project" ||
+        (name == "output" && roots.roots.find(name) == roots.roots.end())) {
       return rest.empty() ? project_dir
                           : ResolvePathAgainstBase(project_dir, rest);
     }
