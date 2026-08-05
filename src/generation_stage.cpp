@@ -1423,6 +1423,23 @@ bool GenerationStage::BuildFrameSchedule(
     ++section_frame_offset;
   }
 
+  // Record what follows each section so synthesis can start the next
+  // section's decode in the background while the current one still renders.
+  // Sections occupy contiguous runs of the schedule, so one entry per section
+  // describes the whole sequence.
+  next_section_start_index_.clear();
+  const Section* previous_run_section = nullptr;
+  for (std::size_t index = 0; index < out_schedule->size(); ++index) {
+    const Section* item_section = (*out_schedule)[index].section;
+    if (item_section == previous_run_section) {
+      continue;
+    }
+    if (previous_run_section != nullptr) {
+      next_section_start_index_[previous_run_section] = index;
+    }
+    previous_run_section = item_section;
+  }
+
   // Sequential enrichment pass: resolve the per-frame VBI payload, colour
   // context, and OSD token strings once, in schedule order, by advancing the
   // biphase generators over the whole schedule. With the payload attached,
@@ -1880,6 +1897,25 @@ bool GenerationStage::GenerateFrameBatch(
             "the schedule with BuildFrameSchedule for sections using "
             "laserdisc line injections or OSD overlays.");
         return false;
+      }
+    }
+
+    // At the first frame of a section run, ask the frame source to decode the
+    // next section's source in the background. Section-start decodes (EXR
+    // convert, whole-clip MKV decode) otherwise stall every worker at the
+    // boundary; the frame source decodes each source under its own lock, so
+    // the prefetch overlaps this section's synthesis instead of blocking it.
+    if (global_frame_index == 0U ||
+        schedule[global_frame_index - 1U].section != section) {
+      const auto next = next_section_start_index_.find(section);
+      if (next != next_section_start_index_.end() &&
+          next->second < schedule.size()) {
+        const FrameScheduleItem& next_item = schedule[next->second];
+        if (next_item.section != nullptr &&
+            next_item.section->source != section->source) {
+          progressive_source_.PrefetchSection(
+              *next_item.section, next_item.source_frame_index, video_standard);
+        }
       }
     }
 

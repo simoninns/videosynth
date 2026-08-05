@@ -11,6 +11,7 @@
 
 #include <atomic>
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <vector>
@@ -33,8 +34,8 @@ struct RunOptions {
   //   0  = auto (std::thread::hardware_concurrency; the CLI default),
   //   1  = pure sequential path (the library default),
   //   N  = N worker threads.
-  // Output is byte-identical regardless of this value. Projects with
-  // disc_skips always run the sequential path.
+  // Output is byte-identical regardless of this value, including for projects
+  // with disc_skips.
   int threads = 1;
   // Logical asset roots for resolving {name}/path source and output tokens.
   // The CLI populates this from DefaultAssetRoots() plus --asset-root
@@ -231,10 +232,25 @@ class IGenerationStage {
                         std::vector<std::string>* errors) = 0;
 };
 
-// Thread-safety: Implementations of IOutputStage are NOT thread-safe.
-// Callers must ensure sequential access. Concurrent calls to BeginWrite,
-// AppendSamples, FinalizeWrite, or Write from multiple threads will result in
-// undefined behavior.
+// One frame converted to output sample codes, ready to be written. Produced by
+// IOutputStage::EncodeFrame (any thread) and written by AppendEncodedFrame on
+// the thread that owns the write session.
+struct EncodedFrame {
+  // Composite samples, or luma samples when the output signal type is Y/C.
+  std::vector<std::int16_t> luma_codes;
+  // Chroma samples; empty unless the output signal type is Y/C.
+  std::vector<std::int16_t> chroma_codes;
+  // True when any sample of this frame mapped outside the legal code range.
+  // Accumulated into the session flag by AppendEncodedFrame.
+  bool has_nonstandard = false;
+};
+
+// Thread-safety: Implementations of IOutputStage are NOT thread-safe, with the
+// single exception of EncodeFrame: it is const, reads only the session state
+// resolved by BeginWrite, and may be called concurrently from any thread while
+// the session is open. Every other method (BeginWrite, AppendSamples,
+// AppendEncodedFrame, FinalizeWrite, AbortWrite, Write) must be called
+// sequentially from one thread.
 class IOutputStage {
  public:
   virtual ~IOutputStage() = default;
@@ -252,6 +268,27 @@ class IOutputStage {
   virtual bool AppendSamples(const std::vector<SampleFixed>& y_mv,
                              const std::vector<SampleFixed>& c_mv,
                              std::vector<std::string>* errors) = 0;
+
+  // Converts exactly one frame of samples to output codes without touching the
+  // write session. Const and thread-safe, so frame synthesis workers can encode
+  // concurrently while the session owner writes an earlier frame; the result is
+  // independent of the order frames are encoded in.
+  //
+  // Ownership: out_frame and errors are output parameters owned by the caller.
+  // out_frame's buffers are reused when they are already the right length, so
+  // callers may recycle EncodedFrame objects to avoid per-frame allocation.
+  virtual bool EncodeFrame(const std::vector<SampleFixed>& y_mv,
+                           const std::vector<SampleFixed>& c_mv,
+                           EncodedFrame* out_frame,
+                           std::vector<std::string>* errors) const = 0;
+
+  // Writes one previously encoded frame to the open session. Frames must be
+  // appended in output order.
+  //
+  // Ownership: errors is an output parameter. The caller owns the pointed-to
+  // vector and must ensure the pointer is valid (non-null).
+  virtual bool AppendEncodedFrame(const EncodedFrame& frame,
+                                  std::vector<std::string>* errors) = 0;
 
   // Ownership: errors is an output parameter. The caller owns the pointed-to
   // vector and must ensure the pointer is valid (non-null). The implementation

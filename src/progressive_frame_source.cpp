@@ -938,16 +938,30 @@ bool ProgressiveFrameSource::SupportsSection(const Section& section) const {
                                 EndsWithLowercase(source, ".mkv"));
 }
 
+ProgressiveFrameSource::~ProgressiveFrameSource() {
+  {
+    const std::lock_guard<std::mutex> lock(prefetch_mutex_);
+    prefetch_stopping_ = true;
+    prefetch_queue_.clear();
+  }
+  prefetch_cv_.notify_all();
+  if (prefetch_thread_.joinable()) {
+    prefetch_thread_.join();
+  }
+}
+
 void ProgressiveFrameSource::ClearCache() const {
   const std::lock_guard<std::mutex> lock(cache_mutex_);
   cached_sources_.clear();
 }
 
-ProgressiveFrameSource::DecodedSource* ProgressiveFrameSource::FindCachedSource(
-    const std::string& source, Standard standard) const {
+ProgressiveFrameSource::DecodedSourcePtr
+ProgressiveFrameSource::AcquireCacheEntry(const std::string& source,
+                                          Standard standard) const {
+  const std::lock_guard<std::mutex> lock(cache_mutex_);
   for (std::size_t i = 0; i < cached_sources_.size(); ++i) {
-    if (cached_sources_[i].source != source ||
-        cached_sources_[i].standard != standard) {
+    if (cached_sources_[i]->source != source ||
+        cached_sources_[i]->standard != standard) {
       continue;
     }
     if (i != 0) {
@@ -955,18 +969,74 @@ ProgressiveFrameSource::DecodedSource* ProgressiveFrameSource::FindCachedSource(
                   cached_sources_.begin() + static_cast<std::ptrdiff_t>(i),
                   cached_sources_.begin() + static_cast<std::ptrdiff_t>(i) + 1);
     }
-    return &cached_sources_.front();
+    return cached_sources_.front();
   }
-  return nullptr;
-}
 
-ProgressiveFrameSource::DecodedSource*
-ProgressiveFrameSource::InsertCachedSource(DecodedSource entry) const {
+  auto entry = std::make_shared<DecodedSource>();
+  entry->source = source;
+  entry->standard = standard;
+  // Evicting only drops the table's reference: a thread that is decoding from
+  // or reading the evicted entry keeps it alive through its own reference.
   if (cached_sources_.size() >= kMaxCachedSources) {
     cached_sources_.resize(kMaxCachedSources - 1U);
   }
-  cached_sources_.insert(cached_sources_.begin(), std::move(entry));
-  return &cached_sources_.front();
+  cached_sources_.insert(cached_sources_.begin(), entry);
+  return entry;
+}
+
+void ProgressiveFrameSource::PrefetchSection(const Section& section,
+                                             int frame_index,
+                                             Standard standard) const {
+  if (!SupportsSection(section)) {
+    return;
+  }
+
+  {
+    const std::lock_guard<std::mutex> lock(prefetch_mutex_);
+    if (prefetch_stopping_) {
+      return;
+    }
+    for (const PrefetchRequest& queued : prefetch_queue_) {
+      if (queued.section.source == section.source &&
+          queued.standard == standard) {
+        return;
+      }
+    }
+    prefetch_queue_.push_back(PrefetchRequest{section, frame_index, standard});
+    if (!prefetch_thread_.joinable()) {
+      prefetch_thread_ = std::thread([this]() { PrefetchLoop(); });
+    }
+  }
+  prefetch_cv_.notify_one();
+}
+
+void ProgressiveFrameSource::PrefetchLoop() const {
+  for (;;) {
+    PrefetchRequest request;
+    {
+      std::unique_lock<std::mutex> lock(prefetch_mutex_);
+      prefetch_cv_.wait(lock, [this]() {
+        return prefetch_stopping_ || !prefetch_queue_.empty();
+      });
+      if (prefetch_stopping_) {
+        return;
+      }
+      request = prefetch_queue_.front();
+      prefetch_queue_.erase(prefetch_queue_.begin());
+    }
+    DecodeSectionIntoCache(request.section, request.frame_index,
+                           request.standard);
+  }
+}
+
+void ProgressiveFrameSource::DecodeSectionIntoCache(const Section& section,
+                                                    int frame_index,
+                                                    Standard standard) const {
+  // A prefetch is an optimisation, so failures are dropped here; the frame
+  // request that follows repeats the decode and reports the error.
+  std::shared_ptr<const FrameSourceImage> image;
+  std::string ignored_error;
+  GenerateFrame(section, frame_index, standard, &image, &ignored_error);
 }
 
 bool ProgressiveFrameSource::ResolveFrameCount(const Section& section,
@@ -998,10 +1068,10 @@ bool ProgressiveFrameSource::ResolveFrameCount(const Section& section,
   }
 
   if (EndsWithLowercase(source, ".mkv")) {
-    const std::lock_guard<std::mutex> lock(cache_mutex_);
-    const DecodedSource* entry =
-        EnsureMkvSource(section, standard, 0, /*require_complete=*/true, error);
-    if (entry == nullptr) {
+    const DecodedSourcePtr entry = AcquireCacheEntry(section.source, standard);
+    const std::lock_guard<std::mutex> decode_lock(entry->decode_mutex);
+    if (!EnsureMkvDecoded(entry.get(), section, standard, 0,
+                          /*require_complete=*/true, error)) {
       return false;
     }
 
@@ -1017,51 +1087,40 @@ bool ProgressiveFrameSource::ResolveFrameCount(const Section& section,
   return false;
 }
 
-const ProgressiveFrameSource::DecodedSource*
-ProgressiveFrameSource::EnsureMkvSource(const Section& section,
-                                        Standard standard,
-                                        int min_required_frames,
-                                        bool require_complete,
-                                        std::string* error) const {
+// static
+bool ProgressiveFrameSource::EnsureMkvDecoded(
+    DecodedSource* entry, const Section& section, Standard standard,
+    int min_required_frames, bool require_complete, std::string* error) {
   if (min_required_frames < 0) {
     min_required_frames = 0;
   }
 
-  const DecodedSource* cached = FindCachedSource(section.source, standard);
-  if (cached != nullptr) {
-    const bool has_required_frames =
-        static_cast<int>(cached->frames.size()) >= min_required_frames;
-    // A complete decode satisfies every request; a partial one satisfies any
-    // request that fits inside the prefix already decoded.
-    if (cached->is_complete || (!require_complete && has_required_frames)) {
-      return cached;
-    }
+  const bool has_required_frames =
+      static_cast<int>(entry->frames.size()) >= min_required_frames;
+  // A complete decode satisfies every request; a partial one satisfies any
+  // request that fits inside the prefix already decoded.
+  if (!entry->frames.empty() &&
+      (entry->is_complete || (!require_complete && has_required_frames))) {
+    return true;
   }
 
-  DecodedSource entry;
-  entry.source = section.source;
-  entry.standard = standard;
-  entry.is_complete = require_complete;
-
+  std::vector<std::shared_ptr<const FrameSourceImage>> frames;
   std::string decode_error;
   const int decode_limit = require_complete ? 0 : min_required_frames;
-  if (!DecodeMkvFrames(section.source, standard, decode_limit, &entry.frames,
+  if (!DecodeMkvFrames(section.source, standard, decode_limit, &frames,
                        &decode_error)) {
     if (error != nullptr) {
       *error = decode_error.empty() ? "Failed to decode progressive MKV source."
                                     : decode_error;
     }
-    return nullptr;
+    return false;
   }
 
-  // Replace any stale partial decode of the same source rather than letting the
-  // two entries compete for the cache.
-  DecodedSource* existing = FindCachedSource(section.source, standard);
-  if (existing != nullptr) {
-    *existing = std::move(entry);
-    return existing;
-  }
-  return InsertCachedSource(std::move(entry));
+  // A fresh decode replaces any stale partial one: frames already handed out
+  // stay valid through the shared references their holders keep.
+  entry->frames = std::move(frames);
+  entry->is_complete = require_complete;
+  return true;
 }
 
 bool ProgressiveFrameSource::GenerateFrame(
@@ -1088,9 +1147,9 @@ bool ProgressiveFrameSource::GenerateFrame(
       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
 
   if (EndsWithLowercase(source, ".exr")) {
-    const std::lock_guard<std::mutex> lock(cache_mutex_);
-    const DecodedSource* cached = FindCachedSource(section.source, standard);
-    if (cached == nullptr) {
+    const DecodedSourcePtr entry = AcquireCacheEntry(section.source, standard);
+    const std::lock_guard<std::mutex> decode_lock(entry->decode_mutex);
+    if (entry->frames.empty()) {
       auto decoded = std::make_shared<FrameSourceImage>();
       std::string decode_error;
       if (!LoadExrFrame(section.source, standard, decoded.get(),
@@ -1102,16 +1161,11 @@ bool ProgressiveFrameSource::GenerateFrame(
         }
         return false;
       }
-
-      DecodedSource entry;
-      entry.source = section.source;
-      entry.standard = standard;
-      entry.is_complete = true;
-      entry.frames.push_back(std::move(decoded));
-      cached = InsertCachedSource(std::move(entry));
+      entry->is_complete = true;
+      entry->frames.push_back(std::move(decoded));
     }
 
-    *out_image = cached->frames.front();
+    *out_image = entry->frames.front();
     return true;
   }
 
@@ -1128,10 +1182,10 @@ bool ProgressiveFrameSource::GenerateFrame(
       required_frames = section.start_frame + section.duration_frames;
     }
 
-    const std::lock_guard<std::mutex> lock(cache_mutex_);
-    const DecodedSource* entry = EnsureMkvSource(
-        section, standard, required_frames, section.duration_frames_all, error);
-    if (entry == nullptr) {
+    const DecodedSourcePtr entry = AcquireCacheEntry(section.source, standard);
+    const std::lock_guard<std::mutex> decode_lock(entry->decode_mutex);
+    if (!EnsureMkvDecoded(entry.get(), section, standard, required_frames,
+                          section.duration_frames_all, error)) {
       return false;
     }
 

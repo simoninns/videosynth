@@ -12,6 +12,7 @@
 
 #include <cstddef>
 #include <memory>
+#include <unordered_map>
 
 #include "videosynth/biphase_injection_manager.h"
 #include "videosynth/interfaces.h"
@@ -146,6 +147,17 @@ class GenerationStage final : public IGenerationStage {
                                  SampleFixed* c_out);
 
   ILogger* logger_;
+  // Keyed by section: the schedule index where the next section's run starts.
+  // Populated by BuildFrameSchedule (single-threaded) and only read during
+  // generation, so workers may consult it without synchronisation. Drives the
+  // background source prefetch that overlaps the next section's decode with
+  // the current section's synthesis; empty for hand-built schedules, which
+  // simply do not prefetch.
+  //
+  // Storing an index rather than a section pointer keeps a stale map harmless:
+  // the section that gets prefetched is always read out of the schedule the
+  // caller passed in, never out of the map.
+  std::unordered_map<const Section*, std::size_t> next_section_start_index_;
   std::unique_ptr<SynthesisResourceCache> resource_cache_;
   std::unique_ptr<TemplateCache> template_cache_;
   ProgressiveFrameSource progressive_source_;

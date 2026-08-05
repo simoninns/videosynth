@@ -159,6 +159,39 @@ class MockOutput final : public IOutputStage {
     return true;
   }
 
+  // Encoding is the identity mapping here: the first code of each frame
+  // carries the disc-frame marker MockGeneration embeds, so the recorded
+  // output order is checked the same way on the encoded path.
+  bool EncodeFrame(const std::vector<SampleFixed>& y_mv,
+                   const std::vector<SampleFixed>&, EncodedFrame* out_frame,
+                   std::vector<std::string>* errors) const override {
+    out_frame->luma_codes.clear();
+    for (const SampleFixed sample : y_mv) {
+      out_frame->luma_codes.push_back(static_cast<std::int16_t>(sample));
+    }
+    out_frame->chroma_codes.clear();
+    out_frame->has_nonstandard = false;
+    errors->clear();
+    return true;
+  }
+
+  bool AppendEncodedFrame(const EncodedFrame& frame,
+                          std::vector<std::string>* errors) override {
+    called = true;
+    if (call_log != nullptr) {
+      call_log->push_back("append_samples");
+    }
+    if (!frame.luma_codes.empty()) {
+      appended_first_samples.push_back(
+          static_cast<SampleFixed>(frame.luma_codes[0]));
+    }
+    if (cancel_after_first_append != nullptr) {
+      cancel_after_first_append->RequestCancellation();
+    }
+    errors->clear();
+    return true;
+  }
+
   bool FinalizeWrite(std::vector<std::string>* errors) override {
     finalize_called = true;
     if (call_log != nullptr) {
@@ -586,6 +619,50 @@ TEST(PipelineTest, ObserverReportsFailedStatusOnValidationError) {
 // ---------------------------------------------------------------------------
 // Worker-pool synthesis path (RunOptions::threads > 1)
 // ---------------------------------------------------------------------------
+
+TEST(PipelineTest, ParallelDiscSkipEmissionMatchesSequentialOrder) {
+  // 12 disc frames; forward skip withholds 0-based [3,4]; backward skip at
+  // 0-based 8 replays [7,8]. Expected output order: 0,1,2,5,6,7,8,7,8,9,10,11.
+  Project project = MakeProject(12);
+  DiscSkip forward;
+  forward.at_frame = 4;
+  forward.direction = DiscSkipDirection::kForward;
+  forward.count = 2;
+  project.disc_skips.push_back(forward);
+  DiscSkip backward;
+  backward.at_frame = 9;
+  backward.direction = DiscSkipDirection::kBackward;
+  backward.count = 2;
+  project.disc_skips.push_back(backward);
+
+  auto RunWithThreads = [&project](int threads,
+                                   std::vector<SampleFixed>* out_samples) {
+    MockParser parser;
+    MockValidator validator;
+    validator.result.is_valid = true;
+    MockGeneration generation;
+    generation.embed_frame_id = true;
+    MockOutput output;
+    MockLogger logger;
+    VideoSynthPipeline pipeline(&parser, &validator, &generation, nullptr,
+                                nullptr, &output, &logger);
+    RunOptions options;
+    options.threads = threads;
+    const bool ok = pipeline.RunProject(project, options);
+    *out_samples = output.appended_first_samples;
+    return ok;
+  };
+
+  std::vector<SampleFixed> sequential_samples;
+  std::vector<SampleFixed> parallel_samples;
+  ASSERT_TRUE(RunWithThreads(1, &sequential_samples));
+  ASSERT_TRUE(RunWithThreads(4, &parallel_samples));
+
+  const std::vector<SampleFixed> expected = {0, 1, 2, 5, 6,  7,
+                                             8, 7, 8, 9, 10, 11};
+  EXPECT_EQ(sequential_samples, expected);
+  EXPECT_EQ(parallel_samples, expected);
+}
 
 TEST(PipelineTest,
      ParallelSynthesisProducesOrderedFramesIdenticalToSequential) {

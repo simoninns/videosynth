@@ -540,8 +540,9 @@ bool OutputStage::BeginWrite(const Project& project,
   quantization_ = quantization;
   output_encoding_ = output_encoding;
   is_yc_output_ = is_yc;
-  luma_codes_.clear();
-  chroma_codes_.clear();
+  append_scratch_.luma_codes.clear();
+  append_scratch_.chroma_codes.clear();
+  append_scratch_.has_nonstandard = false;
   write_session_open_ = true;
 
   return true;
@@ -572,90 +573,154 @@ bool OutputStage::AppendSamples(const std::vector<SampleFixed>& y_mv,
 
   for (std::size_t frame_start = 0U; frame_start < y_mv.size();
        frame_start += input_frame_span_) {
-    if (!WriteEncodedFrame(y_mv, c_mv, frame_start)) {
-      errors->push_back("Failed while writing output video samples.");
+    EncodeFrameInto(y_mv, c_mv, frame_start, &append_scratch_);
+    if (!AppendEncodedFrame(append_scratch_, errors)) {
       return false;
     }
   }
 
-  if (!video_stream_) {
-    errors->push_back("Failed while writing output video samples.");
-    return false;
-  }
-
-  written_samples_ += (y_mv.size() / input_frame_span_) * output_frame_span_;
   return true;
 }
 
-bool OutputStage::WriteEncodedFrame(const std::vector<SampleFixed>& y_mv,
-                                    const std::vector<SampleFixed>& c_mv,
-                                    std::size_t frame_start) {
+bool OutputStage::EncodeFrame(const std::vector<SampleFixed>& y_mv,
+                              const std::vector<SampleFixed>& c_mv,
+                              EncodedFrame* out_frame,
+                              std::vector<std::string>* errors) const {
+  if (errors == nullptr) {
+    return false;
+  }
+  if (out_frame == nullptr) {
+    errors->push_back("Encoded frame output pointer must not be null.");
+    return false;
+  }
+  if (!IsSessionOpen()) {
+    errors->push_back("Output session is not open.");
+    return false;
+  }
+  if (y_mv.size() != c_mv.size()) {
+    errors->push_back(
+        "Internal error: Y and C sample vectors must be same size.");
+    return false;
+  }
+  if (input_frame_span_ == 0U || y_mv.size() != input_frame_span_) {
+    errors->push_back(
+        "Encoded frame requires exactly one frame of generated samples.");
+    return false;
+  }
+
+  EncodeFrameInto(y_mv, c_mv, 0U, out_frame);
+  return true;
+}
+
+void OutputStage::EncodeFrameInto(const std::vector<SampleFixed>& y_mv,
+                                  const std::vector<SampleFixed>& c_mv,
+                                  std::size_t frame_start,
+                                  EncodedFrame* out_frame) const {
+  // Resampling scratch for the RAW_S16 presets, whose output frame span
+  // differs from the 4fsc input span. Thread-local so concurrent encoders each
+  // keep their own buffers while steady-state encoding still allocates nothing.
+  thread_local std::vector<SampleFixed> composite_scratch;
+  thread_local std::vector<SampleFixed> resampled_luma;
+  thread_local std::vector<SampleFixed> resampled_chroma;
+
   const bool needs_resample = output_frame_span_ != input_frame_span_;
+  out_frame->has_nonstandard = false;
 
   if (is_yc_output_) {
     const SampleFixed* luma = y_mv.data() + frame_start;
     const SampleFixed* chroma = c_mv.data() + frame_start;
     if (needs_resample) {
       ResampleFrameInto(luma, input_frame_span_, output_frame_span_,
-                        &resampled_luma_);
+                        &resampled_luma);
       ResampleFrameInto(chroma, input_frame_span_, output_frame_span_,
-                        &resampled_chroma_);
-      luma = resampled_luma_.data();
-      chroma = resampled_chroma_.data();
+                        &resampled_chroma);
+      luma = resampled_luma.data();
+      chroma = resampled_chroma.data();
     }
 
-    luma_codes_.resize(output_frame_span_);
-    chroma_codes_.resize(output_frame_span_);
+    out_frame->luma_codes.resize(output_frame_span_);
+    out_frame->chroma_codes.resize(output_frame_span_);
     for (std::size_t i = 0; i < output_frame_span_; ++i) {
-      luma_codes_[i] = EncodeCompositeSample(output_encoding_, luma[i],
-                                             quantization_, &has_nonstandard_);
-      chroma_codes_[i] =
+      out_frame->luma_codes[i] =
+          EncodeCompositeSample(output_encoding_, luma[i], quantization_,
+                                &out_frame->has_nonstandard);
+      out_frame->chroma_codes[i] =
           EncodeChromaSample(output_encoding_, chroma[i], quantization_);
     }
-
-    video_stream_.write(reinterpret_cast<const char*>(luma_codes_.data()),
-                        static_cast<std::streamsize>(luma_codes_.size() *
-                                                     sizeof(std::int16_t)));
-    chroma_stream_.write(reinterpret_cast<const char*>(chroma_codes_.data()),
-                         static_cast<std::streamsize>(chroma_codes_.size() *
-                                                      sizeof(std::int16_t)));
-    return static_cast<bool>(video_stream_) &&
-           static_cast<bool>(chroma_stream_);
+    return;
   }
+
+  out_frame->chroma_codes.clear();
 
   const SampleFixed* composite = nullptr;
   if (needs_resample) {
-    composite_scratch_.resize(input_frame_span_);
+    composite_scratch.resize(input_frame_span_);
     for (std::size_t i = 0; i < input_frame_span_; ++i) {
-      composite_scratch_[i] = y_mv[frame_start + i] + c_mv[frame_start + i];
+      composite_scratch[i] = y_mv[frame_start + i] + c_mv[frame_start + i];
     }
-    ResampleFrameInto(composite_scratch_.data(), input_frame_span_,
-                      output_frame_span_, &resampled_luma_);
-    composite = resampled_luma_.data();
+    ResampleFrameInto(composite_scratch.data(), input_frame_span_,
+                      output_frame_span_, &resampled_luma);
+    composite = resampled_luma.data();
   }
 
-  luma_codes_.resize(output_frame_span_);
+  out_frame->luma_codes.resize(output_frame_span_);
   if (composite != nullptr) {
     for (std::size_t i = 0; i < output_frame_span_; ++i) {
-      luma_codes_[i] = EncodeCompositeSample(output_encoding_, composite[i],
-                                             quantization_, &has_nonstandard_);
+      out_frame->luma_codes[i] =
+          EncodeCompositeSample(output_encoding_, composite[i], quantization_,
+                                &out_frame->has_nonstandard);
     }
-  } else {
-    // Common path: the output span matches the 4fsc input span, so the
-    // composite sum is formed straight into the code buffer.
-    const SampleFixed* luma = y_mv.data() + frame_start;
-    const SampleFixed* chroma = c_mv.data() + frame_start;
-    for (std::size_t i = 0; i < output_frame_span_; ++i) {
-      luma_codes_[i] =
-          EncodeCompositeSample(output_encoding_, luma[i] + chroma[i],
-                                quantization_, &has_nonstandard_);
-    }
+    return;
   }
 
-  video_stream_.write(
-      reinterpret_cast<const char*>(luma_codes_.data()),
-      static_cast<std::streamsize>(luma_codes_.size() * sizeof(std::int16_t)));
-  return static_cast<bool>(video_stream_);
+  // Common path: the output span matches the 4fsc input span, so the composite
+  // sum is formed straight into the code buffer.
+  const SampleFixed* luma = y_mv.data() + frame_start;
+  const SampleFixed* chroma = c_mv.data() + frame_start;
+  for (std::size_t i = 0; i < output_frame_span_; ++i) {
+    out_frame->luma_codes[i] =
+        EncodeCompositeSample(output_encoding_, luma[i] + chroma[i],
+                              quantization_, &out_frame->has_nonstandard);
+  }
+}
+
+bool OutputStage::AppendEncodedFrame(const EncodedFrame& frame,
+                                     std::vector<std::string>* errors) {
+  if (errors == nullptr) {
+    return false;
+  }
+
+  if (!IsSessionOpen()) {
+    errors->push_back("Output session is not open.");
+    return false;
+  }
+
+  if (frame.luma_codes.size() != output_frame_span_ ||
+      (is_yc_output_ && frame.chroma_codes.size() != output_frame_span_)) {
+    errors->push_back(
+        "Encoded frame does not match the session's output frame span.");
+    return false;
+  }
+
+  has_nonstandard_ = has_nonstandard_ || frame.has_nonstandard;
+
+  video_stream_.write(reinterpret_cast<const char*>(frame.luma_codes.data()),
+                      static_cast<std::streamsize>(frame.luma_codes.size() *
+                                                   sizeof(std::int16_t)));
+  if (is_yc_output_) {
+    chroma_stream_.write(
+        reinterpret_cast<const char*>(frame.chroma_codes.data()),
+        static_cast<std::streamsize>(frame.chroma_codes.size() *
+                                     sizeof(std::int16_t)));
+  }
+
+  if (!video_stream_ || (is_yc_output_ && !chroma_stream_)) {
+    errors->push_back("Failed while writing output video samples.");
+    return false;
+  }
+
+  written_samples_ += output_frame_span_;
+  return true;
 }
 
 bool OutputStage::FinalizeWrite(std::vector<std::string>* errors) {

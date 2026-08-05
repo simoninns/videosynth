@@ -270,6 +270,58 @@ TEST(FrameSourceTest, DeliveredImageOutlivesTheCache) {
   EXPECT_EQ(frame->PixelAt(frame->width / 2, frame->height / 2).y, centre_luma);
 }
 
+TEST(FrameSourceTest, PrefetchedSourceIsServedFromTheCache) {
+  ProgressiveFrameSource frame_source;
+  std::string error;
+
+  Section section;
+  section.type = "progressive";
+  section.source = (std::filesystem::path(VIDEOSYNTH_SOURCE_DIR) /
+                    "videosynth-assets/assets/exr/720x576/75_BARS.exr")
+                       .string();
+
+  frame_source.PrefetchSection(section, 0, Standard::kPal);
+
+  // The request is served from the cache once the prefetch lands, and from a
+  // decode of its own if it arrives first — either way it returns the same
+  // image the next request sees, which is what makes the prefetch invisible.
+  std::shared_ptr<const FrameSourceImage> first;
+  std::shared_ptr<const FrameSourceImage> second;
+  ASSERT_TRUE(
+      frame_source.GenerateFrame(section, 0, Standard::kPal, &first, &error))
+      << error;
+  ASSERT_TRUE(
+      frame_source.GenerateFrame(section, 0, Standard::kPal, &second, &error));
+  EXPECT_EQ(first.get(), second.get());
+  EXPECT_EQ(first->width, 720);
+  EXPECT_EQ(first->height, 576);
+}
+
+TEST(FrameSourceTest, PrefetchOfAnUnreadableSourceLeavesTheRequestPathIntact) {
+  ProgressiveFrameSource frame_source;
+  std::string error;
+
+  Section missing;
+  missing.type = "progressive";
+  missing.source = (std::filesystem::path(VIDEOSYNTH_SOURCE_DIR) /
+                    "videosynth-assets/assets/exr/720x576/DOES_NOT_EXIST.exr")
+                       .string();
+
+  // A failed prefetch is dropped silently; the real request still reports the
+  // failure itself.
+  frame_source.PrefetchSection(missing, 0, Standard::kPal);
+  std::shared_ptr<const FrameSourceImage> image;
+  EXPECT_FALSE(
+      frame_source.GenerateFrame(missing, 0, Standard::kPal, &image, &error));
+  EXPECT_FALSE(error.empty());
+
+  // An unsupported section is not queued at all.
+  Section unsupported;
+  unsupported.type = "progressive";
+  unsupported.source = "not-a-media-file.txt";
+  frame_source.PrefetchSection(unsupported, 0, Standard::kPal);
+}
+
 TEST(FrameSourceTest, TwoSourcesStayCachedAcrossAlternatingRequests) {
   ProgressiveFrameSource frame_source;
   std::string error;

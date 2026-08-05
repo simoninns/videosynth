@@ -41,6 +41,51 @@ struct DiscFrameAction {
   std::vector<std::size_t> replay_disc_frames;
 };
 
+// One unit of work in a disc-skip project: synthesise one disc frame, then
+// emit it and/or commit its dropout sidecar rows. The item list is exactly the
+// sequence a sequential run processes — every disc frame in order, each
+// followed by the backward-skip replays that re-emit earlier frames — so the
+// emitted samples, the sidecar rows and the audio stream stay identical
+// however the items are distributed across worker threads.
+struct DiscWorkItem {
+  // Disc frame to synthesise (the replayed frame for a replay item).
+  std::size_t disc_frame = 0;
+  // False for forward-skipped frames: generated to advance disc state, but
+  // withheld from the output stream.
+  bool emit = true;
+  // False for backward-skip replays: their sidecar rows were committed when
+  // the frame was first processed, so the recomputed rows are discarded.
+  bool commit_sidecar = true;
+  // Number of disc frames completed once this item is consumed, or 0 when
+  // this item does not complete one (progress is reported per disc frame).
+  std::size_t completed_disc_frames = 0;
+};
+
+// Expands a skip plan into the work item sequence described by DiscWorkItem.
+std::vector<DiscWorkItem> BuildDiscWorkItems(
+    const std::vector<DiscFrameAction>& plan) {
+  std::vector<DiscWorkItem> items;
+  items.reserve(plan.size());
+  for (std::size_t disc_frame = 0U; disc_frame < plan.size(); ++disc_frame) {
+    const DiscFrameAction& action = plan[disc_frame];
+    DiscWorkItem primary;
+    primary.disc_frame = disc_frame;
+    primary.emit = action.write_to_output;
+    primary.commit_sidecar = true;
+    items.push_back(primary);
+
+    for (const std::size_t src : action.replay_disc_frames) {
+      DiscWorkItem replay;
+      replay.disc_frame = src;
+      replay.emit = true;
+      replay.commit_sidecar = false;
+      items.push_back(replay);
+    }
+    items.back().completed_disc_frames = disc_frame + 1U;
+  }
+  return items;
+}
+
 // Builds one DiscFrameAction per disc frame from the skip declarations.
 // disc_skips uses 1-based at_frame; this function converts to 0-based indices.
 std::vector<DiscFrameAction> ComputeDiscSkipPlan(
@@ -358,124 +403,160 @@ bool VideoSynthPipeline::RunProject(const Project& project,
     return true;
   };
 
-  // Resolve the frame synthesis worker count. Disc-skip projects always use
-  // the sequential per-frame loop: skips replay cached frames and the plan
-  // logic is inherently order-dependent.
+  // Reports a pool run that stopped before consuming every item: cancellation
+  // takes precedence, otherwise the job or consumer errors are logged and the
+  // output session is closed.
+  auto FinishFailedPoolRun = [&](const std::vector<std::string>& pool_errors,
+                                 bool consumer_failed) {
+    if (IsCancelled()) {
+      return CancelRun();
+    }
+    for (const std::string& error : pool_errors) {
+      logger_->Error(error);
+    }
+    if (!consumer_failed && pool_errors.empty()) {
+      logger_->Error("Frame synthesis pool stopped without completing.");
+    }
+    CloseOutputSessionOnFailure();
+    return FinishRun(PipelineRunStatus::kFailed);
+  };
+
+  // Resolve the frame synthesis worker count. Both the skip-aware and the
+  // plain frame paths use the pool when more than one thread is requested:
+  // every frame is a deterministic function of (project, schedule, frame
+  // index), so synthesis order never affects the emitted bytes.
   const unsigned synthesis_threads =
       FrameSynthesisPool::ResolveThreadCount(options.threads);
-  const bool parallel_synthesis = !has_skips && synthesis_threads > 1U;
-  if (has_skips && synthesis_threads > 1U) {
-    logger_->Info(
-        "Disc skips present; using the sequential generation path regardless "
-        "of the requested thread count.");
-  }
+  const bool parallel_synthesis = synthesis_threads > 1U;
 
   if (has_skips) {
     // -------------------------------------------------------------------
-    // Skip-aware per-frame loop.
+    // Skip-aware work item path.
     //
-    // Every disc frame is generated once (advancing burst-phase state).
-    // Forward-skipped frames are withheld from output; backward-skip copies
-    // are bit-identical re-emissions of cached fully-processed frames.
+    // Every disc frame is synthesised once (advancing disc state); forward-
+    // skipped frames are withheld from output, and backward-skip copies are
+    // regenerated re-emissions of earlier disc frames. Items carry everything
+    // that distinguishes them, so they can be synthesised in any order and
+    // are always consumed in item order.
     // -------------------------------------------------------------------
+    const std::vector<DiscWorkItem> items = BuildDiscWorkItems(skip_plan);
+
     logger_->Info("Generating " + std::to_string(total_disc_frames) +
                   " disc frame(s) with skip plan → " +
-                  std::to_string(total_output_frames) + " output frame(s).");
+                  std::to_string(total_output_frames) + " output frame(s)" +
+                  (parallel_synthesis
+                       ? " using " + std::to_string(synthesis_threads) +
+                             " synthesis threads."
+                       : "."));
 
     const std::size_t progress_interval =
         ComputeProgressInterval(total_disc_frames);
     std::size_t next_progress_mark = progress_interval;
 
-    // Whole-frame buffers reused across the loop. Backward-skip replays are
-    // regenerated into the same buffers: clean-frame synthesis goes through
-    // the generation stage's frame template cache, and noise and dropout
-    // application are deterministic per (project, schedule, frame), so a
-    // regenerated frame is byte-identical to its first emission without a
-    // second whole-frame cache in the pipeline.
-    std::vector<SampleFixed> y_mv;
-    std::vector<SampleFixed> c_mv;
-
-    // Synthesises one disc frame into y_mv/c_mv with noise applied (dropout
-    // handling differs between first emission and replay, so it stays with
-    // the callers). Logs and returns false on failure.
-    auto SynthesizeDiscFrame = [&](std::size_t disc_frame) -> bool {
-      generation_errors.clear();
-      if (!generation_->GenerateFrameBatch(project, schedule, disc_frame, 1U,
-                                           &y_mv, &c_mv, &generation_errors)) {
-        for (const std::string& error : generation_errors) {
-          logger_->Error(error);
-        }
-        return false;
+    // Synthesises one work item: the clean frame (through the generation
+    // stage's frame template cache), noise, dropouts, and — for items that are
+    // emitted — the output encoding. Every step is a pure function of the disc
+    // frame index, which is what makes a regenerated replay byte-identical to
+    // the frame's first emission and lets the pool process items out of order.
+    auto SynthesizeItem = [&](std::size_t item_index, SynthesizedFrame* out) {
+      const DiscWorkItem& item = items[item_index];
+      std::vector<std::string> job_errors;
+      if (!generation_->GenerateFrameBatch(project, schedule, item.disc_frame,
+                                           1U, &out->y_mv, &out->c_mv,
+                                           &job_errors)) {
+        out->ok = false;
+        out->errors = job_errors;
+        return;
       }
       if (noise_injection_ != nullptr) {
-        noise_injection_->InjectNoise(project, schedule, disc_frame, 1U, &y_mv,
-                                      &c_mv);
+        noise_injection_->InjectNoise(project, schedule, item.disc_frame, 1U,
+                                      &out->y_mv, &out->c_mv);
+      }
+      if (dropout_injection_ != nullptr) {
+        dropout_injection_->ComputeFrameDropouts(
+            project, schedule, item.disc_frame, &out->y_mv, &out->c_mv, 0U,
+            &out->dropout_rows);
+      }
+      if (item.emit && !output_->EncodeFrame(out->y_mv, out->c_mv,
+                                             &out->encoded, &job_errors)) {
+        out->ok = false;
+        out->errors = job_errors;
+      }
+    };
+
+    bool consumer_failed = false;
+    auto ConsumeItem = [&](std::size_t item_index,
+                           SynthesizedFrame& frame) -> bool {
+      const DiscWorkItem& item = items[item_index];
+      if (item.commit_sidecar && dropout_injection_ != nullptr) {
+        // A replay's rows were committed when the frame was first processed,
+        // so only the primary item of each disc frame commits.
+        dropout_injection_->CommitSidecarRows(frame.dropout_rows);
+      }
+
+      if (item.emit) {
+        output_errors.clear();
+        if (!output_->AppendEncodedFrame(frame.encoded, &output_errors)) {
+          for (const std::string& error : output_errors) {
+            logger_->Error(error);
+          }
+          consumer_failed = true;
+          return false;
+        }
+        if (audio_enabled && !EmitAudioFrame()) {
+          consumer_failed = true;
+          return false;
+        }
+      }
+
+      if (item.completed_disc_frames != 0U) {
+        NotifyProgress(item.completed_disc_frames);
+        if (item.completed_disc_frames >= next_progress_mark ||
+            item.completed_disc_frames == total_disc_frames) {
+          logger_->Info("Pipeline progress: " +
+                        std::to_string(item.completed_disc_frames) + "/" +
+                        std::to_string(total_disc_frames) +
+                        " disc frame(s) processed.");
+          next_progress_mark += progress_interval;
+        }
       }
       return true;
     };
 
-    // Appends the current y_mv/c_mv as one output frame, with its audio.
-    // Logs and returns false on failure.
-    auto EmitOutputFrame = [&]() -> bool {
-      output_errors.clear();
-      if (!output_->AppendSamples(y_mv, c_mv, &output_errors)) {
-        for (const std::string& error : output_errors) {
-          logger_->Error(error);
+    if (parallel_synthesis) {
+      FrameSynthesisPool pool(synthesis_threads);
+      std::vector<std::string> pool_errors;
+      if (!pool.RunOrdered(items.size(), SynthesizeItem, ConsumeItem,
+                           cancellation, &pool_errors)) {
+        return FinishFailedPoolRun(pool_errors, consumer_failed);
+      }
+    } else {
+      // One frame's buffers reused across every item: ConsumeItem never moves
+      // out of the frame it is handed, so the next item synthesises into the
+      // same storage.
+      SynthesizedFrame frame;
+      for (std::size_t item_index = 0U; item_index < items.size();
+           ++item_index) {
+        if (IsCancelled()) {
+          return CancelRun();
         }
-        return false;
-      }
-      return !audio_enabled || EmitAudioFrame();
-    };
 
-    for (std::size_t disc_frame = 0U; disc_frame < total_disc_frames;
-         ++disc_frame) {
-      if (IsCancelled()) {
-        return CancelRun();
-      }
-
-      if (!SynthesizeDiscFrame(disc_frame)) {
-        CloseOutputSessionOnFailure();
-        return FinishRun(PipelineRunStatus::kFailed);
-      }
-
-      if (dropout_injection_ != nullptr) {
-        dropout_injection_->InjectDropouts(project, schedule, disc_frame, 1U,
-                                           &y_mv, &c_mv);
-      }
-
-      const DiscFrameAction& action = skip_plan[disc_frame];
-
-      if (action.write_to_output && !EmitOutputFrame()) {
-        CloseOutputSessionOnFailure();
-        return FinishRun(PipelineRunStatus::kFailed);
-      }
-
-      for (const std::size_t src : action.replay_disc_frames) {
-        if (!SynthesizeDiscFrame(src)) {
+        frame.ok = true;
+        frame.errors.clear();
+        frame.dropout_rows.clear();
+        SynthesizeItem(item_index, &frame);
+        if (!frame.ok) {
+          for (const std::string& error : frame.errors) {
+            logger_->Error(error);
+          }
           CloseOutputSessionOnFailure();
           return FinishRun(PipelineRunStatus::kFailed);
         }
-        if (dropout_injection_ != nullptr) {
-          // The replayed frame's sidecar rows were committed when the frame
-          // was first processed, so the recomputed rows are discarded; only
-          // the deterministic signal push is applied again.
-          std::vector<DropoutSidecarRow> replay_rows;
-          dropout_injection_->ComputeFrameDropouts(
-              project, schedule, src, &y_mv, &c_mv, 0U, &replay_rows);
-        }
-        if (!EmitOutputFrame()) {
+
+        if (!ConsumeItem(item_index, frame)) {
           CloseOutputSessionOnFailure();
           return FinishRun(PipelineRunStatus::kFailed);
         }
-      }
-
-      NotifyProgress(disc_frame + 1U);
-      if (disc_frame + 1U >= next_progress_mark ||
-          disc_frame + 1U == total_disc_frames) {
-        logger_->Info("Pipeline progress: " + std::to_string(disc_frame + 1U) +
-                      "/" + std::to_string(total_disc_frames) +
-                      " disc frame(s) processed.");
-        next_progress_mark += progress_interval;
       }
     }
   } else if (parallel_synthesis) {
@@ -513,14 +594,22 @@ bool VideoSynthPipeline::RunProject(const Project& project,
             project, schedule, disc_frame, &out_frame->y_mv, &out_frame->c_mv,
             0U, &out_frame->dropout_rows);
       }
+      // Output encoding is a pure function of the frame's samples and the
+      // session state resolved in BeginWrite, so it runs here rather than on
+      // the single consumer thread.
+      if (!output_->EncodeFrame(out_frame->y_mv, out_frame->c_mv,
+                                &out_frame->encoded, &job_errors)) {
+        out_frame->ok = false;
+        out_frame->errors = job_errors;
+      }
     };
 
     std::size_t next_progress_mark = progress_interval;
     bool consumer_failed = false;
     auto ConsumeFrame = [&](std::size_t disc_frame,
-                            SynthesizedFrame&& frame) -> bool {
+                            SynthesizedFrame& frame) -> bool {
       output_errors.clear();
-      if (!output_->AppendSamples(frame.y_mv, frame.c_mv, &output_errors)) {
+      if (!output_->AppendEncodedFrame(frame.encoded, &output_errors)) {
         for (const std::string& error : output_errors) {
           logger_->Error(error);
         }
@@ -552,17 +641,7 @@ bool VideoSynthPipeline::RunProject(const Project& project,
     std::vector<std::string> pool_errors;
     if (!pool.RunOrdered(total_disc_frames, SynthesizeFrameJob, ConsumeFrame,
                          cancellation, &pool_errors)) {
-      if (IsCancelled()) {
-        return CancelRun();
-      }
-      for (const std::string& error : pool_errors) {
-        logger_->Error(error);
-      }
-      if (!consumer_failed && pool_errors.empty()) {
-        logger_->Error("Frame synthesis pool stopped without completing.");
-      }
-      CloseOutputSessionOnFailure();
-      return FinishRun(PipelineRunStatus::kFailed);
+      return FinishFailedPoolRun(pool_errors, consumer_failed);
     }
   } else {
     // -------------------------------------------------------------------

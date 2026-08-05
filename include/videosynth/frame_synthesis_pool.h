@@ -29,12 +29,52 @@ namespace videosynth {
 struct SynthesizedFrame {
   std::vector<SampleFixed> y_mv;
   std::vector<SampleFixed> c_mv;
+  // Output sample codes for this frame, encoded on the worker so the consumer
+  // thread only issues the write. Empty when the job does not encode.
+  EncodedFrame encoded;
   // Dropout sidecar rows produced inside the frame job; committed in frame
   // order at the reassembly point so the sidecar stays byte-identical to a
   // sequential run.
   std::vector<DropoutSidecarRow> dropout_rows;
   bool ok = true;
   std::vector<std::string> errors;
+};
+
+// Free list that recycles SynthesizedFrame buffers between the pool workers
+// and the consumer.
+//
+// Each in-flight frame owns two whole-frame fixed-point sample buffers
+// (~11.35 MB for PAL) plus its encoded output codes; without recycling, every
+// frame allocates and page-faults that memory afresh and releases it again.
+// Acquire resets only the logical fields, so a recycled frame arrives with its
+// buffers already sized and resident, and the synthesis path overwrites every
+// sample it uses.
+//
+// The free list is capped at the reassembly window size, so peak memory is
+// bounded by the same window that bounds in-flight frames.
+//
+// Thread-safety: all methods ARE thread-safe (guarded by an internal mutex).
+class FrameBufferPool {
+ public:
+  // capacity: maximum number of recycled frames retained; clamped to at
+  //   least 1. Frames released beyond it are freed.
+  explicit FrameBufferPool(std::size_t capacity);
+
+  // Returns a frame with ok = true and its per-frame result fields cleared.
+  // Sample and code buffers keep their previous capacity.
+  SynthesizedFrame Acquire();
+
+  // Returns a consumed frame to the free list, or frees it when the list is
+  // full.
+  void Release(SynthesizedFrame&& frame);
+
+  // Frees every recycled frame. Used when a run ends or is aborted.
+  void Clear();
+
+ private:
+  std::mutex mutex_;
+  std::vector<SynthesizedFrame> free_frames_;
+  const std::size_t capacity_;
 };
 
 // Bounded reassembly buffer that restores frame order between out-of-order
@@ -113,9 +153,12 @@ class FrameSynthesisPool {
       std::function<void(std::size_t frame_index, SynthesizedFrame* out_frame)>;
 
   // Consumes one frame in order. Returning false stops the run (treated as an
-  // error the consumer has already reported through its own channels).
+  // error the consumer has already reported through its own channels). The
+  // frame stays owned by the pool, which recycles its buffers once the
+  // consumer returns, so consumers must copy out anything they need to keep
+  // rather than moving from it.
   using FrameConsumer =
-      std::function<bool(std::size_t frame_index, SynthesizedFrame&& frame)>;
+      std::function<bool(std::size_t frame_index, SynthesizedFrame& frame)>;
 
   // Maps the RunOptions::threads convention to an effective worker count:
   // 0 → std::thread::hardware_concurrency() (at least 1), otherwise the

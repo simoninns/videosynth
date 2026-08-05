@@ -1,0 +1,38 @@
+# PAL disc-skip generation benchmark
+#
+# The same 250-frame still source as pal_still.yaml with a forward and a
+# backward disc skip, so the run takes the skip-aware work item path: every
+# disc frame is synthesised, 10 are withheld from the output and 10 are
+# regenerated as backward-skip replays (250 output frames from 250 disc frames
+# plus 10 replays).
+#
+# Run through scripts/benchmark.sh; do not add sections without updating the
+# recorded baselines, since the frame count is part of the frames/second
+# figure.
+
+project:
+  name: PalSkipBenchmark
+  version: "1.0"
+  description: PAL disc-skip generation benchmark — 250 disc frames with skips
+
+cvbs_presets:
+  video_standard_preset: PAL
+  sample_encoding_preset: CVBS_U10_4FSC
+  signal_state_preset: STANDARD_TBC_LOCKED
+
+output:
+  video_path: "{output}/videosynth_benchmark_pal_skip.cvbs"
+
+disc_skips:
+  - at_frame: 60
+    direction: forward
+    count: 10
+  - at_frame: 180
+    direction: backward
+    count: 10
+
+sections:
+  - name: PalSkipTestcard
+    type: progressive
+    source: "{bundled}/exr/720x576/TESTCARD-F.exr"
+    duration_frames: 250

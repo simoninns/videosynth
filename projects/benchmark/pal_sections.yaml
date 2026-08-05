@@ -1,0 +1,36 @@
+# PAL section-boundary benchmark
+#
+# A long still section followed by a clip section, the pattern long-form disc
+# projects are built from. The clip's decode is only requested when the first
+# frame of the second section is synthesised, so without a background prefetch
+# every worker stalls at the boundary while ffmpeg decodes the whole clip.
+#
+# Frame counts are explicit rather than 'all' on purpose: 'all' resolves the
+# clip length during schedule building, which decodes the source before
+# generation starts and hides the boundary this project exists to measure.
+#
+# Impairments, audio and line injections are omitted so the difference against
+# pal_still.yaml and pal_mkv.yaml is attributable to source handling alone.
+
+project:
+  name: PalSectionsBenchmark
+  version: "1.0"
+  description: PAL section-boundary benchmark — still section followed by a clip
+
+cvbs_presets:
+  video_standard_preset: PAL
+  sample_encoding_preset: CVBS_U10_4FSC
+  signal_state_preset: STANDARD_TBC_LOCKED
+
+output:
+  video_path: "{output}/videosynth_benchmark_pal_sections.cvbs"
+
+sections:
+  - name: PalSectionsStill
+    type: progressive
+    source: "{bundled}/exr/720x576/75_BARS.exr"
+    duration_frames: 600
+  - name: PalSectionsMovingZone
+    type: progressive
+    source: "{bundled}/mkv/720x576/MOVING_ZONE_2H.mkv"
+    duration_frames: 127

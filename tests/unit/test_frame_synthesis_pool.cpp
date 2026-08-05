@@ -3,7 +3,8 @@
  * Module:      frame_synthesis_pool_tests
  * Purpose:     Unit tests for the ordered frame reassembly buffer and the
  *              worker-pool frame synthesis executor: ordering, bounded
- *              capacity, cancellation draining, and error propagation.
+ *              capacity, buffer recycling, cancellation draining, and error
+ *              propagation.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Simon Inns
@@ -17,6 +18,7 @@
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include "videosynth/frame_synthesis_pool.h"
@@ -133,7 +135,7 @@ TEST(FrameSynthesisPoolTest, ConsumerReceivesEveryFrameInOrder) {
   };
 
   std::vector<std::size_t> consumed;
-  auto consumer = [&](std::size_t frame_index, SynthesizedFrame&& frame) {
+  auto consumer = [&](std::size_t frame_index, SynthesizedFrame& frame) {
     EXPECT_EQ(frame.y_mv[0], static_cast<SampleFixed>(frame_index));
     consumed.push_back(frame_index);
     return true;
@@ -183,7 +185,7 @@ TEST(FrameSynthesisPoolTest, InFlightFramesStayWithinBoundedCapacity) {
     *out_frame = MakeMarkerFrame(frame_index);
   };
 
-  auto consumer = [&](std::size_t, SynthesizedFrame&&) {
+  auto consumer = [&](std::size_t, SynthesizedFrame&) {
     in_flight.fetch_sub(1);
     return true;
   };
@@ -204,7 +206,7 @@ TEST(FrameSynthesisPoolTest, CancellationStopsRunAndDrainsWorkers) {
   };
 
   std::size_t consumed = 0U;
-  auto consumer = [&](std::size_t, SynthesizedFrame&&) {
+  auto consumer = [&](std::size_t, SynthesizedFrame&) {
     ++consumed;
     if (consumed == 3U) {
       cancellation.RequestCancellation();
@@ -235,7 +237,7 @@ TEST(FrameSynthesisPoolTest, JobErrorStopsRunAndReportsMessages) {
   };
 
   std::size_t consumed = 0U;
-  auto consumer = [&](std::size_t, SynthesizedFrame&&) {
+  auto consumer = [&](std::size_t, SynthesizedFrame&) {
     ++consumed;
     return true;
   };
@@ -259,7 +261,7 @@ TEST(FrameSynthesisPoolTest, WorkerExceptionPropagatesAsPipelineError) {
     *out_frame = MakeMarkerFrame(frame_index);
   };
 
-  auto consumer = [](std::size_t, SynthesizedFrame&&) { return true; };
+  auto consumer = [](std::size_t, SynthesizedFrame&) { return true; };
 
   std::vector<std::string> errors;
   EXPECT_FALSE(pool.RunOrdered(kFrameCount, job, consumer, nullptr, &errors));
@@ -276,7 +278,7 @@ TEST(FrameSynthesisPoolTest, ConsumerFailureStopsRun) {
   };
 
   std::size_t consumed = 0U;
-  auto consumer = [&](std::size_t, SynthesizedFrame&&) {
+  auto consumer = [&](std::size_t, SynthesizedFrame&) {
     ++consumed;
     return consumed < 4U;
   };
@@ -286,10 +288,77 @@ TEST(FrameSynthesisPoolTest, ConsumerFailureStopsRun) {
   EXPECT_EQ(consumed, 4U);
 }
 
+// ---------------------------------------------------------------------------
+// FrameBufferPool
+// ---------------------------------------------------------------------------
+
+TEST(FrameBufferPoolTest, AcquireReusesReleasedBufferStorage) {
+  FrameBufferPool pool(2U);
+
+  SynthesizedFrame first = pool.Acquire();
+  first.y_mv.assign(1024U, 7);
+  first.c_mv.assign(1024U, 9);
+  const SampleFixed* released_y = first.y_mv.data();
+  pool.Release(std::move(first));
+
+  const SynthesizedFrame second = pool.Acquire();
+  EXPECT_EQ(second.y_mv.data(), released_y)
+      << "A recycled frame should hand back the same sample storage.";
+  EXPECT_EQ(second.y_mv.size(), 1024U);
+}
+
+TEST(FrameBufferPoolTest, AcquireResetsResultFieldsButNotBuffers) {
+  FrameBufferPool pool(2U);
+
+  SynthesizedFrame used = pool.Acquire();
+  used.y_mv.assign(8U, 3);
+  used.encoded.luma_codes.assign(8U, 5);
+  used.dropout_rows.push_back(DropoutSidecarRow{});
+  used.errors.push_back("previous failure");
+  used.ok = false;
+  pool.Release(std::move(used));
+
+  const SynthesizedFrame recycled = pool.Acquire();
+  EXPECT_TRUE(recycled.ok);
+  EXPECT_TRUE(recycled.errors.empty());
+  EXPECT_TRUE(recycled.dropout_rows.empty());
+  // Sample and code buffers keep their storage: the synthesis and encode steps
+  // overwrite every element they use, and keeping the allocation is the point.
+  EXPECT_EQ(recycled.y_mv.size(), 8U);
+  EXPECT_EQ(recycled.encoded.luma_codes.size(), 8U);
+}
+
+TEST(FrameBufferPoolTest, FreeListIsCappedAtItsCapacity) {
+  FrameBufferPool pool(1U);
+
+  SynthesizedFrame first = pool.Acquire();
+  first.y_mv.assign(16U, 1);
+  SynthesizedFrame second = pool.Acquire();
+  second.y_mv.assign(16U, 2);
+  pool.Release(std::move(first));
+  pool.Release(std::move(second));  // Beyond capacity: freed, not retained.
+
+  EXPECT_EQ(pool.Acquire().y_mv.size(), 16U);
+  // The capacity-1 free list is now empty, so the next acquire is a fresh
+  // frame rather than a recycled one.
+  EXPECT_TRUE(pool.Acquire().y_mv.empty());
+}
+
+TEST(FrameBufferPoolTest, ClearDropsRecycledFrames) {
+  FrameBufferPool pool(4U);
+
+  SynthesizedFrame frame = pool.Acquire();
+  frame.y_mv.assign(32U, 4);
+  pool.Release(std::move(frame));
+  pool.Clear();
+
+  EXPECT_TRUE(pool.Acquire().y_mv.empty());
+}
+
 TEST(FrameSynthesisPoolTest, ZeroFramesSucceedsImmediately) {
   FrameSynthesisPool pool(4U);
   auto job = [](std::size_t, SynthesizedFrame*) { FAIL() << "no jobs"; };
-  auto consumer = [](std::size_t, SynthesizedFrame&&) { return true; };
+  auto consumer = [](std::size_t, SynthesizedFrame&) { return true; };
   std::vector<std::string> errors;
   EXPECT_TRUE(pool.RunOrdered(0U, job, consumer, nullptr, &errors));
 }

@@ -100,6 +100,17 @@ class MockOutput final : public IOutputStage {
     errors->clear();
     return true;
   }
+  bool EncodeFrame(const std::vector<SampleFixed>&,
+                   const std::vector<SampleFixed>&, EncodedFrame*,
+                   std::vector<std::string>* errors) const override {
+    errors->clear();
+    return true;
+  }
+  bool AppendEncodedFrame(const EncodedFrame&,
+                          std::vector<std::string>* errors) override {
+    errors->clear();
+    return true;
+  }
   bool FinalizeWrite(std::vector<std::string>* errors) override {
     errors->clear();
     return true;

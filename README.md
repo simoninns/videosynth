@@ -292,8 +292,9 @@ To run a single project by hand, invoke the binary directly; without
 
 [scripts/benchmark.sh](scripts/benchmark.sh) times the fixed-length projects in
 [projects/benchmark/](projects/benchmark/) — PAL still, PAL still with noise,
-PAL moving source (MKV) and NTSC still — once per thread configuration, and
-prints a frames/second table. Frame counts come from the CLI's own log, and all
+PAL moving source (MKV), a PAL still-then-clip section boundary, a PAL run with
+disc skips, and NTSC still — once per thread configuration, and prints a
+frames/second table. Frame counts come from the CLI's own log, and all
 media is written under `build/project-output/benchmark/` via `{output}`.
 
 ```bash

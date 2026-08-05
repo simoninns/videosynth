@@ -18,6 +18,8 @@
 #include <fstream>
 #include <iterator>
 #include <string>
+#include <thread>
+#include <utility>
 #include <vector>
 
 #include "videosynth/fixed_point.h"
@@ -222,6 +224,149 @@ TEST(OutputStageTest, WritesCompositeSamplesUsingPalQuantizationProfile) {
 
   std::filesystem::remove(video_path);
   std::filesystem::remove(metadata_path);
+}
+
+// Encoding on a worker thread and writing on the session owner must produce
+// exactly the bytes AppendSamples would have written, and must be usable from
+// several threads at once — that is the contract the frame synthesis pool
+// relies on.
+TEST(OutputStageTest, WorkerEncodedFramesMatchAppendSamplesByteForByte) {
+  const std::size_t frame_span =
+      static_cast<std::size_t>(SamplesPerFrame4fsc(Standard::kPal));
+  constexpr std::size_t kFrameCount = 3U;
+
+  // Frames differ from each other and include out-of-range excursions so the
+  // nonstandard-value flag is exercised too.
+  std::vector<std::vector<SampleFixed>> luma_frames;
+  std::vector<std::vector<SampleFixed>> chroma_frames;
+  for (std::size_t frame = 0; frame < kFrameCount; ++frame) {
+    std::vector<SampleFixed> y(frame_span, MillivoltsToSampleFixed(0.0));
+    std::vector<SampleFixed> c(frame_span, MillivoltsToSampleFixed(0.0));
+    y[0] = MillivoltsToSampleFixed(100.0 * static_cast<double>(frame + 1U));
+    y[1] = MillivoltsToSampleFixed(700.0);
+    y[2] = MillivoltsToSampleFixed(-300.0);
+    c[3] = MillivoltsToSampleFixed(50.0 * static_cast<double>(frame + 1U));
+    luma_frames.push_back(std::move(y));
+    chroma_frames.push_back(std::move(c));
+  }
+
+  const std::filesystem::path directory =
+      std::filesystem::temp_directory_path() / "videosynth_output_encode";
+  std::filesystem::create_directories(directory);
+
+  auto RunSession = [&](const std::string& tag, bool encode_on_threads) {
+    Project project = MakeProject(Standard::kPal);
+    project.output.video_path =
+        (directory / ("encode_" + tag + ".cvbs")).string();
+    project.output.metadata_path =
+        (directory / ("encode_" + tag + ".meta")).string();
+
+    OutputStage output;
+    std::vector<std::string> errors;
+    EXPECT_TRUE(output.BeginWrite(project, kFrameCount, &errors)) << tag;
+
+    if (encode_on_threads) {
+      // Encode every frame concurrently, then write them in order.
+      std::vector<EncodedFrame> encoded(kFrameCount);
+      std::vector<bool> encoded_ok(kFrameCount, false);
+      std::vector<std::thread> workers;
+      for (std::size_t frame = 0; frame < kFrameCount; ++frame) {
+        workers.emplace_back([&, frame]() {
+          std::vector<std::string> job_errors;
+          encoded_ok[frame] =
+              output.EncodeFrame(luma_frames[frame], chroma_frames[frame],
+                                 &encoded[frame], &job_errors);
+        });
+      }
+      for (std::thread& worker : workers) {
+        worker.join();
+      }
+      for (std::size_t frame = 0; frame < kFrameCount; ++frame) {
+        EXPECT_TRUE(encoded_ok[frame]) << tag << " frame " << frame;
+        errors.clear();
+        EXPECT_TRUE(output.AppendEncodedFrame(encoded[frame], &errors)) << tag;
+      }
+    } else {
+      for (std::size_t frame = 0; frame < kFrameCount; ++frame) {
+        errors.clear();
+        EXPECT_TRUE(output.AppendSamples(luma_frames[frame],
+                                         chroma_frames[frame], &errors))
+            << tag;
+      }
+    }
+
+    errors.clear();
+    EXPECT_TRUE(output.FinalizeWrite(&errors)) << tag;
+    return project.output.video_path;
+  };
+
+  const std::string sequential_path = RunSession("sequential", false);
+  const std::string threaded_path = RunSession("threaded", true);
+
+  const std::vector<std::int16_t> sequential_samples =
+      ReadSamples(sequential_path, kFrameCount * frame_span);
+  const std::vector<std::int16_t> threaded_samples =
+      ReadSamples(threaded_path, kFrameCount * frame_span);
+  EXPECT_EQ(sequential_samples, threaded_samples);
+
+  // The nonstandard-value flag travels with the encoded frame and reaches the
+  // session, so the metadata matches too.
+  CvbsMetadata sequential_metadata;
+  CvbsMetadata threaded_metadata;
+  ASSERT_TRUE(ReadCvbsMetadata(
+      std::filesystem::path(sequential_path).replace_extension(".meta"),
+      &sequential_metadata));
+  ASSERT_TRUE(ReadCvbsMetadata(
+      std::filesystem::path(threaded_path).replace_extension(".meta"),
+      &threaded_metadata));
+  EXPECT_EQ(sequential_metadata.has_nonstandard_values,
+            threaded_metadata.has_nonstandard_values);
+
+  std::error_code ec;
+  std::filesystem::remove_all(directory, ec);
+}
+
+TEST(OutputStageTest, EncodeFrameRejectsBuffersThatAreNotOneWholeFrame) {
+  const std::size_t frame_span =
+      static_cast<std::size_t>(SamplesPerFrame4fsc(Standard::kPal));
+
+  Project project = MakeProject(Standard::kPal);
+  const std::filesystem::path directory =
+      std::filesystem::temp_directory_path() / "videosynth_output_encode_guard";
+  std::filesystem::create_directories(directory);
+  project.output.video_path = (directory / "guard.cvbs").string();
+  project.output.metadata_path = (directory / "guard.meta").string();
+
+  OutputStage output;
+  EncodedFrame encoded;
+  std::vector<std::string> errors;
+
+  // Not open yet.
+  EXPECT_FALSE(output.EncodeFrame(std::vector<SampleFixed>(frame_span, 0),
+                                  std::vector<SampleFixed>(frame_span, 0),
+                                  &encoded, &errors));
+  EXPECT_FALSE(errors.empty());
+
+  errors.clear();
+  ASSERT_TRUE(output.BeginWrite(project, 1U, &errors));
+
+  // Two frames' worth of samples is not one frame.
+  errors.clear();
+  EXPECT_FALSE(output.EncodeFrame(std::vector<SampleFixed>(frame_span * 2U, 0),
+                                  std::vector<SampleFixed>(frame_span * 2U, 0),
+                                  &encoded, &errors));
+  EXPECT_FALSE(errors.empty());
+
+  // An encoded frame of the wrong length is refused by the writer.
+  errors.clear();
+  EncodedFrame short_frame;
+  short_frame.luma_codes.assign(frame_span - 1U, 0);
+  EXPECT_FALSE(output.AppendEncodedFrame(short_frame, &errors));
+  EXPECT_FALSE(errors.empty());
+
+  output.AbortWrite();
+  std::error_code ec;
+  std::filesystem::remove_all(directory, ec);
 }
 
 TEST(OutputStageTest, WritesCompositeSamplesUsingTpg21EncodingPreset) {

@@ -983,6 +983,58 @@ tables in the HLD and `README.md` document `--template-cache-mb`.
 After Phases 2–5 the consumer thread and serial section work dominate again;
 this phase attacks them. All tasks are bit-exact.
 
+Two new benchmark projects cover paths the original four cannot reach:
+[pal_sections](../../projects/benchmark/pal_sections.yaml) (a still section
+followed by a clip section, so a section-boundary decode sits on the critical
+path) and [pal_skip](../../projects/benchmark/pal_skip.yaml) (250 disc frames
+with a forward and a backward skip).
+
+*Measured, phase-wide* (16-core machine, Release `-O3`, warm output tree,
+frames/second). The "before" column is the Phase 5 tip rebuilt from `HEAD` and
+run against the same projects in the same session. This machine turned out to
+have intermittent multi-second stalls — an individual run of a 1 s project
+sometimes takes 4 s — so each figure is the best observed across every
+`--repeat 3`/`--repeat 5` batch that binary ran today rather than the best of a
+single batch; noise can only make a run slower, so the best observation is the
+one least contaminated by it:
+
+| Project | 1 thread before → after | auto (16) before → after |
+| --- | --- | --- |
+| pal_still | 219.30 → 219.11 (1.00×) | 287.36 → 341.06 (1.19×) |
+| pal_still_noise | 58.25 → 57.31 (0.98×) | 219.11 → 261.51 (1.19×) |
+| pal_mkv | 69.99 → 68.89 (0.98×) | 138.95 → 152.19 (1.10×) |
+| pal_sections | 154.71 → 172.60 (1.12×) | 219.57 → 295.89 (1.35×) |
+| pal_skip | 257.20 → 262.05 (1.02×) | 256.67 → 336.47 (1.31×) |
+| ntsc_still | 338.75 → 337.38 (1.00×) | 405.84 → 569.48 (1.40×) |
+
+The single-thread column is flat by design on five of the six projects: this
+phase moves work between threads and stops re-allocating buffers, it does not
+remove arithmetic. `pal_sections` is the exception, because a background decode
+helps a single synthesis thread as much as sixteen. `pal_skip`'s before-column
+figures are equal at both thread counts because a skip project was pinned to
+one worker whatever `--threads` asked for.
+
+Heap traffic per PAL frame (valgrind memcheck, 40- and 80-frame runs of a PAL
+still project with one VITS line at `--threads 4`, difference divided by
+frames; 40 frames is well past the 8-frame reassembly window, so the difference
+is steady state rather than window fill):
+
+| | allocations/frame | bytes allocated/frame |
+| --- | --- | --- |
+| before Task 6.2 | 15.0 | 12.77 MB |
+| after Task 6.2 | 12.0 | 1,084 bytes |
+
+Peak RSS of the 16-thread `pal_still` run falls from 1,023 MB to 468 MB with
+the same change.
+
+All 1,611 tests pass (10 new: frame-buffer recycling, the encode/append split
+and its guards, skip emission order across thread counts, disc-skip
+byte-identity across thread counts, and the source prefetch), and all 271
+recorded `general` and `stacking` artefacts reproduce byte for byte against the
+Phase 5 baseline — with the CLI's default `auto` thread count, so the 228
+`stacking` artefacts also cover disc-skip projects running on the worker pool
+for the first time.
+
 ### Task 6.1 — Move output encoding onto workers
 
 `OutputStage::AppendSamples` currently converts fixed-point samples to
@@ -993,6 +1045,28 @@ only sequences writes and sidecar commits.
 *Acceptance criteria*
 - Consumer thread work per frame reduces to `write` + sidecar bookkeeping.
 - Determinism harness passes; output hashes unchanged.
+
+*Measured*: `IOutputStage` gained `EncodeFrame` — a **const** function of the
+session state resolved in `BeginWrite` (quantisation profile, sample encoding,
+signal type, frame spans) that converts one frame into an `EncodedFrame` the
+caller owns — and `AppendEncodedFrame`, which writes one. Its resampling
+scratch (the RAW_S16 presets only) is thread-local, so nothing is shared
+between concurrent encoders, and the per-frame `has_nonstandard` flag travels
+in the `EncodedFrame` instead of being accumulated into the session by the
+encoder. Pool workers now encode their own frame; the consumer thread issues
+one `write` per file per frame plus the sidecar commit and audio emission that
+must stay in frame order. `AppendSamples` keeps its contract for the batched
+single-threaded path by encoding into a reused member buffer and calling
+`AppendEncodedFrame` itself.
+
+Throughput at `auto` threads is the phase-wide table above (1.10–1.40×,
+together with Task 6.2); single-threaded numbers are unchanged, as expected for
+work that only moved between threads. Output hashes unchanged across `general`
+and `stacking`, and the determinism suite still passes.
+`WorkerEncodedFramesMatchAppendSamplesByteForByte` pins the contract directly:
+three frames encoded concurrently on their own threads and then written in
+order produce the same bytes — and the same `has_nonstandard` metadata — as the
+same frames pushed through `AppendSamples`.
 
 ### Task 6.2 — Pool frame buffers
 
@@ -1006,6 +1080,23 @@ page-faulting.
   profile).
 - Peak RSS on the 16-thread PAL benchmark does not increase.
 
+*Measured*: `FrameBufferPool` — a mutex-guarded free list capped at the
+reassembly window plus one (`2 × threads + 1`) — hands each worker a recycled
+`SynthesizedFrame` and takes it back once the consumer has written it. Acquire
+resets only the result fields (`ok`, `errors`, `dropout_rows`); the sample and
+code buffers keep their storage, and the synthesis path overwrites every sample
+it uses, which is what makes recycling invisible in the output. The consumer
+callback signature changed from `SynthesizedFrame&&` to `SynthesizedFrame&` to
+say plainly that the pool still owns the frame.
+
+Steady-state heap traffic per PAL frame falls from 12.77 MB to 1,084 bytes (the
+table above): the two 5.68 MB sample buffers and the 1.42 MB code buffer are no
+longer allocated per frame. Peak RSS of the 16-thread `pal_still` run falls
+from 1,023 MB to 468 MB — the criterion asked only that it not increase, and
+it more than halves, because a fresh 5.68 MB buffer per frame both allocates
+and page-faults where a recycled one is already resident. Output hashes
+unchanged.
+
 ### Task 6.3 — Overlap source decode with synthesis
 
 Section-start decode (EXR convert, MKV full decode) stalls all workers.
@@ -1017,6 +1108,51 @@ renders.
   benchmark trace.
 - Output hashes unchanged.
 
+*Measured*: two changes, one enabling the other.
+
+- `ProgressiveFrameSource` now decodes **outside** the cache table lock. The
+  table lock covers only the lookup; each entry carries its own lock, held
+  across that entry's decode, and entries are `shared_ptr`-owned so an evicted
+  entry stays valid for whoever is still decoding from or reading it. Two
+  requests for the same source still share one decode — the previous
+  behaviour — but a decode of one source no longer blocks requests for
+  another. Without this, prefetching the next section would have stalled every
+  worker on the current one. Cache depth goes from two entries to three
+  (current, previous, prefetched).
+- `PrefetchSection` queues a source onto a lazily started background thread.
+  `BuildFrameSchedule` records, per section, the source the next section will
+  read and the first frame index it will request; `GenerateFrameBatch` fires
+  one prefetch at the first frame of each section run. Failures are dropped —
+  the real request repeats the decode and reports the error — so the prefetch
+  changes when work happens, never what is produced.
+
+The four existing benchmark projects have one section each and cannot show
+this, so [pal_sections](../../projects/benchmark/pal_sections.yaml) was added:
+a 600-frame still section followed by a 127-frame clip section. Frame counts
+are explicit rather than `duration_frames: all` on purpose — `all` resolves
+the clip length during schedule building, which decodes the source before
+generation starts and hides the very boundary being measured (the first
+attempt at this project used `all` and measured no difference at all, for
+exactly that reason).
+
+Measured on that project, same build, with the prefetch trigger disabled and
+enabled (best of three):
+
+| | 1 thread | auto (16) |
+| --- | --- | --- |
+| prefetch off | 152.12 f/s (4.779 s) | 257.53 f/s (2.823 s) |
+| prefetch on | 170.02 f/s (4.276 s) | 295.89 f/s (2.457 s) |
+
+The ~0.4–0.5 s recovered in both configurations is the clip decode, which now
+runs alongside the still section instead of stalling the run at the boundary.
+Output hashes unchanged across `general` and `stacking`.
+
+*Caveat*: the gain needs a preceding section long enough to cover the decode.
+A boundary between two short clip sections still pays for whatever part of the
+decode the prefetch could not get ahead of, and a project whose very first
+section is a clip pays for that decode in full — there is nothing yet to
+overlap it with.
+
 ### Task 6.4 — Re-enable parallel synthesis for disc-skip projects
 
 The presence of any disc skip forces the whole run single-threaded
@@ -1027,3 +1163,41 @@ per-frame patches, skip projects can use the pool with ordered reassembly.
 - Skip projects run multi-threaded with byte-identical output vs
   `--threads 1`.
 - Measured wall-clock improvement on `projects/stacking` skip projects.
+
+*Measured*: the skip path is now expressed as a list of **work items**
+(`BuildDiscWorkItems`), one per unit of work a sequential run performs: every
+disc frame in order, each followed by the backward-skip replays that re-emit
+earlier frames. An item records the disc frame to synthesise, whether it is
+emitted (false for forward-skipped frames), whether it commits the frame's
+dropout sidecar rows (false for replays, whose rows were committed on first
+processing), and whether consuming it completes a disc frame for progress
+reporting. Because each item is a pure function of its disc frame index, items
+are synthesised on the same worker pool every other project uses and consumed
+in item order — which is what keeps the samples, the sidecar row order and the
+frame-locked audio identical to a single-threaded run. The sequential path is
+the same item list walked in order, so there is one description of the skip
+semantics rather than two.
+
+Byte-identity: all 228 `stacking` artefacts — every skip and disc-simulation
+project — reproduce byte for byte, and those runs now go through the pool
+(the runner uses the CLI's default `auto` threads). A new functional test,
+`DiscSkipRunsAreByteIdenticalAcrossThreadCounts`, adds a forward and a backward
+skip to the deterministic-output fixture (laserdisc codes, VITS, seeded noise,
+seeded random and scratch dropouts, two audio pairs) and requires the composite
+stream, metadata, both WAV tracks and the dropout sidecar to match between
+`--threads 1` and `--threads 4`.
+
+Throughput on [pal_skip](../../projects/benchmark/pal_skip.yaml) — 250 disc
+frames, 10 withheld by a forward skip and 10 regenerated by a backward skip
+(best of three):
+
+| Build | 1 thread | auto (16) |
+| --- | --- | --- |
+| Phase 5 tip | 257.20 f/s | 256.67 f/s (one worker; the pin) |
+| this change | 262.05 f/s | 336.47 f/s |
+
+That is 1.31× at `auto`, and it puts skip projects on the same ceiling as
+everything else: `pal_still` measures 341.06 f/s at `auto` on the same build,
+so a skip project is now bounded by the consumer thread rather than by being
+denied the pool. The Phase 5 row also shows the pin directly — its `auto` run
+reports one worker and lands within 0.2 % of its single-threaded figure.

@@ -19,6 +19,42 @@
 
 namespace videosynth {
 
+FrameBufferPool::FrameBufferPool(std::size_t capacity)
+    : capacity_(std::max<std::size_t>(1U, capacity)) {
+  free_frames_.reserve(capacity_);
+}
+
+SynthesizedFrame FrameBufferPool::Acquire() {
+  SynthesizedFrame frame;
+  {
+    const std::lock_guard<std::mutex> lock(mutex_);
+    if (!free_frames_.empty()) {
+      frame = std::move(free_frames_.back());
+      free_frames_.pop_back();
+    }
+  }
+  // Only the result fields are reset: the sample and code buffers are fully
+  // rewritten by the synthesis and encode steps, and keeping their storage is
+  // the point of the free list.
+  frame.dropout_rows.clear();
+  frame.errors.clear();
+  frame.ok = true;
+  return frame;
+}
+
+void FrameBufferPool::Release(SynthesizedFrame&& frame) {
+  const std::lock_guard<std::mutex> lock(mutex_);
+  if (free_frames_.size() >= capacity_) {
+    return;
+  }
+  free_frames_.push_back(std::move(frame));
+}
+
+void FrameBufferPool::Clear() {
+  const std::lock_guard<std::mutex> lock(mutex_);
+  free_frames_.clear();
+}
+
 OrderedFrameReassemblyBuffer::OrderedFrameReassemblyBuffer(
     std::size_t total_frames, std::size_t max_in_flight)
     : total_frames_(total_frames),
@@ -108,8 +144,15 @@ bool FrameSynthesisPool::RunOrdered(std::size_t frame_count,
 
   // Bound in-flight frames to twice the worker count so peak memory scales
   // with the pool size, not the project length.
-  OrderedFrameReassemblyBuffer buffer(
-      frame_count, static_cast<std::size_t>(thread_count_) * 2U);
+  const std::size_t max_in_flight =
+      static_cast<std::size_t>(thread_count_) * 2U;
+  OrderedFrameReassemblyBuffer buffer(frame_count, max_in_flight);
+
+  // Recycle frame buffers through the same window: the consumer returns each
+  // frame after use and the next worker to claim a job reuses its storage, so
+  // steady-state synthesis allocates no whole-frame buffers. One extra slot
+  // covers the frame the consumer is holding.
+  FrameBufferPool buffers(max_in_flight + 1U);
 
   std::atomic<std::size_t> next_claim{0U};
   auto IsCancelled = [cancellation]() {
@@ -130,7 +173,7 @@ bool FrameSynthesisPool::RunOrdered(std::size_t frame_count,
         return;
       }
 
-      SynthesizedFrame frame;
+      SynthesizedFrame frame = buffers.Acquire();
       try {
         job(frame_index, &frame);
       } catch (const std::exception& exception) {
@@ -181,17 +224,21 @@ bool FrameSynthesisPool::RunOrdered(std::size_t frame_count,
       break;
     }
 
-    if (!consumer(frame_index, std::move(frame))) {
+    if (!consumer(frame_index, frame)) {
       run_ok = false;
       break;
     }
     ++frames_consumed;
+    // The consumer is done with the frame, so its buffers go back for reuse by
+    // the next claimed job.
+    buffers.Release(std::move(frame));
   }
 
   buffer.Abort();
   for (std::thread& worker : workers) {
     worker.join();
   }
+  buffers.Clear();
 
   return run_ok && frames_consumed == frame_count;
 }

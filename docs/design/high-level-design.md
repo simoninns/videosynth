@@ -376,6 +376,30 @@ Hence **P = 4 frames for PAL and PAL-M, and P = 2 frames for NTSC**; a still sec
 - **Sizing**: entries are admitted until a configurable byte capacity (default 512 MiB, ~45 PAL templates; CLI `--template-cache-mb`, 0 disables) and never evicted; once the cache is full, further misses synthesise directly into the output buffer. Sources with more distinct frames than the cache can hold therefore degrade to the uncached path instead of thrashing.
 - **Determinism**: output is byte-identical with the cache enabled, disabled, or capped at any size, and across thread counts — a cache hit is a copy of data produced by the same `SynthesiseTemplate` function the direct path runs.
 
+### **Decoded Source Cache and Prefetch**
+
+Decoded source images are held by `ProgressiveFrameSource` in a small
+most-recently-used table (at most three sources: the section being rendered,
+the previous section a straddling worker may still be finishing, and a section
+decoded ahead of time). Images are immutable and delivered as
+`shared_ptr<const FrameSourceImage>`, so delivery costs a reference count and a
+frame stays valid after its entry is evicted.
+
+The table lock is held only for the lookup; each entry carries its own lock,
+held across that entry's decode. Two requests for the same source therefore
+share one decode, while decoding one source never blocks requests for another.
+
+That separation is what makes **prefetching** useful. `BuildFrameSchedule`
+records, for each section, the source the next section will read; when
+synthesis reaches the first frame of a section run, it asks the frame source to
+decode the next section's source on a background thread
+(`ProgressiveFrameSource::PrefetchSection`). A section-start decode — an EXR
+convert, or a whole-clip `ffmpeg` decode — otherwise stalls every worker at the
+boundary. Prefetch failures are ignored: the frame request that follows repeats
+the decode and reports the error, so the prefetch changes only when work
+happens, never what is produced. Hand-built schedules carry no such mapping and
+simply do not prefetch.
+
 ### **OSD (On-Screen Display) Sub-system**
 
 The `OsdRenderer` class writes monochrome bitmap-font text overlays into the luma sample buffer of an active video frame.  It is invoked as the final step of per-frame generation, after active video content and biphase injection, so that burn-in tokens have access to the current-frame biphase context.
@@ -1071,7 +1095,7 @@ The `disc_skips:` block simulates laserdisc player tracking failures in the gene
 
 **Forward skip** (`direction: forward`): Disc frames at 1-based positions `[at_frame, at_frame + count − 1]` are generated (advancing burst-phase state) but withheld from the output stream. The total output frame count is reduced by `count`.
 
-**Backward skip** (`direction: backward`): After disc frame `at_frame` is written to output, the `count` frames ending at `at_frame` (i.e. 1-based `[at_frame − count + 1, at_frame]`) are re-emitted as bit-identical copies in the same order. Copies are pulled from a pipeline frame cache of fully-processed (generate + noise + dropout) samples, so noise pattern, dropout events, and all signal content are identical to the originals. The total output frame count is increased by `count`.
+**Backward skip** (`direction: backward`): After disc frame `at_frame` is written to output, the `count` frames ending at `at_frame` (i.e. 1-based `[at_frame − count + 1, at_frame]`) are re-emitted as bit-identical copies in the same order. Copies are regenerated rather than cached: synthesis (through the frame template cache), noise and dropout application are all deterministic per `(project, schedule, frame)`, so the replayed frame's noise pattern, dropout events and signal content are identical to the original. The total output frame count is increased by `count`.
 
 **Phase-correctness invariant**: any two projects that share the same disc master will produce frames with identical burst phase and colour-frame index for a given picture number, even if each project has a different `disc_skips` pattern. This is the requirement for correct multi-source disc stacking in `decode-orc`.
 
@@ -1843,7 +1867,8 @@ Current implementation note:
 - VITS line injections are applied in the generation-stage runtime path on validated target lines.
 - Laserdisc biphase injection is applied in the generation-stage runtime path via BiphaseInjectionManager (24-bit biphase and 40-bit FM for NTSC).
 - Runtime synthesis/application for VITC and custom per-line content remains deferred.
-- When `disc_skips` is non-empty the pipeline switches to a **skip-aware per-frame loop** (batch size 1) instead of the normal batched loop. A `ComputeDiscSkipPlan` pre-pass builds one `DiscFrameAction` per disc frame from the skip declarations; the action records whether the frame should be written to output and the list of disc frames to re-emit after it. Forward-skipped frames are still generated (so `BiphaseInjectionManager.frame_count_` advances), but `AppendSamples` is not called for them. Backward-skip copies are **regenerated** through the generation stage — whose frame template cache makes the clean-frame portion a copy — rather than replayed from a second whole-frame cache in the pipeline: synthesis, noise, and dropout application are all deterministic per `(project, schedule, frame)`, so a regenerated frame is byte-identical to its first emission. A replayed frame's dropout sidecar rows were committed when it was first processed, so the recomputed rows are discarded (only the signal push is applied again). `BeginWrite` receives the actual output frame count (which may differ from `total_disc_frames`).
+- When `disc_skips` is non-empty the pipeline switches to a **skip-aware work item path** instead of the normal batched loop. A `ComputeDiscSkipPlan` pre-pass builds one `DiscFrameAction` per disc frame from the skip declarations — whether the frame is written to output, and the disc frames to re-emit after it — and `BuildDiscWorkItems` expands that plan into the item sequence a run processes: every disc frame in order, each followed by its backward-skip replays. Each item records the disc frame to synthesise, whether it is emitted, and whether it commits the frame's dropout sidecar rows. Forward-skipped frames are still synthesised (so disc state advances) but not written. Backward-skip copies are **regenerated** through the generation stage — whose frame template cache makes the clean-frame portion a copy — rather than replayed from a second whole-frame cache in the pipeline: synthesis, noise, and dropout application are all deterministic per `(project, schedule, frame)`, so a regenerated frame is byte-identical to its first emission. A replayed frame's dropout sidecar rows were committed when it was first processed, so the recomputed rows are discarded (only the signal push is applied again). `BeginWrite` receives the actual output frame count (which may differ from `total_disc_frames`).
+- Because items are independent, a skip project uses the **same worker pool** as any other project when `--threads` is greater than 1: items are synthesised out of order and consumed in item order, which is what keeps the emitted samples, the sidecar row order and the frame-locked audio identical to a single-threaded run.
 
 #### **3. Noise Injection Stage**
 
@@ -2054,7 +2079,7 @@ videosynth --project project.yaml [options]
 | `--project`  | Path to the YAML project file (required).         | -           |
 | `--validate` | Validate the YAML file without generating output. | `false`     |
 | `--version`  | Print the build version (short git commit hash, `-dirty` suffix for modified trees, or the release override string) and exit. | -           |
-| `--threads <n>` | Frame synthesis worker threads: `auto` (one per hardware thread) or a positive integer. `1` selects the pure sequential path. Output is byte-identical regardless of the thread count; projects with `disc_skips` always run sequentially. | `auto` |
+| `--threads <n>` | Frame synthesis worker threads: `auto` (one per hardware thread) or a positive integer. `1` selects the pure sequential path. Output is byte-identical regardless of the thread count, including for projects with `disc_skips`. | `auto` |
 | `--template-cache-mb <n>` | Frame template cache capacity in MiB; `0` disables the cache (see [Section 4](#4-generation-stage), Frame Template Cache). Output is byte-identical regardless of the capacity. | `512` |
 | `--log-level <level>` | Set the log level to `info`, `debug`, or `trace`. | `info` |
 | `--log-file <filename>` | Write log output to the specified file in addition to the console. | none |
@@ -2067,6 +2092,16 @@ OSD token strings) followed by order-independent per-frame sample synthesis on
 a worker pool; frames are reassembled in order (bounded to 2 × thread count
 in-flight frames) before output, dropout-sidecar, and audio emission, so all
 emitted artefacts match the sequential path byte for byte.
+
+Workers carry as much of the per-frame work as ordering allows. Besides
+synthesis, noise and dropout computation, each worker also **encodes** its
+frame into output sample codes (`IOutputStage::EncodeFrame`, a const function
+of the session state resolved by `BeginWrite`), leaving the single consumer
+thread with one `write` per file per frame plus the sidecar and audio
+bookkeeping that must happen in order. Frame buffers are recycled through a
+free list sized to the reassembly window, so steady-state generation allocates
+no whole-frame buffers and peak resident memory stays bounded by that window
+rather than by allocator churn.
 
 ---
 

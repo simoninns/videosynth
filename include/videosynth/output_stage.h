@@ -28,10 +28,13 @@ enum class OutputSampleEncoding {
   kRawS16,
 };
 
-// Thread-safety: OutputStage is NOT thread-safe. Inherits the NOT thread-safe
-// guarantee from IOutputStage. Concurrent calls to any public method will
-// result in undefined behavior. The ofstream member (video_stream_) is not
-// protected by any mutex.
+// Thread-safety: OutputStage is NOT thread-safe, except for EncodeFrame.
+// Inherits the guarantee from IOutputStage: the ofstream members and the
+// session counters are unsynchronised, so every session method must be called
+// from one thread. EncodeFrame only reads the session state resolved by
+// BeginWrite and writes into the caller's buffer (its resampling scratch is
+// thread-local), so synthesis workers may encode concurrently while the
+// session owner writes an earlier frame.
 class OutputStage final : public IOutputStage {
  public:
   explicit OutputStage(ILogger* logger = nullptr);
@@ -60,6 +63,37 @@ class OutputStage final : public IOutputStage {
   bool AppendSamples(const std::vector<SampleFixed>& y_mv,
                      const std::vector<SampleFixed>& c_mv,
                      std::vector<std::string>* errors) override;
+
+  // Encodes exactly one frame of Y and C samples into output codes.
+  //
+  // Reads only the session encoding state resolved by BeginWrite, so it is
+  // const and safe to call concurrently from synthesis workers while the
+  // session owner writes an earlier frame.
+  //
+  // Args:
+  //   y_mv: Luma samples of one frame (one input frame span long).
+  //   c_mv: Chroma samples of the same frame.
+  //   out_frame: Receives the encoded codes and the frame's nonstandard flag.
+  //   errors: Output vector for any error messages.
+  //
+  // Returns:
+  //   true on success, false on any error.
+  bool EncodeFrame(const std::vector<SampleFixed>& y_mv,
+                   const std::vector<SampleFixed>& c_mv,
+                   EncodedFrame* out_frame,
+                   std::vector<std::string>* errors) const override;
+
+  // Writes one encoded frame produced by EncodeFrame. Frames must be appended
+  // in output order.
+  //
+  // Args:
+  //   frame: The encoded frame to write.
+  //   errors: Output vector for any error messages.
+  //
+  // Returns:
+  //   true on success, false on any error.
+  bool AppendEncodedFrame(const EncodedFrame& frame,
+                          std::vector<std::string>* errors) override;
 
   // Finalizes the write session, closing the output file.
   //
@@ -93,17 +127,19 @@ class OutputStage final : public IOutputStage {
  private:
   bool IsSessionOpen() const;
 
-  // Encodes one frame of input samples into the reusable code buffers and
-  // writes them with a single stream write per file. Resampling to a different
-  // output frame span, when the encoding preset needs it, happens first.
+  // Encodes the frame that starts at frame_start into out_frame's code
+  // buffers. Resampling to a different output frame span, when the encoding
+  // preset needs it, happens first, through thread-local scratch so concurrent
+  // encoders never share a buffer.
   //
   // Args:
   //   y_mv: Luma samples of the whole append, indexed from frame_start.
   //   c_mv: Chroma samples of the whole append, indexed from frame_start.
   //   frame_start: Index of the first sample of the frame to encode.
-  bool WriteEncodedFrame(const std::vector<SampleFixed>& y_mv,
-                         const std::vector<SampleFixed>& c_mv,
-                         std::size_t frame_start);
+  //   out_frame: Receives the encoded codes and the frame's nonstandard flag.
+  void EncodeFrameInto(const std::vector<SampleFixed>& y_mv,
+                       const std::vector<SampleFixed>& c_mv,
+                       std::size_t frame_start, EncodedFrame* out_frame) const;
 
   ILogger* logger_;
   bool write_session_open_ = false;
@@ -121,13 +157,11 @@ class OutputStage final : public IOutputStage {
   OutputSampleEncoding output_encoding_ = OutputSampleEncoding::kCvbsU10;
   bool is_yc_output_ = false;
 
-  // Per-frame scratch, allocated on the first frame and reused thereafter, so
-  // steady-state writing performs no allocation and one write per file.
-  std::vector<SampleFixed> composite_scratch_;
-  std::vector<SampleFixed> resampled_luma_;
-  std::vector<SampleFixed> resampled_chroma_;
-  std::vector<std::int16_t> luma_codes_;
-  std::vector<std::int16_t> chroma_codes_;
+  // Encoding target for AppendSamples, allocated on the first frame and reused
+  // thereafter, so writing a batch performs no allocation and one write per
+  // file per frame. Callers that encode on their own threads pass their own
+  // EncodedFrame to EncodeFrame instead.
+  EncodedFrame append_scratch_;
 };
 
 }  // namespace videosynth
