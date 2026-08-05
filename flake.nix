@@ -47,16 +47,15 @@
             "-DVIDEOSYNTH_ENABLE_CLANG_TIDY=OFF"
             # Point the bundled asset root at the installed data directory so the
             # binary resolves "{bundled}" assets after the sandbox is gone. The
-            # assets themselves are only present with a submodule-aware build
-            # (nix run '.?submodules=1'); VIDEOSYNTH_ASSET_DIR overrides at runtime.
+            # assets are vendored in-tree under videosynth-assets/;
+            # VIDEOSYNTH_ASSET_DIR overrides at runtime.
             "-DVIDEOSYNTH_BUNDLED_ASSET_DIR=${placeholder "out"}/share/videosynth/assets"
           ];
 
           doCheck = true;
-          # The hermetic sandbox has no submodule assets, so run only the fast,
-          # mocked unit lane here (AGENTS.md §3.1). Functional suites load real
-          # media from the videosynth-assets submodule and run in the dev shell
-          # or a dedicated CI job where that submodule is checked out.
+          # Keep the sandboxed check to the fast, mocked unit lane (AGENTS.md
+          # §3.1). Functional suites load real media from videosynth-assets/ and
+          # run in the dev shell or a dedicated CI job.
           checkPhase = ''
             ctest -L unit --output-on-failure
           '';

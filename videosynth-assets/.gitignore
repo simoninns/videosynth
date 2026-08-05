@@ -1,0 +1,4 @@
+# Ignore Python bytecode/cache artifacts generated under scripts/
+scripts/**/__pycache__/
+scripts/**/*.py[cod]
+scripts/**/*.pyc.*

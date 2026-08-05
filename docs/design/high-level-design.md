@@ -819,7 +819,7 @@ Built-in roots:
 
 | Root | Meaning | Resolved location |
 |------|---------|-------------------|
-| `{bundled}` | Read-only assets shipped with the application | `$VIDEOSYNTH_ASSET_DIR`, else the installed `share/videosynth/assets` (found via XDG data dirs / QStandardPaths — includes Flatpak `/app/share`), else the dev `videosynth-assets/assets` submodule. |
+| `{bundled}` | Read-only assets shipped with the application | `$VIDEOSYNTH_ASSET_DIR`, else the installed `share/videosynth/assets` (found via XDG data dirs / QStandardPaths — includes Flatpak `/app/share`), else the dev `videosynth-assets/assets` directory. |
 | `{user}` | The user's own writable asset library | `$XDG_DATA_HOME/videosynth/assets`, else `~/.local/share/videosynth/assets`. |
 | `{project}` | The project file's own directory | Directory containing the `.yaml`. |
 | `{output}` | Where this run's generated media is written | `$VIDEOSYNTH_OUTPUT_DIR` or `--output-root <path>`, else the project file's own directory. |
@@ -829,7 +829,7 @@ Resolution rules (shared by CLI and GUI via `ResolveProjectPaths` /
 
 - **`{name}/rest`** → `rootDir(name) / rest` (a bare `{name}` resolves to the root directory itself). A root directory that is itself relative is anchored to the project file's directory. An **unknown** root name is a validation error.
 - **Absolute or empty** → unchanged.
-- **Plain relative (no token)** → the **CLI** leaves it working-directory-relative (preserving the run-from-a-base-dir convention used by the fixtures and `videosynth-assets`); the **GUI** anchors it to the saved project file's directory so the source probe, preview, and generation resolve identically. Use `{project}/rest` for a plain relative path that must resolve the same under both.
+- **Plain relative (no token)** → the **CLI** leaves it working-directory-relative (preserving the run-from-a-base-dir convention used by the fixtures and `videosynth-assets/`); the **GUI** anchors it to the saved project file's directory so the source probe, preview, and generation resolve identically. Use `{project}/rest` for a plain relative path that must resolve the same under both.
 
 `{output}` separates *what a project is called* from *where a particular run puts it*: a project names its artefacts relative to `{output}`, and the caller decides the directory. It defaults to the project's own directory, so a project stays self-contained when run by hand, while a batch run redirects every project at once (`scripts/run-projects.sh` sends each suite to `build/project-output/<suite>/`) and the functional test suites redirect it to a scratch directory so a test run never writes into the checked-in project tree.
 
@@ -2296,7 +2296,7 @@ videosynth/
 ├── resources/
 │   └── doc-diagrams/
 ├── videosynth-assets/
-│   └── assets/                          # Authoritative progressive source corpus (submodule)
+│   └── assets/                          # Authoritative progressive source corpus
 │       ├── exr/
 │       │   ├── 720x576/
 │       │   └── 720x486/

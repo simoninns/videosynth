@@ -59,9 +59,10 @@ git clone --recurse-submodules https://github.com/simoninns/videosynth
 cd videosynth
 ```
 
-Submodules provide the specification documents under [docs/](docs/) and the
-media assets in [videosynth-assets/](videosynth-assets/). If you already
-cloned without them:
+Submodules provide the specification documents under [docs/](docs/). The media
+assets in [videosynth-assets/](videosynth-assets/) are vendored directly into
+this repository and need no extra checkout step. If you already cloned without
+the specification submodules:
 
 ```bash
 git submodule update --init --recursive
@@ -91,11 +92,11 @@ Useful CMake options:
 To build and run the packaged derivation instead of the dev shell:
 
 ```bash
-nix run '.?submodules=1' -- --project projects/general/pal_vits.yaml
+nix run . -- --project projects/general/pal_vits.yaml
 ```
 
-The `?submodules=1` form is needed because the bundled media assets live in a
-submodule.
+The bundled media assets are part of this repository, so no `?submodules=1`
+qualifier is needed.
 
 ---
 
@@ -288,7 +289,7 @@ nix develop "path:$PWD" --command cmake --build build --target videosynth_tests
 # Fast, mocked, hermetic lane
 nix develop "path:$PWD" --command ctest --test-dir build -L unit --output-on-failure
 
-# Filesystem, real media and full-pipeline tests (needs the assets submodule)
+# Filesystem, real media and full-pipeline tests (needs the bundled media assets)
 nix develop "path:$PWD" --command ctest --test-dir build -L functional --output-on-failure
 ```
 
@@ -309,7 +310,7 @@ tests/                Unit and functional test suites
 projects/             Hand-authored example/fixture projects
 scripts/              Project runners and maintenance utilities
 assets/               Application logo and icons
-videosynth-assets/    Media assets submodule (source stills and video)
+videosynth-assets/    Bundled media assets (source stills and video)
 docs/design/          High-level design specification
 docs/user/            User-facing feature documentation
 docs/*-specification/ Specification submodules (CVBS format, analogue video)

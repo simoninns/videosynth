@@ -136,7 +136,7 @@ target_include_directories(videosynth_core
 )
 
 # Default location of the bundled asset library used by the "{bundled}" logical
-# asset root. For dev builds this is the videosynth-assets submodule; installed
+# asset root. For dev builds this is the in-tree videosynth-assets directory; installed
 # builds should override it (e.g. -DVIDEOSYNTH_BUNDLED_ASSET_DIR=<datadir>) to
 # point at the installed asset directory (see the install rules below). The
 # VIDEOSYNTH_ASSET_DIR environment variable overrides this at runtime.
@@ -304,7 +304,7 @@ endif()
 
 # Install rules. The CLI (and GUI, when built) are installed to the standard
 # binary directory; the bundled asset library is installed to the data
-# directory when the videosynth-assets submodule is checked out. Packaged
+# directory when the in-tree videosynth-assets directory is present. Packaged
 # builds set VIDEOSYNTH_BUNDLED_ASSET_DIR to the installed asset location.
 include(GNUInstallDirs)
 
