@@ -207,7 +207,12 @@ bool ContainsCsvToken(const std::string& csv, const std::string& token) {
   return false;
 }
 
+// Validates the container/codec/colour profile of an MKV source and reports its
+// raster in the same pass. Frame counting is deliberately absent: `ffprobe
+// -count_frames` decodes the whole clip, and the decode below already yields an
+// exact count from the payload it produces.
 bool ValidateMkvProfileWithFfprobe(const std::string& source, Standard standard,
+                                   int* out_width, int* out_height,
                                    std::string* error) {
   const std::string escaped_source = EscapeForSingleQuotedShell(source);
   const std::string command =
@@ -264,6 +269,13 @@ bool ValidateMkvProfileWithFfprobe(const std::string& source, Standard standard,
   const int crop_right = ParseIntegerOrZero(values["crop_right"]);
   const int crop_top = ParseIntegerOrZero(values["crop_top"]);
   const int crop_bottom = ParseIntegerOrZero(values["crop_bottom"]);
+
+  if (out_width != nullptr) {
+    *out_width = width;
+  }
+  if (out_height != nullptr) {
+    *out_height = height;
+  }
 
   if (!ContainsCsvToken(format_name, "matroska")) {
     if (error != nullptr) {
@@ -475,113 +487,16 @@ bool ValidateMkvProfileWithFfprobe(const std::string& source, Standard standard,
   return true;
 }
 
-bool ProbeVideoRasterWithFfprobe(const std::string& source, int* out_width,
-                                 int* out_height, std::string* error) {
-  if (out_width == nullptr || out_height == nullptr) {
-    if (error != nullptr) {
-      *error = "Progressive probe output pointers must not be null.";
-    }
-    return false;
-  }
-
-  const std::string escaped_source = EscapeForSingleQuotedShell(source);
-  const std::string command =
-      "ffprobe -v error -select_streams v:0 "
-      "-show_entries stream=width,height "
-      "-of default=noprint_wrappers=1:nokey=0 '" +
-      escaped_source + "' 2>/dev/null";
-
-  std::array<char, 4096> buffer{};
-  std::string output;
-  FILE* pipe = popen(command.c_str(), "r");
-  if (pipe == nullptr) {
-    if (error != nullptr) {
-      *error = "Unable to run ffprobe for progressive source probing.";
-    }
-    return false;
-  }
-
-  while (std::fgets(buffer.data(), static_cast<int>(buffer.size()), pipe) !=
-         nullptr) {
-    output += buffer.data();
-  }
-
-  const int rc = pclose(pipe);
-  if (rc != 0) {
-    if (error != nullptr) {
-      *error = "ffprobe failed while probing progressive video source raster.";
-    }
-    return false;
-  }
-
-  std::map<std::string, std::string> values;
-  ParseFfprobeKeyValueOutput(output, &values);
-  *out_width = ParseIntegerOrZero(values["width"]);
-  *out_height = ParseIntegerOrZero(values["height"]);
-  if (*out_width <= 0 || *out_height <= 0) {
-    if (error != nullptr) {
-      *error = "Unable to determine progressive video source raster.";
-    }
-    return false;
-  }
-  return true;
-}
-
-bool ProbeVideoFrameCountWithFfprobe(const std::string& source,
-                                     int* out_frame_count, std::string* error) {
-  if (out_frame_count == nullptr) {
-    if (error != nullptr) {
-      *error = "Progressive probe frame count output pointer must not be null.";
-    }
-    return false;
-  }
-
-  const std::string escaped_source = EscapeForSingleQuotedShell(source);
-  const std::string command =
-      "ffprobe -v error -select_streams v:0 -count_frames "
-      "-show_entries stream=nb_read_frames "
-      "-of default=noprint_wrappers=1:nokey=0 '" +
-      escaped_source + "' 2>/dev/null";
-
-  std::array<char, 4096> buffer{};
-  std::string output;
-  FILE* pipe = popen(command.c_str(), "r");
-  if (pipe == nullptr) {
-    if (error != nullptr) {
-      *error = "Unable to run ffprobe for progressive source frame counting.";
-    }
-    return false;
-  }
-
-  while (std::fgets(buffer.data(), static_cast<int>(buffer.size()), pipe) !=
-         nullptr) {
-    output += buffer.data();
-  }
-
-  const int rc = pclose(pipe);
-  if (rc != 0) {
-    if (error != nullptr) {
-      *error = "ffprobe failed while counting progressive source frames.";
-    }
-    return false;
-  }
-
-  std::map<std::string, std::string> values;
-  ParseFfprobeKeyValueOutput(output, &values);
-  *out_frame_count = ParseIntegerOrZero(values["nb_read_frames"]);
-  if (*out_frame_count <= 0) {
-    if (error != nullptr) {
-      *error = "Unable to determine progressive source frame count.";
-    }
-    return false;
-  }
-
-  return true;
-}
-
-bool DecodeMkvFrames(const std::string& source, Standard standard,
-                     int max_frames, std::vector<FrameSourceImage>* out_frames,
-                     std::string* error) {
+// Decodes up to max_frames frames (all of them when max_frames <= 0) of an MKV
+// source into shared, immutable frame images.
+//
+// The clip is decoded exactly once: its profile and raster come from a single
+// metadata-only ffprobe call, and the frame count is derived from the size of
+// the decoded payload rather than from a second counting pass.
+bool DecodeMkvFrames(
+    const std::string& source, Standard standard, int max_frames,
+    std::vector<std::shared_ptr<const FrameSourceImage>>* out_frames,
+    std::string* error) {
   if (out_frames == nullptr) {
     if (error != nullptr) {
       *error = "Decoded MKV frame output pointer must not be null.";
@@ -589,14 +504,10 @@ bool DecodeMkvFrames(const std::string& source, Standard standard,
     return false;
   }
 
-  if (!ValidateMkvProfileWithFfprobe(source, standard, error)) {
-    return false;
-  }
-
   int source_width = 0;
   int source_height = 0;
-  if (!ProbeVideoRasterWithFfprobe(source, &source_width, &source_height,
-                                   error)) {
+  if (!ValidateMkvProfileWithFfprobe(source, standard, &source_width,
+                                     &source_height, error)) {
     return false;
   }
 
@@ -608,11 +519,6 @@ bool DecodeMkvFrames(const std::string& source, Standard standard,
           "Progressive MKV raster must be 720x576 for PAL and 720x486 for "
           "NTSC or PAL-M.";
     }
-    return false;
-  }
-
-  int source_frame_count = 0;
-  if (!ProbeVideoFrameCountWithFfprobe(source, &source_frame_count, error)) {
     return false;
   }
 
@@ -633,7 +539,10 @@ bool DecodeMkvFrames(const std::string& source, Standard standard,
   }
 
   std::vector<std::uint8_t> decoded_bytes;
-  std::array<std::uint8_t, 8192> chunk{};
+  // Read in large blocks: the payload is ~1.4 MB per PAL frame, so an 8 KiB
+  // chunk costs hundreds of appends per frame for no benefit.
+  constexpr std::size_t kReadChunkBytes = std::size_t{256} * 1024;
+  std::vector<std::uint8_t> chunk(kReadChunkBytes);
   while (true) {
     const std::size_t read_count =
         std::fread(chunk.data(), 1, chunk.size(), pipe);
@@ -654,39 +563,20 @@ bool DecodeMkvFrames(const std::string& source, Standard standard,
     return false;
   }
 
-  if (source_frame_count <= 0) {
-    if (error != nullptr) {
-      *error = "Unable to determine progressive source frame count.";
-    }
-    return false;
-  }
-
-  const int expected_frames = max_frames > 0
-                                  ? std::min(source_frame_count, max_frames)
-                                  : source_frame_count;
-  if (expected_frames <= 0) {
+  // yuv422p10le: one 16-bit luma sample per pixel plus two 16-bit
+  // colour-difference samples per horizontal pixel pair.
+  const int decoded_width = source_width;
+  const std::size_t bytes_per_frame = static_cast<std::size_t>(decoded_width) *
+                                      static_cast<std::size_t>(source_height) *
+                                      2U * sizeof(std::uint16_t);
+  if (bytes_per_frame == 0U || decoded_bytes.empty()) {
     if (error != nullptr) {
       *error =
           "Progressive MKV source does not contain decodable video frames.";
     }
     return false;
   }
-
-  const std::size_t bytes_per_frame =
-      decoded_bytes.size() / static_cast<std::size_t>(expected_frames);
-  if (decoded_bytes.empty() ||
-      decoded_bytes.size() !=
-          bytes_per_frame * static_cast<std::size_t>(expected_frames)) {
-    if (error != nullptr) {
-      *error =
-          "Decoded MKV frame payload size is not aligned to frame boundaries.";
-    }
-    return false;
-  }
-
-  const std::size_t bytes_per_line =
-      static_cast<std::size_t>(source_height) * sizeof(std::uint16_t) * 2;
-  if (bytes_per_line == 0 || (bytes_per_frame % bytes_per_line) != 0) {
+  if ((decoded_bytes.size() % bytes_per_frame) != 0U) {
     if (error != nullptr) {
       *error =
           "Decoded MKV frame payload size is not aligned to yuv422p10le frame "
@@ -695,36 +585,34 @@ bool DecodeMkvFrames(const std::string& source, Standard standard,
     return false;
   }
 
-  const int decoded_width = static_cast<int>(bytes_per_frame / bytes_per_line);
-  if (decoded_width != 720) {
+  const std::size_t frame_count = decoded_bytes.size() / bytes_per_frame;
+  if (max_frames > 0 && frame_count > static_cast<std::size_t>(max_frames)) {
     if (error != nullptr) {
-      *error = "Decoded MKV raster must be 720 pixels wide.";
+      *error =
+          "Decoded MKV frame payload size is not aligned to frame boundaries.";
     }
     return false;
   }
 
-  const std::size_t frame_count = static_cast<std::size_t>(expected_frames);
   const std::size_t y_plane_size = static_cast<std::size_t>(decoded_width) *
                                    static_cast<std::size_t>(source_height);
   const std::size_t chroma_plane_size =
       static_cast<std::size_t>(decoded_width / 2) *
       static_cast<std::size_t>(source_height);
-  const std::size_t frame_size =
-      (y_plane_size + chroma_plane_size + chroma_plane_size) *
-      sizeof(std::uint16_t);
 
   out_frames->clear();
   out_frames->reserve(frame_count);
 
   const int source_x_offset = 0;
   for (std::size_t frame_index = 0; frame_index < frame_count; ++frame_index) {
-    FrameSourceImage frame;
+    auto frame_image = std::make_shared<FrameSourceImage>();
+    FrameSourceImage& frame = *frame_image;
     SetFrameGeometryForStandard(standard, &frame);
     frame.pixels.assign(static_cast<std::size_t>(frame.width) *
                             static_cast<std::size_t>(frame.height),
                         MakePixel(64, 512, 512));
 
-    const std::size_t frame_offset = frame_index * frame_size;
+    const std::size_t frame_offset = frame_index * bytes_per_frame;
     const std::uint8_t* frame_data = decoded_bytes.data() + frame_offset;
     const std::uint16_t* y_plane =
         reinterpret_cast<const std::uint16_t*>(frame_data);
@@ -757,59 +645,9 @@ bool DecodeMkvFrames(const std::string& source, Standard standard,
       }
     }
 
-    out_frames->push_back(std::move(frame));
+    out_frames->push_back(std::move(frame_image));
   }
 
-  return true;
-}
-
-bool EnsureMkvCache(const Section& section, Standard standard,
-                    int min_required_frames, bool require_complete,
-                    std::vector<FrameSourceImage>* cached_frames,
-                    std::string* cached_source, Standard* cached_standard,
-                    bool* has_cache, bool* is_complete, std::string* error) {
-  if (cached_frames == nullptr || cached_source == nullptr ||
-      cached_standard == nullptr || has_cache == nullptr ||
-      is_complete == nullptr) {
-    if (error != nullptr) {
-      *error = "Internal progressive MKV cache pointers must not be null.";
-    }
-    return false;
-  }
-
-  if (min_required_frames < 0) {
-    min_required_frames = 0;
-  }
-
-  const bool key_matches = *has_cache && *cached_source == section.source &&
-                           *cached_standard == standard;
-  if (key_matches) {
-    const bool has_required_frames =
-        static_cast<int>(cached_frames->size()) >= min_required_frames;
-    if ((require_complete && *is_complete) ||
-        (!require_complete && has_required_frames) ||
-        (*is_complete && !has_required_frames)) {
-      return true;
-    }
-  }
-
-  std::vector<FrameSourceImage> decoded_frames;
-  std::string decode_error;
-  const int decode_limit = require_complete ? 0 : min_required_frames;
-  if (!DecodeMkvFrames(section.source, standard, decode_limit, &decoded_frames,
-                       &decode_error)) {
-    if (error != nullptr) {
-      *error = decode_error.empty() ? "Failed to decode progressive MKV source."
-                                    : decode_error;
-    }
-    return false;
-  }
-
-  *cached_frames = std::move(decoded_frames);
-  *cached_source = section.source;
-  *cached_standard = standard;
-  *has_cache = true;
-  *is_complete = require_complete;
   return true;
 }
 
@@ -1102,16 +940,33 @@ bool ProgressiveFrameSource::SupportsSection(const Section& section) const {
 
 void ProgressiveFrameSource::ClearCache() const {
   const std::lock_guard<std::mutex> lock(cache_mutex_);
-  has_cached_exr_frame_ = false;
-  cached_exr_source_.clear();
-  cached_exr_standard_ = Standard::kUnknown;
-  cached_exr_frame_ = FrameSourceImage{};
+  cached_sources_.clear();
+}
 
-  has_cached_mkv_frames_ = false;
-  cached_mkv_source_.clear();
-  cached_mkv_standard_ = Standard::kUnknown;
-  cached_mkv_is_complete_ = false;
-  cached_mkv_frames_.clear();
+ProgressiveFrameSource::DecodedSource* ProgressiveFrameSource::FindCachedSource(
+    const std::string& source, Standard standard) const {
+  for (std::size_t i = 0; i < cached_sources_.size(); ++i) {
+    if (cached_sources_[i].source != source ||
+        cached_sources_[i].standard != standard) {
+      continue;
+    }
+    if (i != 0) {
+      std::rotate(cached_sources_.begin(),
+                  cached_sources_.begin() + static_cast<std::ptrdiff_t>(i),
+                  cached_sources_.begin() + static_cast<std::ptrdiff_t>(i) + 1);
+    }
+    return &cached_sources_.front();
+  }
+  return nullptr;
+}
+
+ProgressiveFrameSource::DecodedSource*
+ProgressiveFrameSource::InsertCachedSource(DecodedSource entry) const {
+  if (cached_sources_.size() >= kMaxCachedSources) {
+    cached_sources_.resize(kMaxCachedSources - 1U);
+  }
+  cached_sources_.insert(cached_sources_.begin(), std::move(entry));
+  return &cached_sources_.front();
 }
 
 bool ProgressiveFrameSource::ResolveFrameCount(const Section& section,
@@ -1144,14 +999,13 @@ bool ProgressiveFrameSource::ResolveFrameCount(const Section& section,
 
   if (EndsWithLowercase(source, ".mkv")) {
     const std::lock_guard<std::mutex> lock(cache_mutex_);
-    if (!EnsureMkvCache(section, standard, 0, true, &cached_mkv_frames_,
-                        &cached_mkv_source_, &cached_mkv_standard_,
-                        &has_cached_mkv_frames_, &cached_mkv_is_complete_,
-                        error)) {
+    const DecodedSource* entry =
+        EnsureMkvSource(section, standard, 0, /*require_complete=*/true, error);
+    if (entry == nullptr) {
       return false;
     }
 
-    *out_frame_count = static_cast<int>(cached_mkv_frames_.size());
+    *out_frame_count = static_cast<int>(entry->frames.size());
     return true;
   }
 
@@ -1163,15 +1017,67 @@ bool ProgressiveFrameSource::ResolveFrameCount(const Section& section,
   return false;
 }
 
-bool ProgressiveFrameSource::GenerateFrame(const Section& section,
-                                           int frame_index, Standard standard,
-                                           FrameSourceImage* out_image,
-                                           std::string* error) const {
-  (void)frame_index;
+const ProgressiveFrameSource::DecodedSource*
+ProgressiveFrameSource::EnsureMkvSource(const Section& section,
+                                        Standard standard,
+                                        int min_required_frames,
+                                        bool require_complete,
+                                        std::string* error) const {
+  if (min_required_frames < 0) {
+    min_required_frames = 0;
+  }
 
+  const DecodedSource* cached = FindCachedSource(section.source, standard);
+  if (cached != nullptr) {
+    const bool has_required_frames =
+        static_cast<int>(cached->frames.size()) >= min_required_frames;
+    // A complete decode satisfies every request; a partial one satisfies any
+    // request that fits inside the prefix already decoded.
+    if (cached->is_complete || (!require_complete && has_required_frames)) {
+      return cached;
+    }
+  }
+
+  DecodedSource entry;
+  entry.source = section.source;
+  entry.standard = standard;
+  entry.is_complete = require_complete;
+
+  std::string decode_error;
+  const int decode_limit = require_complete ? 0 : min_required_frames;
+  if (!DecodeMkvFrames(section.source, standard, decode_limit, &entry.frames,
+                       &decode_error)) {
+    if (error != nullptr) {
+      *error = decode_error.empty() ? "Failed to decode progressive MKV source."
+                                    : decode_error;
+    }
+    return nullptr;
+  }
+
+  // Replace any stale partial decode of the same source rather than letting the
+  // two entries compete for the cache.
+  DecodedSource* existing = FindCachedSource(section.source, standard);
+  if (existing != nullptr) {
+    *existing = std::move(entry);
+    return existing;
+  }
+  return InsertCachedSource(std::move(entry));
+}
+
+bool ProgressiveFrameSource::GenerateFrame(
+    const Section& section, int frame_index, Standard standard,
+    std::shared_ptr<const FrameSourceImage>* out_image,
+    std::string* error) const {
   if (!SupportsSection(section)) {
     if (error != nullptr) {
       *error = "Progressive section source family is not supported.";
+    }
+    return false;
+  }
+
+  if (out_image == nullptr) {
+    if (error != nullptr) {
+      *error = "Frame source output image pointer must not be null.";
     }
     return false;
   }
@@ -1183,13 +1089,12 @@ bool ProgressiveFrameSource::GenerateFrame(const Section& section,
 
   if (EndsWithLowercase(source, ".exr")) {
     const std::lock_guard<std::mutex> lock(cache_mutex_);
-    const bool cache_hit = has_cached_exr_frame_ &&
-                           cached_exr_source_ == section.source &&
-                           cached_exr_standard_ == standard;
-    if (!cache_hit) {
-      FrameSourceImage decoded;
+    const DecodedSource* cached = FindCachedSource(section.source, standard);
+    if (cached == nullptr) {
+      auto decoded = std::make_shared<FrameSourceImage>();
       std::string decode_error;
-      if (!LoadExrFrame(section.source, standard, &decoded, &decode_error)) {
+      if (!LoadExrFrame(section.source, standard, decoded.get(),
+                        &decode_error)) {
         if (error != nullptr) {
           *error = decode_error.empty()
                        ? "Failed to decode progressive EXR source."
@@ -1197,19 +1102,16 @@ bool ProgressiveFrameSource::GenerateFrame(const Section& section,
         }
         return false;
       }
-      cached_exr_frame_ = decoded;
-      cached_exr_source_ = section.source;
-      cached_exr_standard_ = standard;
-      has_cached_exr_frame_ = true;
+
+      DecodedSource entry;
+      entry.source = section.source;
+      entry.standard = standard;
+      entry.is_complete = true;
+      entry.frames.push_back(std::move(decoded));
+      cached = InsertCachedSource(std::move(entry));
     }
 
-    if (out_image == nullptr) {
-      if (error != nullptr) {
-        *error = "Frame source output image pointer must not be null.";
-      }
-      return false;
-    }
-    *out_image = cached_exr_frame_;
+    *out_image = cached->frames.front();
     return true;
   }
 
@@ -1227,14 +1129,13 @@ bool ProgressiveFrameSource::GenerateFrame(const Section& section,
     }
 
     const std::lock_guard<std::mutex> lock(cache_mutex_);
-    if (!EnsureMkvCache(
-            section, standard, required_frames, section.duration_frames_all,
-            &cached_mkv_frames_, &cached_mkv_source_, &cached_mkv_standard_,
-            &has_cached_mkv_frames_, &cached_mkv_is_complete_, error)) {
+    const DecodedSource* entry = EnsureMkvSource(
+        section, standard, required_frames, section.duration_frames_all, error);
+    if (entry == nullptr) {
       return false;
     }
 
-    if (frame_index >= static_cast<int>(cached_mkv_frames_.size())) {
+    if (frame_index >= static_cast<int>(entry->frames.size())) {
       if (error != nullptr) {
         *error =
             "Requested frame index exceeds decoded progressive MKV source "
@@ -1243,14 +1144,7 @@ bool ProgressiveFrameSource::GenerateFrame(const Section& section,
       return false;
     }
 
-    if (out_image == nullptr) {
-      if (error != nullptr) {
-        *error = "Frame source output image pointer must not be null.";
-      }
-      return false;
-    }
-
-    *out_image = cached_mkv_frames_[static_cast<std::size_t>(frame_index)];
+    *out_image = entry->frames[static_cast<std::size_t>(frame_index)];
     return true;
   }
 

@@ -61,12 +61,15 @@ bool SynthesizeWithPipelineStages(
       (*context.schedule)[disc_frame];
   if (item.section != nullptr && item.section->type == "progressive") {
     std::string source_error;
-    FrameSourceImage image;
+    std::shared_ptr<const FrameSourceImage> image;
     if (context.source_provider->GenerateFrame(
             *item.section, item.source_frame_index,
             context.project->cvbs_presets.video_standard_preset, &image,
-            &source_error)) {
-      out_frame->source_image = std::move(image);
+            &source_error) &&
+        image != nullptr) {
+      // The provider's copy stays cached and immutable; the preview keeps its
+      // own so it can outlive a cache eviction or a project reload.
+      out_frame->source_image = *image;
       out_frame->has_source_image = true;
     }
     // A source decode failure is not fatal for the encoded preview; the

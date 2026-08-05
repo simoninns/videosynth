@@ -32,90 +32,85 @@ OutputStage::OutputStage(ILogger* logger) : logger_(logger) {}
 
 namespace {
 
-enum class OutputEncoding {
-  kCvbsU10,
-  kCvbsU16,
-  kCvbsTpg21,
-  kCvbsS16Fsc,
-  kRawS16,
-};
-
 bool ResolveOutputEncoding(const std::string& preset,
-                           OutputEncoding* output_encoding) {
+                           OutputSampleEncoding* output_encoding) {
   if (output_encoding == nullptr) {
     return false;
   }
 
   if (preset == "CVBS_U10_4FSC") {
-    *output_encoding = OutputEncoding::kCvbsU10;
+    *output_encoding = OutputSampleEncoding::kCvbsU10;
     return true;
   }
 
   if (preset == "CVBS_U16_4FSC") {
-    *output_encoding = OutputEncoding::kCvbsU16;
+    *output_encoding = OutputSampleEncoding::kCvbsU16;
     return true;
   }
 
   if (preset == "CVBS_TPG21_4FSC") {
-    *output_encoding = OutputEncoding::kCvbsTpg21;
+    *output_encoding = OutputSampleEncoding::kCvbsTpg21;
     return true;
   }
 
   if (preset == "CVBS_S16_4FSC") {
-    *output_encoding = OutputEncoding::kCvbsS16Fsc;
+    *output_encoding = OutputSampleEncoding::kCvbsS16Fsc;
     return true;
   }
 
   if (preset == "RAW_S16_28M" || preset == "RAW_S16_40M") {
-    *output_encoding = OutputEncoding::kRawS16;
+    *output_encoding = OutputSampleEncoding::kRawS16;
     return true;
   }
 
   return false;
 }
 
-std::vector<SampleFixed> ResampleFrame(const std::vector<SampleFixed>& input,
-                                       std::size_t target_count) {
-  if (target_count == 0U) {
-    return {};
+// Linearly resamples input_count samples to target_count samples into output.
+// Only the RAW_S16 presets, whose output frame span differs from the 4fsc
+// input span, take this path.
+void ResampleFrameInto(const SampleFixed* input, std::size_t input_count,
+                       std::size_t target_count,
+                       std::vector<SampleFixed>* output) {
+  output->assign(target_count, 0);
+  if (target_count == 0U || input_count == 0U) {
+    return;
   }
-  if (input.empty()) {
-    return std::vector<SampleFixed>(target_count, 0);
-  }
-  if (input.size() == target_count) {
-    return input;
-  }
-  if (target_count == 1U) {
-    return std::vector<SampleFixed>(1U, input.front());
-  }
-  if (input.size() == 1U) {
-    return std::vector<SampleFixed>(target_count, input.front());
+  if (input_count == 1U || target_count == 1U) {
+    output->assign(target_count, input[0]);
+    return;
   }
 
-  std::vector<SampleFixed> output(target_count, 0);
-  const double source_last_index = static_cast<double>(input.size() - 1U);
+  const double source_last_index = static_cast<double>(input_count - 1U);
   const double target_last_index = static_cast<double>(target_count - 1U);
 
   for (std::size_t i = 0; i < target_count; ++i) {
     const double source_position =
         source_last_index * (static_cast<double>(i) / target_last_index);
     const std::size_t left_index = static_cast<std::size_t>(source_position);
-    const std::size_t right_index =
-        std::min(left_index + 1U, input.size() - 1U);
+    const std::size_t right_index = std::min(left_index + 1U, input_count - 1U);
     const double fraction = source_position - static_cast<double>(left_index);
     const double interpolated =
         (1.0 - fraction) * static_cast<double>(input[left_index]) +
         fraction * static_cast<double>(input[right_index]);
-    output[i] = static_cast<SampleFixed>(std::llround(interpolated));
+    (*output)[i] = static_cast<SampleFixed>(std::llround(interpolated));
   }
-
-  return output;
 }
 
-std::int16_t EncodeCompositeSample(OutputEncoding encoding,
+bool IsNonstandardMappedCode(int mapped_code,
+                             const QuantizationProfile& profile) {
+  return mapped_code < (profile.minimum_legal_code - 1) ||
+         mapped_code > (profile.maximum_legal_code + 1);
+}
+
+// Encodes one composite (or luma) sample. The composite code mapping also
+// decides whether the sample is outside the legal code range, so the caller
+// passes has_nonstandard here rather than mapping the sample a second time.
+std::int16_t EncodeCompositeSample(OutputSampleEncoding encoding,
                                    SampleFixed composite_mv_fixed,
-                                   const QuantizationProfile& profile) {
-  if (encoding == OutputEncoding::kRawS16) {
+                                   const QuantizationProfile& profile,
+                                   bool* has_nonstandard) {
+  if (encoding == OutputSampleEncoding::kRawS16) {
     const int raw_mv = static_cast<int>(
         std::lround(SampleFixedToMillivolts(composite_mv_fixed)));
     const int clamped_raw_mv = std::max(
@@ -126,13 +121,16 @@ std::int16_t EncodeCompositeSample(OutputEncoding encoding,
   }
 
   const int mapped = MapCompositeFixedToCode(composite_mv_fixed, profile);
+  if (has_nonstandard != nullptr && IsNonstandardMappedCode(mapped, profile)) {
+    *has_nonstandard = true;
+  }
   const int quantized_code = ClampToLegalCodeRange(mapped, profile);
-  if (encoding == OutputEncoding::kCvbsTpg21) {
+  if (encoding == OutputSampleEncoding::kCvbsTpg21) {
     const int tpg21_encoded = (quantized_code - 508) * 64;
     return static_cast<std::int16_t>(tpg21_encoded);
   }
 
-  if (encoding == OutputEncoding::kCvbsS16Fsc) {
+  if (encoding == OutputSampleEncoding::kCvbsS16Fsc) {
     // S16_4FSC can represent sub-sync excursions (e.g. pilot burst troughs at
     // −600 mV) that lie below the 10-bit legal-code floor. Use the unclamped
     // mapped code and saturate only to prevent int16 overflow.
@@ -147,16 +145,10 @@ std::int16_t EncodeCompositeSample(OutputEncoding encoding,
   return static_cast<std::int16_t>(quantized_code);
 }
 
-bool IsNonstandardMappedCode(int mapped_code,
-                             const QuantizationProfile& profile) {
-  return mapped_code < (profile.minimum_legal_code - 1) ||
-         mapped_code > (profile.maximum_legal_code + 1);
-}
-
-std::int16_t EncodeChromaSample(OutputEncoding encoding,
+std::int16_t EncodeChromaSample(OutputSampleEncoding encoding,
                                 SampleFixed chroma_mv_fixed,
                                 const QuantizationProfile& profile) {
-  if (encoding == OutputEncoding::kRawS16) {
+  if (encoding == OutputSampleEncoding::kRawS16) {
     const int raw_mv =
         static_cast<int>(std::lround(SampleFixedToMillivolts(chroma_mv_fixed)));
     const int clamped_raw_mv = std::clamp(
@@ -168,12 +160,12 @@ std::int16_t EncodeChromaSample(OutputEncoding encoding,
   const int chroma_code = MapChromaFixedToCode(chroma_mv_fixed, profile);
   const int quantized_code = ClampToLegalCodeRange(chroma_code, profile);
 
-  if (encoding == OutputEncoding::kCvbsTpg21) {
+  if (encoding == OutputSampleEncoding::kCvbsTpg21) {
     const int tpg21_encoded = (quantized_code - 508) * 64;
     return static_cast<std::int16_t>(tpg21_encoded);
   }
 
-  if (encoding == OutputEncoding::kCvbsS16Fsc) {
+  if (encoding == OutputSampleEncoding::kCvbsS16Fsc) {
     const int s16_4fsc_raw = (chroma_code - profile.blanking_code) * 32;
     const int s16_4fsc_clamped =
         std::clamp(s16_4fsc_raw,
@@ -467,6 +459,24 @@ bool OutputStage::BeginWrite(const Project& project,
     return false;
   }
 
+  // Quantisation profile, sample encoding, and signal type are session
+  // invariants: resolve them once here instead of per appended buffer.
+  QuantizationProfile quantization;
+  if (!BuildQuantizationProfile(project.cvbs_presets.video_standard_preset,
+                                &quantization)) {
+    errors->push_back(
+        "Output stage received unsupported or unknown video standard.");
+    return false;
+  }
+
+  OutputSampleEncoding output_encoding = OutputSampleEncoding::kCvbsU10;
+  if (!ResolveOutputEncoding(project.cvbs_presets.sample_encoding_preset,
+                             &output_encoding)) {
+    errors->push_back("Output stage does not support sample_encoding_preset: " +
+                      project.cvbs_presets.sample_encoding_preset);
+    return false;
+  }
+
   // Create parent directories so callers don't need to pre-create them.
   std::error_code ec;
   std::filesystem::create_directories(
@@ -527,6 +537,11 @@ bool OutputStage::BeginWrite(const Project& project,
   input_frame_span_ = input_frame_span;
   output_frame_span_ = output_frame_span;
   has_nonstandard_ = false;
+  quantization_ = quantization;
+  output_encoding_ = output_encoding;
+  is_yc_output_ = is_yc;
+  luma_codes_.clear();
+  chroma_codes_.clear();
   write_session_open_ = true;
 
   return true;
@@ -555,79 +570,11 @@ bool OutputStage::AppendSamples(const std::vector<SampleFixed>& y_mv,
     return false;
   }
 
-  QuantizationProfile quantization;
-  if (!BuildQuantizationProfile(
-          current_project_.cvbs_presets.video_standard_preset, &quantization)) {
-    errors->push_back(
-        "Output stage received unsupported or unknown video standard.");
-    return false;
-  }
-
-  OutputEncoding output_encoding = OutputEncoding::kCvbsU10;
-  if (!ResolveOutputEncoding(
-          current_project_.cvbs_presets.sample_encoding_preset,
-          &output_encoding)) {
-    errors->push_back("Output stage does not support sample_encoding_preset: " +
-                      current_project_.cvbs_presets.sample_encoding_preset);
-    return false;
-  }
-
-  const bool is_yc = (current_project_.output.signal_type == "yc");
-
   for (std::size_t frame_start = 0U; frame_start < y_mv.size();
        frame_start += input_frame_span_) {
-    if (is_yc) {
-      std::vector<SampleFixed> y_frame;
-      std::vector<SampleFixed> c_frame;
-      y_frame.reserve(input_frame_span_);
-      c_frame.reserve(input_frame_span_);
-      for (std::size_t i = 0; i < input_frame_span_; ++i) {
-        y_frame.push_back(y_mv[frame_start + i]);
-        c_frame.push_back(c_mv[frame_start + i]);
-      }
-      if (output_frame_span_ != input_frame_span_) {
-        y_frame = ResampleFrame(y_frame, output_frame_span_);
-        c_frame = ResampleFrame(c_frame, output_frame_span_);
-      }
-      for (std::size_t i = 0; i < output_frame_span_; ++i) {
-        if (output_encoding != OutputEncoding::kRawS16) {
-          const int mapped = MapCompositeFixedToCode(y_frame[i], quantization);
-          if (IsNonstandardMappedCode(mapped, quantization)) {
-            has_nonstandard_ = true;
-          }
-        }
-        const std::int16_t y_sample =
-            EncodeCompositeSample(output_encoding, y_frame[i], quantization);
-        video_stream_.write(reinterpret_cast<const char*>(&y_sample),
-                            sizeof(y_sample));
-        const std::int16_t c_sample =
-            EncodeChromaSample(output_encoding, c_frame[i], quantization);
-        chroma_stream_.write(reinterpret_cast<const char*>(&c_sample),
-                             sizeof(c_sample));
-      }
-    } else {
-      std::vector<SampleFixed> composite_frame;
-      composite_frame.reserve(input_frame_span_);
-      for (std::size_t i = 0; i < input_frame_span_; ++i) {
-        composite_frame.push_back(y_mv[frame_start + i] +
-                                  c_mv[frame_start + i]);
-      }
-      if (output_frame_span_ != input_frame_span_) {
-        composite_frame = ResampleFrame(composite_frame, output_frame_span_);
-      }
-      for (const SampleFixed composite_mv_fixed : composite_frame) {
-        if (output_encoding != OutputEncoding::kRawS16) {
-          const int mapped =
-              MapCompositeFixedToCode(composite_mv_fixed, quantization);
-          if (IsNonstandardMappedCode(mapped, quantization)) {
-            has_nonstandard_ = true;
-          }
-        }
-        const std::int16_t encoded_sample = EncodeCompositeSample(
-            output_encoding, composite_mv_fixed, quantization);
-        video_stream_.write(reinterpret_cast<const char*>(&encoded_sample),
-                            sizeof(encoded_sample));
-      }
+    if (!WriteEncodedFrame(y_mv, c_mv, frame_start)) {
+      errors->push_back("Failed while writing output video samples.");
+      return false;
     }
   }
 
@@ -638,6 +585,77 @@ bool OutputStage::AppendSamples(const std::vector<SampleFixed>& y_mv,
 
   written_samples_ += (y_mv.size() / input_frame_span_) * output_frame_span_;
   return true;
+}
+
+bool OutputStage::WriteEncodedFrame(const std::vector<SampleFixed>& y_mv,
+                                    const std::vector<SampleFixed>& c_mv,
+                                    std::size_t frame_start) {
+  const bool needs_resample = output_frame_span_ != input_frame_span_;
+
+  if (is_yc_output_) {
+    const SampleFixed* luma = y_mv.data() + frame_start;
+    const SampleFixed* chroma = c_mv.data() + frame_start;
+    if (needs_resample) {
+      ResampleFrameInto(luma, input_frame_span_, output_frame_span_,
+                        &resampled_luma_);
+      ResampleFrameInto(chroma, input_frame_span_, output_frame_span_,
+                        &resampled_chroma_);
+      luma = resampled_luma_.data();
+      chroma = resampled_chroma_.data();
+    }
+
+    luma_codes_.resize(output_frame_span_);
+    chroma_codes_.resize(output_frame_span_);
+    for (std::size_t i = 0; i < output_frame_span_; ++i) {
+      luma_codes_[i] = EncodeCompositeSample(output_encoding_, luma[i],
+                                             quantization_, &has_nonstandard_);
+      chroma_codes_[i] =
+          EncodeChromaSample(output_encoding_, chroma[i], quantization_);
+    }
+
+    video_stream_.write(reinterpret_cast<const char*>(luma_codes_.data()),
+                        static_cast<std::streamsize>(luma_codes_.size() *
+                                                     sizeof(std::int16_t)));
+    chroma_stream_.write(reinterpret_cast<const char*>(chroma_codes_.data()),
+                         static_cast<std::streamsize>(chroma_codes_.size() *
+                                                      sizeof(std::int16_t)));
+    return static_cast<bool>(video_stream_) &&
+           static_cast<bool>(chroma_stream_);
+  }
+
+  const SampleFixed* composite = nullptr;
+  if (needs_resample) {
+    composite_scratch_.resize(input_frame_span_);
+    for (std::size_t i = 0; i < input_frame_span_; ++i) {
+      composite_scratch_[i] = y_mv[frame_start + i] + c_mv[frame_start + i];
+    }
+    ResampleFrameInto(composite_scratch_.data(), input_frame_span_,
+                      output_frame_span_, &resampled_luma_);
+    composite = resampled_luma_.data();
+  }
+
+  luma_codes_.resize(output_frame_span_);
+  if (composite != nullptr) {
+    for (std::size_t i = 0; i < output_frame_span_; ++i) {
+      luma_codes_[i] = EncodeCompositeSample(output_encoding_, composite[i],
+                                             quantization_, &has_nonstandard_);
+    }
+  } else {
+    // Common path: the output span matches the 4fsc input span, so the
+    // composite sum is formed straight into the code buffer.
+    const SampleFixed* luma = y_mv.data() + frame_start;
+    const SampleFixed* chroma = c_mv.data() + frame_start;
+    for (std::size_t i = 0; i < output_frame_span_; ++i) {
+      luma_codes_[i] =
+          EncodeCompositeSample(output_encoding_, luma[i] + chroma[i],
+                                quantization_, &has_nonstandard_);
+    }
+  }
+
+  video_stream_.write(
+      reinterpret_cast<const char*>(luma_codes_.data()),
+      static_cast<std::streamsize>(luma_codes_.size() * sizeof(std::int16_t)));
+  return static_cast<bool>(video_stream_);
 }
 
 bool OutputStage::FinalizeWrite(std::vector<std::string>* errors) {
@@ -668,17 +686,9 @@ bool OutputStage::FinalizeWrite(std::vector<std::string>* errors) {
     chroma_stream_.close();
   }
 
-  QuantizationProfile quantization;
-  if (!BuildQuantizationProfile(
-          current_project_.cvbs_presets.video_standard_preset, &quantization)) {
-    errors->push_back(
-        "Output stage received unsupported or unknown video standard.");
-    write_session_open_ = false;
-    return false;
-  }
-
   if (!WriteMetadataDatabase(current_project_, expected_frame_count_,
-                             quantization, has_nonstandard_, errors, logger_)) {
+                             quantization_, has_nonstandard_, errors,
+                             logger_)) {
     write_session_open_ = false;
     return false;
   }

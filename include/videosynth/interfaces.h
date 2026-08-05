@@ -167,11 +167,14 @@ struct FrameSourceImage;
 class IProgressiveFrameProvider {
  public:
   virtual ~IProgressiveFrameProvider() = default;
-  // Ownership: out_image and error are output parameters. The caller owns
-  // the pointed-to memory and must ensure the pointers are valid (non-null).
-  // The implementation writes to these locations but does not take ownership.
+  // Ownership: out_image and error are output parameters. The caller owns the
+  // pointed-to memory and must ensure the pointers are valid (non-null). The
+  // decoded image itself is shared and immutable: the provider retains its own
+  // reference, and callers hold a const view for as long as they need it, so
+  // delivery costs a reference count rather than an image copy.
   virtual bool GenerateFrame(const Section& section, int frame_index,
-                             Standard standard, FrameSourceImage* out_image,
+                             Standard standard,
+                             std::shared_ptr<const FrameSourceImage>* out_image,
                              std::string* error) const = 0;
 };
 

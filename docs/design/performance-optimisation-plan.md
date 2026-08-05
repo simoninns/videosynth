@@ -385,6 +385,37 @@ unchanged within noise, for the same reason as Task 2.4.
 Removes the dominant serial-path costs that cap thread scaling. All tasks
 are bit-exact.
 
+*Measured, phase-wide* (16-core machine, Release `-O3`,
+`scripts/benchmark.sh --repeat 2`, best of two, frames/second). The "before"
+column is the Phase 2 tip built from a clean worktree and timed in the same
+session, so the two builds see the same machine state:
+
+| Project | 1 thread before → after | auto (16) before → after |
+| --- | --- | --- |
+| pal_still | 30.14 → 39.29 (1.3×) | 81.46 → 210.61 (2.6×) |
+| pal_still_noise | 18.14 → 21.30 (1.2×) | 72.97 → 156.94 (2.2×) |
+| pal_mkv | 15.41 → 35.55 (2.3×) | 22.97 → 130.79 (5.7×) |
+| ntsc_still | 50.47 → 70.58 (1.4×) | 121.54 → 344.35 (2.8×) |
+
+Thread scaling on pal_still improves from 2.7× to 5.4×: the per-frame source
+copy under a global mutex (Task 3.1) and the per-sample `ostream::write` on the
+single consumer thread (Task 3.2) were the two serial bottlenecks, and `pal_mkv`
+additionally loses two whole redundant decode passes (Task 3.3).
+
+All 43 `general` and 228 `stacking` artefacts reproduce byte for byte against
+the Phase 2 baseline, and the full test suite (1,591 tests) passes.
+
+`perf` profile after Phase 3 (250-frame PAL still, single-threaded) — the
+iostream write path is gone from the profile and the chroma FIR now dominates:
+
+| Cost centre | Share |
+| --- | --- |
+| `ApplyFirFilterFixed` | 47.3 % |
+| `GenerateFrameBatch` per-sample loops | 17.5 % |
+| `__llround` | 10.6 % |
+| `QuadratureChromaEncoder::EncodeLineFromPhaseStart` | 9.9 % |
+| output encoding (`EncodeCompositeSample` + `WriteEncodedFrame`) | 9.4 % |
+
 ### Task 3.1 — Share decoded source frames instead of copying
 
 `ProgressiveFrameSource::GenerateFrame` deep-copies the cached image
@@ -399,6 +430,23 @@ workers straddling a section boundary do not thrash re-decodes.
 - Output hashes unchanged; measured multi-thread scaling improves on the
   still benchmark.
 
+*Measured*: `IProgressiveFrameProvider::GenerateFrame` now yields
+`std::shared_ptr<const FrameSourceImage>`, and the EXR and MKV caches are one
+most-recently-used table of at most two decoded sources (an EXR source is simply
+a one-frame complete source). A cache hit takes the mutex only to bump a
+reference count; delivery no longer copies the ~2.4 MiB raster, and a decoded
+frame stays valid after eviction or `ClearCache` because the caller holds an
+owning reference. The GUI preview keeps a private copy, which is what its
+detached rendering needs.
+
+Thread scaling on the still benchmarks improves from 2.7× to 5.4× (pal_still)
+and from 2.4× to 4.9× (ntsc_still) — this task and Task 3.2 together; both
+removed serial work that had been throttling every worker. Output hashes
+unchanged. Three functional tests cover the new contract: repeated requests
+share one image, a delivered image outlives `ClearCache`, and two alternating
+sources both stay cached (no re-decode when a worker straddles a section
+boundary).
+
 ### Task 3.2 — Buffer output writes
 
 `OutputStage::AppendSamples` issues one 2-byte `ostream::write` per sample
@@ -412,6 +460,25 @@ resolve profile/encoding once at `BeginWrite`.
 - Output hashes unchanged; consumer-thread share of the profile drops
   measurably.
 
+*Measured*: `BeginWrite` resolves the quantisation profile, the sample encoding
+(now the named `OutputSampleEncoding`) and the composite/Y-C signal type once
+per session. `WriteEncodedFrame` encodes a whole frame into a reusable
+`std::vector<std::int16_t>` and issues **one** `write` per file per frame —
+709,379 two-byte writes per PAL frame become one 1.4 MB write (two for Y/C).
+The legal-range check now rides along with the code mapping that
+`EncodeCompositeSample` already performs instead of mapping every sample twice,
+and the composite sum is formed straight into the code buffer, so the common
+path allocates nothing per frame. Resampling (RAW_S16 presets only) writes into
+reused scratch buffers.
+
+The iostream cost centre — 21.6 % of the Phase 2 profile (`ostream::write`,
+`xsputn`, sentry, codecvt), all of it on the single consumer thread —
+disappears: output encoding is 9.4 % of the Phase 3 profile and issues no
+per-sample stream calls. Output hashes unchanged across `general` and
+`stacking`, including the TPG21, S16_4FSC, U16 and RAW_S16 presets that
+`OutputStageTest` and `FixtureProjectsCoverSupportedOutputEncodingFamilies`
+exercise.
+
 ### Task 3.3 — Eliminate redundant MKV decodes
 
 MKV sections currently decode the file twice (`ffprobe -count_frames` to
@@ -424,6 +491,29 @@ decode-pass fallback) and reuse probe results across the run.
 - Frame counts, output hashes, and validation behaviour unchanged, including
   for `duration_frames: all`.
 
+*Measured*: a 254-frame `pal_mkv` run now invokes exactly one `ffmpeg` decode
+and two metadata-only `ffprobe` queries (verified by tracing the external
+commands the run issues); it previously performed **three** full decode passes —
+`ffprobe -count_frames` in the validator probe, a second `-count_frames` in the
+frame source, and the `ffmpeg` pixel decode — plus two more `ffprobe`
+invocations. Specifically:
+
+- `DecodeMkvFrames` derives the frame count from the size of the payload the
+  single decode produces (yuv422p10le is a fixed 4 bytes per pixel), so no
+  counting pass is needed, and its profile validation and raster probe are now
+  one ffprobe call rather than two.
+- `ProgressiveFrameSourceProbe` takes the frame count from container metadata
+  (`nb_frames`, else duration × frame rate), falling back to a counting pass
+  only when the container declares neither. Matroska declares a duration, so the
+  fallback does not fire for the bundled sources.
+- The probe memoises successful results per source path (mutex-guarded), so a
+  project referencing one file from several sections probes it once.
+
+`pal_mkv` throughput: 15.41 → 35.55 f/s at one thread and 22.97 → 130.79 f/s at
+auto. Frame counts, output hashes and validation behaviour are unchanged,
+including `duration_frames: all` with `duration_repeat`; a new functional test
+asserts the metadata-derived probe count equals the decoded frame count.
+
 ### Task 3.4 — Stop copying frames into the disc-skip cache
 
 The skip path stores full Y/C buffer copies in its frame cache and forces
@@ -433,6 +523,14 @@ halve memory traffic. (Parallelising the skip path itself is Phase 6.)
 *Acceptance criteria*
 - No full-buffer copies on cache insert/hit.
 - Output hashes unchanged for all `projects/stacking` skip projects.
+
+*Measured*: the skip loop synthesises each disc frame into
+`shared_ptr<std::vector<SampleFixed>>` buffers and the cache stores those
+pointers, so caching a frame for backward-skip replay and replaying it are both
+reference-count operations rather than copies of two 709,379-sample vectors
+(11.35 MB per PAL frame cached, and again on replay). All 228 `stacking`
+artefacts — every skip and disc-simulation project — reproduce byte for byte.
+The skip path is still single-threaded; parallelising it remains Task 6.4.
 
 ---
 

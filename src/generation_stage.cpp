@@ -1100,19 +1100,22 @@ bool GenerationStage::GenerateFrameBatch(
                      section->name + "' (" + section->type + ").");
     }
 
-    FrameSourceImage source_frame;
+    // Shared, immutable decoded source image: delivery is a reference count,
+    // not a per-frame copy of the ~2.4 MiB raster.
+    std::shared_ptr<const FrameSourceImage> source_frame_image;
     std::string frame_error;
     const bool generated = progressive_source_.GenerateFrame(
         *section, source_frame_index,
-        project.cvbs_presets.video_standard_preset, &source_frame,
+        project.cvbs_presets.video_standard_preset, &source_frame_image,
         &frame_error);
 
-    if (!generated) {
+    if (!generated || source_frame_image == nullptr) {
       errors->push_back(frame_error.empty()
                             ? "Unable to generate frame-based source data."
                             : frame_error);
       return false;
     }
+    const FrameSourceImage& source_frame = *source_frame_image;
 
     const int local_frame_base = static_cast<int>(
         local_frame_index * static_cast<std::size_t>(frame_samples));

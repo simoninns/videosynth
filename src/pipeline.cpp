@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <filesystem>
+#include <memory>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -383,9 +384,12 @@ bool VideoSynthPipeline::RunProject(const Project& project,
                   " disc frame(s) with skip plan → " +
                   std::to_string(total_output_frames) + " output frame(s).");
 
-    // Sample cache keyed by 0-based disc frame index.
-    std::unordered_map<std::size_t, std::pair<std::vector<SampleFixed>,
-                                              std::vector<SampleFixed>>>
+    // Sample cache keyed by 0-based disc frame index. The buffers are shared
+    // with the frame that produced them and never mutated afterwards, so a
+    // backward-skip replay costs a reference count rather than a copy of two
+    // whole-frame sample vectors.
+    using SharedSamples = std::shared_ptr<const std::vector<SampleFixed>>;
+    std::unordered_map<std::size_t, std::pair<SharedSamples, SharedSamples>>
         frame_cache;
     frame_cache.reserve(total_disc_frames);
 
@@ -399,8 +403,10 @@ bool VideoSynthPipeline::RunProject(const Project& project,
         return CancelRun();
       }
 
-      std::vector<SampleFixed> y_mv;
-      std::vector<SampleFixed> c_mv;
+      auto y_frame = std::make_shared<std::vector<SampleFixed>>();
+      auto c_frame = std::make_shared<std::vector<SampleFixed>>();
+      std::vector<SampleFixed>& y_mv = *y_frame;
+      std::vector<SampleFixed>& c_mv = *c_frame;
 
       generation_errors.clear();
       if (!generation_->GenerateFrameBatch(project, schedule, disc_frame, 1U,
@@ -425,7 +431,7 @@ bool VideoSynthPipeline::RunProject(const Project& project,
       const DiscFrameAction& action = skip_plan[disc_frame];
 
       if (action.cache_samples) {
-        frame_cache[disc_frame] = {y_mv, c_mv};
+        frame_cache[disc_frame] = {y_frame, c_frame};
       }
 
       if (action.write_to_output) {
@@ -452,7 +458,7 @@ bool VideoSynthPipeline::RunProject(const Project& project,
           return FinishRun(PipelineRunStatus::kFailed);
         }
         output_errors.clear();
-        if (!output_->AppendSamples(it->second.first, it->second.second,
+        if (!output_->AppendSamples(*it->second.first, *it->second.second,
                                     &output_errors)) {
           CloseOutputSessionOnFailure();
           for (const std::string& error : output_errors) {

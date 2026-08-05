@@ -10,6 +10,7 @@
 #include <gtest/gtest.h>
 
 #include <filesystem>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -34,7 +35,7 @@ void ExpectCodesWithinStudioRange(const FrameSourceImage& image) {
 
 TEST(FrameSourceTest, DecodesProgressivePalExrSource) {
   ProgressiveFrameSource frame_source;
-  FrameSourceImage image;
+  std::shared_ptr<const FrameSourceImage> image;
   std::string error;
 
   Section section;
@@ -46,20 +47,20 @@ TEST(FrameSourceTest, DecodesProgressivePalExrSource) {
   ASSERT_TRUE(
       frame_source.GenerateFrame(section, 0, Standard::kPal, &image, &error));
   EXPECT_TRUE(error.empty());
-  EXPECT_EQ(image.width, 720);
-  EXPECT_EQ(image.height, 576);
-  EXPECT_EQ(image.active_x, 0);
-  EXPECT_EQ(image.active_y, 0);
-  EXPECT_EQ(image.active_width, 720);
-  EXPECT_EQ(image.active_height, 576);
-  const std::size_t center_x = image.active_x + (image.active_width / 2);
-  const std::size_t center_y = image.active_y + (image.active_height / 2);
-  EXPECT_NE(image.PixelAt(center_x, center_y).y, 64);
+  EXPECT_EQ(image->width, 720);
+  EXPECT_EQ(image->height, 576);
+  EXPECT_EQ(image->active_x, 0);
+  EXPECT_EQ(image->active_y, 0);
+  EXPECT_EQ(image->active_width, 720);
+  EXPECT_EQ(image->active_height, 576);
+  const std::size_t center_x = image->active_x + (image->active_width / 2);
+  const std::size_t center_y = image->active_y + (image->active_height / 2);
+  EXPECT_NE(image->PixelAt(center_x, center_y).y, 64);
 }
 
 TEST(FrameSourceTest, DecodesProgressiveNtscExrSource) {
   ProgressiveFrameSource frame_source;
-  FrameSourceImage image;
+  std::shared_ptr<const FrameSourceImage> image;
   std::string error;
 
   Section section;
@@ -71,20 +72,20 @@ TEST(FrameSourceTest, DecodesProgressiveNtscExrSource) {
   ASSERT_TRUE(
       frame_source.GenerateFrame(section, 0, Standard::kNtsc, &image, &error));
   EXPECT_TRUE(error.empty());
-  EXPECT_EQ(image.width, 720);
-  EXPECT_EQ(image.height, 486);
-  EXPECT_EQ(image.active_x, 0);
-  EXPECT_EQ(image.active_y, 0);
-  EXPECT_EQ(image.active_width, 720);
-  EXPECT_EQ(image.active_height, 486);
-  const std::size_t center_x = image.active_x + (image.active_width / 2);
-  const std::size_t center_y = image.active_y + (image.active_height / 2);
-  EXPECT_NE(image.PixelAt(center_x, center_y).y, 64);
+  EXPECT_EQ(image->width, 720);
+  EXPECT_EQ(image->height, 486);
+  EXPECT_EQ(image->active_x, 0);
+  EXPECT_EQ(image->active_y, 0);
+  EXPECT_EQ(image->active_width, 720);
+  EXPECT_EQ(image->active_height, 486);
+  const std::size_t center_x = image->active_x + (image->active_width / 2);
+  const std::size_t center_y = image->active_y + (image->active_height / 2);
+  EXPECT_NE(image->PixelAt(center_x, center_y).y, 64);
 }
 
 TEST(FrameSourceTest, RejectsProgressiveRawSourceFamily) {
   ProgressiveFrameSource frame_source;
-  FrameSourceImage image;
+  std::shared_ptr<const FrameSourceImage> image;
   std::string error;
 
   Section section;
@@ -114,15 +115,15 @@ TEST(FrameSourceTest, DecodesProgressivePalMkvSourceFrames) {
                                              &frame_count, &error));
   ASSERT_GT(frame_count, 0);
 
-  FrameSourceImage first_frame;
+  std::shared_ptr<const FrameSourceImage> first_frame;
   ASSERT_TRUE(frame_source.GenerateFrame(section, 0, Standard::kPal,
                                          &first_frame, &error));
-  EXPECT_EQ(first_frame.width, 720);
-  EXPECT_EQ(first_frame.height, 576);
-  EXPECT_EQ(first_frame.active_x, 0);
-  EXPECT_EQ(first_frame.active_y, 0);
-  EXPECT_EQ(first_frame.active_width, 720);
-  EXPECT_EQ(first_frame.active_height, 576);
+  EXPECT_EQ(first_frame->width, 720);
+  EXPECT_EQ(first_frame->height, 576);
+  EXPECT_EQ(first_frame->active_x, 0);
+  EXPECT_EQ(first_frame->active_y, 0);
+  EXPECT_EQ(first_frame->active_width, 720);
+  EXPECT_EQ(first_frame->active_height, 576);
 }
 
 TEST(FrameSourceTest, DecodesProgressiveNtscMkvSourceFrames) {
@@ -140,16 +141,16 @@ TEST(FrameSourceTest, DecodesProgressiveNtscMkvSourceFrames) {
                                              &frame_count, &error));
   ASSERT_GT(frame_count, 0);
 
-  FrameSourceImage first_frame;
+  std::shared_ptr<const FrameSourceImage> first_frame;
   ASSERT_TRUE(frame_source.GenerateFrame(section, 0, Standard::kNtsc,
                                          &first_frame, &error));
-  EXPECT_EQ(first_frame.width, 720);
-  EXPECT_EQ(first_frame.height, 486);
-  EXPECT_EQ(first_frame.active_x, 0);
-  EXPECT_EQ(first_frame.active_y, 0);
-  EXPECT_EQ(first_frame.active_width, 720);
-  EXPECT_EQ(first_frame.active_height, 486);
-  EXPECT_NE(first_frame.PixelAt(0, 0).y, first_frame.PixelAt(8, 0).y);
+  EXPECT_EQ(first_frame->width, 720);
+  EXPECT_EQ(first_frame->height, 486);
+  EXPECT_EQ(first_frame->active_x, 0);
+  EXPECT_EQ(first_frame->active_y, 0);
+  EXPECT_EQ(first_frame->active_width, 720);
+  EXPECT_EQ(first_frame->active_height, 486);
+  EXPECT_NE(first_frame->PixelAt(0, 0).y, first_frame->PixelAt(8, 0).y);
 }
 
 TEST(FrameSourceTest, NtscMkvPreservesFullRasterActiveGeometry) {
@@ -162,17 +163,17 @@ TEST(FrameSourceTest, NtscMkvPreservesFullRasterActiveGeometry) {
                     "videosynth-assets/assets/mkv/720x486/MOVING_ZONE_2H.mkv")
                        .string();
 
-  FrameSourceImage frame;
+  std::shared_ptr<const FrameSourceImage> frame;
   ASSERT_TRUE(
       frame_source.GenerateFrame(section, 0, Standard::kNtsc, &frame, &error));
   EXPECT_TRUE(error.empty());
 
-  EXPECT_EQ(frame.width, 720);
-  EXPECT_EQ(frame.height, 486);
-  EXPECT_EQ(frame.active_x, 0);
-  EXPECT_EQ(frame.active_width, 720);
-  EXPECT_EQ(frame.active_y, 0);
-  EXPECT_EQ(frame.active_height, 486);
+  EXPECT_EQ(frame->width, 720);
+  EXPECT_EQ(frame->height, 486);
+  EXPECT_EQ(frame->active_x, 0);
+  EXPECT_EQ(frame->active_width, 720);
+  EXPECT_EQ(frame->active_y, 0);
+  EXPECT_EQ(frame->active_height, 486);
 }
 
 TEST(FrameSourceTest, PalAndNtscMkvDecodedPixelsStayWithinStudioCodeRange) {
@@ -185,11 +186,11 @@ TEST(FrameSourceTest, PalAndNtscMkvDecodedPixelsStayWithinStudioCodeRange) {
       (std::filesystem::path(VIDEOSYNTH_SOURCE_DIR) /
        "videosynth-assets/assets/mkv/720x576/MOVING_ZONE_2H.mkv")
           .string();
-  FrameSourceImage pal_frame;
+  std::shared_ptr<const FrameSourceImage> pal_frame;
   ASSERT_TRUE(frame_source.GenerateFrame(pal_section, 0, Standard::kPal,
                                          &pal_frame, &error));
   EXPECT_TRUE(error.empty());
-  ExpectCodesWithinStudioRange(pal_frame);
+  ExpectCodesWithinStudioRange(*pal_frame);
 
   Section ntsc_section;
   ntsc_section.type = "progressive";
@@ -197,11 +198,11 @@ TEST(FrameSourceTest, PalAndNtscMkvDecodedPixelsStayWithinStudioCodeRange) {
       (std::filesystem::path(VIDEOSYNTH_SOURCE_DIR) /
        "videosynth-assets/assets/mkv/720x486/MOVING_ZONE_2H.mkv")
           .string();
-  FrameSourceImage ntsc_frame;
+  std::shared_ptr<const FrameSourceImage> ntsc_frame;
   ASSERT_TRUE(frame_source.GenerateFrame(ntsc_section, 0, Standard::kNtsc,
                                          &ntsc_frame, &error));
   EXPECT_TRUE(error.empty());
-  ExpectCodesWithinStudioRange(ntsc_frame);
+  ExpectCodesWithinStudioRange(*ntsc_frame);
 }
 
 TEST(FrameSourceTest, RejectsProgressiveMkvFrameIndexOutOfRange) {
@@ -219,10 +220,87 @@ TEST(FrameSourceTest, RejectsProgressiveMkvFrameIndexOutOfRange) {
                                              &frame_count, &error));
   ASSERT_GT(frame_count, 0);
 
-  FrameSourceImage out_of_range;
+  std::shared_ptr<const FrameSourceImage> out_of_range;
   EXPECT_FALSE(frame_source.GenerateFrame(section, frame_count, Standard::kNtsc,
                                           &out_of_range, &error));
   EXPECT_FALSE(error.empty());
+}
+
+TEST(FrameSourceTest, RepeatedRequestsShareOneDecodedImage) {
+  ProgressiveFrameSource frame_source;
+  std::string error;
+
+  Section section;
+  section.type = "progressive";
+  section.source = (std::filesystem::path(VIDEOSYNTH_SOURCE_DIR) /
+                    "videosynth-assets/assets/exr/720x576/100_BARS.exr")
+                       .string();
+
+  std::shared_ptr<const FrameSourceImage> first;
+  std::shared_ptr<const FrameSourceImage> second;
+  ASSERT_TRUE(
+      frame_source.GenerateFrame(section, 0, Standard::kPal, &first, &error));
+  ASSERT_TRUE(
+      frame_source.GenerateFrame(section, 0, Standard::kPal, &second, &error));
+
+  // A cache hit hands back the same image rather than a fresh copy of it.
+  EXPECT_EQ(first.get(), second.get());
+}
+
+TEST(FrameSourceTest, DeliveredImageOutlivesTheCache) {
+  ProgressiveFrameSource frame_source;
+  std::string error;
+
+  Section section;
+  section.type = "progressive";
+  section.source = (std::filesystem::path(VIDEOSYNTH_SOURCE_DIR) /
+                    "videosynth-assets/assets/exr/720x576/100_BARS.exr")
+                       .string();
+
+  std::shared_ptr<const FrameSourceImage> frame;
+  ASSERT_TRUE(
+      frame_source.GenerateFrame(section, 0, Standard::kPal, &frame, &error));
+  const std::int16_t centre_luma =
+      frame->PixelAt(frame->width / 2, frame->height / 2).y;
+
+  frame_source.ClearCache();
+
+  // The caller's reference keeps the image alive and unchanged.
+  ASSERT_NE(frame, nullptr);
+  EXPECT_EQ(frame->PixelAt(frame->width / 2, frame->height / 2).y, centre_luma);
+}
+
+TEST(FrameSourceTest, TwoSourcesStayCachedAcrossAlternatingRequests) {
+  ProgressiveFrameSource frame_source;
+  std::string error;
+
+  Section pal_section;
+  pal_section.type = "progressive";
+  pal_section.source = (std::filesystem::path(VIDEOSYNTH_SOURCE_DIR) /
+                        "videosynth-assets/assets/exr/720x576/100_BARS.exr")
+                           .string();
+
+  Section second_section;
+  second_section.type = "progressive";
+  second_section.source = (std::filesystem::path(VIDEOSYNTH_SOURCE_DIR) /
+                           "videosynth-assets/assets/exr/720x576/75_BARS.exr")
+                              .string();
+
+  std::shared_ptr<const FrameSourceImage> first_a;
+  std::shared_ptr<const FrameSourceImage> b;
+  std::shared_ptr<const FrameSourceImage> second_a;
+  ASSERT_TRUE(frame_source.GenerateFrame(pal_section, 0, Standard::kPal,
+                                         &first_a, &error));
+  ASSERT_TRUE(
+      frame_source.GenerateFrame(second_section, 0, Standard::kPal, &b, &error))
+      << error;
+  ASSERT_TRUE(frame_source.GenerateFrame(pal_section, 0, Standard::kPal,
+                                         &second_a, &error));
+
+  // Both sources fit the cache, so straddling a section boundary does not
+  // force a re-decode of the section still in use.
+  EXPECT_EQ(first_a.get(), second_a.get());
+  EXPECT_NE(first_a.get(), b.get());
 }
 
 }  // namespace

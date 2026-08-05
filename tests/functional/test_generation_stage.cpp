@@ -13,6 +13,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <filesystem>
+#include <memory>
 #include <set>
 #include <string>
 #include <utility>
@@ -1096,7 +1097,7 @@ TEST(GenerationStageChromaTest,
       ActiveWindowEndSamples(Standard::kNtsc, ntsc.sample_rate_4fsc_hz);
   const int active_window_samples = active_end - active_start;
   ProgressiveFrameSource frame_source;
-  FrameSourceImage source_frame;
+  std::shared_ptr<const FrameSourceImage> source_frame;
   std::string frame_error;
   ASSERT_TRUE(frame_source.GenerateFrame(
       project.sections[0], 0, Standard::kNtsc, &source_frame, &frame_error));
@@ -1104,13 +1105,13 @@ TEST(GenerationStageChromaTest,
   std::vector<YCbCr444Pixel> source_line(
       static_cast<std::size_t>(active_window_samples));
   const int active_line_index = line_1based - 22;
-  const int source_y = source_frame.active_y + ((2 * active_line_index) + 1);
+  const int source_y = source_frame->active_y + ((2 * active_line_index) + 1);
   for (int x_sample = 0; x_sample < active_window_samples; ++x_sample) {
     const int pixel_x = MapActiveSampleToSourcePixel(
-        x_sample, active_window_samples, source_frame.active_width,
-        source_frame.active_x);
+        x_sample, active_window_samples, source_frame->active_width,
+        source_frame->active_x);
     source_line[static_cast<std::size_t>(x_sample)] =
-        source_frame.PixelAt(pixel_x, source_y);
+        source_frame->PixelAt(pixel_x, source_y);
   }
 
   const auto chroma_encoder =
@@ -1146,7 +1147,7 @@ TEST(GenerationStageChromaTest,
 
   const TimingConstants pal = GetTimingConstants(Standard::kPal);
   ProgressiveFrameSource frame_source;
-  FrameSourceImage source_frame;
+  std::shared_ptr<const FrameSourceImage> source_frame;
   std::string frame_error;
   ASSERT_TRUE(frame_source.GenerateFrame(project.sections[0], 0, Standard::kPal,
                                          &source_frame, &frame_error));
@@ -1163,10 +1164,10 @@ TEST(GenerationStageChromaTest,
   const int sample_window_end = sample_window_start + sample_window;
 
   const int pixel_x = MapActiveSampleToSourcePixel(
-      x_sample, active_window_samples, source_frame.active_width,
-      source_frame.active_x);
+      x_sample, active_window_samples, source_frame->active_width,
+      source_frame->active_x);
   const YCbCr444Pixel source_pixel =
-      source_frame.PixelAt(pixel_x, source_frame.active_y + 1);
+      source_frame->PixelAt(pixel_x, source_frame->active_y + 1);
   const double expected_u = static_cast<double>(source_pixel.cb - 512) / 448.0;
   const double expected_v = static_cast<double>(source_pixel.cr - 512) / 448.0;
   const double expected_hue = std::atan2(expected_v, expected_u);
@@ -1227,7 +1228,7 @@ TEST(GenerationStageProgressiveTest, NtscMkvUsesField2DominantRowPairing) {
           .string();
 
   ProgressiveFrameSource progressive_source;
-  FrameSourceImage source_frame;
+  std::shared_ptr<const FrameSourceImage> source_frame;
   std::string source_error;
   Section section;
   section.type = "progressive";
@@ -1250,13 +1251,13 @@ TEST(GenerationStageProgressiveTest, NtscMkvUsesField2DominantRowPairing) {
        ++field_line) {
     for (int x_sample = 0; x_sample < active_window_samples; ++x_sample) {
       const int pixel_x = MapActiveSampleToSourcePixel(
-          x_sample, active_window_samples, source_frame.active_width,
-          source_frame.active_x);
+          x_sample, active_window_samples, source_frame->active_width,
+          source_frame->active_x);
       if (source_frame
-              .PixelAt(pixel_x, source_frame.active_y + (2 * field_line))
+              ->PixelAt(pixel_x, source_frame->active_y + (2 * field_line))
               .y !=
           source_frame
-              .PixelAt(pixel_x, source_frame.active_y + (2 * field_line + 1))
+              ->PixelAt(pixel_x, source_frame->active_y + (2 * field_line + 1))
               .y) {
         selected_field_line = field_line;
         selected_x_sample = x_sample;
@@ -1268,8 +1269,8 @@ TEST(GenerationStageProgressiveTest, NtscMkvUsesField2DominantRowPairing) {
   ASSERT_NE(selected_x_sample, -1);
 
   const int pixel_x = MapActiveSampleToSourcePixel(
-      selected_x_sample, active_window_samples, source_frame.active_width,
-      source_frame.active_x);
+      selected_x_sample, active_window_samples, source_frame->active_width,
+      source_frame->active_x);
 
   GenerationStage generation;
   std::vector<std::string> errors;
@@ -1288,13 +1289,13 @@ TEST(GenerationStageProgressiveTest, NtscMkvUsesField2DominantRowPairing) {
 
   const double expected_field1 = LumaMillivoltsFromCodeForTest(
       source_frame
-          .PixelAt(pixel_x,
-                   source_frame.active_y + (2 * selected_field_line + 1))
+          ->PixelAt(pixel_x,
+                    source_frame->active_y + (2 * selected_field_line + 1))
           .y,
       levels);
   const double expected_field2 = LumaMillivoltsFromCodeForTest(
       source_frame
-          .PixelAt(pixel_x, source_frame.active_y + (2 * selected_field_line))
+          ->PixelAt(pixel_x, source_frame->active_y + (2 * selected_field_line))
           .y,
       levels);
 

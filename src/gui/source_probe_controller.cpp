@@ -42,7 +42,9 @@ class FixedProfileProbe final : public IProgressiveFrameSourceProbe {
 };
 
 // Fresh probe per run: ProgressiveFrameSourceProbe is thread-safe, but a
-// worker-local instance keeps the default path free of shared state.
+// worker-local instance keeps the default path free of shared state — and it
+// keeps the probe's per-source memo scoped to this request, so re-probing after
+// the user edits or replaces a source file always reads the file again.
 bool RunFilesystemProbe(const Section& section,
                         ProgressiveFrameSourceProfile* out_profile,
                         std::string* error) {

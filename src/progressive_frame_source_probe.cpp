@@ -29,6 +29,7 @@
 #include <filesystem>
 #include <fstream>
 #include <map>
+#include <mutex>
 #include <sstream>
 #include <string>
 #include <system_error>
@@ -277,21 +278,15 @@ bool ProbeExr(const Section& section,
   }
 }
 
-bool ProbeWithFfprobe(const std::string& source,
-                      ProgressiveFrameSourceProfile* out_profile,
-                      std::string* error) {
+// Runs one ffprobe query and returns its key=value output.
+bool RunFfprobeQuery(const std::string& source, const std::string& entries,
+                     std::map<std::string, std::string>* out_values,
+                     std::string* error) {
   const std::string escaped_source = EscapeForSingleQuotedShell(source);
-  const std::string command =
-      "ffprobe -v error -select_streams v:0 -count_frames "
-      "-show_entries format=format_name "
-      "-show_entries "
-      "stream=codec_name,pix_fmt,width,height,r_frame_rate,nb_read_frames,bits_"
-      "per_raw_sample,field_order,color_space,color_primaries,color_transfer,"
-      "color_range,sample_aspect_ratio "
-      "-show_entries "
-      "stream_side_data=crop_left,crop_right,crop_top,crop_bottom "
-      "-of default=noprint_wrappers=1:nokey=0 '" +
-      escaped_source + "' 2>/dev/null";
+  const std::string command = "ffprobe -v error -select_streams v:0 " +
+                              entries +
+                              " -of default=noprint_wrappers=1:nokey=0 '" +
+                              escaped_source + "' 2>/dev/null";
 
   std::array<char, 4096> buffer{};
   std::string output;
@@ -316,8 +311,62 @@ bool ProbeWithFfprobe(const std::string& source,
     return false;
   }
 
+  ParseFfprobeKeyValueOutput(output, out_values);
+  return true;
+}
+
+// Resolves the frame count of a video source from container metadata: the
+// stream's own nb_frames when the demuxer supplies it, otherwise duration times
+// frame rate. Returns 0 when neither is available, leaving the caller to fall
+// back to a counting pass.
+int FrameCountFromContainerMetadata(
+    const std::map<std::string, std::string>& values, double frame_rate) {
+  const auto nb_frames = values.find("nb_frames");
+  if (nb_frames != values.end()) {
+    const int declared = ParseIntegerOrZero(nb_frames->second);
+    if (declared > 0) {
+      return declared;
+    }
+  }
+
+  if (frame_rate <= 0.0) {
+    return 0;
+  }
+  for (const char* key : {"duration", "stream_duration"}) {
+    const auto duration = values.find(key);
+    if (duration == values.end() || duration->second.empty() ||
+        duration->second == "N/A") {
+      continue;
+    }
+    const double seconds = std::atof(duration->second.c_str());
+    if (seconds > 0.0) {
+      return static_cast<int>(std::lround(seconds * frame_rate));
+    }
+  }
+  return 0;
+}
+
+// Probes a video source's profile without decoding it: the metadata-only query
+// is milliseconds, whereas `ffprobe -count_frames` decodes the whole clip. The
+// counting pass runs only when the container declares neither a frame count nor
+// a duration.
+bool ProbeWithFfprobe(const std::string& source,
+                      ProgressiveFrameSourceProfile* out_profile,
+                      std::string* error) {
   std::map<std::string, std::string> values;
-  ParseFfprobeKeyValueOutput(output, &values);
+  if (!RunFfprobeQuery(source,
+                       "-show_entries format=format_name,duration "
+                       "-show_entries "
+                       "stream=codec_name,pix_fmt,width,height,r_frame_rate,"
+                       "nb_frames,bits_per_raw_sample,field_order,color_space,"
+                       "color_primaries,color_transfer,color_range,"
+                       "sample_aspect_ratio "
+                       "-show_entries "
+                       "stream_side_data=crop_left,crop_right,crop_top,"
+                       "crop_bottom",
+                       &values, error)) {
+    return false;
+  }
 
   const std::string format_name = Lowercase(values["format_name"]);
   const std::string codec_name = Lowercase(values["codec_name"]);
@@ -331,7 +380,17 @@ bool ProbeWithFfprobe(const std::string& source,
   const int width = ParseIntegerOrZero(values["width"]);
   const int height = ParseIntegerOrZero(values["height"]);
   const double frame_rate = ParseFrameRate(values["r_frame_rate"]);
-  const int frame_count = ParseIntegerOrZero(values["nb_read_frames"]);
+  int frame_count = FrameCountFromContainerMetadata(values, frame_rate);
+  if (frame_count <= 0) {
+    // Last resort: count decoded frames. Matroska demuxers usually declare a
+    // duration, so this pass is rare.
+    std::map<std::string, std::string> counted;
+    if (RunFfprobeQuery(source,
+                        "-count_frames -show_entries stream=nb_read_frames",
+                        &counted, nullptr)) {
+      frame_count = ParseIntegerOrZero(counted["nb_read_frames"]);
+    }
+  }
   const int crop_left = ParseIntegerOrZero(values["crop_left"]);
   const int crop_right = ParseIntegerOrZero(values["crop_right"]);
   const int crop_top = ParseIntegerOrZero(values["crop_top"]);
@@ -376,6 +435,15 @@ bool ProgressiveFrameSourceProbe::Probe(
     return false;
   }
 
+  {
+    const std::lock_guard<std::mutex> lock(profile_cache_mutex_);
+    const auto cached = profile_cache_.find(section.source);
+    if (cached != profile_cache_.end()) {
+      *out_profile = cached->second;
+      return true;
+    }
+  }
+
   // Reject a missing source before handing it to OpenEXR/ffprobe: those
   // libraries write their own open-failure diagnostics straight to stderr,
   // which bypasses the logger. A cheap existence check keeps the failure on
@@ -389,17 +457,25 @@ bool ProgressiveFrameSourceProbe::Probe(
   }
 
   const std::string source = Lowercase(section.source);
+  bool probed = false;
   if (EndsWithLowercase(source, ".exr")) {
-    return ProbeExr(section, out_profile, error);
-  }
-  if (EndsWithLowercase(source, ".mkv")) {
-    return ProbeWithFfprobe(section.source, out_profile, error);
+    probed = ProbeExr(section, out_profile, error);
+  } else if (EndsWithLowercase(source, ".mkv")) {
+    probed = ProbeWithFfprobe(section.source, out_profile, error);
+  } else {
+    if (error != nullptr) {
+      *error = "Unsupported progressive source family during profile probing.";
+    }
+    return false;
   }
 
-  if (error != nullptr) {
-    *error = "Unsupported progressive source family during profile probing.";
+  if (!probed) {
+    return false;
   }
-  return false;
+
+  const std::lock_guard<std::mutex> lock(profile_cache_mutex_);
+  profile_cache_[section.source] = *out_profile;
+  return true;
 }
 
 }  // namespace videosynth
