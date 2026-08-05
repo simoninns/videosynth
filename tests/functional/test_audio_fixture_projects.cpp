@@ -11,6 +11,7 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
@@ -105,8 +106,15 @@ std::uint64_t ExpectedSamplePositions(Standard standard, int total_frames) {
 void RunAudioFixtureProject(const AudioFixture& fixture) {
   const std::string fixture_path =
       test_support::FixturePath(fixture.fixture_name);
+  // One output directory per fixture: the composite and Y/C variants of the
+  // same project derive identical WAV track names from their video basename,
+  // so a shared directory would let concurrently running tests delete and
+  // overwrite each other's artefacts.
+  std::string fixture_dir_tag = fixture.fixture_name;
+  std::replace(fixture_dir_tag.begin(), fixture_dir_tag.end(), '/', '_');
   const std::filesystem::path output_dir =
-      std::filesystem::temp_directory_path() / "videosynth_audio_fixtures";
+      std::filesystem::temp_directory_path() / "videosynth_audio_fixtures" /
+      fixture_dir_tag;
   const AssetRootMap roots = FixtureAssetRoots(output_dir);
 
   SilentLogger logger;

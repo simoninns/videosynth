@@ -12,8 +12,6 @@
 #include <algorithm>
 #include <cstdint>
 #include <filesystem>
-#include <memory>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -34,11 +32,12 @@ struct DiscFrameAction {
   // If false the frame is generated (to advance burst-phase state) but not
   // written to the output stream.  Used for forward skips.
   bool write_to_output = true;
-  // If true the fully-processed sample buffers for this disc frame are kept
-  // in a cache so they can be re-emitted as backward-skip copies.
-  bool cache_samples = false;
-  // Disc frame indices (0-based) whose cached samples should be appended to
-  // the output stream immediately after this disc frame is processed.
+  // Disc frame indices (0-based) whose output should be re-emitted to the
+  // output stream immediately after this disc frame is processed. Replays are
+  // regenerated through the generation stage's frame template cache rather
+  // than replayed from a second whole-frame cache: synthesis, noise, and
+  // dropout application are all deterministic per (project, schedule, frame),
+  // so a regenerated frame is byte-identical to its first emission.
   std::vector<std::size_t> replay_disc_frames;
 };
 
@@ -69,7 +68,6 @@ std::vector<DiscFrameAction> ComputeDiscSkipPlan(
       for (std::size_t i = 0; i < count; ++i) {
         const std::size_t src = first_src + i;
         if (src < total_disc_frames) {
-          plan[src].cache_samples = true;
           plan[at].replay_disc_frames.push_back(src);
         }
       }
@@ -384,18 +382,50 @@ bool VideoSynthPipeline::RunProject(const Project& project,
                   " disc frame(s) with skip plan → " +
                   std::to_string(total_output_frames) + " output frame(s).");
 
-    // Sample cache keyed by 0-based disc frame index. The buffers are shared
-    // with the frame that produced them and never mutated afterwards, so a
-    // backward-skip replay costs a reference count rather than a copy of two
-    // whole-frame sample vectors.
-    using SharedSamples = std::shared_ptr<const std::vector<SampleFixed>>;
-    std::unordered_map<std::size_t, std::pair<SharedSamples, SharedSamples>>
-        frame_cache;
-    frame_cache.reserve(total_disc_frames);
-
     const std::size_t progress_interval =
         ComputeProgressInterval(total_disc_frames);
     std::size_t next_progress_mark = progress_interval;
+
+    // Whole-frame buffers reused across the loop. Backward-skip replays are
+    // regenerated into the same buffers: clean-frame synthesis goes through
+    // the generation stage's frame template cache, and noise and dropout
+    // application are deterministic per (project, schedule, frame), so a
+    // regenerated frame is byte-identical to its first emission without a
+    // second whole-frame cache in the pipeline.
+    std::vector<SampleFixed> y_mv;
+    std::vector<SampleFixed> c_mv;
+
+    // Synthesises one disc frame into y_mv/c_mv with noise applied (dropout
+    // handling differs between first emission and replay, so it stays with
+    // the callers). Logs and returns false on failure.
+    auto SynthesizeDiscFrame = [&](std::size_t disc_frame) -> bool {
+      generation_errors.clear();
+      if (!generation_->GenerateFrameBatch(project, schedule, disc_frame, 1U,
+                                           &y_mv, &c_mv, &generation_errors)) {
+        for (const std::string& error : generation_errors) {
+          logger_->Error(error);
+        }
+        return false;
+      }
+      if (noise_injection_ != nullptr) {
+        noise_injection_->InjectNoise(project, schedule, disc_frame, 1U, &y_mv,
+                                      &c_mv);
+      }
+      return true;
+    };
+
+    // Appends the current y_mv/c_mv as one output frame, with its audio.
+    // Logs and returns false on failure.
+    auto EmitOutputFrame = [&]() -> bool {
+      output_errors.clear();
+      if (!output_->AppendSamples(y_mv, c_mv, &output_errors)) {
+        for (const std::string& error : output_errors) {
+          logger_->Error(error);
+        }
+        return false;
+      }
+      return !audio_enabled || EmitAudioFrame();
+    };
 
     for (std::size_t disc_frame = 0U; disc_frame < total_disc_frames;
          ++disc_frame) {
@@ -403,24 +433,9 @@ bool VideoSynthPipeline::RunProject(const Project& project,
         return CancelRun();
       }
 
-      auto y_frame = std::make_shared<std::vector<SampleFixed>>();
-      auto c_frame = std::make_shared<std::vector<SampleFixed>>();
-      std::vector<SampleFixed>& y_mv = *y_frame;
-      std::vector<SampleFixed>& c_mv = *c_frame;
-
-      generation_errors.clear();
-      if (!generation_->GenerateFrameBatch(project, schedule, disc_frame, 1U,
-                                           &y_mv, &c_mv, &generation_errors)) {
+      if (!SynthesizeDiscFrame(disc_frame)) {
         CloseOutputSessionOnFailure();
-        for (const std::string& error : generation_errors) {
-          logger_->Error(error);
-        }
         return FinishRun(PipelineRunStatus::kFailed);
-      }
-
-      if (noise_injection_ != nullptr) {
-        noise_injection_->InjectNoise(project, schedule, disc_frame, 1U, &y_mv,
-                                      &c_mv);
       }
 
       if (dropout_injection_ != nullptr) {
@@ -430,43 +445,25 @@ bool VideoSynthPipeline::RunProject(const Project& project,
 
       const DiscFrameAction& action = skip_plan[disc_frame];
 
-      if (action.cache_samples) {
-        frame_cache[disc_frame] = {y_frame, c_frame};
-      }
-
-      if (action.write_to_output) {
-        output_errors.clear();
-        if (!output_->AppendSamples(y_mv, c_mv, &output_errors)) {
-          CloseOutputSessionOnFailure();
-          for (const std::string& error : output_errors) {
-            logger_->Error(error);
-          }
-          return FinishRun(PipelineRunStatus::kFailed);
-        }
-        if (audio_enabled && !EmitAudioFrame()) {
-          CloseOutputSessionOnFailure();
-          return FinishRun(PipelineRunStatus::kFailed);
-        }
+      if (action.write_to_output && !EmitOutputFrame()) {
+        CloseOutputSessionOnFailure();
+        return FinishRun(PipelineRunStatus::kFailed);
       }
 
       for (const std::size_t src : action.replay_disc_frames) {
-        const auto it = frame_cache.find(src);
-        if (it == frame_cache.end()) {
+        if (!SynthesizeDiscFrame(src)) {
           CloseOutputSessionOnFailure();
-          logger_->Error("Disc skip internal error: cache miss for frame " +
-                         std::to_string(src) + ".");
           return FinishRun(PipelineRunStatus::kFailed);
         }
-        output_errors.clear();
-        if (!output_->AppendSamples(*it->second.first, *it->second.second,
-                                    &output_errors)) {
-          CloseOutputSessionOnFailure();
-          for (const std::string& error : output_errors) {
-            logger_->Error(error);
-          }
-          return FinishRun(PipelineRunStatus::kFailed);
+        if (dropout_injection_ != nullptr) {
+          // The replayed frame's sidecar rows were committed when the frame
+          // was first processed, so the recomputed rows are discarded; only
+          // the deterministic signal push is applied again.
+          std::vector<DropoutSidecarRow> replay_rows;
+          dropout_injection_->ComputeFrameDropouts(
+              project, schedule, src, &y_mv, &c_mv, 0U, &replay_rows);
         }
-        if (audio_enabled && !EmitAudioFrame()) {
+        if (!EmitOutputFrame()) {
           CloseOutputSessionOnFailure();
           return FinishRun(PipelineRunStatus::kFailed);
         }
@@ -582,6 +579,11 @@ bool VideoSynthPipeline::RunProject(const Project& project,
     std::size_t processed_frames = 0U;
     std::size_t next_progress_mark = progress_interval;
 
+    // Reused across batches so steady-state batches resize to an unchanged
+    // length instead of zero-filling fresh allocations.
+    std::vector<SampleFixed> y_mv;
+    std::vector<SampleFixed> c_mv;
+
     while (processed_frames < total_disc_frames) {
       if (IsCancelled()) {
         return CancelRun();
@@ -589,8 +591,6 @@ bool VideoSynthPipeline::RunProject(const Project& project,
 
       const std::size_t frames_this_batch =
           std::min(batch_frame_count, total_disc_frames - processed_frames);
-      std::vector<SampleFixed> y_mv;
-      std::vector<SampleFixed> c_mv;
 
       generation_errors.clear();
       if (!generation_->GenerateFrameBatch(project, schedule, processed_frames,

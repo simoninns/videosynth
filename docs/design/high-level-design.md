@@ -353,6 +353,29 @@ Source-range capability note:
 | **OSD Overlay**                 | Render monochrome bitmap-font text into the active-picture luma channel, after biphase injection. | — |
 
 
+### **Frame Template Cache and Per-Frame Patches**
+
+Per-frame synthesis is split into a **clean frame template** and a set of **per-frame patches** (`GenerationStage::SynthesiseTemplate`, `src/generation_stage.cpp`):
+
+- The **template** carries everything that is invariant for a given source frame within one colour sequence period: the sync/blanking skeleton, colour burst (including PAL burst blanking and V-switch), the PAL LaserDisc pilot burst, the active picture, and the project-wide VITS lines.
+- The **patches** are the things that genuinely vary per output frame — Laserdisc VBI waveforms (biphase/FM/white flag) and OSD text — applied to a copy of the template and touching only their own lines and samples. Noise and dropout injection run downstream in their own stages, also per frame.
+
+**Periodicity.** For identical source content the clean frame is an exact function of `(source, source_frame_index, disc_frame_index mod P)`:
+
+- The subcarrier advances exactly π/2 per 4fsc sample, so its phase depends only on `absolute_sample_index mod 4`. Samples per frame mod 4 is 3 for PAL (709,379), 1 for PAL-M (477,225) and 2 for NTSC (477,750), giving a lattice period of 4, 4, and 2 frames respectively.
+- The PAL/PAL-M burst-blanking meander and V-switch have period 2 frames, which divides 4.
+- The PAL LaserDisc pilot burst is period 1 (17,734,475 pilot cycles = 25 × 709,379 samples).
+
+Hence **P = 4 frames for PAL and PAL-M, and P = 2 frames for NTSC**; a still section contains only P distinct clean frames, and an MKV `duration_repeat` section contains at most P × clip_length. Synthesis reduces `disc_frame_index` to this residue (`sequence_phase`) before deriving any phase, which is exact — every use of the index inside clean synthesis depends only on the residue — so the split does not change output bits.
+
+**Cache.** `GenerationStage` shares clean templates between worker threads through a bounded `TemplateCache`:
+
+- **Key**: `(source path, section type, source frame identity, sequence_phase)`. Sections sharing a source share templates, and a still (`.exr`) source collapses every schedule position onto one identity because its decoder returns the same image for every frame index. Everything else the template depends on — the CVBS presets and the project VITS set — is held as the cache configuration, and a lookup against a different configuration clears the cache. `BuildFrameSchedule` also clears it, alongside the decoded-source cache.
+- **Admission on second request**: a key's first request returns "synthesise directly" and only a repeated request builds and stores the template. A clip source played once produces every key exactly once and therefore bypasses the cache entirely, instead of filling it with templates nothing will ever read; still frames, `duration_repeat` passes, and disc-skip replays revisit their keys and are admitted from the second request on.
+- **Concurrency**: the lookup table is mutex-guarded and each entry is built exactly once under a per-key `std::once_flag` (single-flight); concurrent requests for the same key wait for that one build while other keys proceed. Published templates are immutable `shared_ptr`-to-const data.
+- **Sizing**: entries are admitted until a configurable byte capacity (default 512 MiB, ~45 PAL templates; CLI `--template-cache-mb`, 0 disables) and never evicted; once the cache is full, further misses synthesise directly into the output buffer. Sources with more distinct frames than the cache can hold therefore degrade to the uncached path instead of thrashing.
+- **Determinism**: output is byte-identical with the cache enabled, disabled, or capped at any size, and across thread counts — a cache hit is a copy of data produced by the same `SynthesiseTemplate` function the direct path runs.
+
 ### **OSD (On-Screen Display) Sub-system**
 
 The `OsdRenderer` class writes monochrome bitmap-font text overlays into the luma sample buffer of an active video frame.  It is invoked as the final step of per-frame generation, after active video content and biphase injection, so that burn-in tokens have access to the current-frame biphase context.
@@ -1820,7 +1843,7 @@ Current implementation note:
 - VITS line injections are applied in the generation-stage runtime path on validated target lines.
 - Laserdisc biphase injection is applied in the generation-stage runtime path via BiphaseInjectionManager (24-bit biphase and 40-bit FM for NTSC).
 - Runtime synthesis/application for VITC and custom per-line content remains deferred.
-- When `disc_skips` is non-empty the pipeline switches to a **skip-aware per-frame loop** (batch size 1) instead of the normal batched loop. A `ComputeDiscSkipPlan` pre-pass builds one `DiscFrameAction` per disc frame from the skip declarations; the action records whether the frame should be written to output, whether its samples should be cached for backward-skip replay, and the list of cached disc frames to re-emit after it. Forward-skipped frames are still generated (so `BiphaseInjectionManager.frame_count_` advances), but `AppendSamples` is not called for them. Backward-skip copies are emitted from a frame cache of fully-processed (generate + noise + dropout) sample buffers, guaranteeing bit-identical copies. `BeginWrite` receives the actual output frame count (which may differ from `total_disc_frames`).
+- When `disc_skips` is non-empty the pipeline switches to a **skip-aware per-frame loop** (batch size 1) instead of the normal batched loop. A `ComputeDiscSkipPlan` pre-pass builds one `DiscFrameAction` per disc frame from the skip declarations; the action records whether the frame should be written to output and the list of disc frames to re-emit after it. Forward-skipped frames are still generated (so `BiphaseInjectionManager.frame_count_` advances), but `AppendSamples` is not called for them. Backward-skip copies are **regenerated** through the generation stage — whose frame template cache makes the clean-frame portion a copy — rather than replayed from a second whole-frame cache in the pipeline: synthesis, noise, and dropout application are all deterministic per `(project, schedule, frame)`, so a regenerated frame is byte-identical to its first emission. A replayed frame's dropout sidecar rows were committed when it was first processed, so the recomputed rows are discarded (only the signal push is applied again). `BeginWrite` receives the actual output frame count (which may differ from `total_disc_frames`).
 
 #### **3. Noise Injection Stage**
 
@@ -2032,6 +2055,7 @@ videosynth --project project.yaml [options]
 | `--validate` | Validate the YAML file without generating output. | `false`     |
 | `--version`  | Print the build version (short git commit hash, `-dirty` suffix for modified trees, or the release override string) and exit. | -           |
 | `--threads <n>` | Frame synthesis worker threads: `auto` (one per hardware thread) or a positive integer. `1` selects the pure sequential path. Output is byte-identical regardless of the thread count; projects with `disc_skips` always run sequentially. | `auto` |
+| `--template-cache-mb <n>` | Frame template cache capacity in MiB; `0` disables the cache (see [Section 4](#4-generation-stage), Frame Template Cache). Output is byte-identical regardless of the capacity. | `512` |
 | `--log-level <level>` | Set the log level to `info`, `debug`, or `trace`. | `info` |
 | `--log-file <filename>` | Write log output to the specified file in addition to the console. | none |
 

@@ -13,11 +13,13 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <functional>
 #include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -171,6 +173,18 @@ constexpr double kQuarterWaveRad = kPi / 2.0;
 // structure".
 constexpr std::size_t kSubcarrierLatticeSamples = 4U;
 
+// Number of frames after which a clean synthesised frame repeats exactly for
+// identical source content. The subcarrier lattice position advances by
+// (samples per frame mod 4) each frame — period 4 for PAL (709,379 ≡ 3) and
+// PAL-M (477,225 ≡ 1), period 2 for NTSC (477,750 ≡ 2) — and the PAL/PAL-M
+// burst meander and V-switch have period 2, which divides 4. The LaserDisc
+// pilot burst is period 1 (17,734,475 = 25 × 709,379). Every use of the disc
+// frame index in clean synthesis therefore depends only on the index modulo
+// this period.
+std::size_t ColourSequencePeriodFrames(Standard standard) {
+  return standard == Standard::kNtsc ? 2U : 4U;
+}
+
 // Reduces a phase argument into [0, 2π).
 //
 // Every phase in the synthesiser is periodic, so this is mathematically a
@@ -225,6 +239,17 @@ std::string Lowercase(std::string value) {
       value.begin(), value.end(), value.begin(),
       [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
   return value;
+}
+
+// A .exr source decodes to one image that is returned for every requested
+// frame index (progressive_frame_source.cpp), so all schedule positions of a
+// still section share a single source-frame identity for template caching.
+bool SourceIgnoresFrameIndex(const std::string& source) {
+  const std::string lowered = Lowercase(source);
+  constexpr std::size_t kSuffixLength = 4;
+  return lowered.size() >= kSuffixLength &&
+         lowered.compare(lowered.size() - kSuffixLength, kSuffixLength,
+                         ".exr") == 0;
 }
 
 ActiveRasterGeometry GetActiveRasterGeometry(Standard standard,
@@ -936,6 +961,13 @@ struct GenerationStage::SynthesisResources {
   std::unique_ptr<IChromaEncoder> chroma_encoder;
   RenderedVitsLineMap vits_lines;
   std::unique_ptr<VbiWaveformRenderer> vbi_renderer;
+
+  // Per-line workspaces for clean-frame synthesis, sized to the active window
+  // at build time and reused for every line of every frame. Worker-private,
+  // like the chroma encoder's internal buffers.
+  std::vector<YCbCr444Pixel> line_source_samples;
+  std::vector<int> active_sample_indices;
+  std::vector<SampleFixed> encoded_line_chroma;
 };
 
 // Per-worker cache of the frame-invariant synthesis resources.
@@ -1115,17 +1147,194 @@ bool GenerationStage::SynthesisResourceCache::Build(
     return false;
   }
 
+  out->line_source_samples.assign(
+      static_cast<std::size_t>(out->active_window_samples), YCbCr444Pixel{});
+  out->active_sample_indices.assign(
+      static_cast<std::size_t>(out->active_window_samples), 0);
+  out->encoded_line_chroma.assign(
+      static_cast<std::size_t>(out->active_window_samples),
+      MillivoltsToSampleFixed(0.0));
+
   out->presets = project.cvbs_presets;
   out->vits = project.line_injections.vits;
   out->chroma_encoder = std::move(chroma_encoder);
   return true;
 }
 
+// One cached clean frame: everything except the per-frame VBI and OSD
+// patches. Immutable once published by the template cache.
+struct GenerationStage::FrameTemplate {
+  std::vector<SampleFixed> y_mv;
+  std::vector<SampleFixed> c_mv;
+};
+
+// Bounded cache of clean frame templates, shared by all worker threads.
+//
+// Key: (source path, source frame identity, colour sequence phase, section
+// type). The clean frame depends on the section only through its decoded
+// source and its progressive/interlaced row pairing, so sections sharing a
+// source share templates. Everything else the clean frame depends on — the
+// CVBS presets (standard, levels, pilot burst) and the project VITS set — is
+// held as the cache configuration: a lookup against a different configuration
+// clears the cache first.
+//
+// Admission: a template is built and stored only on a key's second request
+// (misses record the key in a ghost set and synthesise directly), so sources
+// whose keys never repeat — a clip played once — bypass the cache instead of
+// filling it with templates nothing will ever read.
+//
+// Sizing: entries are never evicted. When admitting a new template would
+// exceed the byte capacity the lookup returns nullptr and the caller
+// synthesises directly, so sources with more distinct frames than the cache
+// can hold degrade to the uncached path instead of thrashing.
+//
+// Thread-safety: Acquire may be called concurrently. The lookup table is
+// mutex-guarded; each entry is built exactly once under a per-key
+// std::once_flag (single-flight), so concurrent requests for the same key
+// serialise on that one build while requests for other keys proceed. A
+// published template is immutable and handed out as shared_ptr-to-const.
+class GenerationStage::TemplateCache {
+ public:
+  explicit TemplateCache(std::size_t capacity_bytes)
+      : capacity_bytes_(capacity_bytes) {}
+
+  void SetCapacityBytes(std::size_t capacity_bytes) {
+    const std::lock_guard<std::mutex> lock(mutex_);
+    capacity_bytes_ = capacity_bytes;
+    slots_.clear();
+    requested_once_.clear();
+    reserved_bytes_ = 0;
+  }
+
+  void Clear() {
+    const std::lock_guard<std::mutex> lock(mutex_);
+    slots_.clear();
+    requested_once_.clear();
+    reserved_bytes_ = 0;
+  }
+
+  // Returns the template for the key, building it via synthesise (which must
+  // fill the template completely and cannot fail) when absent. Returns
+  // nullptr when the cache is disabled, when the key has not been requested
+  // before (admission on second request), or when admitting the template
+  // would exceed the capacity; the caller then synthesises directly into its
+  // own buffers.
+  std::shared_ptr<const FrameTemplate> Acquire(
+      const Project& project, const Section& section, int source_frame_index,
+      std::size_t sequence_phase, std::size_t template_bytes,
+      const std::function<void(FrameTemplate*)>& synthesise) {
+    std::shared_ptr<Slot> slot;
+    {
+      const std::lock_guard<std::mutex> lock(mutex_);
+      if (capacity_bytes_ == 0U) {
+        return nullptr;
+      }
+
+      if (!configuration_valid_ || !(presets_ == project.cvbs_presets) ||
+          !(vits_ == project.line_injections.vits)) {
+        slots_.clear();
+        requested_once_.clear();
+        reserved_bytes_ = 0;
+        presets_ = project.cvbs_presets;
+        vits_ = project.line_injections.vits;
+        configuration_valid_ = true;
+      }
+
+      SlotKey key{section.source, section.type, source_frame_index,
+                  sequence_phase};
+      auto it = slots_.find(key);
+      if (it == slots_.end()) {
+        // Admission on second request: a template is only worth building and
+        // storing when its key recurs. A clip source played once produces
+        // every key exactly once, so it bypasses the cache entirely instead
+        // of filling it with templates nothing will ever read; still frames,
+        // duration_repeat passes, and disc-skip replays revisit their keys
+        // and are admitted from the second request on.
+        if (requested_once_.insert(key).second) {
+          return nullptr;
+        }
+        if (reserved_bytes_ + template_bytes > capacity_bytes_) {
+          return nullptr;
+        }
+        // The ghost set only needs keys that have not been admitted yet; a
+        // defensive bound keeps it from growing without limit on very long
+        // single-pass sources (clearing it merely delays later admissions).
+        if (requested_once_.size() > kMaxGhostKeys) {
+          requested_once_.clear();
+        } else {
+          requested_once_.erase(key);
+        }
+        it = slots_.emplace(std::move(key), std::make_shared<Slot>()).first;
+        reserved_bytes_ += template_bytes;
+      }
+      slot = it->second;
+    }
+
+    // Single-flight: the first requester synthesises, concurrent requesters
+    // for the same key block here until the template is published, and
+    // call_once's synchronisation makes the write to slot->ready visible.
+    std::call_once(slot->once, [&]() {
+      auto built = std::make_shared<FrameTemplate>();
+      synthesise(built.get());
+      slot->ready = std::move(built);
+    });
+    return slot->ready;
+  }
+
+ private:
+  struct SlotKey {
+    std::string source;
+    std::string section_type;
+    int source_frame_index = 0;
+    std::size_t sequence_phase = 0;
+
+    bool operator==(const SlotKey& other) const {
+      return source_frame_index == other.source_frame_index &&
+             sequence_phase == other.sequence_phase && source == other.source &&
+             section_type == other.section_type;
+    }
+  };
+
+  struct SlotKeyHash {
+    std::size_t operator()(const SlotKey& key) const {
+      std::size_t hash = std::hash<std::string>{}(key.source);
+      hash ^= std::hash<std::string>{}(key.section_type) +
+              0x9e3779b97f4a7c15ULL + (hash << 6) + (hash >> 2);
+      hash ^= std::hash<int>{}(key.source_frame_index) + 0x9e3779b97f4a7c15ULL +
+              (hash << 6) + (hash >> 2);
+      hash ^= std::hash<std::size_t>{}(key.sequence_phase) +
+              0x9e3779b97f4a7c15ULL + (hash << 6) + (hash >> 2);
+      return hash;
+    }
+  };
+
+  struct Slot {
+    std::once_flag once;
+    std::shared_ptr<const FrameTemplate> ready;
+  };
+
+  // Bound on the second-request admission ghost set (~100 bytes per key).
+  static constexpr std::size_t kMaxGhostKeys = 65536;
+
+  std::mutex mutex_;
+  std::size_t capacity_bytes_;
+  std::size_t reserved_bytes_ = 0;
+  // Configuration the cached templates were built under; a mismatch clears.
+  bool configuration_valid_ = false;
+  CvbsPresets presets_;
+  std::vector<VitsInjection> vits_;
+  std::unordered_map<SlotKey, std::shared_ptr<Slot>, SlotKeyHash> slots_;
+  // Keys requested exactly once and not (yet) admitted.
+  std::unordered_set<SlotKey, SlotKeyHash> requested_once_;
+};
+
 GenerationStage::GenerationStage(
     ILogger* logger, const IVitsDefinitionProvider* vits_definition_provider,
     const IVitsGenerator* vits_generator)
     : logger_(logger),
       resource_cache_(std::make_unique<SynthesisResourceCache>()),
+      template_cache_(
+          std::make_unique<TemplateCache>(kDefaultTemplateCacheCapacityBytes)),
       vits_definition_provider_(vits_definition_provider != nullptr
                                     ? vits_definition_provider
                                     : &default_vits_definition_provider_),
@@ -1133,6 +1342,11 @@ GenerationStage::GenerationStage(
                                                 : &default_vits_generator_) {}
 
 GenerationStage::~GenerationStage() = default;
+
+void GenerationStage::SetTemplateCacheCapacityBytes(
+    std::size_t capacity_bytes) {
+  template_cache_->SetCapacityBytes(capacity_bytes);
+}
 
 bool GenerationStage::BuildFrameSchedule(
     const Project& project, std::vector<FrameScheduleItem>* out_schedule,
@@ -1143,6 +1357,7 @@ bool GenerationStage::BuildFrameSchedule(
 
   out_schedule->clear();
   progressive_source_.ClearCache();
+  template_cache_->Clear();
   biphase_manager_.Reset();
   biphase_manager_.SetProjectDiscType(
       DiscTypeFromString(project.line_injections.disc_type));
@@ -1276,6 +1491,307 @@ bool GenerationStage::BuildFrameSchedule(
   return true;
 }
 
+// Synthesises one clean frame — sync, pilot burst, colour burst, active
+// picture, VITS — into y_out/c_out. Everything that genuinely varies per
+// frame beyond the colour sequence phase (VBI code words, OSD text, noise,
+// dropouts) is applied afterwards as a localised patch, so for constant
+// source content the result is an exact function of
+// (source, source frame, sequence_phase).
+void GenerationStage::SynthesiseTemplate(SynthesisResources& resources,
+                                         const Section& section,
+                                         const FrameSourceImage& source_frame,
+                                         std::size_t sequence_phase,
+                                         SampleFixed* y_out,
+                                         SampleFixed* c_out) {
+  const SignalLevels& levels = resources.levels;
+  const generation_detail::SampledSynthesisContext& synth = resources.synth;
+  const Standard video_standard = synth.standard;
+  const double burst_amplitude_mv = resources.burst_amplitude_mv;
+  const IChromaEncoder* chroma_encoder = resources.chroma_encoder.get();
+  const int active_window_start = resources.active_window_start;
+  const int active_window_samples = resources.active_window_samples;
+  const bool pal_pilot_burst = resources.pal_pilot_burst;
+  const SampleFixed blanking_fixed = resources.blanking_fixed;
+  const SampleFixed* const luma_code_table = resources.luma_code_table.data();
+
+  std::fill_n(y_out, static_cast<std::size_t>(synth.frame_samples),
+              blanking_fixed);
+  std::fill_n(c_out, static_cast<std::size_t>(synth.frame_samples),
+              SampleFixed{0});
+
+  // Active luma comes from the precomputed code table. Sources clamp their
+  // samples into the 10-bit code space, so the guard only covers hand-built
+  // images and costs a predictable compare rather than a divide and an
+  // llround.
+  auto LumaFixedFromCode = [&](int y_code) -> SampleFixed {
+    if (y_code >= 0 && y_code < kLumaCodeTableSize) {
+      return luma_code_table[y_code];
+    }
+    return MillivoltsToSampleFixed(LumaMillivoltsFromCode(y_code, levels));
+  };
+
+  // Per-line workspaces and the active-sample to source-column mapping are
+  // worker-private members of the resources; the mapping is rebuilt only when
+  // a section change brings in a source with a different active raster.
+  std::vector<YCbCr444Pixel>& line_source_samples =
+      resources.line_source_samples;
+  std::vector<int>& active_sample_indices = resources.active_sample_indices;
+  std::vector<SampleFixed>& encoded_line_chroma = resources.encoded_line_chroma;
+  ActiveSampleColumnMap& column_map = resources.column_map;
+  if (!column_map.MatchesSource(source_frame)) {
+    column_map.Rebuild(source_frame, active_window_samples);
+  }
+
+  // Progressive imports use field-2-dominant row pairing; the section type
+  // decides it once per frame rather than once per active sample.
+  const bool progressive_section = section.type == "progressive";
+
+  // The clean frame repeats exactly every colour sequence period, so the
+  // absolute sample base derives from the reduced phase: the subcarrier
+  // lattice (mod 4) and the PAL burst meander parity (mod 2) see exactly the
+  // residues the full disc frame index would produce.
+  const std::size_t absolute_frame_base =
+      sequence_phase * static_cast<std::size_t>(synth.frame_samples);
+
+  for (const LineTimingPrimitive& line : synth.frame_lines) {
+    const int line_index = line.line_number_1based - 1;
+    const int line_base =
+        synth.line_sample_offsets[static_cast<std::size_t>(line_index)];
+    const std::size_t absolute_line_base =
+        absolute_frame_base +
+        static_cast<std::size_t>(
+            synth.line_sample_offsets[static_cast<std::size_t>(line_index)]);
+    const int line_samples =
+        synth.line_sample_counts[static_cast<std::size_t>(line_index)];
+    const int line_end = line_base + line_samples;
+
+    const generation_detail::LinePulsePlan& pulse_plan =
+        synth.line_pulse_plans[static_cast<std::size_t>(line_index)];
+
+    for (int segment_index = 0; segment_index < pulse_plan.segment_count;
+         ++segment_index) {
+      const LinePulseSegment& segment =
+          pulse_plan.segments[static_cast<std::size_t>(segment_index)];
+      const generation_detail::SyncPulseWaveform& pulse_waveform =
+          resources.pulse_waveforms[static_cast<std::size_t>(segment.kind)];
+      const int pulse_offset = segment.offset_samples;
+      const int pulse_start =
+          line_base + std::min(pulse_offset, line_samples - 1);
+      const int pulse_end =
+          std::min(pulse_start + pulse_waveform.width_samples, line_end);
+      const int pulse_width_samples = pulse_end - pulse_start;
+
+      if (pulse_width_samples == pulse_waveform.width_samples) {
+        std::copy(pulse_waveform.levels.begin(), pulse_waveform.levels.end(),
+                  y_out + pulse_start);
+      } else {
+        // A pulse clipped by the end of its line has a different S-curve to
+        // the nominal shape, so it is still shaped sample by sample.
+        for (int i = pulse_start; i < pulse_end; ++i) {
+          const int relative_index = i - pulse_start;
+          y_out[i] = MillivoltsToSampleFixed(ShapedPulseLevel(
+              relative_index, pulse_width_samples, synth.sync_rise_samples,
+              levels.blanking_mv, levels.sync_tip_mv));
+        }
+      }
+    }
+
+    if (pal_pilot_burst) {
+      // The pilot burst repeats on every frame, so each line's bursts are
+      // added straight from the table rendered once per run.
+      const generation_detail::PilotBurstLine& pilot_line =
+          resources.pilot_burst_lines[static_cast<std::size_t>(line_index)];
+      for (int segment_index = 0; segment_index < pilot_line.segment_count;
+           ++segment_index) {
+        const generation_detail::PilotBurstSegment& pilot_segment =
+            pilot_line.segments[static_cast<std::size_t>(segment_index)];
+        SampleFixed* const destination =
+            y_out +
+            static_cast<std::size_t>(line_base + pilot_segment.offset_in_line);
+        for (std::size_t i = 0; i < pilot_segment.samples.size(); ++i) {
+          destination[i] += pilot_segment.samples[i];
+        }
+      }
+    }
+
+    const bool is_pal = video_standard == Standard::kPal;
+    const bool is_pal_m = video_standard == Standard::kPalM;
+    bool burst_enabled = line.burst_enabled;
+    double burst_phase_rad = line.burst_phase_rad;
+    if (is_pal) {
+      burst_enabled = PalBurstEnabledForLine(sequence_phase, line);
+      burst_phase_rad = PalBurstPhaseRadForLine(sequence_phase, line);
+    } else if (is_pal_m) {
+      // ITU-R BT.470-6 Table 2 item 2.17: PAL-M burst blanking uses
+      // System M line numbers (IsPalMBurstBlankedLine). Burst phase
+      // follows the same ±135° alternating pattern as 625-line PAL.
+      burst_enabled = PalMBurstEnabledForLine(sequence_phase, line);
+      burst_phase_rad = PalBurstPhaseRadForLine(sequence_phase, line);
+    }
+
+    if (burst_enabled) {
+      const int burst_sample_start =
+          std::min(line_base + synth.burst_start_samples,
+                   line_end > 0 ? line_end - 1 : line_base);
+      const int burst_sample_end =
+          std::min(line_base + synth.burst_end_samples, line_end);
+      const int burst_width_samples = burst_sample_end - burst_sample_start;
+      const std::size_t burst_sample_start_absolute =
+          absolute_line_base +
+          static_cast<std::size_t>(burst_sample_start - line_base);
+
+      // ITU-R BT.1700 Annex 1 Part B Table 1 item 10f: PAL/PAL-M burst at
+      // ±135° from EU axis, alternating per line per PalBurstPhaseRadForLine.
+      // Item 10h: V-switching direction is carried in the EV' component of
+      // the burst; this requires burst_phase_rad to remain ±135° so decoders
+      // can extract the sign. NTSC burst_phase_rad is kept at π/4 (45°) per
+      // the constant-reference convention in signal_timing_model.h.
+      const double subcarrier_anchor_rad =
+          is_pal ? kPalSubcarrierAnchorRad : 0.0;
+      const double burst_start_phase_rad =
+          WrapPhaseRad(SubcarrierPhaseRad(burst_sample_start_absolute) +
+                       subcarrier_anchor_rad + burst_phase_rad);
+      double burst_sin = std::sin(burst_start_phase_rad);
+      double burst_cos = std::cos(burst_start_phase_rad);
+
+      // The gate envelope is frame-invariant, so the pre-scaled table is read
+      // directly whenever the burst has its nominal width; a burst clipped by
+      // the end of its line keeps the sample-by-sample shaping.
+      const bool burst_is_nominal_width =
+          burst_width_samples == resources.burst_width_samples;
+
+      for (int i = burst_sample_start; i < burst_sample_end; ++i) {
+        const int relative_index = i - burst_sample_start;
+        const double envelope_mv =
+            burst_is_nominal_width
+                ? resources.burst_envelope_mv[static_cast<std::size_t>(
+                      relative_index)]
+                : (burst_amplitude_mv *
+                   ShapedGateEnvelope(relative_index, burst_width_samples,
+                                      synth.burst_rise_samples));
+        c_out[i] = MillivoltsToSampleFixed(envelope_mv * burst_sin);
+
+        const double next_sin = burst_cos;
+        const double next_cos = -burst_sin;
+        burst_sin = next_sin;
+        burst_cos = next_cos;
+      }
+    }
+
+    if (line.sync_pulse_kind == SyncPulseKind::kHorizontal &&
+        line.content_kind == LineContentKind::kActivePicture) {
+      const int active_y = ActiveFrameLineIndex(synth.active, video_standard,
+                                                line.line_number_1based);
+      if (active_y >= 0) {
+        const bool invert_pal_v_axis =
+            (is_pal || is_pal_m) && PalInvertVAxisForLine(sequence_phase, line);
+        const std::size_t active_window_line_start_absolute =
+            absolute_line_base + static_cast<std::size_t>(active_window_start);
+        // SMPTE 170M-2004 Section 10: defines active chroma with burst+180
+        // deg reference for NTSC. PAL and PAL-M use 0 phase offset; PAL
+        // additionally carries the subcarrier anchor so picture chroma stays
+        // phase-coherent with the anchored burst.
+        const double phase_offset =
+            (video_standard == Standard::kNtsc)
+                ? (line.burst_phase_rad + kPi)
+                : (is_pal ? kPalSubcarrierAnchorRad : 0.0);
+        const double phase_start =
+            WrapPhaseRad(SubcarrierPhaseRad(active_window_line_start_absolute) +
+                         phase_offset);
+
+        // Map field lines onto progressive source rows by interleaving
+        // fields. Progressive imports use field-2-dominant row pairing, so
+        // field 1 consumes odd rows and field 2 consumes even rows. The row
+        // is the same for every sample of the line.
+        const int field_line = active_y % synth.active.active_lines_per_field;
+        const int source_row =
+            source_frame.active_y +
+            ((line.field_index_1based == 1)
+                 ? (2 * field_line + (progressive_section ? 1 : 0))
+                 : (2 * field_line + (progressive_section ? 0 : 1)));
+
+        // Samples that used to be skipped one at a time form a suffix of the
+        // active window: the sample index leaves the line, or the mapped
+        // source column leaves the raster, and neither condition can revert
+        // as x_sample grows. Taking the smallest such bound as the loop limit
+        // removes both per-sample checks while leaving the skipped tail with
+        // exactly the placeholder values it had before.
+        const int line_sample_limit = line_samples - active_window_start;
+        const int painted_sample_count =
+            (source_row < source_frame.height)
+                ? std::max(0,
+                           std::min({active_window_samples, line_sample_limit,
+                                     column_map.in_range_sample_count}))
+                : 0;
+
+        const int active_line_sample_base = line_base + active_window_start;
+        const YCbCr444Pixel* const source_row_pixels =
+            (painted_sample_count > 0) ? &source_frame.PixelAt(0, source_row)
+                                       : nullptr;
+
+        for (int x_sample = 0; x_sample < painted_sample_count; ++x_sample) {
+          const int sample_index = active_line_sample_base + x_sample;
+          const std::size_t sample_slot = static_cast<std::size_t>(x_sample);
+          const YCbCr444Pixel& pixel =
+              source_row_pixels[column_map.pixel_x[sample_slot]];
+
+          active_sample_indices[sample_slot] = sample_index;
+          line_source_samples[sample_slot] = pixel;
+
+          if (invert_pal_v_axis) {
+            // ITU-R BT.1700 Annex 1 Part B Table 1 item 10f: PAL V-axis
+            // switching follows the burst-sequence-dependent odd/even
+            // polarity map.
+            line_source_samples[sample_slot].cr =
+                static_cast<std::int16_t>(InvertCenteredChromaCode(pixel.cr));
+          }
+
+          // Preserve any sync-domain sample already placed for this line;
+          // only paint active luma where the waveform is at/above blanking
+          // level.
+          SampleFixed& luma_sample =
+              y_out[static_cast<std::size_t>(sample_index)];
+          if (luma_sample >= blanking_fixed) {
+            luma_sample = LumaFixedFromCode(pixel.y);
+          }
+        }
+
+        // Restore the placeholders for the tail the loop above did not paint,
+        // so the chroma encoder sees neutral pixels there and the accumulate
+        // step folds their output onto the line's first sample, exactly as
+        // the per-sample skip used to.
+        std::fill(line_source_samples.begin() + painted_sample_count,
+                  line_source_samples.end(), YCbCr444Pixel{});
+        std::fill(active_sample_indices.begin() + painted_sample_count,
+                  active_sample_indices.end(), line_base);
+
+        chroma_encoder->EncodeLineFromPhaseStart(
+            line_source_samples, phase_start, &encoded_line_chroma);
+        for (int x_sample = 0; x_sample < active_window_samples; ++x_sample) {
+          c_out[static_cast<std::size_t>(
+              active_sample_indices[static_cast<std::size_t>(x_sample)])] +=
+              encoded_line_chroma[static_cast<std::size_t>(x_sample)];
+        }
+      }
+    }
+
+    const auto vits_line = resources.vits_lines.find(line.line_number_1based);
+    if (vits_line != resources.vits_lines.end()) {
+      const VitsRenderedLine& rendered_line = *vits_line->second;
+      for (int sample_offset = 0; sample_offset < line_samples;
+           ++sample_offset) {
+        const std::size_t frame_sample_index =
+            static_cast<std::size_t>(line_base) +
+            static_cast<std::size_t>(sample_offset);
+        y_out[frame_sample_index] +=
+            rendered_line.y_samples_mv[static_cast<std::size_t>(sample_offset)];
+        c_out[frame_sample_index] +=
+            rendered_line.c_samples_mv[static_cast<std::size_t>(sample_offset)];
+      }
+    }
+  }
+}
+
 bool GenerationStage::GenerateFrameBatch(
     const Project& project, const std::vector<FrameScheduleItem>& schedule,
     std::size_t start_frame, std::size_t frame_count,
@@ -1308,63 +1824,31 @@ bool GenerationStage::GenerateFrameBatch(
     return false;
   }
 
-  const TimingConstants& timing = resources->timing;
-  const SignalLevels& levels = resources->levels;
   const generation_detail::SampledSynthesisContext& synth = resources->synth;
   const int frame_samples = synth.frame_samples;
   const Standard video_standard = project.cvbs_presets.video_standard_preset;
-  const double burst_amplitude_mv = resources->burst_amplitude_mv;
-  const IChromaEncoder* chroma_encoder = resources->chroma_encoder.get();
 
-  const std::size_t sample_count =
-      frame_count * static_cast<std::size_t>(frame_samples);
+  const std::size_t frame_span = static_cast<std::size_t>(frame_samples);
+  const std::size_t sample_count = frame_count * frame_span;
 
   const int active_window_start = resources->active_window_start;
   const int active_window_end = resources->active_window_end;
-  const int active_window_samples = resources->active_window_samples;
 
-  const bool pal_pilot_burst = resources->pal_pilot_burst;
+  // Every sample of every frame is written below — by a template copy or by
+  // direct synthesis, both of which fill the whole frame — so the buffers are
+  // sized without a value-fill pass. Single-frame requests (the pool and
+  // skip paths) defer sizing to the per-frame step: a template hit there
+  // copy-assigns the buffers, which avoids zero-filling freshly allocated
+  // memory only to overwrite it.
+  const bool single_frame_request = frame_count == 1U;
+  if (!single_frame_request) {
+    out_y_mv->resize(sample_count);
+    out_c_mv->resize(sample_count);
+  }
 
-  const SampleFixed blanking_fixed = resources->blanking_fixed;
-  const SampleFixed* const luma_code_table = resources->luma_code_table.data();
-
-  out_y_mv->assign(sample_count, blanking_fixed);
-  out_c_mv->assign(sample_count, 0);
-
-  auto SetYMillivolts = [&](std::size_t index, double value_mv) {
-    (*out_y_mv)[index] = MillivoltsToSampleFixed(value_mv);
-  };
-
-  auto SetCMillivolts = [&](std::size_t index, double value_mv) {
-    (*out_c_mv)[index] = MillivoltsToSampleFixed(value_mv);
-  };
-
-  auto AddCFixed = [&](std::size_t index, SampleFixed value_fixed) {
-    (*out_c_mv)[index] += value_fixed;
-  };
-
-  // Active luma comes from the precomputed code table. Sources clamp their
-  // samples into the 10-bit code space, so the guard only covers hand-built
-  // images and costs a predictable compare rather than a divide and an llround.
-  auto LumaFixedFromCode = [&](int y_code) -> SampleFixed {
-    if (y_code >= 0 && y_code < kLumaCodeTableSize) {
-      return luma_code_table[y_code];
-    }
-    return MillivoltsToSampleFixed(LumaMillivoltsFromCode(y_code, levels));
-  };
-
-  std::vector<YCbCr444Pixel> line_source_samples(
-      static_cast<std::size_t>(active_window_samples), YCbCr444Pixel{});
-  std::vector<int> active_sample_indices(
-      static_cast<std::size_t>(active_window_samples), 0);
-  std::vector<SampleFixed> encoded_line_chroma(
-      static_cast<std::size_t>(active_window_samples),
-      MillivoltsToSampleFixed(0.0));
-
-  // Active-sample to source-column mapping, held by this worker's resources so
-  // it survives across calls and is rebuilt only when a section change brings
-  // in a source with a different active raster.
-  ActiveSampleColumnMap& column_map = resources->column_map;
+  const std::size_t sequence_period =
+      ColourSequencePeriodFrames(video_standard);
+  const std::size_t template_bytes = frame_span * sizeof(SampleFixed) * 2U;
 
   for (std::size_t local_frame_index = 0; local_frame_index < frame_count;
        ++local_frame_index) {
@@ -1422,15 +1906,9 @@ bool GenerationStage::GenerateFrameBatch(
       return false;
     }
     const FrameSourceImage& source_frame = *source_frame_image;
-    if (!column_map.MatchesSource(source_frame)) {
-      column_map.Rebuild(source_frame, active_window_samples);
-    }
-    // Progressive imports use field-2-dominant row pairing; the section type
-    // decides it once per frame rather than once per active sample.
-    const bool progressive_section = section->type == "progressive";
 
-    const int local_frame_base = static_cast<int>(
-        local_frame_index * static_cast<std::size_t>(frame_samples));
+    const int local_frame_base =
+        static_cast<int>(local_frame_index * frame_span);
     // disc_frame_index represents (PN - 1) for the current frame, anchoring
     // colour-subcarrier phase and pilot-burst phase to the disc picture
     // number. Resolved during the BuildFrameSchedule enrichment pass; for
@@ -1442,259 +1920,48 @@ bool GenerationStage::GenerateFrameBatch(
                                        ? static_cast<std::size_t>(
                                              frame_item.disc_picture_number - 1)
                                        : global_frame_index);
-    // Held as size_t: on a three-hour disc the absolute sample index reaches
-    // ~1.9 × 10^11, far outside int.
-    const std::size_t absolute_frame_base =
-        disc_frame_index * static_cast<std::size_t>(frame_samples);
+    // The clean frame depends on the disc frame index only through this
+    // residue (see ColourSequencePeriodFrames), so the reduction is exact.
+    const std::size_t sequence_phase = disc_frame_index % sequence_period;
 
-    for (const LineTimingPrimitive& line : synth.frame_lines) {
-      const int line_index = line.line_number_1based - 1;
-      const int local_line_base =
-          local_frame_base +
-          synth.line_sample_offsets[static_cast<std::size_t>(line_index)];
-      const std::size_t absolute_line_base =
-          absolute_frame_base +
-          static_cast<std::size_t>(
-              synth.line_sample_offsets[static_cast<std::size_t>(line_index)]);
-      const int line_samples =
-          synth.line_sample_counts[static_cast<std::size_t>(line_index)];
-      const int local_line_end = local_line_base + line_samples;
+    // A still source delivers the same image for every schedule position, so
+    // its schedule indices collapse onto one cached identity per phase.
+    const int source_frame_identity =
+        SourceIgnoresFrameIndex(section->source) ? 0 : source_frame_index;
 
-      const generation_detail::LinePulsePlan& pulse_plan =
-          synth.line_pulse_plans[static_cast<std::size_t>(line_index)];
-
-      for (int segment_index = 0; segment_index < pulse_plan.segment_count;
-           ++segment_index) {
-        const LinePulseSegment& segment =
-            pulse_plan.segments[static_cast<std::size_t>(segment_index)];
-        const generation_detail::SyncPulseWaveform& pulse_waveform =
-            resources->pulse_waveforms[static_cast<std::size_t>(segment.kind)];
-        const int pulse_offset = segment.offset_samples;
-        const int pulse_start =
-            local_line_base + std::min(pulse_offset, line_samples - 1);
-        const int pulse_end = std::min(
-            pulse_start + pulse_waveform.width_samples, local_line_end);
-        const int pulse_width_samples = pulse_end - pulse_start;
-
-        if (pulse_width_samples == pulse_waveform.width_samples) {
-          std::copy(pulse_waveform.levels.begin(), pulse_waveform.levels.end(),
-                    out_y_mv->begin() + pulse_start);
-        } else {
-          // A pulse clipped by the end of its line has a different S-curve to
-          // the nominal shape, so it is still shaped sample by sample.
-          for (int i = pulse_start; i < pulse_end; ++i) {
-            const int relative_index = i - pulse_start;
-            SetYMillivolts(
-                static_cast<std::size_t>(i),
-                ShapedPulseLevel(relative_index, pulse_width_samples,
-                                 synth.sync_rise_samples, levels.blanking_mv,
-                                 levels.sync_tip_mv));
-          }
-        }
+    const std::shared_ptr<const FrameTemplate> frame_template =
+        template_cache_->Acquire(
+            project, *section, source_frame_identity, sequence_phase,
+            template_bytes, [&](FrameTemplate* out) {
+              out->y_mv.resize(frame_span);
+              out->c_mv.resize(frame_span);
+              SynthesiseTemplate(*resources, *section, source_frame,
+                                 sequence_phase, out->y_mv.data(),
+                                 out->c_mv.data());
+            });
+    if (frame_template != nullptr) {
+      // Cached clean frame: delivery is a copy, no line-loop work.
+      if (single_frame_request) {
+        // Copy-assignment writes each destination sample exactly once,
+        // avoiding the zero-fill a resize of a fresh buffer would perform
+        // before the copy overwrote it.
+        *out_y_mv = frame_template->y_mv;
+        *out_c_mv = frame_template->c_mv;
+      } else {
+        std::copy(frame_template->y_mv.begin(), frame_template->y_mv.end(),
+                  out_y_mv->data() + local_frame_base);
+        std::copy(frame_template->c_mv.begin(), frame_template->c_mv.end(),
+                  out_c_mv->data() + local_frame_base);
       }
-
-      if (pal_pilot_burst) {
-        // The pilot burst repeats on every frame, so each line's bursts are
-        // added straight from the table rendered once per run.
-        const generation_detail::PilotBurstLine& pilot_line =
-            resources->pilot_burst_lines[static_cast<std::size_t>(line_index)];
-        for (int segment_index = 0; segment_index < pilot_line.segment_count;
-             ++segment_index) {
-          const generation_detail::PilotBurstSegment& pilot_segment =
-              pilot_line.segments[static_cast<std::size_t>(segment_index)];
-          SampleFixed* const destination =
-              out_y_mv->data() +
-              static_cast<std::size_t>(local_line_base +
-                                       pilot_segment.offset_in_line);
-          for (std::size_t i = 0; i < pilot_segment.samples.size(); ++i) {
-            destination[i] += pilot_segment.samples[i];
-          }
-        }
+    } else {
+      // Cache disabled or full: synthesise the clean frame in place.
+      if (single_frame_request) {
+        out_y_mv->resize(sample_count);
+        out_c_mv->resize(sample_count);
       }
-
-      const bool is_pal = video_standard == Standard::kPal;
-      const bool is_pal_m = video_standard == Standard::kPalM;
-      bool burst_enabled = line.burst_enabled;
-      double burst_phase_rad = line.burst_phase_rad;
-      if (is_pal) {
-        burst_enabled = PalBurstEnabledForLine(disc_frame_index, line);
-        burst_phase_rad = PalBurstPhaseRadForLine(disc_frame_index, line);
-      } else if (is_pal_m) {
-        // ITU-R BT.470-6 Table 2 item 2.17: PAL-M burst blanking uses
-        // System M line numbers (IsPalMBurstBlankedLine). Burst phase
-        // follows the same ±135° alternating pattern as 625-line PAL.
-        burst_enabled = PalMBurstEnabledForLine(disc_frame_index, line);
-        burst_phase_rad = PalBurstPhaseRadForLine(disc_frame_index, line);
-      }
-
-      if (burst_enabled) {
-        const int burst_sample_start =
-            std::min(local_line_base + synth.burst_start_samples,
-                     local_line_end > 0 ? local_line_end - 1 : local_line_base);
-        const int burst_sample_end =
-            std::min(local_line_base + synth.burst_end_samples, local_line_end);
-        const int burst_width_samples = burst_sample_end - burst_sample_start;
-        const std::size_t burst_sample_start_absolute =
-            absolute_line_base +
-            static_cast<std::size_t>(burst_sample_start - local_line_base);
-
-        // ITU-R BT.1700 Annex 1 Part B Table 1 item 10f: PAL/PAL-M burst at
-        // ±135° from EU axis, alternating per line per PalBurstPhaseRadForLine.
-        // Item 10h: V-switching direction is carried in the EV' component of
-        // the burst; this requires burst_phase_rad to remain ±135° so decoders
-        // can extract the sign. NTSC burst_phase_rad is kept at π/4 (45°) per
-        // the constant-reference convention in signal_timing_model.h.
-        const double subcarrier_anchor_rad =
-            is_pal ? kPalSubcarrierAnchorRad : 0.0;
-        const double burst_start_phase_rad =
-            WrapPhaseRad(SubcarrierPhaseRad(burst_sample_start_absolute) +
-                         subcarrier_anchor_rad + burst_phase_rad);
-        double burst_sin = std::sin(burst_start_phase_rad);
-        double burst_cos = std::cos(burst_start_phase_rad);
-
-        // The gate envelope is frame-invariant, so the pre-scaled table is read
-        // directly whenever the burst has its nominal width; a burst clipped by
-        // the end of its line keeps the sample-by-sample shaping.
-        const bool burst_is_nominal_width =
-            burst_width_samples == resources->burst_width_samples;
-
-        for (int i = burst_sample_start; i < burst_sample_end; ++i) {
-          const int relative_index = i - burst_sample_start;
-          const double envelope_mv =
-              burst_is_nominal_width
-                  ? resources->burst_envelope_mv[static_cast<std::size_t>(
-                        relative_index)]
-                  : (burst_amplitude_mv *
-                     ShapedGateEnvelope(relative_index, burst_width_samples,
-                                        synth.burst_rise_samples));
-          SetCMillivolts(static_cast<std::size_t>(i), envelope_mv * burst_sin);
-
-          const double next_sin = burst_cos;
-          const double next_cos = -burst_sin;
-          burst_sin = next_sin;
-          burst_cos = next_cos;
-        }
-      }
-
-      if (line.sync_pulse_kind == SyncPulseKind::kHorizontal &&
-          line.content_kind == LineContentKind::kActivePicture) {
-        const int active_y = ActiveFrameLineIndex(
-            synth.active, project.cvbs_presets.video_standard_preset,
-            line.line_number_1based);
-        if (active_y >= 0) {
-          const bool invert_pal_v_axis =
-              (is_pal || is_pal_m) &&
-              PalInvertVAxisForLine(disc_frame_index, line);
-          const std::size_t active_window_line_start_absolute =
-              absolute_line_base +
-              static_cast<std::size_t>(active_window_start);
-          // SMPTE 170M-2004 Section 10: defines active chroma with burst+180
-          // deg reference for NTSC. PAL and PAL-M use 0 phase offset; PAL
-          // additionally carries the subcarrier anchor so picture chroma stays
-          // phase-coherent with the anchored burst.
-          const double phase_offset =
-              (video_standard == Standard::kNtsc)
-                  ? (line.burst_phase_rad + kPi)
-                  : (is_pal ? kPalSubcarrierAnchorRad : 0.0);
-          const double phase_start = WrapPhaseRad(
-              SubcarrierPhaseRad(active_window_line_start_absolute) +
-              phase_offset);
-
-          // Map field lines onto progressive source rows by interleaving
-          // fields. Progressive imports use field-2-dominant row pairing, so
-          // field 1 consumes odd rows and field 2 consumes even rows. The row
-          // is the same for every sample of the line.
-          const int field_line = active_y % synth.active.active_lines_per_field;
-          const int source_row =
-              source_frame.active_y +
-              ((line.field_index_1based == 1)
-                   ? (2 * field_line + (progressive_section ? 1 : 0))
-                   : (2 * field_line + (progressive_section ? 0 : 1)));
-
-          // Samples that used to be skipped one at a time form a suffix of the
-          // active window: the sample index leaves the line, or the mapped
-          // source column leaves the raster, and neither condition can revert
-          // as x_sample grows. Taking the smallest such bound as the loop limit
-          // removes both per-sample checks while leaving the skipped tail with
-          // exactly the placeholder values it had before.
-          const int line_sample_limit = line_samples - active_window_start;
-          const int painted_sample_count =
-              (source_row < source_frame.height)
-                  ? std::max(0,
-                             std::min({active_window_samples, line_sample_limit,
-                                       column_map.in_range_sample_count}))
-                  : 0;
-
-          const int active_line_sample_base =
-              local_line_base + active_window_start;
-          const YCbCr444Pixel* const source_row_pixels =
-              (painted_sample_count > 0) ? &source_frame.PixelAt(0, source_row)
-                                         : nullptr;
-
-          for (int x_sample = 0; x_sample < painted_sample_count; ++x_sample) {
-            const int sample_index = active_line_sample_base + x_sample;
-            const std::size_t sample_slot = static_cast<std::size_t>(x_sample);
-            const YCbCr444Pixel& pixel =
-                source_row_pixels[column_map.pixel_x[sample_slot]];
-
-            active_sample_indices[sample_slot] = sample_index;
-            line_source_samples[sample_slot] = pixel;
-
-            if (invert_pal_v_axis) {
-              // ITU-R BT.1700 Annex 1 Part B Table 1 item 10f: PAL V-axis
-              // switching follows the burst-sequence-dependent odd/even
-              // polarity map.
-              line_source_samples[sample_slot].cr =
-                  static_cast<std::int16_t>(InvertCenteredChromaCode(pixel.cr));
-            }
-
-            // Preserve any sync-domain sample already placed for this line;
-            // only paint active luma where the waveform is at/above blanking
-            // level.
-            SampleFixed& luma_sample =
-                (*out_y_mv)[static_cast<std::size_t>(sample_index)];
-            if (luma_sample >= blanking_fixed) {
-              luma_sample = LumaFixedFromCode(pixel.y);
-            }
-          }
-
-          // Restore the placeholders for the tail the loop above did not paint,
-          // so the chroma encoder sees neutral pixels there and the accumulate
-          // step folds their output onto the line's first sample, exactly as
-          // the per-sample skip used to.
-          std::fill(line_source_samples.begin() + painted_sample_count,
-                    line_source_samples.end(), YCbCr444Pixel{});
-          std::fill(active_sample_indices.begin() + painted_sample_count,
-                    active_sample_indices.end(), local_line_base);
-
-          chroma_encoder->EncodeLineFromPhaseStart(
-              line_source_samples, phase_start, &encoded_line_chroma);
-          for (int x_sample = 0; x_sample < active_window_samples; ++x_sample) {
-            AddCFixed(
-                static_cast<std::size_t>(
-                    active_sample_indices[static_cast<std::size_t>(x_sample)]),
-                encoded_line_chroma[static_cast<std::size_t>(x_sample)]);
-          }
-        }
-      }
-
-      const auto vits_line =
-          resources->vits_lines.find(line.line_number_1based);
-      if (vits_line != resources->vits_lines.end()) {
-        const VitsRenderedLine& rendered_line = *vits_line->second;
-        for (int sample_offset = 0; sample_offset < line_samples;
-             ++sample_offset) {
-          const std::size_t frame_sample_index =
-              static_cast<std::size_t>(local_line_base) +
-              static_cast<std::size_t>(sample_offset);
-          (*out_y_mv)[frame_sample_index] +=
-              rendered_line
-                  .y_samples_mv[static_cast<std::size_t>(sample_offset)];
-          (*out_c_mv)[frame_sample_index] +=
-              rendered_line
-                  .c_samples_mv[static_cast<std::size_t>(sample_offset)];
-        }
-      }
+      SynthesiseTemplate(*resources, *section, source_frame, sequence_phase,
+                         out_y_mv->data() + local_frame_base,
+                         out_c_mv->data() + local_frame_base);
     }
 
     if (enrichment != nullptr) {

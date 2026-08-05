@@ -10,6 +10,7 @@
 
 #pragma once
 
+#include <cstddef>
 #include <memory>
 
 #include "videosynth/biphase_injection_manager.h"
@@ -28,9 +29,11 @@ namespace videosynth {
 // GenerateFrameBatch is safe to call concurrently from multiple threads for
 // disjoint frame ranges with distinct output buffers: it reads only the
 // immutable per-item FrameEnrichment payload, the internally-synchronised
-// progressive frame source cache and synthesis resource cache, and const
-// collaborators. The resource cache hands each worker its own set of
-// frame-invariant resources, so no synthesis state is shared between threads.
+// progressive frame source cache, synthesis resource cache and frame template
+// cache, and const collaborators. The resource cache hands each worker its own
+// set of frame-invariant resources, so no synthesis state is shared between
+// threads; template cache entries are immutable once built and populated under
+// per-key single-flight locking.
 class GenerationStage final : public IGenerationStage {
  public:
   explicit GenerationStage(
@@ -96,6 +99,22 @@ class GenerationStage final : public IGenerationStage {
                 std::vector<SampleFixed>* out_c_mv,
                 std::vector<std::string>* errors) override;
 
+  // Sets the frame template cache capacity in bytes; 0 disables the cache so
+  // every frame is synthesised directly. Changing the capacity clears the
+  // cache. Not thread-safe: call before generation starts, not concurrently
+  // with GenerateFrameBatch. Output is byte-identical for every capacity —
+  // the cache only removes repeated synthesis of identical clean frames.
+  void SetTemplateCacheCapacityBytes(std::size_t capacity_bytes);
+
+  // Default template cache capacity. A PAL clean frame is ~11.35 MB (two
+  // 709,379-sample fixed-point buffers), so this holds ~45 PAL templates:
+  // ample for still sections (colour-period templates per distinct source) and
+  // short repeated clips, while bounding memory on clip sources with more
+  // distinct frames than the cache can hold (those fall back to direct
+  // synthesis once the cache is full).
+  static constexpr std::size_t kDefaultTemplateCacheCapacityBytes =
+      512ULL * 1024ULL * 1024ULL;
+
  private:
   // Frame-invariant synthesis resources (sampled timing context, chroma
   // encoder, rendered VITS lines, VBI waveform renderer) and the per-worker
@@ -104,8 +123,31 @@ class GenerationStage final : public IGenerationStage {
   struct SynthesisResources;
   class SynthesisResourceCache;
 
+  // A clean synthesised frame (sync, burst, pilot, active picture, VITS —
+  // everything except the per-frame VBI and OSD patches) and the bounded
+  // cache that shares such frames between workers. For constant source
+  // content the clean frame is an exact function of (source, source frame,
+  // disc_frame_index mod P) with P the colour sequence period (4 frames for
+  // PAL/PAL-M, 2 for NTSC), so a still section contains only P distinct clean
+  // frames. Defined in generation_stage.cpp.
+  struct FrameTemplate;
+  class TemplateCache;
+
+  // Synthesises one clean frame into y_out/c_out (each frame_samples long).
+  // sequence_phase is disc_frame_index reduced modulo the colour sequence
+  // period; the reduction is exact because every use of the disc frame index
+  // in clean synthesis depends only on that residue. Fills the buffers
+  // completely (blanking / zero) before writing, so callers need not clear
+  // them. Uses (and mutates) the worker-private workspaces in resources.
+  static void SynthesiseTemplate(SynthesisResources& resources,
+                                 const Section& section,
+                                 const FrameSourceImage& source_frame,
+                                 std::size_t sequence_phase, SampleFixed* y_out,
+                                 SampleFixed* c_out);
+
   ILogger* logger_;
   std::unique_ptr<SynthesisResourceCache> resource_cache_;
+  std::unique_ptr<TemplateCache> template_cache_;
   ProgressiveFrameSource progressive_source_;
   VitsDefinitionProvider default_vits_definition_provider_;
   VitsGenerator default_vits_generator_;

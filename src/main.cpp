@@ -56,6 +56,9 @@ void PrintUsage() {
       << "  --threads <n>  Frame synthesis worker threads (default: auto).\n"
       << "              Use 1 for the pure sequential path; output is\n"
       << "              byte-identical regardless of the thread count.\n"
+      << "  --template-cache-mb <n>  Frame template cache capacity in MiB\n"
+      << "              (default: 512, 0 disables). Output is byte-identical\n"
+      << "              regardless of the capacity.\n"
       << "  --log-level <level>  Set log level: info, debug, or trace.\n"
       << "  --log-file <filename>  Write logs to a file as well as stderr.\n"
       << "  --asset-root <name>=<path>  Map the {name}/… logical asset root "
@@ -74,6 +77,19 @@ bool ParseAssetRoot(const std::string& value, videosynth::AssetRootMap* roots) {
     return false;
   }
   roots->roots[value.substr(0, eq)] = value.substr(eq + 1);
+  return true;
+}
+
+// Parses the --template-cache-mb argument: a non-negative integer number of
+// mebibytes (0 disables the cache).
+bool ParseTemplateCacheMb(const std::string& value,
+                          std::size_t* out_capacity_bytes) {
+  if (value.empty() ||
+      value.find_first_not_of("0123456789") != std::string::npos) {
+    return false;
+  }
+  *out_capacity_bytes =
+      static_cast<std::size_t>(std::atoll(value.c_str())) * 1024ULL * 1024ULL;
   return true;
 }
 
@@ -104,6 +120,9 @@ int RunCli(int argc, char** argv) {
   // Built-in bundled/user asset roots; --asset-root overrides individual ones.
   options.asset_roots = videosynth::DefaultAssetRoots();
 
+  std::size_t template_cache_bytes =
+      videosynth::GenerationStage::kDefaultTemplateCacheCapacityBytes;
+
   for (int i = 1; i < argc; ++i) {
     const std::string arg = argv[i];
 
@@ -118,6 +137,11 @@ int RunCli(int argc, char** argv) {
       options.validate_only = true;
     } else if (arg == "--threads" && i + 1 < argc) {
       if (!ParseThreadCount(argv[++i], &options.threads)) {
+        PrintUsage();
+        return 2;
+      }
+    } else if (arg == "--template-cache-mb" && i + 1 < argc) {
+      if (!ParseTemplateCacheMb(argv[++i], &template_cache_bytes)) {
         PrintUsage();
         return 2;
       }
@@ -162,6 +186,7 @@ int RunCli(int argc, char** argv) {
   videosynth::ProjectValidator validator(&progressive_frame_source_probe,
                                          &logger);
   videosynth::GenerationStage generation(&logger);
+  generation.SetTemplateCacheCapacityBytes(template_cache_bytes);
   videosynth::NoiseInjectionStage noise_injection(&logger);
   videosynth::DropoutInjectionStage dropout_injection(&logger);
   videosynth::OutputStage output(&logger);

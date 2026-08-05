@@ -129,6 +129,7 @@ Options:
 | `--validate` | Validate only; generate nothing | off |
 | `--version` | Print the build version (git commit hash) | — |
 | `--threads <n>` | Frame synthesis workers: `auto` or a positive integer (`1` = sequential) | `auto` |
+| `--template-cache-mb <n>` | Frame template cache capacity in MiB (`0` disables; output is byte-identical either way) | `512` |
 | `--log-level <level>` | `info`, `debug` or `trace` | `info` |
 | `--log-file <path>` | Also write logs to a file | none |
 | `--asset-root <name>=<path>` | Map the `{name}/…` logical asset root | built-ins |

@@ -814,6 +814,40 @@ sections contain `P × clip_length` (bounded by lcm alignment). Everything
 that genuinely varies per frame — VBI code words, OSD text, noise, dropouts
 — is a localised patch applied after a template copy.
 
+*Measured, phase-wide* (16-core machine, Release `-O3`, warm output tree,
+idle machine, `scripts/benchmark.sh --repeat 3`/`--repeat 5`, best of N).
+The "before" column is the same binary with the cache disabled
+(`--template-cache-mb 0`), which is exactly the pre-Phase-5 synthesis path —
+the Task 5.1 seam alone is throughput-neutral (within ±2 % of the Phase 4
+tip on every benchmark):
+
+| Project | 1 thread off → on | auto (16) off → on |
+| --- | --- | --- |
+| pal_still | 89.4 → 223.8 f/s (2.50×) | 236.7 → 280.6 (1.19×) |
+| pal_still_noise | 41.5 → 57.9 (1.40×) | 172.2 → 214.8 (1.25×) |
+| pal_mkv | 70.0 → 69.5 (1.00×) | 134.8 → 134.3 (1.00×) |
+| ntsc_still | 144.1 → 336.9 (2.34×) | 349.7 → 426.6 (1.22×) |
+
+Two honest caveats against the original acceptance criteria:
+
+- The still-section gain is 2.3–2.5× single-threaded, not the order of
+  magnitude projected when this phase was scoped. That projection predates
+  the Phase 4 inner-loop work: clean synthesis of a PAL still frame now costs
+  ~9 ms single-threaded, and the ~4.5 ms/frame that remain on a cache hit are
+  the template copy plus output encoding and the file write — costs the cache
+  cannot remove. They are exactly what Phase 6.1/6.2 (encoding on workers,
+  buffer pooling) attacks; the cache turns the still workload from
+  compute-bound into copy/output-bound, which is the precondition for those
+  tasks to pay.
+- At auto threads the gain is capped at ~1.2× because the single consumer
+  thread (output encode + write) already bounds the pipeline, as the Phase 4
+  measurements anticipated.
+
+`pal_mkv` — a clip source played once, where no key ever repeats — is the
+non-benefiting case and measures unchanged (see admission policy in
+Task 5.2). All 1,601 tests pass, and all 271 recorded `general` and
+`stacking` artefacts reproduce byte for byte with the cache enabled.
+
 ### Task 5.1 — Split synthesis into clean template and per-frame patches
 
 Refactor `GenerateFrameBatch` so the clean frame (sync, burst, pilot,
@@ -825,6 +859,21 @@ is the seam.
 *Acceptance criteria*
 - Patch application touches only the affected lines/samples.
 - Output hashes unchanged across the full project suite.
+
+*Measured*: the per-frame line loop moved verbatim into
+`GenerationStage::SynthesiseTemplate(resources, section, source_frame,
+sequence_phase, y_out, c_out)`, which fills and writes one whole clean frame
+(sync, pilot, burst, active picture, VITS); `GenerateFrameBatch` then applies
+the VBI waveforms and OSD overlays as patches, each touching only its own
+lines. The function takes `sequence_phase = disc_frame_index mod P` rather
+than the full disc frame index, and that reduction is exact: the subcarrier
+lattice is read mod 4 (`SubcarrierPhaseRad`), the PAL/PAL-M burst meander and
+V-switch mod 2, and the pilot burst is period-1 — the periodicity that
+`PalColourSequenceRepeatsExactlyEveryFourFramesAtAnyDiscPosition` pinned in
+Phase 4. The per-line workspaces became worker-private members of
+`SynthesisResources`. Benchmarks with the cache disabled sit within ±2 % of
+the Phase 4 tip on every project, and all 271 recorded artefacts reproduce
+byte for byte.
 
 ### Task 5.2 — Template cache keyed on (section, source frame, sequence phase)
 
@@ -846,6 +895,44 @@ scalable.
 - Still-section benchmark throughput improves by an order of magnitude;
   memory stays within the configured cap.
 
+*Measured*: `GenerationStage` gained a `TemplateCache` shared by all workers.
+Details that differ from the original sketch, each for a measured reason:
+
+- **Key**: `(source path, section type, source frame identity,
+  sequence_phase)` rather than the section itself — sections sharing a source
+  share templates, and a still (`.exr`) source collapses every schedule
+  position onto one identity because the decoder returns the same image for
+  every frame index. Without that collapse the still benchmark produced 250
+  distinct keys, filled the cache in 47 frames and never hit once. The
+  presets and project VITS set are held as cache configuration; a mismatch
+  clears.
+- **Admission on second request**: a key's first request returns "synthesise
+  directly" and only its second request builds and stores the template. A
+  clip played once produces every key exactly once, so it bypasses the cache
+  entirely — before this policy `pal_mkv` paid ~8 % for building templates
+  nothing would ever read; with it the project measures unchanged. Still
+  frames, `duration_repeat` passes, and disc-skip replays revisit their keys
+  and are admitted on the second visit.
+- **Sizing**: admitted until the byte cap (default 512 MiB ≈ 45 PAL
+  templates; `--template-cache-mb`, 0 disables), no eviction, misses beyond
+  the cap synthesise directly. Peak RSS of the 16-thread pal_still run stays
+  within the cap (4 templates ≈ 45 MB resident for a still section).
+- **Hit path**: per-key single-flight (`std::once_flag`), then delivery by
+  copy; single-frame requests (the pool and skip paths) copy-assign the
+  buffers so freshly allocated memory is written exactly once instead of
+  being zero-filled and then overwritten.
+
+Throughput is the phase-wide table above: 2.3–2.5× single-threaded and ~1.2×
+at auto threads on still projects, unchanged on the no-reuse clip project —
+an order of magnitude only against the pre-Phase-4 baseline, not against the
+Phase 4 tip (see the phase-wide caveats). Byte-identity is held everywhere:
+three functional tests (`GenerationStageTemplateCacheTest`) compare cache on
+vs off for a PAL CAV project with pilot burst, VITS, OSD and picture numbers,
+an NTSC CAV project with FM code and white flag, and an MKV
+`duration_repeat: 2` project across both passes plus a revisit; the
+deterministic-output suite covers 1 vs 16 threads; and all 271 recorded
+artefacts match the Phase 4 baselines with the cache at its default size.
+
 ### Task 5.3 — Skip-path integration
 
 The disc-skip path already caches per-disc-frame output because skips replay
@@ -856,6 +943,21 @@ skip projects also benefit and the extra full-buffer cache disappears.
 - All `projects/stacking` skip projects byte-identical to pre-change output.
 - Skip-path memory use reduced (no second whole-frame cache).
 
+*Measured*: the pipeline's per-disc-frame sample cache
+(`frame_cache` in `pipeline.cpp`, one full Y/C buffer pair per
+backward-skip source frame) is gone, along with `DiscFrameAction::
+cache_samples`. Backward-skip copies are now **regenerated**: synthesis goes
+through the template cache (a still frame's clean portion is a copy), and
+noise and dropout application are deterministic per `(project, schedule,
+frame, run seed)` — the same property the worker-pool path already relies on
+— so the regenerated frame is byte-identical to its first emission. The
+replayed frame's sidecar rows were committed on first processing, so the
+replay uses `ComputeFrameDropouts` and discards the recomputed rows,
+leaving the sidecar unchanged. The skip loop also reuses its frame buffers
+across iterations instead of allocating two fresh vectors per disc frame.
+All 228 `stacking` artefacts — every skip and disc-simulation project —
+reproduce byte for byte.
+
 ### Task 5.4 — HLD update
 
 Document the template/patch architecture, cache keys, periodicity rationale
@@ -865,6 +967,14 @@ period 1) and memory bounds in
 
 *Acceptance criteria*
 - HLD describes the implemented behaviour; no code/doc mismatch remains.
+
+*Measured*: [high-level-design.md](high-level-design.md) gained a "Frame
+Template Cache and Per-Frame Patches" subsection under the Generation Stage
+(template/patch split, periodicity rationale with the lattice residues,
+cache key, admission-on-second-request, single-flight, memory bound, and the
+byte-identity guarantee); the Section 12 skip-loop note now describes replay
+by regeneration instead of the removed pipeline frame cache; and the CLI
+tables in the HLD and `README.md` document `--template-cache-mb`.
 
 ---
 

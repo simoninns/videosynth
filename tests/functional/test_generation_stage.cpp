@@ -1703,5 +1703,147 @@ TEST(GenerationStageTimingTest,
   ExpectFramesIdentical(0, 2);
 }
 
+std::string MovingZoneMkvPath(Standard standard) {
+  return (std::filesystem::path(VIDEOSYNTH_SOURCE_DIR) /
+          (standard == Standard::kPal
+               ? "videosynth-assets/assets/mkv/720x576/MOVING_ZONE_2H.mkv"
+               : "videosynth-assets/assets/mkv/720x486/MOVING_ZONE_2H.mkv"))
+      .string();
+}
+
+// Builds a CAV laserdisc project that exercises every per-frame patch applied
+// over the cached clean template: biphase picture numbers, an OSD overlay
+// with a per-frame token, a project VITS line, and (for PAL) the pilot burst.
+Project MakeTemplatePatchProject(Standard standard, int duration_frames) {
+  Project project = MakeProject(standard, duration_frames);
+  project.line_injections.disc_type = "CAV";
+  if (standard == Standard::kPal) {
+    project.line_injections.vits.push_back(VitsInjection{"uk-national", {19}});
+    project.cvbs_presets.pal_laserdisc_pilot_burst = true;
+  } else {
+    project.line_injections.vits.push_back(
+        VitsInjection{"ntc7-composite", {17}});
+  }
+
+  Section& section = project.sections.front();
+  section.section_type = SectionType::kProgrammeArea;
+
+  Section::LineInjection laserdisc;
+  laserdisc.type = "laserdisc";
+  Section::LineInjectionCode picture_number;
+  picture_number.code_type = "picture_number";
+  picture_number.start_value = 1;
+  picture_number.start_value_specified = true;
+  laserdisc.codes.push_back(picture_number);
+  section.line_injections.push_back(laserdisc);
+
+  OsdOverlay overlay;
+  overlay.text = "PN {picture_number}";
+  overlay.x = 16;
+  overlay.y = 16;
+  overlay.scale = 2;
+  section.osd.overlays.push_back(overlay);
+
+  return project;
+}
+
+void ExpectCacheTogglesToIdenticalOutput(const Project& project) {
+  GenerationStage cached;
+  std::vector<SampleFixed> y_cached;
+  std::vector<SampleFixed> c_cached;
+  std::vector<std::string> errors;
+  ASSERT_TRUE(cached.Generate(project, &y_cached, &c_cached, &errors))
+      << (errors.empty() ? std::string() : errors.front());
+
+  GenerationStage uncached;
+  uncached.SetTemplateCacheCapacityBytes(0);
+  std::vector<SampleFixed> y_direct;
+  std::vector<SampleFixed> c_direct;
+  errors.clear();
+  ASSERT_TRUE(uncached.Generate(project, &y_direct, &c_direct, &errors))
+      << (errors.empty() ? std::string() : errors.front());
+
+  ASSERT_EQ(y_cached.size(), y_direct.size());
+  ASSERT_EQ(c_cached.size(), c_direct.size());
+  EXPECT_TRUE(y_cached == y_direct)
+      << "Y samples differ between template cache enabled and disabled";
+  EXPECT_TRUE(c_cached == c_direct)
+      << "C samples differ between template cache enabled and disabled";
+}
+
+TEST(GenerationStageTemplateCacheTest,
+     PalCavPilotBurstOutputIsByteIdenticalWithCacheDisabled) {
+  // Six frames: every colour sequence phase is both built (miss) and reused
+  // (hit) with per-frame biphase, OSD, and VITS patches applied on top.
+  ExpectCacheTogglesToIdenticalOutput(
+      MakeTemplatePatchProject(Standard::kPal, 6));
+}
+
+TEST(GenerationStageTemplateCacheTest,
+     NtscCavOutputIsByteIdenticalWithCacheDisabled) {
+  // Five frames of the two-frame NTSC colour sequence, with the NTSC-only FM
+  // code and white flag lines among the per-frame patches.
+  ExpectCacheTogglesToIdenticalOutput(
+      MakeTemplatePatchProject(Standard::kNtsc, 5));
+}
+
+TEST(GenerationStageTemplateCacheTest,
+     MkvDurationRepeatOutputIsByteIdenticalWithCacheDisabled) {
+  Project project;
+  project.cvbs_presets.video_standard_preset = Standard::kPal;
+  project.cvbs_presets.sample_encoding_preset = "CVBS_U10_4FSC";
+  project.cvbs_presets.signal_state_preset = "STANDARD_TBC_LOCKED";
+  Section section;
+  section.name = "MovingRepeat";
+  section.type = "progressive";
+  section.source = MovingZoneMkvPath(Standard::kPal);
+  section.duration_frames_all = true;
+  section.duration_frames_repeat = 2;
+  project.sections.push_back(section);
+
+  GenerationStage cached;
+  std::vector<IGenerationStage::FrameScheduleItem> cached_schedule;
+  std::vector<std::string> errors;
+  ASSERT_TRUE(cached.BuildFrameSchedule(project, &cached_schedule, &errors))
+      << (errors.empty() ? std::string() : errors.front());
+
+  GenerationStage uncached;
+  uncached.SetTemplateCacheCapacityBytes(0);
+  std::vector<IGenerationStage::FrameScheduleItem> direct_schedule;
+  errors.clear();
+  ASSERT_TRUE(uncached.BuildFrameSchedule(project, &direct_schedule, &errors))
+      << (errors.empty() ? std::string() : errors.front());
+
+  ASSERT_EQ(cached_schedule.size(), direct_schedule.size());
+  ASSERT_EQ(cached_schedule.size() % 2U, 0U);
+  const std::size_t pass_length = cached_schedule.size() / 2U;
+  ASSERT_GE(pass_length, 4U);
+
+  // The start of each duration_repeat pass, then the first range again: the
+  // repeated visit is served from templates built on the first visit, and the
+  // second pass replays the same source frames at different disc positions.
+  const std::vector<std::size_t> batch_starts = {0U, pass_length, 0U};
+  for (const std::size_t start : batch_starts) {
+    std::vector<SampleFixed> y_cached;
+    std::vector<SampleFixed> c_cached;
+    errors.clear();
+    ASSERT_TRUE(cached.GenerateFrameBatch(project, cached_schedule, start, 4U,
+                                          &y_cached, &c_cached, &errors))
+        << (errors.empty() ? std::string() : errors.front());
+
+    std::vector<SampleFixed> y_direct;
+    std::vector<SampleFixed> c_direct;
+    errors.clear();
+    ASSERT_TRUE(uncached.GenerateFrameBatch(project, direct_schedule, start, 4U,
+                                            &y_direct, &c_direct, &errors))
+        << (errors.empty() ? std::string() : errors.front());
+
+    EXPECT_TRUE(y_cached == y_direct)
+        << "Y samples differ at batch start " << start;
+    EXPECT_TRUE(c_cached == c_direct)
+        << "C samples differ at batch start " << start;
+  }
+}
+
 }  // namespace
 }  // namespace videosynth
