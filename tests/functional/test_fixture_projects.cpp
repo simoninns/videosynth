@@ -92,7 +92,7 @@ std::size_t ExpectedProgressiveExrFrameCount(Standard standard) {
 }
 
 struct ExpectedVitsInjection {
-  int target_line;
+  std::vector<int> target_lines;
   std::string vits_type;
 };
 
@@ -133,8 +133,7 @@ void ExpectVitsFixtureProject(const ExpectedVitsFixture& expected) {
     const VitsInjection& injection = project.line_injections.vits[index];
     const ExpectedVitsInjection& expected_injection =
         expected.injections[index];
-    ASSERT_EQ(injection.target_lines.size(), 1U) << expected.fixture_name;
-    EXPECT_EQ(injection.target_lines[0], expected_injection.target_line)
+    EXPECT_EQ(injection.target_lines, expected_injection.target_lines)
         << expected.fixture_name;
     EXPECT_EQ(injection.vits_type, expected_injection.vits_type)
         << expected.fixture_name;
@@ -451,12 +450,12 @@ TEST(ProjectFixturesTest, VitsFixtureProjectsParseValidateAndGenerate) {
       .standard = Standard::kPal,
       .injections =
           {
-              {17, "vits17"},
-              {18, "itu-multiburst"},
-              {19, "uk-national"},
-              {20, "vits20"},
-              {330, "itu-composite"},
-              {331, "itu-combination"},
+              {{17}, "vits17"},
+              {{18}, "itu-multiburst"},
+              {{19}, "uk-national"},
+              {{20}, "vits20"},
+              {{330}, "itu-composite"},
+              {{331}, "itu-combination"},
           },
   });
 
@@ -465,11 +464,11 @@ TEST(ProjectFixturesTest, VitsFixtureProjectsParseValidateAndGenerate) {
       .standard = Standard::kNtsc,
       .injections =
           {
-              {17, "ntc7-composite"},
-              {18, "fcc-multiburst"},
-              {21, "virs"},
-              {280, "ntc7-combination"},
-              {281, "fcc-composite"},
+              {{17}, "ntc7-composite"},
+              {{18}, "fcc-multiburst"},
+              {{19, 282}, "virs"},
+              {{280}, "ntc7-combination"},
+              {{281}, "fcc-composite"},
           },
   });
 }

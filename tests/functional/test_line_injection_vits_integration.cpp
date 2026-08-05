@@ -147,7 +147,7 @@ TEST(LineInjectionVitsIntegrationTest, NtscVitsTypesAllRenderable) {
   const std::vector<std::pair<std::string, int>> ntsc_vits_types = {
       {"ntc7-composite", 17}, {"ntc7-combination", 280},
       {"fcc-multiburst", 18}, {"fcc-composite", 281},
-      {"virs", 21},
+      {"virs", 19},
   };
 
   for (const auto& [vits_type, line] : ntsc_vits_types) {

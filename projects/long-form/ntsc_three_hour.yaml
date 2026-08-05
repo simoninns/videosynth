@@ -48,7 +48,7 @@ line_injections:
     - vits_type: fcc-multiburst
       target_lines: [18]
     - vits_type: virs
-      target_lines: [21]
+      target_lines: [19, 282]
     - vits_type: ntc7-combination
       target_lines: [280]
     - vits_type: fcc-composite
