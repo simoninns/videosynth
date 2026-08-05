@@ -46,6 +46,12 @@ class IChromaEncoder {
 // identically), and every per-line buffer is a reusable member so the encode
 // path performs no heap allocation in steady state.
 //
+// Both the Q30 taps and the Q20 colour-difference axis samples are held as
+// int32 so the filter accumulates through a widening 32×32→64 multiply, which
+// the compiler can vectorise; the constructor proves the accumulator cannot
+// overflow for any legal input. Filtered samples feed the modulator directly
+// from fixed point — there is no intermediate double buffer.
+//
 // Complexity: EncodeLineFromPhaseStart is O(samples × taps).
 //
 // Thread-safety: NOT thread-safe — the per-line workspaces are mutable
@@ -77,18 +83,16 @@ class QuadratureChromaEncoder : public IChromaEncoder {
 
  private:
   // Q30 filter taps, quantised once at construction and shared by both axes.
-  std::vector<std::int64_t> filter_taps_fixed_;
+  std::vector<std::int32_t> filter_taps_fixed_;
   double sin_scale_mv_;
   double cos_scale_mv_;
 
   // Per-line scratch buffers, reused across calls (see thread-safety note).
-  mutable std::vector<std::int64_t> sin_axis_fixed_;
-  mutable std::vector<std::int64_t> cos_axis_fixed_;
-  mutable std::vector<std::int64_t> filtered_sin_fixed_;
-  mutable std::vector<std::int64_t> filtered_cos_fixed_;
-  mutable std::vector<std::int64_t> fir_pad_fixed_;
-  mutable std::vector<double> filtered_sin_workspace_;
-  mutable std::vector<double> filtered_cos_workspace_;
+  mutable std::vector<std::int32_t> sin_axis_fixed_;
+  mutable std::vector<std::int32_t> cos_axis_fixed_;
+  mutable std::vector<std::int32_t> filtered_sin_fixed_;
+  mutable std::vector<std::int32_t> filtered_cos_fixed_;
+  mutable std::vector<std::int32_t> fir_pad_fixed_;
 };
 
 // 625-line PAL chroma encoder.

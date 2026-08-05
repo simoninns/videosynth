@@ -56,6 +56,44 @@ struct LinePulseSegment {
   SyncPulseKind kind = SyncPulseKind::kHorizontal;
 };
 
+// No line of any supported standard carries more than two sync pulses: one at
+// the line start and, on half-line lines, one at the half-line point.
+constexpr int kMaxLinePulseSegments = 2;
+
+// The sync pulses of one frame line. The schedule is a pure function of
+// (standard, line), so a run resolves all of them once instead of building a
+// fresh vector for every line of every frame.
+struct LinePulsePlan {
+  int segment_count = 0;
+  std::array<LinePulseSegment, kMaxLinePulseSegments> segments{};
+};
+
+// One shaped sync pulse, rendered once per (standard, pulse kind, levels).
+// A pulse truncated by the end of its line has a different S-curve to the
+// nominal one, so the sample loop only copies the table when the widths agree.
+struct SyncPulseWaveform {
+  int width_samples = 0;
+  std::vector<SampleFixed> levels;
+};
+
+// One rendered LaserDisc pilot burst, as fixed-point additions to the sync tip.
+//
+// 17,734,475 = 25 × 709,379, so the pilot advances a whole number of cycles per
+// PAL frame and its waveform repeats on every frame; each burst is therefore
+// rendered once per run from its offset within the frame.
+struct PilotBurstSegment {
+  int offset_in_line = 0;
+  std::vector<SampleFixed> samples;
+};
+
+struct PilotBurstLine {
+  int segment_count = 0;
+  std::array<PilotBurstSegment, kMaxLinePulseSegments> segments;
+};
+
+// Count of SyncPulseKind enumerators, used to size the pulse waveform table.
+constexpr int kSyncPulseKindCount = 3;
+
 struct SampledSynthesisContext {
   Standard standard = Standard::kUnknown;
   double sample_rate_hz = 0.0;
@@ -64,6 +102,7 @@ struct SampledSynthesisContext {
   std::vector<int> line_sample_offsets;
   int max_line_samples = 0;
   std::vector<LineTimingPrimitive> frame_lines;
+  std::vector<LinePulsePlan> line_pulse_plans;
   int burst_start_samples = 0;
   int burst_end_samples = 0;
   int sync_rise_samples = 0;
@@ -71,16 +110,91 @@ struct SampledSynthesisContext {
   ActiveRasterGeometry active;
 };
 
+// Maps each active-window sample position to its source pixel column.
+//
+// MapActiveSampleToSourcePixel performs an integer division per call, and the
+// mapping only depends on the active window width and the source's active
+// raster, so the whole line's worth of positions is resolved once per source
+// geometry rather than once per sample of every active line.
+//
+// The mapping is monotonically non-decreasing, so samples whose pixel column
+// falls outside the source raster form a suffix; in_range_sample_count records
+// where that suffix starts and lets the sample loop drop its bounds check.
+struct ActiveSampleColumnMap {
+  int active_width = -1;
+  int active_x = -1;
+  int source_width = -1;
+  int in_range_sample_count = 0;
+  std::vector<int> pixel_x;
+
+  bool MatchesSource(const FrameSourceImage& source) const {
+    return active_width == source.active_width && active_x == source.active_x &&
+           source_width == source.width;
+  }
+
+  void Rebuild(const FrameSourceImage& source, int active_window_samples) {
+    active_width = source.active_width;
+    active_x = source.active_x;
+    source_width = source.width;
+    pixel_x.assign(static_cast<std::size_t>(active_window_samples), 0);
+    in_range_sample_count = active_window_samples;
+    for (int x_sample = 0; x_sample < active_window_samples; ++x_sample) {
+      const int mapped =
+          MapActiveSampleToSourcePixel(x_sample, active_window_samples,
+                                       source.active_width, source.active_x);
+      pixel_x[static_cast<std::size_t>(x_sample)] = mapped;
+      if (mapped >= source.width && x_sample < in_range_sample_count) {
+        in_range_sample_count = x_sample;
+      }
+    }
+  }
+};
+
 }  // namespace generation_detail
 
 namespace {
 
 using generation_detail::ActiveRasterGeometry;
+using generation_detail::ActiveSampleColumnMap;
+using generation_detail::LinePulsePlan;
 using generation_detail::LinePulseSegment;
 using generation_detail::SampledSynthesisContext;
+using generation_detail::SyncPulseWaveform;
 
 constexpr double kPi = 3.14159265358979323846;
+constexpr double kTwoPi = 2.0 * kPi;
 constexpr double kQuarterWaveRad = kPi / 2.0;
+
+// Samples per subcarrier cycle at 4fsc. The carrier advances exactly π/2 per
+// sample, so its phase is a pure function of the sample index modulo this
+// value; see docs/design/performance-optimisation-plan.md "Exploitable
+// structure".
+constexpr std::size_t kSubcarrierLatticeSamples = 4U;
+
+// Reduces a phase argument into [0, 2π).
+//
+// Every phase in the synthesiser is periodic, so this is mathematically a
+// no-op; it exists so the arguments handed to sin/cos stay bounded no matter
+// how long the render is, instead of growing with the absolute sample index and
+// losing low-order precision.
+double WrapPhaseRad(double phase_rad) {
+  double wrapped = std::fmod(phase_rad, kTwoPi);
+  if (wrapped < 0.0) {
+    wrapped += kTwoPi;
+  }
+  return wrapped;
+}
+
+// Phase of the colour subcarrier at an absolute sample index, exactly.
+//
+// Reducing the index onto the 4-sample lattice before the multiply keeps the
+// result exact for the life of the render: sin/cos see one of four bounded
+// arguments rather than (π/2) × an index that reaches 1.9 × 10^11 on a
+// three-hour disc.
+double SubcarrierPhaseRad(std::size_t absolute_sample_index) {
+  return kQuarterWaveRad *
+         static_cast<double>(absolute_sample_index % kSubcarrierLatticeSamples);
+}
 
 // IEC 60856 §9.1.2: pilot burst frequency is 240 × fH = 3.75 MHz and
 // amplitude is 6/7 of (white - blanking) = 6/7 × 700 mV = 600 mV p-p,
@@ -102,6 +216,9 @@ int BurstStartSamples(Standard standard, double sample_rate_hz);
 int BurstEndSamples(Standard standard, double sample_rate_hz);
 double SyncEdgeRiseTimeSeconds(Standard standard);
 double BurstEnvelopeRiseTimeSeconds(Standard standard);
+std::vector<generation_detail::LinePulsePlan> BuildLinePulsePlans(
+    Standard standard, const std::vector<LineTimingPrimitive>& frame_lines,
+    const std::vector<int>& line_sample_counts);
 
 std::string Lowercase(std::string value) {
   std::transform(
@@ -159,6 +276,8 @@ SampledSynthesisContext BuildSampledSynthesisContext(Standard standard) {
       BuildLineSampleOffsets(context.line_sample_counts);
   context.max_line_samples = MaxLineSamples(context.line_sample_counts);
   context.frame_lines = BuildFrameTimingPrimitives(standard);
+  context.line_pulse_plans = BuildLinePulsePlans(standard, context.frame_lines,
+                                                 context.line_sample_counts);
   context.burst_start_samples =
       BurstStartSamples(standard, context.sample_rate_hz);
   context.burst_end_samples = BurstEndSamples(standard, context.sample_rate_hz);
@@ -291,6 +410,22 @@ double LumaMillivoltsFromCode(int y_code, const SignalLevels& levels) {
   return levels.black_mv + (y_norm * (levels.white_mv - levels.black_mv));
 }
 
+// Number of entries in the luma code lookup table: the whole 10-bit code space
+// the frame sources clamp their samples into (progressive_frame_source.cpp).
+constexpr int kLumaCodeTableSize = 1024;
+
+// Builds the luma code -> fixed-point millivolt table. The mapping is a pure
+// function of the signal levels, so a run resolves it once instead of doing a
+// divide, a multiply-add and an llround on every active sample.
+std::vector<SampleFixed> BuildLumaCodeTable(const SignalLevels& levels) {
+  std::vector<SampleFixed> table(static_cast<std::size_t>(kLumaCodeTableSize));
+  for (int code = 0; code < kLumaCodeTableSize; ++code) {
+    table[static_cast<std::size_t>(code)] =
+        MillivoltsToSampleFixed(LumaMillivoltsFromCode(code, levels));
+  }
+  return table;
+}
+
 double PulseWidthSeconds(SyncPulseKind kind, Standard standard) {
   if (kind == SyncPulseKind::kHorizontal) {
     return 4.7e-6;
@@ -338,52 +473,49 @@ int BurstEndSamples(Standard standard, double sample_rate_hz) {
   return std::max(0, static_cast<int>(std::lround(sample_rate_hz * end_us)));
 }
 
-std::vector<LinePulseSegment> BuildLinePulseSchedule(
-    const LineTimingPrimitive& line, Standard standard, int half_line_samples) {
-  std::vector<LinePulseSegment> schedule;
+LinePulsePlan OnePulse(SyncPulseKind kind) {
+  return LinePulsePlan{
+      .segment_count = 1,
+      .segments = {LinePulseSegment{.offset_samples = 0, .kind = kind},
+                   LinePulseSegment{}},
+  };
+}
 
+LinePulsePlan TwoPulses(SyncPulseKind first_kind, SyncPulseKind second_kind,
+                        int half_line_samples) {
+  return LinePulsePlan{
+      .segment_count = 2,
+      .segments = {LinePulseSegment{.offset_samples = 0, .kind = first_kind},
+                   LinePulseSegment{.offset_samples = half_line_samples,
+                                    .kind = second_kind}},
+  };
+}
+
+LinePulsePlan BuildLinePulseSchedule(const LineTimingPrimitive& line,
+                                     Standard standard, int half_line_samples) {
   if (standard == Standard::kPal) {
     const int line_1based = line.line_number_1based;
     if (line_1based == 1 || line_1based == 2 || line_1based == 314 ||
         line_1based == 315) {
-      return {
-          LinePulseSegment{.offset_samples = 0,
-                           .kind = SyncPulseKind::kVerticalSync},
-          LinePulseSegment{.offset_samples = half_line_samples,
-                           .kind = SyncPulseKind::kVerticalSync},
-      };
+      return TwoPulses(SyncPulseKind::kVerticalSync,
+                       SyncPulseKind::kVerticalSync, half_line_samples);
     }
     if (line_1based == 3) {
-      return {
-          LinePulseSegment{.offset_samples = 0,
-                           .kind = SyncPulseKind::kVerticalSync},
-          LinePulseSegment{.offset_samples = half_line_samples,
-                           .kind = SyncPulseKind::kEqualizing},
-      };
+      return TwoPulses(SyncPulseKind::kVerticalSync, SyncPulseKind::kEqualizing,
+                       half_line_samples);
     }
     if (line_1based == 313) {
-      return {
-          LinePulseSegment{.offset_samples = 0,
-                           .kind = SyncPulseKind::kEqualizing},
-          LinePulseSegment{.offset_samples = half_line_samples,
-                           .kind = SyncPulseKind::kVerticalSync},
-      };
+      return TwoPulses(SyncPulseKind::kEqualizing, SyncPulseKind::kVerticalSync,
+                       half_line_samples);
     }
     if (line_1based == 6 || line_1based == 318) {
-      return {
-          LinePulseSegment{.offset_samples = 0,
-                           .kind = SyncPulseKind::kEqualizing},
-      };
+      return OnePulse(SyncPulseKind::kEqualizing);
     }
     if (line_1based == 4 || line_1based == 5 || line_1based == 311 ||
         line_1based == 312 || line_1based == 316 || line_1based == 317 ||
         line_1based == 623 || line_1based == 624 || line_1based == 625) {
-      return {
-          LinePulseSegment{.offset_samples = 0,
-                           .kind = SyncPulseKind::kEqualizing},
-          LinePulseSegment{.offset_samples = half_line_samples,
-                           .kind = SyncPulseKind::kEqualizing},
-      };
+      return TwoPulses(SyncPulseKind::kEqualizing, SyncPulseKind::kEqualizing,
+                       half_line_samples);
     }
   }
 
@@ -391,24 +523,13 @@ std::vector<LinePulseSegment> BuildLinePulseSchedule(
       line.line_number_1based == 263) {
     // SMPTE 170M-2004 / ITU-R BT.470-6 System M: line 263 is the field-2
     // transition half-line in System M (NTSC and PAL-M share this structure).
-    return {
-        LinePulseSegment{.offset_samples = 0,
-                         .kind = SyncPulseKind::kHorizontal},
-        LinePulseSegment{.offset_samples = half_line_samples,
-                         .kind = SyncPulseKind::kEqualizing},
-    };
+    return TwoPulses(SyncPulseKind::kHorizontal, SyncPulseKind::kEqualizing,
+                     half_line_samples);
   }
 
   if (!line.has_two_half_line_pulses) {
-    schedule.push_back(
-        LinePulseSegment{.offset_samples = 0, .kind = line.sync_pulse_kind});
-    return schedule;
+    return OnePulse(line.sync_pulse_kind);
   }
-
-  schedule.push_back(
-      LinePulseSegment{.offset_samples = 0, .kind = line.sync_pulse_kind});
-  schedule.push_back(LinePulseSegment{.offset_samples = half_line_samples,
-                                      .kind = line.sync_pulse_kind});
 
   if (standard == Standard::kNtsc || standard == Standard::kPalM) {
     // Align the line-granular model with the SMPTE 170M field-2 transition
@@ -416,28 +537,140 @@ std::vector<LinePulseSegment> BuildLinePulseSchedule(
     // occur around frame lines 263/266/269/272. PAL-M uses the same System M
     // sync structure as M/NTSC.
     if (line.line_number_1based == 266) {
-      schedule = {
-          LinePulseSegment{.offset_samples = 0,
-                           .kind = SyncPulseKind::kEqualizing},
-          LinePulseSegment{.offset_samples = half_line_samples,
-                           .kind = SyncPulseKind::kVerticalSync},
-      };
-    } else if (line.line_number_1based == 269) {
-      schedule = {
-          LinePulseSegment{.offset_samples = 0,
-                           .kind = SyncPulseKind::kVerticalSync},
-          LinePulseSegment{.offset_samples = half_line_samples,
-                           .kind = SyncPulseKind::kEqualizing},
-      };
-    } else if (line.line_number_1based == 272) {
-      schedule = {
-          LinePulseSegment{.offset_samples = 0,
-                           .kind = SyncPulseKind::kEqualizing},
-      };
+      return TwoPulses(SyncPulseKind::kEqualizing, SyncPulseKind::kVerticalSync,
+                       half_line_samples);
+    }
+    if (line.line_number_1based == 269) {
+      return TwoPulses(SyncPulseKind::kVerticalSync, SyncPulseKind::kEqualizing,
+                       half_line_samples);
+    }
+    if (line.line_number_1based == 272) {
+      return OnePulse(SyncPulseKind::kEqualizing);
     }
   }
 
-  return schedule;
+  return TwoPulses(line.sync_pulse_kind, line.sync_pulse_kind,
+                   half_line_samples);
+}
+
+// Where one scheduled sync pulse starts and ends within its line.
+//
+// Shared by frame synthesis and the pilot burst table builder so the two can
+// never disagree about where a pulse sits.
+struct PulseSegmentBounds {
+  int start_in_line = 0;
+  int end_in_line = 0;
+};
+
+PulseSegmentBounds ResolvePulseSegmentBounds(const LinePulseSegment& segment,
+                                             int nominal_width_samples,
+                                             int line_samples) {
+  const int start = std::min(segment.offset_samples, line_samples - 1);
+  return PulseSegmentBounds{
+      .start_in_line = start,
+      .end_in_line = std::min(start + nominal_width_samples, line_samples),
+  };
+}
+
+// Resolves the sync pulse schedule of every frame line once per run.
+std::vector<LinePulsePlan> BuildLinePulsePlans(
+    Standard standard, const std::vector<LineTimingPrimitive>& frame_lines,
+    const std::vector<int>& line_sample_counts) {
+  std::vector<LinePulsePlan> plans;
+  plans.reserve(frame_lines.size());
+  for (const LineTimingPrimitive& line : frame_lines) {
+    const auto line_index =
+        static_cast<std::size_t>(line.line_number_1based - 1);
+    const int line_samples = (line_index < line_sample_counts.size())
+                                 ? line_sample_counts[line_index]
+                                 : 0;
+    plans.push_back(
+        BuildLinePulseSchedule(line, standard, (line_samples + 1) / 2));
+  }
+  return plans;
+}
+
+// Renders every LaserDisc pilot burst of a frame once per run.
+//
+// IEC 60856 §9.1.2 fig 6: a triangle burst rides on each sync pulse, capped at
+// q = 13.5 periods for line and field sync and r = 6 periods for equalizing
+// pulses; the remainder of a broad field-sync pulse stays at sync tip.
+//
+// The pilot is period-1 in frames (17,734,475 = 25 × 709,379), so each burst
+// depends only on its offset within the frame. Deriving the phase from that
+// offset rather than from the absolute sample index makes every frame's pilot
+// identical by construction and keeps the phase bounded, where the absolute
+// index both drifted and — held in an int — overflowed past ~3,000 frames.
+std::vector<generation_detail::PilotBurstLine> BuildPilotBurstLines(
+    const SampledSynthesisContext& synth,
+    const std::array<SyncPulseWaveform, generation_detail::kSyncPulseKindCount>&
+        pulse_waveforms,
+    double pilot_omega, int pilot_q_samples, int pilot_r_samples) {
+  std::vector<generation_detail::PilotBurstLine> pilot_lines(
+      synth.line_sample_counts.size());
+
+  for (const LineTimingPrimitive& line : synth.frame_lines) {
+    const auto line_index =
+        static_cast<std::size_t>(line.line_number_1based - 1);
+    if (line_index >= pilot_lines.size()) {
+      continue;
+    }
+
+    const int line_samples = synth.line_sample_counts[line_index];
+    const int line_offset = synth.line_sample_offsets[line_index];
+    const LinePulsePlan& plan = synth.line_pulse_plans[line_index];
+    generation_detail::PilotBurstLine& pilot_line = pilot_lines[line_index];
+
+    for (int segment_index = 0; segment_index < plan.segment_count;
+         ++segment_index) {
+      const LinePulseSegment& segment =
+          plan.segments[static_cast<std::size_t>(segment_index)];
+      const SyncPulseWaveform& waveform =
+          pulse_waveforms[static_cast<std::size_t>(segment.kind)];
+      const PulseSegmentBounds bounds = ResolvePulseSegmentBounds(
+          segment, waveform.width_samples, line_samples);
+
+      const int max_burst_samples = (segment.kind == SyncPulseKind::kEqualizing)
+                                        ? pilot_r_samples
+                                        : pilot_q_samples;
+      const int flat_start = bounds.start_in_line + synth.sync_rise_samples;
+      const int flat_end =
+          std::min(bounds.end_in_line - synth.sync_rise_samples,
+                   flat_start + max_burst_samples);
+      if (flat_start >= flat_end) {
+        continue;
+      }
+
+      generation_detail::PilotBurstSegment& pilot_segment =
+          pilot_line
+              .segments[static_cast<std::size_t>(pilot_line.segment_count)];
+      pilot_segment.offset_in_line = flat_start;
+      pilot_segment.samples.clear();
+      pilot_segment.samples.reserve(
+          static_cast<std::size_t>(flat_end - flat_start));
+
+      double phase = WrapPhaseRad(
+          pilot_omega * static_cast<double>(line_offset + flat_start));
+      for (int i = flat_start; i < flat_end; ++i) {
+        const double phase_frac = phase / kTwoPi;
+        const double triangle = (phase_frac < 0.5) ? (4.0 * phase_frac - 1.0)
+                                                   : (3.0 - 4.0 * phase_frac);
+        pilot_segment.samples.push_back(
+            MillivoltsToSampleFixed(kPilotBurstAmplitudeMv * triangle));
+
+        // One subtraction suffices: the pilot advances well under a full cycle
+        // per sample (3.75 MHz against a 17.734475 MHz sample rate).
+        phase += pilot_omega;
+        if (phase >= kTwoPi) {
+          phase -= kTwoPi;
+        }
+      }
+
+      ++pilot_line.segment_count;
+    }
+  }
+
+  return pilot_lines;
 }
 
 double SyncEdgeRiseTimeSeconds(Standard standard) {
@@ -674,10 +907,31 @@ struct GenerationStage::SynthesisResources {
   SampleFixed blanking_fixed = 0;
   double burst_amplitude_mv = 0.0;
 
+  // Luma code -> fixed-point millivolts, indexed by 10-bit source code.
+  std::vector<SampleFixed> luma_code_table;
+
+  // Active-sample to source-column mapping for the source most recently
+  // synthesised by this worker. Held here rather than per call because the pool
+  // invokes GenerateFrameBatch once per frame, so a per-call table would be
+  // rebuilt every frame instead of only when a section change brings in a
+  // source with a different active raster.
+  generation_detail::ActiveSampleColumnMap column_map;
+
+  // Shaped sync pulses, indexed by SyncPulseKind, and the burst gate envelope
+  // pre-scaled by the burst amplitude. Both are pure functions of the standard
+  // and the signal levels.
+  std::array<generation_detail::SyncPulseWaveform,
+             generation_detail::kSyncPulseKindCount>
+      pulse_waveforms;
+  int burst_width_samples = 0;
+  std::vector<double> burst_envelope_mv;
+
   bool pal_pilot_burst = false;
   double pilot_omega = 0.0;
   int pilot_q_samples = 0;
   int pilot_r_samples = 0;
+  // Pre-rendered pilot bursts per frame line; empty unless the pilot is on.
+  std::vector<generation_detail::PilotBurstLine> pilot_burst_lines;
 
   std::unique_ptr<IChromaEncoder> chroma_encoder;
   RenderedVitsLineMap vits_lines;
@@ -765,6 +1019,7 @@ bool GenerationStage::SynthesisResourceCache::Build(
   out->active_window_samples =
       out->active_window_end - out->active_window_start;
   out->blanking_fixed = MillivoltsToSampleFixed(out->levels.blanking_mv);
+  out->luma_code_table = BuildLumaCodeTable(out->levels);
 
   // SMPTE 170M-2004 Table 1: NTSC burst amplitude = 40 IRE p-p = 20 IRE peak.
   // ITU-R BT.1700 Part B Table 2 item 5: PAL burst amplitude = 300 mV p-p.
@@ -776,6 +1031,40 @@ bool GenerationStage::SynthesisResourceCache::Build(
     out->burst_amplitude_mv = 20.0 * 1000.0 / 140.0;
   } else if (standard == Standard::kPalM) {
     out->burst_amplitude_mv = (3.0 / 7.0) * 714.3 / 2.0;
+  }
+
+  // Sync pulses are pure functions of (standard, pulse kind, signal levels), so
+  // each shape is rendered once here and copied into place per line instead of
+  // being evaluated sample by sample (~52 k S-curve evaluations per frame).
+  for (int kind_index = 0; kind_index < generation_detail::kSyncPulseKindCount;
+       ++kind_index) {
+    const auto kind = static_cast<SyncPulseKind>(kind_index);
+    const int width =
+        PulseWidthSamples(kind, standard, out->timing.sample_rate_4fsc_hz);
+    generation_detail::SyncPulseWaveform& waveform =
+        out->pulse_waveforms[static_cast<std::size_t>(kind_index)];
+    waveform.width_samples = width;
+    waveform.levels.assign(static_cast<std::size_t>(width), 0);
+    for (int index = 0; index < width; ++index) {
+      waveform.levels[static_cast<std::size_t>(index)] =
+          MillivoltsToSampleFixed(ShapedPulseLevel(
+              index, width, out->synth.sync_rise_samples,
+              out->levels.blanking_mv, out->levels.sync_tip_mv));
+    }
+  }
+
+  // The burst gate envelope is likewise frame-invariant; folding the burst
+  // amplitude into the table keeps the multiply order — and so the rounding —
+  // identical to evaluating the envelope inline.
+  out->burst_width_samples = std::max(
+      0, out->synth.burst_end_samples - out->synth.burst_start_samples);
+  out->burst_envelope_mv.assign(
+      static_cast<std::size_t>(out->burst_width_samples), 0.0);
+  for (int index = 0; index < out->burst_width_samples; ++index) {
+    out->burst_envelope_mv[static_cast<std::size_t>(index)] =
+        out->burst_amplitude_mv *
+        ShapedGateEnvelope(index, out->burst_width_samples,
+                           out->synth.burst_rise_samples);
   }
 
   out->pal_pilot_burst = project.cvbs_presets.pal_laserdisc_pilot_burst &&
@@ -797,6 +1086,12 @@ bool GenerationStage::SynthesisResourceCache::Build(
           ? static_cast<int>(std::lround(6.0 * out->timing.sample_rate_4fsc_hz /
                                          kPilotBurstFreqHz))
           : 0;
+  out->pilot_burst_lines =
+      out->pal_pilot_burst
+          ? BuildPilotBurstLines(out->synth, out->pulse_waveforms,
+                                 out->pilot_omega, out->pilot_q_samples,
+                                 out->pilot_r_samples)
+          : std::vector<generation_detail::PilotBurstLine>{};
 
   std::string vits_error;
   if (!BuildRenderedVitsLines(project.line_injections.vits, standard,
@@ -1005,7 +1300,9 @@ bool GenerationStage::GenerateFrameBatch(
   // Frame-invariant setup (sampled timing context, chroma encoder, rendered
   // VITS lines, VBI encoders) is built once per worker thread and reused for
   // every frame that worker synthesises.
-  const SynthesisResources* resources = resource_cache_->Acquire(
+  // Non-const: the resources are this worker's alone, and the source-column
+  // map is updated in place as sections change.
+  SynthesisResources* resources = resource_cache_->Acquire(
       project, *vits_definition_provider_, *vits_generator_, errors);
   if (resources == nullptr) {
     return false;
@@ -1027,11 +1324,9 @@ bool GenerationStage::GenerateFrameBatch(
   const int active_window_samples = resources->active_window_samples;
 
   const bool pal_pilot_burst = resources->pal_pilot_burst;
-  const double pilot_omega = resources->pilot_omega;
-  const int pilot_q_samples = resources->pilot_q_samples;
-  const int pilot_r_samples = resources->pilot_r_samples;
 
   const SampleFixed blanking_fixed = resources->blanking_fixed;
+  const SampleFixed* const luma_code_table = resources->luma_code_table.data();
 
   out_y_mv->assign(sample_count, blanking_fixed);
   out_c_mv->assign(sample_count, 0);
@@ -1048,8 +1343,14 @@ bool GenerationStage::GenerateFrameBatch(
     (*out_c_mv)[index] += value_fixed;
   };
 
-  auto IsYAtOrAboveBlanking = [&](std::size_t index) {
-    return (*out_y_mv)[index] >= blanking_fixed;
+  // Active luma comes from the precomputed code table. Sources clamp their
+  // samples into the 10-bit code space, so the guard only covers hand-built
+  // images and costs a predictable compare rather than a divide and an llround.
+  auto LumaFixedFromCode = [&](int y_code) -> SampleFixed {
+    if (y_code >= 0 && y_code < kLumaCodeTableSize) {
+      return luma_code_table[y_code];
+    }
+    return MillivoltsToSampleFixed(LumaMillivoltsFromCode(y_code, levels));
   };
 
   std::vector<YCbCr444Pixel> line_source_samples(
@@ -1059,6 +1360,11 @@ bool GenerationStage::GenerateFrameBatch(
   std::vector<SampleFixed> encoded_line_chroma(
       static_cast<std::size_t>(active_window_samples),
       MillivoltsToSampleFixed(0.0));
+
+  // Active-sample to source-column mapping, held by this worker's resources so
+  // it survives across calls and is rebuilt only when a section change brings
+  // in a source with a different active raster.
+  ActiveSampleColumnMap& column_map = resources->column_map;
 
   for (std::size_t local_frame_index = 0; local_frame_index < frame_count;
        ++local_frame_index) {
@@ -1116,6 +1422,12 @@ bool GenerationStage::GenerateFrameBatch(
       return false;
     }
     const FrameSourceImage& source_frame = *source_frame_image;
+    if (!column_map.MatchesSource(source_frame)) {
+      column_map.Rebuild(source_frame, active_window_samples);
+    }
+    // Progressive imports use field-2-dominant row pairing; the section type
+    // decides it once per frame rather than once per active sample.
+    const bool progressive_section = section->type == "progressive";
 
     const int local_frame_base = static_cast<int>(
         local_frame_index * static_cast<std::size_t>(frame_samples));
@@ -1130,73 +1442,72 @@ bool GenerationStage::GenerateFrameBatch(
                                        ? static_cast<std::size_t>(
                                              frame_item.disc_picture_number - 1)
                                        : global_frame_index);
-    const int absolute_frame_base = static_cast<int>(
-        disc_frame_index * static_cast<std::size_t>(frame_samples));
+    // Held as size_t: on a three-hour disc the absolute sample index reaches
+    // ~1.9 × 10^11, far outside int.
+    const std::size_t absolute_frame_base =
+        disc_frame_index * static_cast<std::size_t>(frame_samples);
 
     for (const LineTimingPrimitive& line : synth.frame_lines) {
       const int line_index = line.line_number_1based - 1;
       const int local_line_base =
           local_frame_base +
           synth.line_sample_offsets[static_cast<std::size_t>(line_index)];
-      const int absolute_line_base =
+      const std::size_t absolute_line_base =
           absolute_frame_base +
-          synth.line_sample_offsets[static_cast<std::size_t>(line_index)];
+          static_cast<std::size_t>(
+              synth.line_sample_offsets[static_cast<std::size_t>(line_index)]);
       const int line_samples =
           synth.line_sample_counts[static_cast<std::size_t>(line_index)];
       const int local_line_end = local_line_base + line_samples;
-      const int half_line_samples = (line_samples + 1) / 2;
 
-      const std::vector<LinePulseSegment> pulse_schedule =
-          BuildLinePulseSchedule(line,
-                                 project.cvbs_presets.video_standard_preset,
-                                 half_line_samples);
+      const generation_detail::LinePulsePlan& pulse_plan =
+          synth.line_pulse_plans[static_cast<std::size_t>(line_index)];
 
-      for (const LinePulseSegment& segment : pulse_schedule) {
-        const int pulse_width = PulseWidthSamples(
-            segment.kind, project.cvbs_presets.video_standard_preset,
-            timing.sample_rate_4fsc_hz);
+      for (int segment_index = 0; segment_index < pulse_plan.segment_count;
+           ++segment_index) {
+        const LinePulseSegment& segment =
+            pulse_plan.segments[static_cast<std::size_t>(segment_index)];
+        const generation_detail::SyncPulseWaveform& pulse_waveform =
+            resources->pulse_waveforms[static_cast<std::size_t>(segment.kind)];
         const int pulse_offset = segment.offset_samples;
         const int pulse_start =
             local_line_base + std::min(pulse_offset, line_samples - 1);
-        const int pulse_end =
-            std::min(pulse_start + pulse_width, local_line_end);
+        const int pulse_end = std::min(
+            pulse_start + pulse_waveform.width_samples, local_line_end);
         const int pulse_width_samples = pulse_end - pulse_start;
 
-        for (int i = pulse_start; i < pulse_end; ++i) {
-          const int relative_index = i - pulse_start;
-          SetYMillivolts(
-              static_cast<std::size_t>(i),
-              ShapedPulseLevel(relative_index, pulse_width_samples,
-                               synth.sync_rise_samples, levels.blanking_mv,
-                               levels.sync_tip_mv));
+        if (pulse_width_samples == pulse_waveform.width_samples) {
+          std::copy(pulse_waveform.levels.begin(), pulse_waveform.levels.end(),
+                    out_y_mv->begin() + pulse_start);
+        } else {
+          // A pulse clipped by the end of its line has a different S-curve to
+          // the nominal shape, so it is still shaped sample by sample.
+          for (int i = pulse_start; i < pulse_end; ++i) {
+            const int relative_index = i - pulse_start;
+            SetYMillivolts(
+                static_cast<std::size_t>(i),
+                ShapedPulseLevel(relative_index, pulse_width_samples,
+                                 synth.sync_rise_samples, levels.blanking_mv,
+                                 levels.sync_tip_mv));
+          }
         }
+      }
 
-        if (pal_pilot_burst) {
-          // IEC 60856 §9.1.2 fig 6: triangle burst capped at q=13.5 periods
-          // (line/field sync) or r=6 periods (equalizing); the rest of any
-          // broad field-sync pulse remains at sync tip with no burst.
-          const int max_burst_samples =
-              (segment.kind == SyncPulseKind::kEqualizing) ? pilot_r_samples
-                                                           : pilot_q_samples;
-          const int flat_start = pulse_start + synth.sync_rise_samples;
-          const int flat_end = std::min(pulse_end - synth.sync_rise_samples,
-                                        flat_start + max_burst_samples);
-          if (flat_start < flat_end) {
-            const int abs_flat_start =
-                absolute_line_base + (flat_start - local_line_base);
-            const double init_phase =
-                pilot_omega * static_cast<double>(abs_flat_start);
-            double phase = init_phase;
-            for (int i = flat_start; i < flat_end; ++i) {
-              const double phase_frac =
-                  phase / (2.0 * kPi) - std::floor(phase / (2.0 * kPi));
-              const double triangle = (phase_frac < 0.5)
-                                          ? (4.0 * phase_frac - 1.0)
-                                          : (3.0 - 4.0 * phase_frac);
-              (*out_y_mv)[static_cast<std::size_t>(i)] +=
-                  MillivoltsToSampleFixed(kPilotBurstAmplitudeMv * triangle);
-              phase += pilot_omega;
-            }
+      if (pal_pilot_burst) {
+        // The pilot burst repeats on every frame, so each line's bursts are
+        // added straight from the table rendered once per run.
+        const generation_detail::PilotBurstLine& pilot_line =
+            resources->pilot_burst_lines[static_cast<std::size_t>(line_index)];
+        for (int segment_index = 0; segment_index < pilot_line.segment_count;
+             ++segment_index) {
+          const generation_detail::PilotBurstSegment& pilot_segment =
+              pilot_line.segments[static_cast<std::size_t>(segment_index)];
+          SampleFixed* const destination =
+              out_y_mv->data() +
+              static_cast<std::size_t>(local_line_base +
+                                       pilot_segment.offset_in_line);
+          for (std::size_t i = 0; i < pilot_segment.samples.size(); ++i) {
+            destination[i] += pilot_segment.samples[i];
           }
         }
       }
@@ -1223,8 +1534,9 @@ bool GenerationStage::GenerateFrameBatch(
         const int burst_sample_end =
             std::min(local_line_base + synth.burst_end_samples, local_line_end);
         const int burst_width_samples = burst_sample_end - burst_sample_start;
-        const int burst_sample_start_absolute =
-            absolute_line_base + (burst_sample_start - local_line_base);
+        const std::size_t burst_sample_start_absolute =
+            absolute_line_base +
+            static_cast<std::size_t>(burst_sample_start - local_line_base);
 
         // ITU-R BT.1700 Annex 1 Part B Table 1 item 10f: PAL/PAL-M burst at
         // ±135° from EU axis, alternating per line per PalBurstPhaseRadForLine.
@@ -1234,19 +1546,28 @@ bool GenerationStage::GenerateFrameBatch(
         // the constant-reference convention in signal_timing_model.h.
         const double subcarrier_anchor_rad =
             is_pal ? kPalSubcarrierAnchorRad : 0.0;
-        double burst_sin = std::sin(
-            kQuarterWaveRad * static_cast<double>(burst_sample_start_absolute) +
-            subcarrier_anchor_rad + burst_phase_rad);
-        double burst_cos = std::cos(
-            kQuarterWaveRad * static_cast<double>(burst_sample_start_absolute) +
-            subcarrier_anchor_rad + burst_phase_rad);
+        const double burst_start_phase_rad =
+            WrapPhaseRad(SubcarrierPhaseRad(burst_sample_start_absolute) +
+                         subcarrier_anchor_rad + burst_phase_rad);
+        double burst_sin = std::sin(burst_start_phase_rad);
+        double burst_cos = std::cos(burst_start_phase_rad);
+
+        // The gate envelope is frame-invariant, so the pre-scaled table is read
+        // directly whenever the burst has its nominal width; a burst clipped by
+        // the end of its line keeps the sample-by-sample shaping.
+        const bool burst_is_nominal_width =
+            burst_width_samples == resources->burst_width_samples;
 
         for (int i = burst_sample_start; i < burst_sample_end; ++i) {
           const int relative_index = i - burst_sample_start;
-          const double envelope = ShapedGateEnvelope(
-              relative_index, burst_width_samples, synth.burst_rise_samples);
-          SetCMillivolts(static_cast<std::size_t>(i),
-                         burst_amplitude_mv * envelope * burst_sin);
+          const double envelope_mv =
+              burst_is_nominal_width
+                  ? resources->burst_envelope_mv[static_cast<std::size_t>(
+                        relative_index)]
+                  : (burst_amplitude_mv *
+                     ShapedGateEnvelope(relative_index, burst_width_samples,
+                                        synth.burst_rise_samples));
+          SetCMillivolts(static_cast<std::size_t>(i), envelope_mv * burst_sin);
 
           const double next_sin = burst_cos;
           const double next_cos = -burst_sin;
@@ -1261,16 +1582,12 @@ bool GenerationStage::GenerateFrameBatch(
             synth.active, project.cvbs_presets.video_standard_preset,
             line.line_number_1based);
         if (active_y >= 0) {
-          std::fill(line_source_samples.begin(), line_source_samples.end(),
-                    YCbCr444Pixel{});
-          std::fill(active_sample_indices.begin(), active_sample_indices.end(),
-                    local_line_base);
-
           const bool invert_pal_v_axis =
               (is_pal || is_pal_m) &&
               PalInvertVAxisForLine(disc_frame_index, line);
-          const int active_window_line_start_absolute =
-              absolute_line_base + active_window_start;
+          const std::size_t active_window_line_start_absolute =
+              absolute_line_base +
+              static_cast<std::size_t>(active_window_start);
           // SMPTE 170M-2004 Section 10: defines active chroma with burst+180
           // deg reference for NTSC. PAL and PAL-M use 0 phase offset; PAL
           // additionally carries the subcarrier anchor so picture chroma stays
@@ -1279,43 +1596,47 @@ bool GenerationStage::GenerateFrameBatch(
               (video_standard == Standard::kNtsc)
                   ? (line.burst_phase_rad + kPi)
                   : (is_pal ? kPalSubcarrierAnchorRad : 0.0);
-          const double phase_start =
-              (kQuarterWaveRad *
-               static_cast<double>(active_window_line_start_absolute)) +
-              phase_offset;
+          const double phase_start = WrapPhaseRad(
+              SubcarrierPhaseRad(active_window_line_start_absolute) +
+              phase_offset);
 
-          for (int x_sample = 0; x_sample < active_window_samples; ++x_sample) {
-            const int sample_index =
-                local_line_base + active_window_start + x_sample;
-            if (sample_index < local_line_base ||
-                sample_index >= local_line_end) {
-              continue;
-            }
+          // Map field lines onto progressive source rows by interleaving
+          // fields. Progressive imports use field-2-dominant row pairing, so
+          // field 1 consumes odd rows and field 2 consumes even rows. The row
+          // is the same for every sample of the line.
+          const int field_line = active_y % synth.active.active_lines_per_field;
+          const int source_row =
+              source_frame.active_y +
+              ((line.field_index_1based == 1)
+                   ? (2 * field_line + (progressive_section ? 1 : 0))
+                   : (2 * field_line + (progressive_section ? 0 : 1)));
 
-            const int pixel_x = MapActiveSampleToSourcePixel(
-                x_sample, active_window_samples, source_frame.active_width,
-                source_frame.active_x);
+          // Samples that used to be skipped one at a time form a suffix of the
+          // active window: the sample index leaves the line, or the mapped
+          // source column leaves the raster, and neither condition can revert
+          // as x_sample grows. Taking the smallest such bound as the loop limit
+          // removes both per-sample checks while leaving the skipped tail with
+          // exactly the placeholder values it had before.
+          const int line_sample_limit = line_samples - active_window_start;
+          const int painted_sample_count =
+              (source_row < source_frame.height)
+                  ? std::max(0,
+                             std::min({active_window_samples, line_sample_limit,
+                                       column_map.in_range_sample_count}))
+                  : 0;
 
-            // Map field lines onto progressive source rows by interleaving
-            // fields. Progressive imports use field-2-dominant row pairing, so
-            // field 1 consumes odd rows and field 2 consumes even rows.
-            const int field_line =
-                active_y % synth.active.active_lines_per_field;
-            const bool progressive_section = section->type == "progressive";
-            const int source_row =
-                source_frame.active_y +
-                ((line.field_index_1based == 1)
-                     ? (2 * field_line + (progressive_section ? 1 : 0))
-                     : (2 * field_line + (progressive_section ? 0 : 1)));
+          const int active_line_sample_base =
+              local_line_base + active_window_start;
+          const YCbCr444Pixel* const source_row_pixels =
+              (painted_sample_count > 0) ? &source_frame.PixelAt(0, source_row)
+                                         : nullptr;
 
-            if (pixel_x >= source_frame.width ||
-                source_row >= source_frame.height) {
-              continue;
-            }
-
-            const YCbCr444Pixel& pixel =
-                source_frame.PixelAt(pixel_x, source_row);
+          for (int x_sample = 0; x_sample < painted_sample_count; ++x_sample) {
+            const int sample_index = active_line_sample_base + x_sample;
             const std::size_t sample_slot = static_cast<std::size_t>(x_sample);
+            const YCbCr444Pixel& pixel =
+                source_row_pixels[column_map.pixel_x[sample_slot]];
+
             active_sample_indices[sample_slot] = sample_index;
             line_source_samples[sample_slot] = pixel;
 
@@ -1330,11 +1651,21 @@ bool GenerationStage::GenerateFrameBatch(
             // Preserve any sync-domain sample already placed for this line;
             // only paint active luma where the waveform is at/above blanking
             // level.
-            if (IsYAtOrAboveBlanking(static_cast<std::size_t>(sample_index))) {
-              SetYMillivolts(static_cast<std::size_t>(sample_index),
-                             LumaMillivoltsFromCode(pixel.y, levels));
+            SampleFixed& luma_sample =
+                (*out_y_mv)[static_cast<std::size_t>(sample_index)];
+            if (luma_sample >= blanking_fixed) {
+              luma_sample = LumaFixedFromCode(pixel.y);
             }
           }
+
+          // Restore the placeholders for the tail the loop above did not paint,
+          // so the chroma encoder sees neutral pixels there and the accumulate
+          // step folds their output onto the line's first sample, exactly as
+          // the per-sample skip used to.
+          std::fill(line_source_samples.begin() + painted_sample_count,
+                    line_source_samples.end(), YCbCr444Pixel{});
+          std::fill(active_sample_indices.begin() + painted_sample_count,
+                    active_sample_indices.end(), local_line_base);
 
           chroma_encoder->EncodeLineFromPhaseStart(
               line_source_samples, phase_start, &encoded_line_chroma);

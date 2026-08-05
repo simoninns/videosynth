@@ -1622,6 +1622,7 @@ For **HSync, VSync, and colour burst insertion**, refer to:
   - Superimpose a continuous **3.75 MHz** ($240 \times f_H$) sinusoidal burst on the **sync pulse level** of every horizontal and vertical sync pulse in every line (see [IEC 60856](../analogue-video-specifications/docs/laserdisc/IEC-60856-1986-Laservision-PAL/IEC-60856-1986-Laservision-PAL.md) §9.1.2).
   - Amplitude: $\frac{6}{7} \times 700\ \text{mV} = 600\ \text{mV p-p}$, centred on sync tip (−300 mV), so the burst swings between **−600 mV and 0 mV**.
   - The pilot burst is applied to the full duration of every sync pulse (line-sync, broad/vertical sync, and equalizing pulses).
+  - $17\,734\,475 = 25 \times 709\,379$, so the pilot advances a whole number of cycles per PAL frame and its waveform is identical on every frame. The runtime therefore derives each burst's phase from its offset **within** the frame — not from the absolute sample index — and renders every burst of the frame once per run.
   - This extends the signal range 300 mV below standard sync tip; see §6.1 for the headroom rationale and the required internal floating-point representation.
 4. **NTSC Laserdisc VBI Burst** (when `ntsc_laserdisc_vbi_burst: true`):
   - Insert the standard NTSC **colour burst (3.579545 MHz)** on the back porch of **equalizing pulses and broad (field) sync pulses** during the vertical interval, where burst is normally suppressed in standard NTSC (see [IEC 60857](../analogue-video-specifications/docs/laserdisc/IEC-60857-1986-Laservision-NTSC/IEC-60857-1986-Laservision-NTSC.md) §9.1.2).
@@ -1655,7 +1656,7 @@ Current implementation status:
 
 - Only **locked `4fsc`** operation is implemented.
 - The current runtime does **not** implement a free-running mode.
-- The current runtime does **not** expose a separate NCO-driven sample-clock subsystem; instead it synthesizes carrier phase directly from the absolute sample index on the `4fsc` lattice.
+- The current runtime does **not** expose a separate NCO-driven sample-clock subsystem; instead it synthesizes carrier phase directly from the absolute sample index on the `4fsc` lattice. Because the carrier advances exactly $\pi/2$ per sample, the index is reduced modulo 4 before the phase is formed, which makes the phase exact for any render length instead of losing precision as the absolute index grows.
 
 
 | **Mode**                 | **Description**                                                                                                                  | **Use Case**                                                                         | **Reference**                     |
@@ -1672,7 +1673,7 @@ For **testing applications**, the subcarrier locking implementation **must meet 
 
 - **Current sampled-domain lock model**:
   - Use the normative `4fsc` sample rate for the selected standard.
-  - Derive burst and active-picture carrier phase from the absolute sample index so line-to-line phase progression follows the standard-specific `4fsc` geometry.
+  - Derive burst and active-picture carrier phase from the absolute sample index so line-to-line phase progression follows the standard-specific `4fsc` geometry. The index is reduced onto the 4-sample subcarrier lattice and the resulting phase bounded to $[0, 2\pi)$, so the arguments handed to the trigonometric functions never grow with render length.
   - Preserve whole-frame sample counts defined by the active standard (`709,379` PAL, `477,750` NTSC).
 
 - **Future extension target**:

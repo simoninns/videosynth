@@ -148,21 +148,35 @@ void NoiseInjectionStage::InjectNoise(
 
     const std::size_t frame_start = i * samples_per_frame;
 
+    // One distribution for the whole frame region, drawing unit normals that
+    // are then scaled to the sample's sigma. Constructing a distribution per
+    // sample threw away half of every Box-Muller pair; a persistent one keeps
+    // the second deviate and halves the underlying engine draws.
+    std::normal_distribution<double> unit_normal(0.0, 1.0);
+
+    // With no spread configured the proportional term vanishes and sigma is
+    // constant across the whole frame, so neither the Y level nor the square
+    // root is needed per sample.
+    const bool sigma_is_signal_dependent = coeffs.k != 0.0;
+    const double sigma_floor_squared = coeffs.sigma_f_mv * coeffs.sigma_f_mv;
+
     for (std::size_t s = 0; s < samples_per_frame; ++s) {
       const std::size_t idx = frame_start + s;
-      const double y_millivolts = SampleFixedToMillivolts((*y_mv)[idx]);
 
       // sigma_total combines the signal-independent floor and the
       // signal-proportional component driven by the current Y level.
-      const double prop_component = coeffs.k * y_millivolts;
-      const double sigma_total =
-          std::sqrt(coeffs.sigma_f_mv * coeffs.sigma_f_mv +
-                    prop_component * prop_component);
+      double sigma_total = coeffs.sigma_f_mv;
+      if (sigma_is_signal_dependent) {
+        const double prop_component =
+            coeffs.k * SampleFixedToMillivolts((*y_mv)[idx]);
+        sigma_total =
+            std::sqrt(sigma_floor_squared + (prop_component * prop_component));
+      }
 
       // Single noise draw shared by both channels — produces correlated Y/C
       // noise that matches the physical behaviour of a real analogue source.
-      std::normal_distribution<double> dist(0.0, sigma_total);
-      const SampleFixed noise_sample = MillivoltsToSampleFixed(dist(rng));
+      const SampleFixed noise_sample =
+          MillivoltsToSampleFixed(sigma_total * unit_normal(rng));
 
       (*y_mv)[idx] =
           std::clamp((*y_mv)[idx] + noise_sample, clamp_min, clamp_max);

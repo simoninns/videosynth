@@ -171,6 +171,87 @@ TEST(ChromaEncoderTest, NtscCbAndCrAxesUseSymmetricBandwidth) {
   EXPECT_NEAR(cr_rms / cb_rms, expected_ratio, expected_ratio * 0.1);
 }
 
+// The colour-difference axes and the Q30 filter taps are held as int32 so the
+// FIR accumulates through a widening 32×32→64 multiply. These two tests walk
+// the whole legal input range to show that narrowing changed nothing: the
+// accumulator never overflows or saturates, and the fixed-point result still
+// tracks the analytic chroma amplitude to well inside one output LSB.
+TEST(ChromaEncoderTest, FixedPointEncodingIsExactAcrossTheFullChromaCodeRange) {
+  const TimingConstants pal_timing = GetTimingConstants(Standard::kPal);
+  const auto pal =
+      CreateChromaEncoder(Standard::kPal, pal_timing.sample_rate_4fsc_hz);
+  ASSERT_NE(pal, nullptr);
+
+  // ITU-R BT.1700 Part B Table 1 item 9: E'_V = 0.877 × (R−Y), scaled to the
+  // 700 mV PAL white level. At carrier phase 0 the sin (U) axis contributes
+  // nothing and the cos (V) axis lands squarely on the carrier, so sample 0 of
+  // a constant line is the full V amplitude for that Cr code.
+  constexpr double kPalVScaleMv = 0.877 * 0.701 * 700.0;
+
+  // Quantising the unity-DC-gain taps to Q30 leaves a relative DC-gain error of
+  // at most one half-LSB per tap; over 33 PAL taps and the full ±2^20 axis
+  // range that is a few millionths of a millivolt. Allow 1e-3 mV, still three
+  // orders of magnitude below the ~1.19 mV output code step.
+  constexpr double kToleranceMv = 1e-3;
+
+  for (int code = 0; code <= 1023; ++code) {
+    const std::vector<YCbCr444Pixel> line(
+        64, YCbCr444Pixel{
+                .y = 512, .cb = 512, .cr = static_cast<std::int16_t>(code)});
+    std::vector<SampleFixed> output;
+    pal->EncodeLineFromPhaseStart(line, 0.0, &output);
+    ASSERT_EQ(output.size(), line.size());
+
+    // The encoder clamps to the BT.601 colour-difference range and quantises
+    // the axis to Q20 with truncating division, so the reference value must do
+    // the same before scaling.
+    const int clamped = std::max(64, std::min(code, 960));
+    const std::int64_t axis_fixed =
+        static_cast<std::int64_t>(clamped - 512) * (1LL << 20) / 448;
+    const double expected_mv =
+        (static_cast<double>(axis_fixed) / static_cast<double>(1LL << 20)) *
+        kPalVScaleMv;
+
+    EXPECT_NEAR(SampleFixedToMillivolts(output[0]), expected_mv, kToleranceMv)
+        << "Cr code " << code;
+  }
+}
+
+TEST(ChromaEncoderTest,
+     FullScaleChromaAlternationStaysWithinTheAmplitudeBound) {
+  // Worst case for the fixed-point accumulator: both axes swinging the full
+  // legal excursion every sample, which drives the filter transient to its
+  // largest magnitude. An overflow or a narrowing mistake would show up as a
+  // sign flip or a wildly out-of-range amplitude rather than a subtle error.
+  const TimingConstants pal_timing = GetTimingConstants(Standard::kPal);
+  const auto pal =
+      CreateChromaEncoder(Standard::kPal, pal_timing.sample_rate_4fsc_hz);
+  ASSERT_NE(pal, nullptr);
+
+  std::vector<YCbCr444Pixel> line(512, YCbCr444Pixel{});
+  for (std::size_t index = 0; index < line.size(); ++index) {
+    const bool high = (index % 2U) == 0U;
+    line[index] =
+        YCbCr444Pixel{.y = 512,
+                      .cb = static_cast<std::int16_t>(high ? 960 : 64),
+                      .cr = static_cast<std::int16_t>(high ? 64 : 960)};
+  }
+
+  std::vector<SampleFixed> output;
+  pal->EncodeLineFromPhaseStart(line, 0.0, &output);
+  ASSERT_EQ(output.size(), line.size());
+
+  // Vector sum of both axes at full excursion, before any low-pass
+  // attenuation: no sample can legitimately exceed it.
+  constexpr double kPalUScaleMv = 0.493 * 0.886 * 700.0;
+  constexpr double kPalVScaleMv = 0.877 * 0.701 * 700.0;
+  const double amplitude_bound_mv = kPalUScaleMv + kPalVScaleMv;
+
+  for (SampleFixed value : output) {
+    EXPECT_LE(std::abs(SampleFixedToMillivolts(value)), amplitude_bound_mv);
+  }
+}
+
 TEST(ChromaEncoderTest, PhaseStartEncodingIsDeterministic) {
   const TimingConstants ntsc_timing = GetTimingConstants(Standard::kNtsc);
   const auto ntsc =

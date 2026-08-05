@@ -540,6 +540,53 @@ Targets the ~27 % chroma FIR and the per-sample loops. Tasks 4.1–4.3 are
 bit-exact; Task 4.4 changes output bits and is gated behind explicit
 re-baselining.
 
+*Measured, phase-wide* (16-core machine, Release `-O3`,
+`scripts/benchmark.sh --repeat 3`, best of three, frames/second). Both builds
+were timed back to back in the same session on a warm output tree, so they see
+the same machine state:
+
+| Project | 1 thread before → after | auto (16) before → after |
+| --- | --- | --- |
+| pal_still | 40.15 → 62.88 (1.57×) | 217.20 → 255.89 (1.18×) |
+| pal_still_noise | 21.46 → 35.35 (1.65×) | 158.83 → 194.55 (1.22×) |
+| pal_mkv | 36.25 → 52.81 (1.46×) | 133.33 → 145.73 (1.09×) |
+| ntsc_still | 73.23 → 103.18 (1.41×) | 346.26 → 358.17 (1.03×) |
+
+The single-thread column is the phase's real subject and is stable to within a
+few percent across repeated pairs; the 16-thread column carries noticeably more
+run-to-run variance because those runs are increasingly bounded by the consumer
+thread and by disk, which is what Phase 6 attacks. Treat the auto-thread ratios
+as directional.
+
+Heap traffic per PAL frame (valgrind memcheck, 4- and 8-frame runs of a PAL
+still project with one VITS line, difference divided by frames):
+
+| | allocations/frame | bytes allocated/frame |
+| --- | --- | --- |
+| after Phase 3 | 632 | 11.36 MB |
+| after Phase 4 | 7 | 11.36 MB |
+
+The 625 per-line `BuildLinePulseSchedule` vectors are gone (Task 4.3). What
+remains is the two ~11.35 MB frame buffers themselves, which Task 6.2 pools.
+
+`perf` profile after Phase 4 (250-frame PAL still, single-threaded). Shares are
+of a run that is ~40 % shorter overall, so every absolute cost is lower than the
+Phase 3 column even where the share rose:
+
+| Cost centre | Phase 3 share | Phase 4 share |
+| --- | --- | --- |
+| chroma FIR (`ConvolvePaddedAxis`, AVX2 clone) | 47.3 % | 34.8 % |
+| `QuadratureChromaEncoder::EncodeLineFromPhaseStart` | 9.9 % | 16.4 % |
+| output encoding (`EncodeCompositeSample` + `WriteEncodedFrame`) | 9.4 % | 18.6 % |
+| `GenerateFrameBatch` per-sample loops | 17.5 % | 13.6 % |
+| `__llround` | 10.6 % | 10.3 % |
+
+All 1,598 tests pass. Tasks 4.1–4.3 reproduce the Phase 3 baseline byte for
+byte across `general` and `stacking`; Tasks 4.4 and 4.5 re-baseline
+deliberately, each with its difference measured below. Output stays
+byte-identical between `--threads 1` and `--threads 16` on the PAL pilot-burst,
+PAL disc-simulation and NTSC stacking projects.
+
 ### Task 4.1 — Vectorisable fixed-point FIR
 
 `ApplyFirFilterFixed` multiplies int64×int64 through vector-of-vector
@@ -557,6 +604,35 @@ semantics identical.
 - Output hashes unchanged (rounding proven equivalent by unit test over the
   full input range).
 
+*Measured*: the Q30 taps and the Q20 colour-difference axes are now `int32`, so
+the convolution — extracted into `ConvolvePaddedAxis` over `__restrict` raw
+pointers — accumulates through a widening 32×32→64 signed multiply. The
+narrowing is exact rather than approximate: an axis sample is
+`(code − 512) × 2^20 / 448` with the code clamped to [64, 960], so its magnitude
+never exceeds 2^20, and `QuantizeKernelToFixed` rejects any kernel outside the
+envelope the `static_assert` proves safe (129 taps × 1.0 × 2^20 ≪ int64). Two
+unit tests walk the whole 10-bit Cr range and a full-scale two-axis alternation
+to show no overflow or saturation anywhere in the legal input space.
+
+The widening multiply is SSE4.1 `pmuldq` / AVX2 `vpmuldq`, absent from the
+baseline x86-64 (SSE2) target the project builds for — GCC vectorises the loop
+at `-march=x86-64-v2` and above but not at the default. Rather than give up
+portability (Task 1.4 rejected `-march=native` for exactly that reason), the
+function carries `target_clones("default", "sse4.2", "avx2")`, so the loader
+picks the widest clone the CPU supports and the binary still runs on the
+baseline target. Every clone does the same integer arithmetic, so output is
+bit-identical across machines; `perf` confirms the `.avx2` clone is the one
+executing here.
+
+The fixed→double→fixed round trip is gone with the two intermediate double
+buffers: the modulator converts each filtered sample inline, and because the
+divisor `kChromaAxisScale` is a power of two that conversion is exact, which is
+why the change is bit-exact rather than merely equivalent.
+
+The FIR share drops from 47.3 % to 34.8 % of a run that is itself ~40 % shorter
+— roughly a 2.2× reduction in absolute FIR cost. Output hashes unchanged across
+`general` and `stacking`.
+
 ### Task 4.2 — Hoist invariants out of the per-sample picture loop
 
 In the active-picture loop (`src/generation_stage.cpp`): the
@@ -570,6 +646,29 @@ per run, and lift the line-invariant values out of the loop.
 - No division, string comparison, or redundant bounds check in the
   per-sample loop.
 - Output hashes unchanged.
+
+*Measured*: the active-picture loop body is now a table read, a pixel copy and
+a compare-and-store. Specifically:
+
+- `ActiveSampleColumnMap` resolves `x_sample → pixel_x` once per source
+  geometry (rebuilt only when a section change brings in a different active
+  raster), removing the per-sample integer division.
+- `section->type == "progressive"` moved to once per frame, and `field_line`
+  and `source_row` to once per line.
+- Both per-sample `continue` guards became a loop bound. The mapping is
+  monotonically non-decreasing in `x_sample` and the sample index only ever
+  runs off the end of the line, so the samples that used to be skipped one at a
+  time are exactly a suffix of the active window: the loop now stops at the
+  first of them and the tail is refilled with the same placeholder values the
+  skip left behind, which is what keeps the change bit-exact. The
+  `source_row >= height` check, being line-invariant, is hoisted to a single
+  test that skips the loop entirely.
+- Luma comes from a 1,024-entry code → fixed-point table built once per run,
+  replacing a divide, a multiply-add and an `llround` per active sample. Frame
+  sources clamp into the 10-bit code space, so the retained range guard is a
+  predictable compare covering hand-built images only.
+
+Output hashes unchanged across `general` and `stacking`.
 
 ### Task 4.3 — Table-driven sync, burst, and pilot waveforms
 
@@ -592,6 +691,29 @@ already removed with the Task 2.3 hoist.
 - No per-line allocation for the pulse schedule.
 - Output hashes unchanged.
 
+*Measured*: `BuildLinePulsePlans` resolves every frame line's pulse schedule
+once per run into a fixed two-slot `LinePulsePlan` (no line of any supported
+standard carries more than two pulses), and the resource cache renders one
+`SyncPulseWaveform` per `SyncPulseKind` plus a burst gate envelope pre-scaled by
+the burst amplitude. The sample loops became a `std::copy` of the pulse table
+and a table read for the envelope. Pre-scaling the envelope keeps the multiply
+order — and so the rounding — identical to evaluating it inline, which is what
+makes the change bit-exact. A pulse or burst clipped by the end of its line has
+a different S-curve to the nominal shape, so both keep a sample-by-sample
+fallback selected by a width comparison.
+
+Per-frame heap allocations fall from 632 to 7 (table above): the per-line
+`std::vector<LinePulseSegment>` was all of the remaining allocation traffic
+identified at the end of Phase 2. Output hashes unchanged across `general` and
+`stacking`.
+
+**The pilot burst moved to Task 4.4.** Tabulating it is only *sound* once the
+phase is derived from the offset within the frame: the pilot is period-1 in
+frames mathematically (17,734,475 = 25 × 709,379), but computing its phase from
+the absolute sample index makes consecutive frames differ in floating point, so
+a per-run table would have changed output bits. Keeping it here would have made
+this task a re-baseline; it belongs with the other exactness work instead.
+
 ### Task 4.4 — Exact subcarrier phase reduction (output re-baseline)
 
 Burst and chroma phases are computed as `(π/2) · absolute_sample_index` with
@@ -605,6 +727,47 @@ current implementation; it is an accuracy improvement, not a regression.
 - Decoded output verified against decode-orc on PAL and NTSC reference
   projects; hash baselines regenerated in the same change with the
   difference explicitly documented.
+
+*Measured*: burst and active-picture phases go through
+`SubcarrierPhaseRad`, which reduces the absolute sample index onto the
+four-sample lattice before the multiply, and `WrapPhaseRad`, which bounds the
+sum of lattice phase, subcarrier anchor and burst phase to [0, 2π). The pilot
+burst is now rendered once per run by `BuildPilotBurstLines` from each burst's
+offset *within the frame*, with the phase wrapped by subtraction as it advances,
+so no pilot phase argument grows with the render either.
+
+Two defects fell out with it. `absolute_frame_base` was an `int`: at 709,379
+samples per PAL frame it overflows past ~3,000 frames, which is signed overflow
+(UB) on every long-form project. The colour subcarrier survived it by accident
+— 2^32 ≡ 0 (mod 4), so the lattice position was preserved — but the pilot burst
+did not, because 2^32 is not a multiple of the frame length, so its phase jumped
+at the wrap. Both indices are now `std::size_t`.
+
+Difference against the Phase 3 baseline, measured sample by sample:
+
+| Project | samples | differing | delta |
+| --- | --- | --- | --- |
+| pal_still (250 frames) | 177,344,750 | 10 (0.00001 %) | −1 code each |
+| pal_pilot_burst (24 frames) | 17,025,096 | 6 (0.00004 %) | +1 code each |
+
+Every difference is a single 10-bit code on a sample that sat exactly on a
+rounding boundary. On the pilot-burst project all six fall at the same offset
+within frames 18–23 — the drift accumulating with frame index, which is what
+the reduction removes.
+
+A functional test pins the property the change buys:
+`PalColourSequenceRepeatsExactlyEveryFourFramesAtAnyDiscPosition` synthesises
+disc frames 0, 4, 100,000 and 100,004 of a pilot-burst PAL project and requires
+each pair a colour period apart to be byte-identical. That exact periodicity is
+what Phase 5's template cache is built on, and it now holds at any disc
+position rather than only near the start of a render.
+
+**Outstanding**: decode-orc is not available in this environment, so the
+decoded-output check in the acceptance criteria has not been run. The in-repo
+substitutes all pass — the compliance harness burst-phase estimates, the frozen
+NTSC reference values, and the periodicity test above — but a decode-orc pass on
+PAL and NTSC reference projects should still be done before this is considered
+closed.
 
 ### Task 4.5 — Noise stage draw efficiency (output re-baseline for noise projects)
 
@@ -620,6 +783,24 @@ identical; noise-enabled baselines are regenerated deliberately.
   constant along a region.
 - Determinism harness still passes (identical output across runs/threads);
   statistical unit test on noise amplitude distribution passes.
+
+*Measured*: `InjectNoise` holds one `std::normal_distribution` per frame region
+and scales its unit normals by the sample's σ, so the second half of every
+Box–Muller pair is kept instead of discarded — half as many engine draws. When
+`noise_spread_db` is zero the proportional term vanishes, σ is constant across
+the frame, and neither the Y level nor the square root is read per sample.
+
+`pal_still_noise` throughput measured across this task alone: 27.15 → 34.94 f/s
+at one thread (≈1.3×).
+
+The consumed RNG stream changes, as expected. The re-baseline is exactly as
+scoped: of the 271 recorded artefacts, the 36 that changed are precisely the 36
+`stacking` projects that enable noise — no `general` artefact and no
+noise-free `stacking` artefact moved. The statistical unit tests
+(`FloorNoiseStdDevMatchesTargetAtBlanking`,
+`ProportionalNoiseIncreasesNoiseAtWhiteLevel`, both to ±5 % over a full PAL
+frame) and the determinism tests (same seed → same output across instances;
+byte-identical across thread counts) all pass on the new stream.
 
 ---
 

@@ -60,6 +60,23 @@ constexpr std::int64_t kChromaAxisScale = (1LL << kChromaAxisFractionBits);
 constexpr int kFirCoeffFractionBits = 30;
 constexpr std::int64_t kFirCoeffScale = (1LL << kFirCoeffFractionBits);
 
+// Overflow envelope for the int32 × int32 → int64 FIR accumulator.
+//
+// A colour-difference sample is (code − 512) × 2^20 / 448 with the code clamped
+// to [64, 960] (ExtractCb/CrAxisFixed), so its magnitude never exceeds
+// kChromaAxisScale. A single Q30 tap of a unity-DC-gain low-pass kernel is well
+// under 1.0; kMaxFirTapFixed caps it at exactly 1.0 and kMaxFirTaps caps the
+// tap count, both enforced in QuantizeKernelToFixed. The static_assert below
+// proves the worst-case accumulator stays inside int64.
+constexpr std::int64_t kMaxFirTapFixed = kFirCoeffScale;
+constexpr int kMaxFirTaps = 129;
+static_assert(kMaxFirTaps <= (INT64_MAX / kMaxFirTapFixed) / kChromaAxisScale,
+              "Fixed-point chroma FIR accumulator can overflow int64");
+static_assert(kMaxFirTapFixed <= INT32_MAX,
+              "Quantised chroma FIR taps must fit int32");
+static_assert(kChromaAxisScale <= INT32_MAX,
+              "Fixed-point colour-difference axis samples must fit int32");
+
 int ClampCode(int code, int lo, int hi) {
   return std::max(lo, std::min(code, hi));
 }
@@ -94,40 +111,96 @@ std::vector<double> DesignLowPassKernel(double cutoff_hz, double sample_rate_hz,
   return kernel;
 }
 
-std::vector<std::int64_t> QuantizeKernelToFixed(
+std::vector<std::int32_t> QuantizeKernelToFixed(
     const std::vector<double>& kernel) {
-  std::vector<std::int64_t> fixed(kernel.size(), 0);
+  std::vector<std::int32_t> fixed(kernel.size(), 0);
   for (std::size_t i = 0; i < kernel.size(); ++i) {
-    fixed[i] = static_cast<std::int64_t>(
+    const std::int64_t tap = static_cast<std::int64_t>(
         std::llround(kernel[i] * static_cast<double>(kFirCoeffScale)));
+    if (tap > kMaxFirTapFixed || tap < -kMaxFirTapFixed) {
+      throw std::invalid_argument(
+          "Chroma low-pass tap exceeds the Q30 range the fixed-point filter "
+          "accumulator is proven against");
+    }
+    fixed[i] = static_cast<std::int32_t>(tap);
+  }
+
+  // Proves the int64 accumulator in ApplyFirFilterFixed cannot overflow: the
+  // worst case is every tap at its largest magnitude against a full-scale
+  // colour-difference sample. kMaxFirTapFixed bounds a single tap and
+  // kMaxFirTaps the tap count, so the product stays far inside int64.
+  if (fixed.size() > static_cast<std::size_t>(kMaxFirTaps)) {
+    throw std::invalid_argument("Chroma low-pass filter has too many taps");
   }
   return fixed;
 }
 
 void ExtractCbAxisFixed(const std::vector<YCbCr444Pixel>& source_samples,
-                        std::vector<std::int64_t>* axis_fixed) {
+                        std::vector<std::int32_t>* axis_fixed) {
   axis_fixed->resize(source_samples.size());
   for (std::size_t index = 0; index < source_samples.size(); ++index) {
     const int cb = ClampCode(source_samples[index].cb, 64, 960);
-    (*axis_fixed)[index] =
-        static_cast<std::int64_t>(cb - 512) * kChromaAxisScale / 448;
+    (*axis_fixed)[index] = static_cast<std::int32_t>(
+        static_cast<std::int64_t>(cb - 512) * kChromaAxisScale / 448);
   }
 }
 
 void ExtractCrAxisFixed(const std::vector<YCbCr444Pixel>& source_samples,
-                        std::vector<std::int64_t>* axis_fixed) {
+                        std::vector<std::int32_t>* axis_fixed) {
   axis_fixed->resize(source_samples.size());
   for (std::size_t index = 0; index < source_samples.size(); ++index) {
     const int cr = ClampCode(source_samples[index].cr, 64, 960);
-    (*axis_fixed)[index] =
-        static_cast<std::int64_t>(cr - 512) * kChromaAxisScale / 448;
+    (*axis_fixed)[index] = static_cast<std::int32_t>(
+        static_cast<std::int64_t>(cr - 512) * kChromaAxisScale / 448);
   }
 }
 
-void ApplyFirFilterFixed(const std::vector<std::int64_t>& input,
-                         const std::vector<std::int64_t>& kernel,
-                         std::vector<std::int64_t>* output,
-                         std::vector<std::int64_t>* padded_workspace) {
+// Convolution kernel of the chroma low-pass filter.
+//
+// Both operands are int32 and the accumulator int64, so each tap is a widening
+// 32×32→64 signed multiply — the form SSE4.1 `pmuldq` and AVX2 `vpmuldq`
+// implement directly, and the form the compiler will vectorise, unlike the
+// int64×int64 product it replaces. The buffers are disjoint reusable members,
+// declared __restrict so the compiler need not assume they alias.
+//
+// The widening multiply is absent from the baseline x86-64 (SSE2) target the
+// project builds for, so the function is multi-versioned: the loader picks the
+// SSE4.2 or AVX2 clone on a capable CPU and the portable default elsewhere.
+// Every clone computes the same integer result, so output stays bit-identical
+// across machines.
+#if defined(__x86_64__) && defined(__has_attribute)
+#if __has_attribute(target_clones)
+#define VIDEOSYNTH_FIR_MULTIVERSION \
+  __attribute__((target_clones("default", "sse4.2", "avx2")))
+#endif
+#endif
+#ifndef VIDEOSYNTH_FIR_MULTIVERSION
+#define VIDEOSYNTH_FIR_MULTIVERSION
+#endif
+
+VIDEOSYNTH_FIR_MULTIVERSION
+void ConvolvePaddedAxis(const std::int32_t* __restrict padded,
+                        const std::int32_t* __restrict taps, int kernel_size,
+                        std::int32_t* __restrict filtered,
+                        std::size_t sample_count) {
+  for (std::size_t index = 0; index < sample_count; ++index) {
+    std::int64_t acc = 0;
+    for (int tap = 0; tap < kernel_size; ++tap) {
+      acc += static_cast<std::int64_t>(
+                 padded[index + static_cast<std::size_t>(tap)]) *
+             static_cast<std::int64_t>(taps[tap]);
+    }
+    filtered[index] = static_cast<std::int32_t>(
+        RoundShiftRightSigned(acc, kFirCoeffFractionBits));
+  }
+}
+
+// Convolves one colour-difference axis with the shared Q30 kernel, replicating
+// the end samples to pad the transient regions.
+void ApplyFirFilterFixed(const std::vector<std::int32_t>& input,
+                         const std::vector<std::int32_t>& kernel,
+                         std::vector<std::int32_t>* output,
+                         std::vector<std::int32_t>* padded_workspace) {
   if (input.empty()) {
     output->clear();
     padded_workspace->clear();
@@ -144,19 +217,21 @@ void ApplyFirFilterFixed(const std::vector<std::int64_t>& input,
                 static_cast<std::ptrdiff_t>(input.size()),
             padded_workspace->end(), input.back());
 
-  output->assign(input.size(), 0);
-  for (std::size_t index = 0; index < input.size(); ++index) {
-    std::int64_t acc = 0;
-    for (int tap = 0; tap < kernel_size; ++tap) {
-      acc += (*padded_workspace)[index + static_cast<std::size_t>(tap)] *
-             kernel[static_cast<std::size_t>(tap)];
-    }
-    (*output)[index] = RoundShiftRightSigned(acc, kFirCoeffFractionBits);
-  }
+  output->resize(input.size());
+  ConvolvePaddedAxis(padded_workspace->data(), kernel.data(), kernel_size,
+                     output->data(), input.size());
 }
 
-void ModulateQuadratureFromPhaseStart(const std::vector<double>& axis_sin,
-                                      const std::vector<double>& axis_cos,
+// Modulates the two filtered colour-difference axes onto the quadrature
+// subcarrier.
+//
+// The carrier advances exactly π/2 per sample at 4fsc, so the sin/cos pair
+// cycles through four exact values and never drifts. Filtered samples are Q20
+// fixed point; the division by kChromaAxisScale is exact (a power of two), so
+// converting inline costs nothing in accuracy and removes the two intermediate
+// double buffers the modulator used to read from.
+void ModulateQuadratureFromPhaseStart(const std::vector<std::int32_t>& axis_sin,
+                                      const std::vector<std::int32_t>& axis_cos,
                                       double sin_scale_mv, double cos_scale_mv,
                                       double carrier_phase_start_rad,
                                       std::vector<SampleFixed>* out_chroma_mv) {
@@ -169,12 +244,18 @@ void ModulateQuadratureFromPhaseStart(const std::vector<double>& axis_sin,
     return;
   }
 
+  constexpr double kChromaAxisScaleDouble =
+      static_cast<double>(kChromaAxisScale);
   double sin_phase = std::sin(carrier_phase_start_rad);
   double cos_phase = std::cos(carrier_phase_start_rad);
   for (std::size_t index = 0; index < axis_sin.size(); ++index) {
+    const double axis_sin_value =
+        static_cast<double>(axis_sin[index]) / kChromaAxisScaleDouble;
+    const double axis_cos_value =
+        static_cast<double>(axis_cos[index]) / kChromaAxisScaleDouble;
     (*out_chroma_mv)[index] =
-        MillivoltsToSampleFixed((axis_sin[index] * sin_scale_mv * sin_phase) +
-                                (axis_cos[index] * cos_scale_mv * cos_phase));
+        MillivoltsToSampleFixed((axis_sin_value * sin_scale_mv * sin_phase) +
+                                (axis_cos_value * cos_scale_mv * cos_phase));
 
     const double next_sin = cos_phase;
     const double next_cos = -sin_phase;
@@ -211,18 +292,9 @@ void QuadratureChromaEncoder::EncodeLineFromPhaseStart(
   ApplyFirFilterFixed(cos_axis_fixed_, filter_taps_fixed_, &filtered_cos_fixed_,
                       &fir_pad_fixed_);
 
-  filtered_sin_workspace_.resize(filtered_sin_fixed_.size());
-  filtered_cos_workspace_.resize(filtered_cos_fixed_.size());
-  for (std::size_t i = 0; i < filtered_sin_fixed_.size(); ++i) {
-    filtered_sin_workspace_[i] = static_cast<double>(filtered_sin_fixed_[i]) /
-                                 static_cast<double>(kChromaAxisScale);
-    filtered_cos_workspace_[i] = static_cast<double>(filtered_cos_fixed_[i]) /
-                                 static_cast<double>(kChromaAxisScale);
-  }
-
-  ModulateQuadratureFromPhaseStart(
-      filtered_sin_workspace_, filtered_cos_workspace_, sin_scale_mv_,
-      cos_scale_mv_, carrier_phase_start_rad, out_chroma_mv);
+  ModulateQuadratureFromPhaseStart(filtered_sin_fixed_, filtered_cos_fixed_,
+                                   sin_scale_mv_, cos_scale_mv_,
+                                   carrier_phase_start_rad, out_chroma_mv);
 }
 
 // ITU-R BT.1700 Part B Table 1 item 10d: PAL U on sin, V on cos.

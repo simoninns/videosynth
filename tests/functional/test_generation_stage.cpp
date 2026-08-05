@@ -1641,5 +1641,67 @@ TEST(GenerationStageTest, PalSyncSamplesAreConstantWithoutPilotBurst) {
       << "Without pilot burst, flat sync region must be constant at sync tip";
 }
 
+// The 625-line PAL colour sequence repeats exactly every four frames: the
+// subcarrier lattice advances 709,379 ≡ 3 (mod 4) samples per frame (ITU-R
+// BT.1700 Annex 1 Part B Table 1 item 10f gives the burst meander its period of
+// two), and the LaserDisc pilot burst is period one because
+// 17,734,475 = 25 × 709,379 (IEC 60856 §9.1.2).
+//
+// Reducing the subcarrier index onto the four-sample lattice, and deriving the
+// pilot phase from the offset within the frame, makes that periodicity exact
+// for any render length rather than something that drifts as the absolute
+// sample index grows — and keeps it correct past the ~3,000-frame point where
+// that index used to overflow the int it was held in.
+TEST(GenerationStageTimingTest,
+     PalColourSequenceRepeatsExactlyEveryFourFramesAtAnyDiscPosition) {
+  Project project = MakeProject(Standard::kPal, 1);
+  project.cvbs_presets.pal_laserdisc_pilot_burst = true;
+
+  // Picture numbers whose (PN − 1) disc positions are 0, 4, 100,000 and
+  // 100,004: two pairs one colour period apart, the second pair far beyond a
+  // 32-bit absolute sample index.
+  const std::vector<int> picture_numbers = {1, 5, 100001, 100005};
+  std::vector<IGenerationStage::FrameScheduleItem> schedule;
+  schedule.reserve(picture_numbers.size());
+  for (int picture_number : picture_numbers) {
+    schedule.push_back(IGenerationStage::FrameScheduleItem{
+        .section = &project.sections.front(),
+        .source_frame_index = 0,
+        .disc_picture_number = picture_number,
+    });
+  }
+
+  GenerationStage generation;
+  std::vector<SampleFixed> y;
+  std::vector<SampleFixed> c;
+  std::vector<std::string> errors;
+  ASSERT_TRUE(generation.GenerateFrameBatch(project, schedule, 0,
+                                            schedule.size(), &y, &c, &errors))
+      << (errors.empty() ? std::string() : errors.front());
+
+  const auto frame_samples =
+      static_cast<std::size_t>(SamplesPerFrame4fsc(Standard::kPal));
+  ASSERT_EQ(y.size(), frame_samples * schedule.size());
+  ASSERT_EQ(c.size(), frame_samples * schedule.size());
+
+  auto ExpectFramesIdentical = [&](std::size_t first, std::size_t second) {
+    std::size_t differing_samples = 0;
+    for (std::size_t i = 0; i < frame_samples; ++i) {
+      if (y[(first * frame_samples) + i] != y[(second * frame_samples) + i] ||
+          c[(first * frame_samples) + i] != c[(second * frame_samples) + i]) {
+        ++differing_samples;
+      }
+    }
+    EXPECT_EQ(differing_samples, 0U)
+        << "Disc frames " << picture_numbers[first] - 1 << " and "
+        << picture_numbers[second] - 1
+        << " are a whole colour period apart and must synthesise identically";
+  };
+
+  ExpectFramesIdentical(0, 1);
+  ExpectFramesIdentical(2, 3);
+  ExpectFramesIdentical(0, 2);
+}
+
 }  // namespace
 }  // namespace videosynth
