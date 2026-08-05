@@ -82,7 +82,7 @@ Project MakeFixedSeedProject(const std::filesystem::path& output_dir,
   project.cvbs_presets.sample_encoding_preset = "CVBS_U10_4FSC";
   project.cvbs_presets.signal_state_preset = "STANDARD_TBC_LOCKED";
   project.output.video_path =
-      (output_dir / ("gui_parity_" + run_tag + ".composite")).string();
+      (output_dir / ("gui_parity_" + run_tag + ".cvbs")).string();
   project.output.metadata_path =
       (output_dir / ("gui_parity_" + run_tag + ".meta")).string();
   project.line_injections.disc_type = "CAV";

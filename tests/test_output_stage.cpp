@@ -191,7 +191,7 @@ TEST(OutputStageTest, WritesCompositeSamplesUsingPalQuantizationProfile) {
 
   const std::filesystem::path video_path =
       std::filesystem::temp_directory_path() /
-      "videosynth_output_stage_pal.composite";
+      "videosynth_output_stage_pal.cvbs";
   const std::filesystem::path metadata_path =
       std::filesystem::temp_directory_path() /
       "videosynth_output_stage_pal.meta";
@@ -239,7 +239,7 @@ TEST(OutputStageTest, WritesCompositeSamplesUsingTpg21EncodingPreset) {
 
   const std::filesystem::path video_path =
       std::filesystem::temp_directory_path() /
-      "videosynth_output_stage_tpg21.composite";
+      "videosynth_output_stage_tpg21.cvbs";
   const std::filesystem::path metadata_path =
       std::filesystem::temp_directory_path() /
       "videosynth_output_stage_tpg21.meta";
@@ -282,7 +282,7 @@ TEST(OutputStageTest, WritesCompositeSamplesUsingS16FscEncodingPresetPal) {
 
   const std::filesystem::path video_path =
       std::filesystem::temp_directory_path() /
-      "videosynth_output_stage_s16_4fsc_pal.composite";
+      "videosynth_output_stage_s16_4fsc_pal.cvbs";
   const std::filesystem::path metadata_path =
       std::filesystem::temp_directory_path() /
       "videosynth_output_stage_s16_4fsc_pal.meta";
@@ -331,7 +331,7 @@ TEST(OutputStageTest, WritesCompositeSamplesUsingS16FscEncodingPresetNtsc) {
 
   const std::filesystem::path video_path =
       std::filesystem::temp_directory_path() /
-      "videosynth_output_stage_s16_4fsc_ntsc.composite";
+      "videosynth_output_stage_s16_4fsc_ntsc.cvbs";
   const std::filesystem::path metadata_path =
       std::filesystem::temp_directory_path() /
       "videosynth_output_stage_s16_4fsc_ntsc.meta";
@@ -376,7 +376,7 @@ TEST(OutputStageTest, WritesCompositeSamplesUsingUint16EncodingPreset) {
 
   const std::filesystem::path video_path =
       std::filesystem::temp_directory_path() /
-      "videosynth_output_stage_u16.composite";
+      "videosynth_output_stage_u16.cvbs";
   const std::filesystem::path metadata_path =
       std::filesystem::temp_directory_path() /
       "videosynth_output_stage_u16.meta";
@@ -423,7 +423,7 @@ TEST(OutputStageTest, ResamplesRawSamplesUsingTwentyEightMegasamplePreset) {
 
   const std::filesystem::path video_path =
       std::filesystem::temp_directory_path() /
-      "videosynth_output_stage_raw_28m.composite";
+      "videosynth_output_stage_raw_28m.cvbs";
   const std::filesystem::path metadata_path =
       std::filesystem::temp_directory_path() /
       "videosynth_output_stage_raw_28m.meta";
@@ -458,7 +458,7 @@ TEST(OutputStageTest, SumsYAndCBeforeQuantizationInNtscProfile) {
 
   const std::filesystem::path video_path =
       std::filesystem::temp_directory_path() /
-      "videosynth_output_stage_ntsc.composite";
+      "videosynth_output_stage_ntsc.cvbs";
   const std::filesystem::path metadata_path =
       std::filesystem::temp_directory_path() /
       "videosynth_output_stage_ntsc.meta";
@@ -497,7 +497,7 @@ TEST(OutputStageTest, WritesExplicitBlackLevelOverrideForNtscZeroIreSetup) {
 
   const std::filesystem::path video_path =
       std::filesystem::temp_directory_path() /
-      "videosynth_output_stage_ntsc_zero_black.composite";
+      "videosynth_output_stage_ntsc_zero_black.cvbs";
   const std::filesystem::path metadata_path =
       std::filesystem::temp_directory_path() /
       "videosynth_output_stage_ntsc_zero_black.meta";
@@ -531,7 +531,7 @@ TEST(OutputStageTest, ClampsOutOfRangeValuesToLegalCodeSpace) {
 
   const std::filesystem::path video_path =
       std::filesystem::temp_directory_path() /
-      "videosynth_output_stage_clamp.composite";
+      "videosynth_output_stage_clamp.cvbs";
   const std::filesystem::path metadata_path =
       std::filesystem::temp_directory_path() /
       "videosynth_output_stage_clamp.meta";
@@ -567,7 +567,7 @@ TEST(OutputStageTest, WritesSchemaVersion10) {
 
   const std::filesystem::path video_path =
       std::filesystem::temp_directory_path() /
-      "videosynth_output_stage_schema_v10.composite";
+      "videosynth_output_stage_schema_v10.cvbs";
   const std::filesystem::path metadata_path =
       std::filesystem::temp_directory_path() /
       "videosynth_output_stage_schema_v10.meta";
@@ -610,7 +610,7 @@ TEST(OutputStageTest, RejectsInvalidOutputConstraints) {
 
   const std::filesystem::path video_path =
       std::filesystem::temp_directory_path() /
-      "videosynth_output_stage_invalid.composite";
+      "videosynth_output_stage_invalid.cvbs";
   const std::filesystem::path metadata_path =
       std::filesystem::temp_directory_path() /
       "videosynth_output_stage_invalid.meta";
@@ -651,7 +651,7 @@ TEST(OutputStageTest, KeepsFixedPointQuantizationEquivalentToReferenceProfile) {
 
   const std::filesystem::path video_path =
       std::filesystem::temp_directory_path() /
-      "videosynth_output_stage_fixed_equiv.composite";
+      "videosynth_output_stage_fixed_equiv.cvbs";
   const std::filesystem::path metadata_path =
       std::filesystem::temp_directory_path() /
       "videosynth_output_stage_fixed_equiv.meta";
@@ -697,7 +697,7 @@ TEST(OutputStageTest, NoAudioChannelPairRowsWhenNoAudio) {
 
   const std::filesystem::path video_path =
       std::filesystem::temp_directory_path() /
-      "videosynth_output_stage_audio_null.composite";
+      "videosynth_output_stage_audio_null.cvbs";
   const std::filesystem::path metadata_path =
       std::filesystem::temp_directory_path() /
       "videosynth_output_stage_audio_null.meta";
@@ -740,7 +740,7 @@ TEST(OutputStageTest, WritesAudioChannelPairRowsForDeclaredPairs) {
 
   const std::filesystem::path video_path =
       std::filesystem::temp_directory_path() /
-      "videosynth_output_stage_audio_pairs.composite";
+      "videosynth_output_stage_audio_pairs.cvbs";
   const std::filesystem::path metadata_path =
       std::filesystem::temp_directory_path() /
       "videosynth_output_stage_audio_pairs.meta";
@@ -786,7 +786,7 @@ TEST(OutputStageTest, DoesNotWriteEfmMetadataIntoTheCoreDatabase) {
 
   const std::filesystem::path video_path =
       std::filesystem::temp_directory_path() /
-      "videosynth_output_stage_efm.composite";
+      "videosynth_output_stage_efm.cvbs";
   const std::filesystem::path metadata_path =
       std::filesystem::temp_directory_path() /
       "videosynth_output_stage_efm.meta";

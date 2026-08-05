@@ -428,7 +428,7 @@ The `OsdRenderer` class writes monochrome bitmap-font text overlays into the lum
 | ----------------------- | ----------------------------------------------------------------------- | --------------------------------- |
 | **Batch Validation**    | Validate that incoming Y and C buffers match whole-frame `4fsc` timing for the selected standard. | CVBS File Format Specification    |
 | **mV to Integer Conversion** | Quantise fixed-point mV values to 10-bit integers per EBU 3280 (PAL) or SMPTE 244M (NTSC). | EBU Tech. 3280-E, SMPTE 244M-2003 |
-| **Combining Y and C**   | Combine quantised luma and chroma into composite signal (CVBS), or write them to separate `.y`/`.c` files in Y/C mode. | CVBS File Format Specification    |
+| **Combining Y and C**   | Combine quantised luma and chroma into composite signal (CVBS), or write them to separate `.cvbsy`/`.cvbsc` files in Y/C mode. | CVBS File Format Specification    |
 | **Output Formatting**   | Format the quantised composite signal into the output files (video and metadata).   | CVBS File Format Specification    |
 | **Locked 4fsc Enforcement**  | Enforce the current runtime requirement that output remains locked `4fsc` only. | SMPTE 244M-2003, EBU Tech. 3280-E |
 | **Metadata Generation** | Generate CVBS file metadata (magic number, version, sample rate, etc.). | CVBS File Format Specification    |
@@ -439,15 +439,15 @@ The `OsdRenderer` class writes monochrome bitmap-font text overlays into the lum
 The output stage generates files as per the [CVBS File Format Specification](../cvbs-file-format-specification/docs/index.md). The output mode is controlled by `output.signal_type` in the project YAML:
 
 **Composite output** (`signal_type: composite`, default):
-1. **Video File** (`.composite`): Raw samples of the composite signal (Y + C + sync).
+1. **Video File** (`.cvbs`): Raw samples of the composite signal (Y + C + sync).
 2. **Metadata File** (`.meta`): Header metadata (magic number, version, video standard preset, sample encoding preset, signal state preset, resolution, etc.).
 
 **Dual-file Y/C output** (`signal_type: yc`):
-1. **Luma File** (`.y`): Raw luma samples (Y + sync) encoded identically to composite luma.
-2. **Chroma File** (`.c`): Raw chroma samples, centred at code 512 in the 10-bit domain as defined by the [CVBS File Format Specification — Sample Encoding Presets](../cvbs-file-format-specification/docs/sample-encoding-presets.md).
+1. **Luma File** (`.cvbsy`): Raw luma samples (Y + sync) encoded identically to composite luma.
+2. **Chroma File** (`.cvbsc`): Raw chroma samples, centred at code 512 in the 10-bit domain as defined by the [CVBS File Format Specification — Sample Encoding Presets](../cvbs-file-format-specification/docs/sample-encoding-presets.md).
 3. **Metadata File** (`.meta`): Header metadata, identical structure to composite output with `signal_type` set to `'yc'`.
 
-For Y/C output, `output.video_path` must end in `.y`; the chroma path is derived by replacing the `.y` suffix with `.c`.
+For Y/C output, `output.video_path` must end in `.cvbsy`; the chroma path is derived by replacing the `.cvbsy` suffix with `.cvbsc`.
 
 ### **LaserDisc Digital Audio (EFM) Output**
 
@@ -729,7 +729,7 @@ For **NTSC (525-line system)**, the vertical blanking interval (VBI) is defined 
 
 The current parser, validator, and runtime implement only a subset of the YAML surface described in this section:
 
-- Implemented top-level presets: `video_standard_preset`, `sample_encoding_preset`, `signal_state_preset`, `ntsc_black_setup_ire`, `output.video_path`, and `output.signal_type` (`"composite"` or `"yc"`; defaults to `"composite"`). The metadata sidecar is not configured in YAML: it is always colocated with the video output and its path is derived from `output.video_path` (`.composite`/`.y` → `.meta`).
+- Implemented top-level presets: `video_standard_preset`, `sample_encoding_preset`, `signal_state_preset`, `ntsc_black_setup_ire`, `output.video_path`, and `output.signal_type` (`"composite"` or `"yc"`; defaults to `"composite"`). The metadata sidecar is not configured in YAML: it is always colocated with the video output and its path is derived from `output.video_path` (`.cvbs`/`.cvbsy` → `.meta`).
 - `output.efm_audio` is parsed, emitted, and validated: its presence enables LaserDisc digital audio (EFM) output for the single channel pair named by `pair`. See [`efm_audio:`](#efm_audio-sub-key-optional-project-level).
 - The `project:` block fields `name`, `version`, and `description` are parsed and retained on the in-memory `Project` model, so they survive load/save round-trips.
 - A YAML project **emitter** (`YamlProjectEmitter` in `videosynth_core`) serialises an in-memory `Project` back to this schema. It writes fields in the canonical order shown below and emits only explicitly-set optional blocks (the project-level `line_injections:` and `disc_skips:`, and the per-section `noise:`, `dropouts:`, `osd:`, `audio:`, `line_injections:`), so emitted files stay minimal and diffable. Emit → parse is lossless: a saved file parses back to an equal `Project`, which is the contract that keeps GUI-saved projects loadable by the CLI and vice versa.
@@ -765,8 +765,8 @@ cvbs_presets:
   endianness: little            # little or big (default: little)
 
 output:
-  video_path: "out/pal_test_video.composite"
-  signal_type: composite      # "composite" (default) or "yc"; for "yc", video_path must end in ".y"
+  video_path: "out/pal_test_video.cvbs"
+  signal_type: composite      # "composite" (default) or "yc"; for "yc", video_path must end in ".cvbsy"
   efm_audio:                  # Optional; LaserDisc digital audio (EFM) for one channel pair (PAL/NTSC only)
     pair: 0                   # Channel-pair number 0–7; must be declared by at least one section
 
@@ -915,7 +915,7 @@ sections:
 
 #### **`audio:` Sub-Key (Optional, Per-Section)**
 
-The `audio:` block declares a list of **audio channel pairs** for a section, each synthesising an independent stereo test tone for the exact duration (in frames) of that section. Following the CVBS File Format Specification (Audio Data / SMPTE 272M-1994), a project may carry up to **8 channel pairs** (0–7, i.e. up to 16 SMPTE 272M channels). Each declared channel pair is written as its own frame-locked stereo WAV track alongside the CVBS/Y-C output as `<basename>_audio_<pair>.wav` (the basename is derived from `output.video_path` by stripping a trailing `.composite` or `.y` suffix).
+The `audio:` block declares a list of **audio channel pairs** for a section, each synthesising an independent stereo test tone for the exact duration (in frames) of that section. Following the CVBS File Format Specification (Audio Data / SMPTE 272M-1994), a project may carry up to **8 channel pairs** (0–7, i.e. up to 16 SMPTE 272M channels). Each declared channel pair is written as its own frame-locked stereo WAV track alongside the CVBS/Y-C output as `<basename>_audio_<pair>.wav` (the basename is derived from `output.video_path` by stripping a trailing `.cvbs` or `.cvbsy` suffix).
 
 Design decisions:
 - **One WAV file per channel pair** — the set of emitted pairs is the union of the pair numbers declared across all sections. Every pair file spans the whole output; a section that omits a pair emits silence for its frames, and an omitted `left`/`right` channel is stored as all-zero silence (SMPTE 272M §6.4).
@@ -1024,7 +1024,7 @@ Example YAML:
 
 ```yaml
 output:
-  video_path: "out/pal_disc.composite"
+  video_path: "out/pal_disc.cvbs"
   efm_audio:
     pair: 0
 ```
@@ -1080,7 +1080,7 @@ source: "builtin:smpte_leader"        # built-in asset bundled with the applicat
 source: "/media/archive/clip.mkv"     # absolute path
 source: "assets/clip.mkv"             # relative to the project YAML directory
 source: "../shared/clip.mkv"          # relative path traversal is permitted
-video_path: "out/pal_test_video.composite" # project-relative output file path
+video_path: "out/pal_test_video.cvbs" # project-relative output file path
 ```
 
 ---
@@ -1093,9 +1093,9 @@ video_path: "out/pal_test_video.composite" # project-relative output file path
   - Only one `signal_state_preset` per project.
   - `output.video_path` is required in the project YAML. The metadata sidecar path is derived from it (video-colocated) and is not specified in YAML.
   - `output.signal_type` must be `"composite"` or `"yc"` (default: `"composite"`).
-  - When `output.signal_type` is `"yc"`, `output.video_path` must end in `".y"`.
+  - When `output.signal_type` is `"yc"`, `output.video_path` must end in `".cvbsy"`.
   - `output.signal_type` must be `"composite"` or `"yc"` (default: `"composite"`).
-  - When `output.signal_type` is `"yc"`, `output.video_path` must end in `".y"`; the chroma path is derived automatically by replacing the suffix with `".c"`.
+  - When `output.signal_type` is `"yc"`, `output.video_path` must end in `".cvbsy"`; the chroma path is derived automatically by replacing the suffix with `".cvbsc"`.
   - Output resolution is fixed by the standard (720x576 for PAL, 720x486 for NTSC) and must not be specified in the project file.
   - 4fsc generation requires a 4fsc `sample_encoding_preset` and a locked `signal_state_preset`.
   - `pal_laserdisc_pilot_burst` can **only be enabled for PAL projects**. If enabled for NTSC, the YAML is considered **invalid**.
@@ -1855,7 +1855,7 @@ Current implementation note:
     - Create the CVBS file header with all required metadata (see [CVBS File Format Specification](../cvbs-file-format-specification/docs/index.md)).
   2. **Composite Formation and Quantisation** (composite mode) / **Y/C Quantisation** (Y/C mode):
     - **Composite** (`signal_type: composite`): Combine the fixed-point luma and chroma sample buffers into a composite sample stream; encode to the active output preset representation.
-    - **Y/C** (`signal_type: yc`): Encode luma samples identically to composite luma; encode chroma samples centred at code 512 per the CVBS File Format Specification (§ Sample Encoding Presets); write to separate `.y` and `.c` files.
+    - **Y/C** (`signal_type: yc`): Encode luma samples identically to composite luma; encode chroma samples centred at code 512 per the CVBS File Format Specification (§ Sample Encoding Presets); write to separate `.cvbsy` and `.cvbsc` files.
     - In both modes, map fixed-point mV samples to 10-bit integers using the normative linear mapping for the active standard (EBU Tech. 3280-E for PAL, SMPTE 244M-2003 for NTSC). See [§6.1](#61-signal-levels) for the formulae.
     - Clamp to the legal code range; excluded values (codes 0–3 and 1020–1023) must not appear in output.
   3. **mV to Integer Conversion**:
@@ -1900,7 +1900,7 @@ To simulate **analogue output**, the generator must:
 
 The current validator enforces a narrower subset than the full design intent in this section:
 
-- Implemented: standard selection, locked `4fsc` preset constraints, output-path requirements (including `signal_type` validation and `.y`-suffix enforcement for Y/C mode), progressive source profile checks, accepted raster checks, NTSC black-setup constraints, and validator-side VITS/line-injection compatibility checks including overlap detection, laserdisc reserved-range conflicts, and VITC/laserdisc incompatibility.
+- Implemented: standard selection, locked `4fsc` preset constraints, output-path requirements (including `signal_type` validation and `.cvbsy`-suffix enforcement for Y/C mode), progressive source profile checks, accepted raster checks, NTSC black-setup constraints, and validator-side VITS/line-injection compatibility checks including overlap detection, laserdisc reserved-range conflicts, and VITC/laserdisc incompatibility.
 - Implemented: full laserdisc biphase validation including section_type/code_type matrix enforcement, IEC value range constraints (picture_number, chapter_number, users_code X₁, CLV picture number digits, programme time code BCD), CAV minimum duration checks (lead-in ≥ 938 frames, lead-out ≥ 1250 frames), minimum chapter length (30 tracks), the NTSC VIRS mandatory presence check (a `virs` entry in the project-level `line_injections.vits`), and VITS/biphase reserved-range line conflict detection.
 - Implemented: per-section noise parameter validation (range, spread floor, mutual dependency).
 - Implemented: disc-structure section ordering. When any section declares a `section_type`, the section sequence must be `[lead_in] programme_area... [lead_out]`: at most one `lead_in` (first) and one `lead_out` (last), no section may precede the `lead_in` or follow the `lead_out`, and every section after a `lead_in` or before a `lead_out` must be `programme_area`. Out-of-order sections would break monotonic picture-number and time-code generation (IEC 60856/60857). The GUI surfaces these errors through the shared validator in the validation issues dock.

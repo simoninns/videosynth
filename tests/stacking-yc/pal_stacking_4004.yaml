@@ -26,7 +26,7 @@ cvbs_presets:
   pal_laserdisc_pilot_burst: true
 
 output:
-  video_path: "{project}/../stacking-yc-output/videosynth_pal_stacking_4004.y"
+  video_path: "{project}/../stacking-yc-output/videosynth_pal_stacking_4004.cvbsy"
   signal_type: yc
 
 line_injections:

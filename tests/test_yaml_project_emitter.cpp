@@ -51,7 +51,7 @@ constexpr const char* kMinimalPalYaml = R"(
 cvbs_presets:
   video_standard_preset: PAL
 output:
-  video_path: out/video.composite
+  video_path: out/video.cvbs
 sections:
   - name: Bars
     type: progressive
@@ -85,7 +85,7 @@ TEST(YamlProjectEmitterTest, LaserdiscVitsPlacementRoundTrips) {
 cvbs_presets:
   video_standard_preset: PAL
 output:
-  video_path: out/video.composite
+  video_path: out/video.cvbs
 line_injections:
   placement: laserdisc
   vits:
@@ -107,7 +107,7 @@ TEST(YamlProjectEmitterTest, CustomVitsPlacementIsEmitted) {
 cvbs_presets:
   video_standard_preset: PAL
 output:
-  video_path: out/video.composite
+  video_path: out/video.cvbs
 line_injections:
   placement: custom
   vits:
@@ -131,7 +131,7 @@ TEST(YamlProjectEmitterTest, StandardVitsPlacementOmitsPlacementKey) {
 cvbs_presets:
   video_standard_preset: PAL
 output:
-  video_path: out/video.composite
+  video_path: out/video.cvbs
 line_injections:
   vits:
     - vits_type: vits17
@@ -154,7 +154,7 @@ TEST(YamlProjectEmitterTest, AssetRootTokenSourceRoundTrips) {
 cvbs_presets:
   video_standard_preset: PAL
 output:
-  video_path: out/video.composite
+  video_path: out/video.cvbs
 sections:
   - name: Bars
     type: progressive
@@ -195,7 +195,7 @@ project:
 cvbs_presets:
   video_standard_preset: PAL
 output:
-  video_path: out/video.composite
+  video_path: out/video.cvbs
 sections:
   - name: Bars
     type: progressive
@@ -212,7 +212,7 @@ cvbs_presets:
   signal_state_preset: STANDARD_TBC_LOCKED
   ntsc_black_setup_ire: 0.0
 output:
-  video_path: out/video.composite
+  video_path: out/video.cvbs
 sections:
   - name: Bars
     type: progressive
@@ -228,7 +228,7 @@ cvbs_presets:
   sample_encoding_preset: CVBS_S16_4FSC
   pal_laserdisc_pilot_burst: true
 output:
-  video_path: out/video.composite
+  video_path: out/video.cvbs
 sections:
   - name: Bars
     type: progressive
@@ -242,7 +242,7 @@ TEST(YamlProjectEmitterTest, YcOutputRoundTripsSignalType) {
 cvbs_presets:
   video_standard_preset: PAL
 output:
-  video_path: out/video.y
+  video_path: out/video.cvbsy
   signal_type: yc
 sections:
   - name: Bars
@@ -257,7 +257,7 @@ TEST(YamlProjectEmitterTest, EfmAudioOutputRoundTripsSelectedPair) {
 cvbs_presets:
   video_standard_preset: PAL
 output:
-  video_path: out/video.composite
+  video_path: out/video.cvbs
   efm_audio:
     pair: 2
 sections:
@@ -282,7 +282,7 @@ TEST(YamlProjectEmitterTest, DurationFramesAllRoundTrips) {
 cvbs_presets:
   video_standard_preset: PAL
 output:
-  video_path: out/video.composite
+  video_path: out/video.cvbs
 sections:
   - name: WholeSource
     type: progressive
@@ -297,7 +297,7 @@ TEST(YamlProjectEmitterTest, DurationRepeatRoundTripsWithAllSourceFrames) {
 cvbs_presets:
   video_standard_preset: PAL
 output:
-  video_path: out/video.composite
+  video_path: out/video.cvbs
 sections:
   - name: WholeSource
     type: progressive
@@ -314,7 +314,7 @@ TEST(YamlProjectEmitterTest, DurationRepeatDefaultOfOneIsOmitted) {
 cvbs_presets:
   video_standard_preset: PAL
 output:
-  video_path: out/video.composite
+  video_path: out/video.cvbs
 sections:
   - name: WholeSource
     type: progressive
@@ -334,7 +334,7 @@ TEST(YamlProjectEmitterTest, VitsInjectionRoundTripsTargetLines) {
 cvbs_presets:
   video_standard_preset: PAL
 output:
-  video_path: out/video.composite
+  video_path: out/video.cvbs
 line_injections:
   vits:
     - vits_type: "pal_ccir330"
@@ -352,7 +352,7 @@ TEST(YamlProjectEmitterTest, LaserdiscInjectionRoundTripsAllCodeFields) {
 cvbs_presets:
   video_standard_preset: PAL
 output:
-  video_path: out/video.composite
+  video_path: out/video.cvbs
 line_injections:
   disc_type: CAV
 sections:
@@ -381,7 +381,7 @@ TEST(YamlProjectEmitterTest, SectionTypesRoundTripLeadInAndLeadOut) {
 cvbs_presets:
   video_standard_preset: PAL
 output:
-  video_path: out/video.composite
+  video_path: out/video.cvbs
 sections:
   - name: LeadIn
     type: progressive
@@ -406,7 +406,7 @@ TEST(YamlProjectEmitterTest, NoiseBlockRoundTripsLevelsAndSeed) {
 cvbs_presets:
   video_standard_preset: PAL
 output:
-  video_path: out/video.composite
+  video_path: out/video.cvbs
 sections:
   - name: Noisy
     type: progressive
@@ -430,7 +430,7 @@ TEST(YamlProjectEmitterTest, DropoutBlocksRoundTripScalesAndSeeds) {
 cvbs_presets:
   video_standard_preset: PAL
 output:
-  video_path: out/video.composite
+  video_path: out/video.cvbs
 sections:
   - name: Damaged
     type: progressive
@@ -458,7 +458,7 @@ TEST(YamlProjectEmitterTest, OsdOverlaysRoundTripTokensAndGeometry) {
 cvbs_presets:
   video_standard_preset: PAL
 output:
-  video_path: out/video.composite
+  video_path: out/video.cvbs
 sections:
   - name: Osd
     type: progressive
@@ -481,7 +481,7 @@ TEST(YamlProjectEmitterTest, AudioChannelPairsRoundTripToneRampAndSilence) {
 cvbs_presets:
   video_standard_preset: PAL
 output:
-  video_path: out/video.composite
+  video_path: out/video.cvbs
 sections:
   - name: StereoTone
     type: progressive
@@ -526,7 +526,7 @@ TEST(YamlProjectEmitterTest, DiscSkipsRoundTripBothDirections) {
 cvbs_presets:
   video_standard_preset: PAL
 output:
-  video_path: out/video.composite
+  video_path: out/video.cvbs
 sections:
   - name: Bars
     type: progressive
@@ -552,7 +552,7 @@ cvbs_presets:
   sample_encoding_preset: CVBS_U10_4FSC
   signal_state_preset: STANDARD_TBC_LOCKED
 output:
-  video_path: out/video.composite
+  video_path: out/video.cvbs
 sections:
   - name: Bars
     type: progressive

@@ -59,7 +59,7 @@ QStringList EvaluateSourceProfile(
   // every reported error concerns the probed file.
   Project project;
   project.cvbs_presets.video_standard_preset = standard;
-  project.output.video_path = "probe.composite";
+  project.output.video_path = "probe.cvbs";
   project.output.metadata_path = "probe.meta";
 
   Section probe_section;

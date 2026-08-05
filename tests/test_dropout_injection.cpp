@@ -39,7 +39,7 @@ const std::string kPalYamlPrefix =
     "  sample_encoding_preset: CVBS_U10_4FSC\n"
     "  signal_state_preset: STANDARD_TBC_LOCKED\n"
     "output:\n"
-    "  video_path: out.composite\n";
+    "  video_path: out.cvbs\n";
 
 class NullLogger final : public ILogger {
  public:
@@ -57,7 +57,7 @@ Project MakeDropoutProject(int random_scale, int scratch_scale,
   project.cvbs_presets.video_standard_preset = Standard::kPal;
   project.cvbs_presets.sample_encoding_preset = "CVBS_U10_4FSC";
   project.cvbs_presets.signal_state_preset = "STANDARD_TBC_LOCKED";
-  project.output.video_path = "/tmp/dropout_test.composite";
+  project.output.video_path = "/tmp/dropout_test.cvbs";
   project.output.metadata_path = "/tmp/dropout_test.meta";
 
   Section section;

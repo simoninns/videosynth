@@ -34,7 +34,7 @@ Project MakeLaserdiscProject(Standard standard, DiscType disc_type,
                              const std::string& code_type) {
   Project project;
   project.cvbs_presets.video_standard_preset = standard;
-  project.output.video_path = "out/video.composite";
+  project.output.video_path = "out/video.cvbs";
   project.output.metadata_path = "out/video.meta";
   // disc_type and the VITS set are project-wide.
   project.line_injections.disc_type = DiscTypeToString(disc_type);

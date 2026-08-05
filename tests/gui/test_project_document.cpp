@@ -25,7 +25,7 @@ Project MakeProject() {
   project.name = "TestProject";
   project.version = "1.0";
   project.cvbs_presets.video_standard_preset = Standard::kPal;
-  project.output.video_path = "out/video.composite";
+  project.output.video_path = "out/video.cvbs";
   project.output.metadata_path = "out/metadata.meta";
 
   Section first;
@@ -175,7 +175,7 @@ TEST_F(ProjectDocumentTest, SetCvbsPresetsEmitsProjectSettingsChanged) {
 
 TEST_F(ProjectDocumentTest, SetOutputTargetsEmitsProjectSettingsChanged) {
   OutputTargets output = document_.project().output;
-  output.video_path = "out/other.y";
+  output.video_path = "out/other.cvbsy";
   output.signal_type = "yc";
 
   EXPECT_TRUE(document_.SetOutputTargets(output));

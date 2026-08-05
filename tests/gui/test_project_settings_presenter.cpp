@@ -21,7 +21,7 @@ namespace {
 Project MakeProject(Standard standard) {
   Project project;
   project.cvbs_presets.video_standard_preset = standard;
-  project.output.video_path = "out/video.composite";
+  project.output.video_path = "out/video.cvbs";
   project.output.metadata_path = "out/video.meta";
   Section section;
   section.name = "Bars";
@@ -59,10 +59,10 @@ TEST(ProjectSettingsPresenterTest, EnablementFollowsStandardPalM) {
 TEST(ProjectSettingsPresenterTest, YSuffixFlagFollowsSignalType) {
   Project project = MakeProject(Standard::kPal);
   EXPECT_FALSE(
-      BuildProjectSettingsFormState(project).video_path_requires_y_suffix);
+      BuildProjectSettingsFormState(project).video_path_requires_luma_suffix);
   project.output.signal_type = "yc";
   EXPECT_TRUE(
-      BuildProjectSettingsFormState(project).video_path_requires_y_suffix);
+      BuildProjectSettingsFormState(project).video_path_requires_luma_suffix);
 }
 
 // Every offered sample-encoding option must be accepted by the model's
@@ -120,8 +120,8 @@ TEST(ProjectSettingsPresenterTest, NormalizedPresetsPassValidatorFlagRules) {
 }
 
 TEST(ProjectSettingsPresenterTest, DeriveMetadataPathStripsOutputSuffixes) {
-  EXPECT_EQ(DeriveMetadataPath("out/video.composite"), "out/video.meta");
-  EXPECT_EQ(DeriveMetadataPath("out/video.y"), "out/video.meta");
+  EXPECT_EQ(DeriveMetadataPath("out/video.cvbs"), "out/video.meta");
+  EXPECT_EQ(DeriveMetadataPath("out/video.cvbsy"), "out/video.meta");
   EXPECT_EQ(DeriveMetadataPath("out/video"), "out/video.meta");
   EXPECT_EQ(DeriveMetadataPath("out/video.raw"), "out/video.meta");
   // A dot in a directory component is not an extension.
@@ -130,23 +130,24 @@ TEST(ProjectSettingsPresenterTest, DeriveMetadataPathStripsOutputSuffixes) {
 }
 
 TEST(ProjectSettingsPresenterTest, EnforceSignalTypeRewritesVideoPath) {
-  EXPECT_EQ(EnforceSignalTypeVideoPath("out/video.composite", "yc"),
-            "out/video.y");
-  EXPECT_EQ(EnforceSignalTypeVideoPath("out/video.y", "yc"), "out/video.y");
-  EXPECT_EQ(EnforceSignalTypeVideoPath("out/video", "yc"), "out/video.y");
-  EXPECT_EQ(EnforceSignalTypeVideoPath("out/video.y", "composite"),
-            "out/video.composite");
-  EXPECT_EQ(EnforceSignalTypeVideoPath("out/video.composite", "composite"),
-            "out/video.composite");
+  EXPECT_EQ(EnforceSignalTypeVideoPath("out/video.cvbs", "yc"),
+            "out/video.cvbsy");
+  EXPECT_EQ(EnforceSignalTypeVideoPath("out/video.cvbsy", "yc"),
+            "out/video.cvbsy");
+  EXPECT_EQ(EnforceSignalTypeVideoPath("out/video", "yc"), "out/video.cvbsy");
+  EXPECT_EQ(EnforceSignalTypeVideoPath("out/video.cvbsy", "composite"),
+            "out/video.cvbs");
+  EXPECT_EQ(EnforceSignalTypeVideoPath("out/video.cvbs", "composite"),
+            "out/video.cvbs");
   EXPECT_EQ(EnforceSignalTypeVideoPath("", "yc"), "");
 }
 
-// The enforced yc path must satisfy the validator's ".y" suffix rule.
+// The enforced yc path must satisfy the validator's ".cvbsy" suffix rule.
 TEST(ProjectSettingsPresenterTest, EnforcedYcPathPassesValidator) {
   Project project = MakeProject(Standard::kPal);
   project.output.signal_type = "yc";
   project.output.video_path =
-      EnforceSignalTypeVideoPath("out/video.composite", "yc");
+      EnforceSignalTypeVideoPath("out/video.cvbs", "yc");
   project.output.metadata_path = DeriveMetadataPath(project.output.video_path);
 
   ProjectValidator validator;

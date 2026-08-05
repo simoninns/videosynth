@@ -120,9 +120,14 @@ Thumbs.db
 result
 result-*
 
-# Ignore any composite video output files and associated metadata
-*.composite
+# Ignore any CVBS video output files and associated metadata
+*.cvbs
+*.cvbsy
+*.cvbsc
 *.meta
+
+# Local scratch output directory
+/output/
 
 # Project test output directories
 tests/general-output/

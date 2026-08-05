@@ -23,14 +23,14 @@ bool EndsWith(const std::string& value, const std::string& suffix) {
          0;
 }
 
-// Strips a known output suffix (".composite" or ".y"), else any final
+// Strips a known output suffix (".cvbs" or ".cvbsy"), else any final
 // extension within the last path component, returning the path stem.
 std::string StripOutputSuffix(const std::string& path) {
-  if (EndsWith(path, ".composite")) {
-    return path.substr(0, path.size() - std::string(".composite").size());
+  if (EndsWith(path, ".cvbs")) {
+    return path.substr(0, path.size() - std::string(".cvbs").size());
   }
-  if (EndsWith(path, ".y")) {
-    return path.substr(0, path.size() - std::string(".y").size());
+  if (EndsWith(path, ".cvbsy")) {
+    return path.substr(0, path.size() - std::string(".cvbsy").size());
   }
 
   const std::size_t last_separator = path.find_last_of('/');
@@ -93,7 +93,7 @@ ProjectSettingsFormState BuildProjectSettingsFormState(const Project& project) {
   state.vbi_burst_editable = standard == Standard::kNtsc;
   state.setup_ire_editable =
       standard == Standard::kNtsc || standard == Standard::kPalM;
-  state.video_path_requires_y_suffix = project.output.signal_type == "yc";
+  state.video_path_requires_luma_suffix = project.output.signal_type == "yc";
 
   state.efm_pair_options.reserve(kMaxAudioChannelPairs);
   for (int pair = 0; pair < kMaxAudioChannelPairs; ++pair) {
@@ -144,14 +144,14 @@ std::string EnforceSignalTypeVideoPath(std::string video_path,
   }
 
   if (signal_type == "yc") {
-    if (EndsWith(video_path, ".y")) {
+    if (EndsWith(video_path, ".cvbsy")) {
       return video_path;
     }
-    return StripOutputSuffix(video_path) + ".y";
+    return StripOutputSuffix(video_path) + ".cvbsy";
   }
 
-  if (signal_type == "composite" && EndsWith(video_path, ".y")) {
-    return StripOutputSuffix(std::move(video_path)) + ".composite";
+  if (signal_type == "composite" && EndsWith(video_path, ".cvbsy")) {
+    return StripOutputSuffix(std::move(video_path)) + ".cvbs";
   }
   return video_path;
 }

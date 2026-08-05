@@ -50,7 +50,7 @@ Project MakeColourBarProject(Standard standard, const std::string& source) {
   project.name = "preview-functional";
   project.version = "1.0";
   project.cvbs_presets.video_standard_preset = standard;
-  project.output.video_path = "out/preview.composite";
+  project.output.video_path = "out/preview.cvbs";
   project.output.metadata_path = "out/preview.meta";
 
   Section section;

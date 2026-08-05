@@ -35,8 +35,8 @@ constexpr int kCvbsFileId = 1;
 // Strips the CVBS payload suffix from a video path, leaving the basename the
 // EFM extension files must share with the capture.
 std::string StripVideoSuffix(const std::string& video_path) {
-  constexpr std::string_view kCompositeSuffix = ".composite";
-  constexpr std::string_view kLumaSuffix = ".y";
+  constexpr std::string_view kCompositeSuffix = ".cvbs";
+  constexpr std::string_view kLumaSuffix = ".cvbsy";
 
   std::string base = video_path;
   auto ends_with = [&](std::string_view suffix) {

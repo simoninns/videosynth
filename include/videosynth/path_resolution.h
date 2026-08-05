@@ -61,7 +61,7 @@ std::string ResolveAssetPath(const std::string& path, const AssetRootMap& roots,
                              const std::string& project_dir, bool anchor_unset);
 
 // Derives the metadata sidecar path colocated with a video output path: strips
-// a trailing ".composite" or ".y" (otherwise any final extension in the last
+// a trailing ".cvbs" or ".cvbsy" (otherwise any final extension in the last
 // path component) and appends ".meta". An empty input returns an empty string.
 // The metadata file always shares the video output's directory and stem; it is
 // never configured independently.

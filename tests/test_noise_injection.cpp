@@ -39,7 +39,7 @@ const std::string kMinimalYamlPrefix =
     "  sample_encoding_preset: CVBS_U10_4FSC\n"
     "  signal_state_preset: STANDARD_TBC_LOCKED\n"
     "output:\n"
-    "  video_path: out.composite\n";
+    "  video_path: out.cvbs\n";
 
 // ---------------------------------------------------------------------------
 // Parser tests
@@ -172,7 +172,7 @@ Project MakeValidNoiseProject(double noise_db, double noise_spread_db) {
   project.cvbs_presets.video_standard_preset = Standard::kPal;
   project.cvbs_presets.sample_encoding_preset = "CVBS_U10_4FSC";
   project.cvbs_presets.signal_state_preset = "STANDARD_TBC_LOCKED";
-  project.output.video_path = "/tmp/noise_test.composite";
+  project.output.video_path = "/tmp/noise_test.cvbs";
   project.output.metadata_path = "/tmp/noise_test.meta";
 
   Section section;
@@ -292,7 +292,7 @@ TestContext MakeTestContext(Standard standard, bool noise_enabled,
   ctx.project.cvbs_presets.video_standard_preset = standard;
   ctx.project.cvbs_presets.sample_encoding_preset = "CVBS_U10_4FSC";
   ctx.project.cvbs_presets.signal_state_preset = "STANDARD_TBC_LOCKED";
-  ctx.project.output.video_path = "/tmp/noise_stage_test.composite";
+  ctx.project.output.video_path = "/tmp/noise_stage_test.cvbs";
   ctx.project.output.metadata_path = "/tmp/noise_stage_test.meta";
 
   Section section;

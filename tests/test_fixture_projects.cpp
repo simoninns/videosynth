@@ -502,8 +502,7 @@ TEST(ProjectFixturesTest, FixtureProjectsCoverSupportedOutputEncodingFamilies) {
           std::filesystem::path(fixture).stem().string();
       const std::filesystem::path output_path =
           std::filesystem::temp_directory_path() /
-          ("videosynth_stage4_" + fixture_stem + "_" + output_preset +
-           ".composite");
+          ("videosynth_stage4_" + fixture_stem + "_" + output_preset + ".cvbs");
       const std::filesystem::path metadata_path =
           std::filesystem::temp_directory_path() /
           ("videosynth_stage4_" + fixture_stem + "_" + output_preset + ".meta");

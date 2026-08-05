@@ -437,9 +437,9 @@ void ProjectSettingsEditor::ApplyEnablement() {
   setup_ire_combo_->setEnabled(state.setup_ire_editable &&
                                setup_ire_check_->isChecked());
   video_path_hint_->setText(
-      state.video_path_requires_y_suffix
-          ? tr("Y/C output: the video path must end in “.y” (a matching "
-               "“.c” chroma file is written alongside it).")
+      state.video_path_requires_luma_suffix
+          ? tr("Y/C output: the video path must end in “.cvbsy” (a matching "
+               "“.cvbsc” chroma file is written alongside it).")
           : QString());
 
   efm_check_->setEnabled(state.efm_output_editable);
@@ -685,9 +685,8 @@ void ProjectSettingsEditor::OnSignalTypeChanged() { CommitOutputTargets(); }
 
 void ProjectSettingsEditor::OnBrowseVideoPath() {
   const bool yc = signal_type_combo_->currentText() == QStringLiteral("yc");
-  const QString filter =
-      yc ? tr("Y/C luma files (*.y);;All files (*)")
-         : tr("Composite files (*.composite);;All files (*)");
+  const QString filter = yc ? tr("Y/C luma files (*.cvbsy);;All files (*)")
+                            : tr("Composite files (*.cvbs);;All files (*)");
   // Open the dialog at the output path's *resolved* location. A relative
   // output path is project-relative, so anchor it to the project directory
   // rather than the process working directory.

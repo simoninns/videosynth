@@ -694,7 +694,7 @@ cvbs_presets:
   signal_state_preset: STANDARD_TBC_LOCKED
 
 output:
-  video_path: output/my_disc.composite
+  video_path: output/my_disc.cvbs
 
 # Project-wide disc type — applies to every section.
 line_injections:
@@ -775,7 +775,7 @@ cvbs_presets:
   signal_state_preset: STANDARD_TBC_LOCKED
 
 output:
-  video_path: output/clv_disc.composite
+  video_path: output/clv_disc.cvbs
 
 # Project-wide disc type — applies to every section.
 line_injections:
@@ -836,7 +836,7 @@ cvbs_presets:
   signal_state_preset: STANDARD_TBC_LOCKED
 
 output:
-  video_path: output/ntsc_disc.composite
+  video_path: output/ntsc_disc.cvbs
 
 # Project-wide disc type and the mandatory NTSC VIRS reference, applied to
 # every frame of every section (IEC 60857 §9.1.3).

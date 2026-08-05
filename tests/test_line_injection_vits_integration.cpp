@@ -39,7 +39,7 @@ Project CreateProjectWithVits(Standard standard, const std::string& vits_type,
   project.cvbs_presets.sample_encoding_preset = "CVBS_TPG21_4FSC";
   project.cvbs_presets.signal_state_preset = "STANDARD_TBC_LOCKED";
 
-  project.output.video_path = "test_output.composite";
+  project.output.video_path = "test_output.cvbs";
   project.output.metadata_path = "test_output.meta";
 
   Section section;
@@ -199,7 +199,7 @@ TEST(LineInjectionVitsIntegrationTest, MultipleVitsLinesInSameFrame) {
   project.cvbs_presets.sample_encoding_preset = "CVBS_TPG21_4FSC";
   project.cvbs_presets.signal_state_preset = "STANDARD_TBC_LOCKED";
 
-  project.output.video_path = "test_output.composite";
+  project.output.video_path = "test_output.cvbs";
   project.output.metadata_path = "test_output.meta";
 
   Section section;

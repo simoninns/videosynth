@@ -34,7 +34,7 @@ namespace videosynth {
 // Streaming contract: BeginWrite (reserves the 44-byte header) -> repeated
 // AppendFrameAudio -> FinalizeWrite (back-patches the RIFF and data chunk
 // sizes). The output path is derived from output.video_path by stripping a
-// trailing ".composite" or ".y" suffix and appending "_audio_<pair>.wav".
+// trailing ".cvbs" or ".cvbsy" suffix and appending "_audio_<pair>.wav".
 //
 // Thread-safety: AudioWavWriter is NOT thread-safe. Its file stream and byte
 // counters are mutated by AppendFrameAudio; it must not be called concurrently
@@ -67,7 +67,7 @@ class AudioWavWriter {
   void AbortWrite();
 
   // Derives the audio track path for `channel_pair` from a CVBS output path.
-  // Strips a trailing ".composite" or ".y" suffix (if present) and appends
+  // Strips a trailing ".cvbs" or ".cvbsy" suffix (if present) and appends
   // "_audio_<pair>.wav".
   static std::string DeriveAudioPath(const std::string& video_path,
                                      int channel_pair);

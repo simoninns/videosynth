@@ -185,11 +185,12 @@ std::int16_t EncodeChromaSample(OutputEncoding encoding,
   return static_cast<std::int16_t>(quantized_code);
 }
 
-// Derives the chroma file path from the luma path by replacing the ".y"
-// suffix with ".c". Returns empty string if video_path does not end in ".y".
+// Derives the chroma file path from the luma path by replacing the ".cvbsy"
+// suffix with ".cvbsc". Returns empty string if video_path does not end in
+// ".cvbsy".
 std::string DeriveChromaPath(const std::string& luma_path) {
-  constexpr std::string_view kLumaSuffix = ".y";
-  constexpr std::string_view kChromaSuffix = ".c";
+  constexpr std::string_view kLumaSuffix = ".cvbsy";
+  constexpr std::string_view kChromaSuffix = ".cvbsc";
   if (luma_path.size() < kLumaSuffix.size()) {
     return {};
   }

@@ -52,8 +52,8 @@ def make_clean(src_path: Path, dst_path: Path) -> None:
 
     # Rewrite output paths to _clean variants
     content = re.sub(
-        r'(video_path:\s+\S+?)\.composite',
-        r'\1_clean.composite',
+        r'(video_path:\s+\S+?)\.cvbs',
+        r'\1_clean.cvbs',
         content,
     )
     content = re.sub(

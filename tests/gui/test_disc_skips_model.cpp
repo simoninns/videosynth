@@ -22,7 +22,7 @@ Project MakeProject() {
   Project project;
   project.name = "Test";
   project.cvbs_presets.video_standard_preset = Standard::kPal;
-  project.output.video_path = "out/video.composite";
+  project.output.video_path = "out/video.cvbs";
   project.output.metadata_path = "out/video.meta";
   Section section;
   section.name = "Bars";

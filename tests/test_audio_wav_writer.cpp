@@ -79,12 +79,12 @@ Project MakeAudioProject(Standard standard, const std::string& video_path) {
 // ---------------------------------------------------------------------------
 
 TEST(AudioWavWriterPathTest, StripsCompositeSuffix) {
-  EXPECT_EQ(AudioWavWriter::DeriveAudioPath("out/clip.composite", 0),
+  EXPECT_EQ(AudioWavWriter::DeriveAudioPath("out/clip.cvbs", 0),
             "out/clip_audio_0.wav");
 }
 
 TEST(AudioWavWriterPathTest, StripsLumaSuffix) {
-  EXPECT_EQ(AudioWavWriter::DeriveAudioPath("out/clip.y", 3),
+  EXPECT_EQ(AudioWavWriter::DeriveAudioPath("out/clip.cvbsy", 3),
             "out/clip_audio_3.wav");
 }
 
@@ -99,8 +99,7 @@ TEST(AudioWavWriterPathTest, AppendsWhenNoKnownSuffix) {
 
 TEST(AudioWavWriterTest, WritesValidPalStereoPcm) {
   const std::filesystem::path video_path =
-      std::filesystem::temp_directory_path() /
-      "videosynth_audio_wav_pal.composite";
+      std::filesystem::temp_directory_path() / "videosynth_audio_wav_pal.cvbs";
   const std::filesystem::path expected_audio_path =
       std::filesystem::temp_directory_path() /
       "videosynth_audio_wav_pal_audio_2.wav";
@@ -159,7 +158,8 @@ TEST(AudioWavWriterTest, WritesValidPalStereoPcm) {
 
 TEST(AudioWavWriterTest, UsesFixedHeaderRateForNtsc) {
   const std::filesystem::path video_path =
-      std::filesystem::temp_directory_path() / "videosynth_audio_wav_ntsc.y";
+      std::filesystem::temp_directory_path() /
+      "videosynth_audio_wav_ntsc.cvbsy";
   const std::filesystem::path expected_audio_path =
       std::filesystem::temp_directory_path() /
       "videosynth_audio_wav_ntsc_audio_0.wav";
@@ -186,7 +186,7 @@ TEST(AudioWavWriterTest, UsesFixedHeaderRateForNtsc) {
 TEST(AudioWavWriterTest, RejectsMismatchedChannelLengths) {
   const std::filesystem::path video_path =
       std::filesystem::temp_directory_path() /
-      "videosynth_audio_wav_mismatch.composite";
+      "videosynth_audio_wav_mismatch.cvbs";
   const Project project = MakeAudioProject(Standard::kPal, video_path.string());
 
   AudioWavWriter writer;

@@ -88,14 +88,14 @@ TEST(PathResolutionTest, ResolveProjectPathsAppliesToSourcesAndOutput) {
   Section section;
   section.source = "{bundled}/exr/bars.exr";
   project.sections.push_back(section);
-  project.output.video_path = "{project}/out.composite";
+  project.output.video_path = "{project}/out.cvbs";
   project.output.metadata_path = "out.meta";
 
   const AssetRootMap roots = Roots({{"bundled", "/assets"}});
   const Project resolved = ResolveProjectPaths(project, roots, "/proj",
                                                /*anchor_unset=*/true);
   EXPECT_EQ(resolved.sections[0].source, "/assets/exr/bars.exr");
-  EXPECT_EQ(resolved.output.video_path, "/proj/out.composite");
+  EXPECT_EQ(resolved.output.video_path, "/proj/out.cvbs");
   EXPECT_EQ(resolved.output.metadata_path, "/proj/out.meta");  // plain relative
 }
 

@@ -36,7 +36,7 @@ namespace {
 //
 // This harness runs the complete sequential pipeline twice over the same
 // fixed-seed project and asserts every emitted artefact is byte-identical:
-//   - <name>.composite      quantised CVBS sample stream
+//   - <name>.cvbs           quantised CVBS sample stream
 //   - <name>.meta           CVBS metadata SQLite database
 //   - <name>_audio_00.wav   frame-locked stereo PCM track
 //   - <name>.dropouts.meta  dropout sidecar SQLite database
@@ -78,8 +78,7 @@ Project MakeDeterministicProject(const std::filesystem::path& output_dir,
   project.cvbs_presets.sample_encoding_preset = "CVBS_U10_4FSC";
   project.cvbs_presets.signal_state_preset = "STANDARD_TBC_LOCKED";
   project.output.video_path =
-      (output_dir / ("videosynth_determinism_" + run_tag + ".composite"))
-          .string();
+      (output_dir / ("videosynth_determinism_" + run_tag + ".cvbs")).string();
   project.output.metadata_path =
       (output_dir / ("videosynth_determinism_" + run_tag + ".meta")).string();
 

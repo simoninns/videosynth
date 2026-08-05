@@ -45,7 +45,7 @@ namespace videosynth {
 // Streaming contract: BeginWrite (opens the file and adopts the track table) ->
 // repeated AppendFrameAudio -> FinalizeWrite (flushes the CIRC pipeline, closes
 // the file and writes the sidecar). Both paths are derived from
-// output.video_path by stripping a trailing ".composite" or ".y" suffix and
+// output.video_path by stripping a trailing ".cvbs" or ".cvbsy" suffix and
 // appending ".efm" / ".efm.meta"; the extension requires the sidecar basename
 // to match the CVBS basename, so the channel pair is not part of the name.
 //
@@ -88,7 +88,7 @@ class AudioEfmWriter {
   void AbortWrite();
 
   // Derives the EFM binary path from a CVBS output path: strips a trailing
-  // ".composite" or ".y" suffix (if present) and appends ".efm".
+  // ".cvbs" or ".cvbsy" suffix (if present) and appends ".efm".
   static std::string DeriveAudioPath(const std::string& video_path);
 
   // Derives the EFM sidecar path from a CVBS output path: as DeriveAudioPath

@@ -58,7 +58,7 @@ Project MakeValidProject(const std::vector<int>& section_durations) {
   project.name = "preview-test";
   project.version = "1.0";
   project.cvbs_presets.video_standard_preset = Standard::kPal;
-  project.output.video_path = "out/video.composite";
+  project.output.video_path = "out/video.cvbs";
   project.output.metadata_path = "out/metadata.meta";
   for (std::size_t i = 0; i < section_durations.size(); ++i) {
     project.sections.push_back(MakeProgressiveSection(

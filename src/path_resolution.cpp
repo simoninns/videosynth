@@ -71,11 +71,12 @@ std::string DeriveMetadataPath(const std::string& video_path) {
   };
 
   std::string stem;
-  if (ends_with(".composite")) {
-    stem = video_path.substr(
-        0, video_path.size() - std::string(".composite").size());
-  } else if (ends_with(".y")) {
-    stem = video_path.substr(0, video_path.size() - std::string(".y").size());
+  if (ends_with(".cvbs")) {
+    stem =
+        video_path.substr(0, video_path.size() - std::string(".cvbs").size());
+  } else if (ends_with(".cvbsy")) {
+    stem =
+        video_path.substr(0, video_path.size() - std::string(".cvbsy").size());
   } else {
     const std::size_t last_separator = video_path.find_last_of("/\\");
     const std::size_t last_dot = video_path.find_last_of('.');

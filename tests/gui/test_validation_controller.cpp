@@ -90,7 +90,7 @@ TEST(ValidationControllerTest, InvalidProjectProducesIssuesAndFixClearsThem) {
   // Fixing the project clears the issues.
   Project valid;
   valid.cvbs_presets.video_standard_preset = Standard::kPal;
-  valid.output.video_path = "out/video.composite";
+  valid.output.video_path = "out/video.cvbs";
   valid.output.metadata_path = "out/metadata.meta";
   Section section;
   section.name = "Bars";

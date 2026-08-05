@@ -26,7 +26,7 @@ cvbs_presets:
   pal_laserdisc_pilot_burst: true
 
 output:
-  video_path: "{project}/../stacking-output/videosynth_pal_stacking_2002.composite"
+  video_path: "{project}/../stacking-output/videosynth_pal_stacking_2002.cvbs"
 
 line_injections:
   disc_type: CAV

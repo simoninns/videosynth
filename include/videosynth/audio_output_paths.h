@@ -19,13 +19,13 @@ namespace videosynth {
 // stateless and operate only on their arguments.
 
 // Derives the audio track path for `channel_pair` from a CVBS output path:
-// strips a trailing ".composite" or ".y" suffix (if present) and appends
+// strips a trailing ".cvbs" or ".cvbsy" suffix (if present) and appends
 // "_audio_<pair><extension>", where `extension` includes its leading dot.
 inline std::string DeriveAudioTrackPath(const std::string& video_path,
                                         int channel_pair,
                                         std::string_view extension) {
-  constexpr std::string_view kCompositeSuffix = ".composite";
-  constexpr std::string_view kLumaSuffix = ".y";
+  constexpr std::string_view kCompositeSuffix = ".cvbs";
+  constexpr std::string_view kLumaSuffix = ".cvbsy";
 
   std::string base = video_path;
   auto ends_with = [&](std::string_view suffix) {

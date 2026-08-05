@@ -128,15 +128,14 @@ std::vector<std::int32_t> MakeFrameSamples(std::size_t count, int seed) {
 // ---------------------------------------------------------------------------
 
 TEST(AudioEfmWriterPathTest, StripsCompositeSuffix) {
-  EXPECT_EQ(AudioEfmWriter::DeriveAudioPath("out/clip.composite"),
-            "out/clip.efm");
-  EXPECT_EQ(AudioEfmWriter::DeriveSidecarPath("out/clip.composite"),
+  EXPECT_EQ(AudioEfmWriter::DeriveAudioPath("out/clip.cvbs"), "out/clip.efm");
+  EXPECT_EQ(AudioEfmWriter::DeriveSidecarPath("out/clip.cvbs"),
             "out/clip.efm.meta");
 }
 
 TEST(AudioEfmWriterPathTest, StripsLumaSuffix) {
-  EXPECT_EQ(AudioEfmWriter::DeriveAudioPath("out/clip.y"), "out/clip.efm");
-  EXPECT_EQ(AudioEfmWriter::DeriveSidecarPath("out/clip.y"),
+  EXPECT_EQ(AudioEfmWriter::DeriveAudioPath("out/clip.cvbsy"), "out/clip.efm");
+  EXPECT_EQ(AudioEfmWriter::DeriveSidecarPath("out/clip.cvbsy"),
             "out/clip.efm.meta");
 }
 
@@ -151,7 +150,7 @@ TEST(AudioEfmWriterPathTest, AppendsWhenNoKnownSuffix) {
 
 TEST(AudioEfmWriterTest, WritesTValueStreamForTheSelectedPair) {
   const std::filesystem::path video_path =
-      std::filesystem::temp_directory_path() / "videosynth_audio_efm.composite";
+      std::filesystem::temp_directory_path() / "videosynth_audio_efm.cvbs";
   const std::filesystem::path expected_audio_path =
       std::filesystem::temp_directory_path() / "videosynth_audio_efm.efm";
   std::filesystem::remove(expected_audio_path);
@@ -204,7 +203,7 @@ TEST(AudioEfmWriterTest, WritesTValueStreamForTheSelectedPair) {
 TEST(AudioEfmWriterTest, WritesAConformantFrameIndexSidecar) {
   const std::filesystem::path video_path =
       std::filesystem::temp_directory_path() /
-      "videosynth_audio_efm_sidecar.composite";
+      "videosynth_audio_efm_sidecar.cvbs";
   const std::filesystem::path expected_audio_path =
       std::filesystem::temp_directory_path() /
       "videosynth_audio_efm_sidecar.efm";
@@ -265,7 +264,7 @@ TEST(AudioEfmWriterTest, WritesAConformantFrameIndexSidecar) {
 TEST(AudioEfmWriterTest, RejectsMismatchedChannelLengths) {
   const std::filesystem::path video_path =
       std::filesystem::temp_directory_path() /
-      "videosynth_audio_efm_mismatch.composite";
+      "videosynth_audio_efm_mismatch.cvbs";
   const std::filesystem::path expected_audio_path =
       std::filesystem::temp_directory_path() /
       "videosynth_audio_efm_mismatch.efm";
@@ -287,7 +286,7 @@ TEST(AudioEfmWriterTest, RejectsMismatchedChannelLengths) {
 TEST(AudioEfmWriterTest, RejectsAnInvalidTrackTable) {
   const std::filesystem::path video_path =
       std::filesystem::temp_directory_path() /
-      "videosynth_audio_efm_bad_table.composite";
+      "videosynth_audio_efm_bad_table.cvbs";
   const std::filesystem::path expected_audio_path =
       std::filesystem::temp_directory_path() /
       "videosynth_audio_efm_bad_table.efm";
@@ -305,7 +304,7 @@ TEST(AudioEfmWriterTest, RejectsAnInvalidTrackTable) {
 TEST(AudioEfmWriterTest, AbortRemovesThePartialFile) {
   const std::filesystem::path video_path =
       std::filesystem::temp_directory_path() /
-      "videosynth_audio_efm_abort.composite";
+      "videosynth_audio_efm_abort.cvbs";
   const std::filesystem::path expected_audio_path =
       std::filesystem::temp_directory_path() / "videosynth_audio_efm_abort.efm";
   std::filesystem::remove(expected_audio_path);

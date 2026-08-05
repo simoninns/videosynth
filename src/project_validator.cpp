@@ -1653,11 +1653,14 @@ ValidationResult ProjectValidator::Validate(const Project& project) {
   }
   if (sig_type == "yc" && !project.output.video_path.empty()) {
     const std::string& vp = project.output.video_path;
-    if (vp.size() < 2 || vp.compare(vp.size() - 2, 2, ".y") != 0) {
+    constexpr std::string_view kLumaSuffix = ".cvbsy";
+    if (vp.size() < kLumaSuffix.size() ||
+        vp.compare(vp.size() - kLumaSuffix.size(), kLumaSuffix.size(),
+                   kLumaSuffix) != 0) {
       result.is_valid = false;
       result.errors.push_back(
-          "Project configuration error: output.video_path must end in '.y' "
-          "when signal_type is 'yc'.");
+          "Project configuration error: output.video_path must end in "
+          "'.cvbsy' when signal_type is 'yc'.");
     }
   }
 

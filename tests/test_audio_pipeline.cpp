@@ -208,7 +208,7 @@ std::filesystem::path TempPath(const std::string& name) {
 
 TEST(AudioPipelineTest, NoAudioSectionProducesNoWavFile) {
   const std::filesystem::path video_path =
-      TempPath("videosynth_audio_pipeline_none.composite");
+      TempPath("videosynth_audio_pipeline_none.cvbs");
   const std::filesystem::path audio_path =
       TempPath("videosynth_audio_pipeline_none_audio_0.wav");
   std::filesystem::remove(audio_path);
@@ -221,7 +221,7 @@ TEST(AudioPipelineTest, NoAudioSectionProducesNoWavFile) {
 
 TEST(AudioPipelineTest, FrameLockedSampleCountMatchesFrameCount) {
   const std::filesystem::path video_path =
-      TempPath("videosynth_audio_pipeline_locked.composite");
+      TempPath("videosynth_audio_pipeline_locked.cvbs");
   const std::filesystem::path audio_path =
       TempPath("videosynth_audio_pipeline_locked_audio_0.wav");
   std::filesystem::remove(audio_path);
@@ -243,7 +243,7 @@ TEST(AudioPipelineTest, FrameLockedSampleCountMatchesFrameCount) {
 
 TEST(AudioPipelineTest, ForwardSkipWithholdsAudioFrames) {
   const std::filesystem::path video_path =
-      TempPath("videosynth_audio_pipeline_fwd.composite");
+      TempPath("videosynth_audio_pipeline_fwd.cvbs");
   const std::filesystem::path audio_path =
       TempPath("videosynth_audio_pipeline_fwd_audio_0.wav");
   std::filesystem::remove(audio_path);
@@ -269,7 +269,7 @@ TEST(AudioPipelineTest, ForwardSkipWithholdsAudioFrames) {
 
 TEST(AudioPipelineTest, BackwardSkipExtendsOutputSampleCount) {
   const std::filesystem::path video_path =
-      TempPath("videosynth_audio_pipeline_bwd.composite");
+      TempPath("videosynth_audio_pipeline_bwd.cvbs");
   const std::filesystem::path audio_path =
       TempPath("videosynth_audio_pipeline_bwd_audio_0.wav");
   std::filesystem::remove(audio_path);
@@ -297,7 +297,7 @@ TEST(AudioPipelineTest, BackwardSkipExtendsOutputSampleCount) {
 
 TEST(AudioPipelineTest, MultiplePairsWriteSeparateFilesWithSilentChannel) {
   const std::filesystem::path video_path =
-      TempPath("videosynth_audio_pipeline_multi.composite");
+      TempPath("videosynth_audio_pipeline_multi.cvbs");
   const std::filesystem::path audio0 =
       TempPath("videosynth_audio_pipeline_multi_audio_0.wav");
   const std::filesystem::path audio3 =
@@ -349,7 +349,7 @@ TEST(AudioPipelineTest, MultiplePairsWriteSeparateFilesWithSilentChannel) {
 
 TEST(AudioPipelineTest, NtscUsesVariablePerFrameSampleCounts) {
   const std::filesystem::path video_path =
-      TempPath("videosynth_audio_pipeline_ntsc.composite");
+      TempPath("videosynth_audio_pipeline_ntsc.cvbs");
   const std::filesystem::path audio_path =
       TempPath("videosynth_audio_pipeline_ntsc_audio_0.wav");
   std::filesystem::remove(audio_path);

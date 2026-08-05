@@ -79,17 +79,17 @@ def run_format(label: str, sources: list, spl: int, first_active: int) -> None:
 
 
 PAL_SOURCES = [
-    ('A', OUT / 'videosynth_pal_discsim_A_clean.composite', 44, 8),
-    ('B', OUT / 'videosynth_pal_discsim_B_clean.composite', 34, 4),
-    ('C', OUT / 'videosynth_pal_discsim_C_clean.composite', 40, 6),
-    ('D', OUT / 'videosynth_pal_discsim_D_clean.composite', 34, 1),
+    ('A', OUT / 'videosynth_pal_discsim_A_clean.cvbs', 44, 8),
+    ('B', OUT / 'videosynth_pal_discsim_B_clean.cvbs', 34, 4),
+    ('C', OUT / 'videosynth_pal_discsim_C_clean.cvbs', 40, 6),
+    ('D', OUT / 'videosynth_pal_discsim_D_clean.cvbs', 34, 1),
 ]
 
 NTSC_SOURCES = [
-    ('A', OUT / 'videosynth_ntsc_discsim_A_clean.composite', 44, 8),
-    ('B', OUT / 'videosynth_ntsc_discsim_B_clean.composite', 34, 4),
-    ('C', OUT / 'videosynth_ntsc_discsim_C_clean.composite', 40, 6),
-    ('D', OUT / 'videosynth_ntsc_discsim_D_clean.composite', 34, 1),
+    ('A', OUT / 'videosynth_ntsc_discsim_A_clean.cvbs', 44, 8),
+    ('B', OUT / 'videosynth_ntsc_discsim_B_clean.cvbs', 34, 4),
+    ('C', OUT / 'videosynth_ntsc_discsim_C_clean.cvbs', 40, 6),
+    ('D', OUT / 'videosynth_ntsc_discsim_D_clean.cvbs', 34, 1),
 ]
 
 if __name__ == '__main__':

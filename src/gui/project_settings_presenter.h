@@ -50,8 +50,8 @@ struct ProjectSettingsFormState {
   bool vbi_burst_editable = false;
   bool setup_ire_editable = false;
 
-  // True when signal_type is "yc" and video_path must carry a ".y" suffix.
-  bool video_path_requires_y_suffix = false;
+  // True when signal_type is "yc" and video_path must carry a ".cvbsy" suffix.
+  bool video_path_requires_luma_suffix = false;
 
   // Channel-pair numbers offered by the EFM pair selector (0 .. 7).
   std::vector<int> efm_pair_options;
@@ -83,13 +83,13 @@ OutputTargets NormalizeOutputTargetsForStandard(OutputTargets output,
                                                 Standard standard);
 
 // Derives the metadata path from a video path: strips a trailing
-// ".composite" or ".y" (else any final extension) and appends ".meta".
+// ".cvbs" or ".cvbsy" (else any final extension) and appends ".meta".
 // Returns an empty string for an empty video path.
 std::string DeriveMetadataPath(const std::string& video_path);
 
 // Adjusts a video path to the selected signal type: for "yc" the path must
-// end in ".y" (a trailing ".composite" is rewritten, otherwise ".y" is
-// appended); for "composite" a trailing ".y" is rewritten to ".composite".
+// end in ".cvbsy" (a trailing ".cvbs" is rewritten, otherwise ".cvbsy" is
+// appended); for "composite" a trailing ".cvbsy" is rewritten to ".cvbs".
 std::string EnforceSignalTypeVideoPath(std::string video_path,
                                        const std::string& signal_type);
 

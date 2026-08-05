@@ -3,7 +3,7 @@
 # Frame-locked synthetic multi-track audio. Each section declares an optional
 # `audio:` block containing a `channel_pairs:` list; each channel pair (0-7)
 # becomes a separate stereo WAV file `<basename>_audio_<pair>.wav` — note the
-# basename is derived by stripping the trailing ".y" suffix. For NTSC the audio
+# basename is derived by stripping the trailing ".cvbsy" suffix. For NTSC the audio
 # is 48000 Hz, 24-bit, following the SMPTE 272M five-frame sequence (1602/1601
 # samples per frame).
 #
@@ -24,7 +24,7 @@ cvbs_presets:
   signal_state_preset: STANDARD_TBC_LOCKED
 
 output:
-  video_path: "{project}/../general-yc-output/videosynth_ntsc_audio.y"
+  video_path: "{project}/../general-yc-output/videosynth_ntsc_audio.cvbsy"
   signal_type: yc
 
 sections:

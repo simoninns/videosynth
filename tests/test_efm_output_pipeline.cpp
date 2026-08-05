@@ -335,7 +335,7 @@ void SynthesizeReference(Standard standard,
 void VerifyEfmOutput(Standard standard, const std::vector<SectionPlan>& plans,
                      const std::string& basename,
                      std::uint8_t expected_video_system_code) {
-  const std::filesystem::path video_path = TempPath(basename + ".composite");
+  const std::filesystem::path video_path = TempPath(basename + ".cvbs");
   const std::filesystem::path wav_path = TempPath(basename + "_audio_0.wav");
   const std::filesystem::path efm_path = TempPath(basename + ".efm");
   const std::filesystem::path efm_meta_path = TempPath(basename + ".efm.meta");
@@ -544,7 +544,7 @@ TEST(EfmOutputPipelineTest, NtscProjectProducesAValidEfmStream) {
 
 TEST(EfmOutputPipelineTest, NoEfmFileWhenTheSelectionIsInactive) {
   const std::filesystem::path video_path =
-      TempPath("videosynth_efm_pipeline_off.composite");
+      TempPath("videosynth_efm_pipeline_off.cvbs");
   const std::filesystem::path efm_path =
       TempPath("videosynth_efm_pipeline_off.efm");
   const std::filesystem::path wav_path =

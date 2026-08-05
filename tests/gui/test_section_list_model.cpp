@@ -36,7 +36,7 @@ Project MakeProject() {
   Project project;
   project.name = "Test";
   project.cvbs_presets.video_standard_preset = Standard::kPal;
-  project.output.video_path = "out/video.composite";
+  project.output.video_path = "out/video.cvbs";
   project.output.metadata_path = "out/video.meta";
   project.sections.push_back(MakeSection("First", 100));
   project.sections.push_back(MakeSection("Second", 50));
@@ -349,7 +349,7 @@ TEST(SectionListModelTest, SectionTemplatesValidateStructurally) {
   for (const Standard standard : {Standard::kPal, Standard::kNtsc}) {
     Project project;
     project.cvbs_presets.video_standard_preset = standard;
-    project.output.video_path = "out/video.composite";
+    project.output.video_path = "out/video.cvbs";
     project.output.metadata_path = "out/video.meta";
     project.line_injections = MakeLaserdiscLineInjections(standard);
     project.sections.push_back(MakeLaserdiscLeadInSectionTemplate(standard));
@@ -364,7 +364,7 @@ TEST(SectionListModelTest, SectionTemplatesValidateStructurally) {
 
     Project plain_project;
     plain_project.cvbs_presets.video_standard_preset = standard;
-    plain_project.output.video_path = "out/video.composite";
+    plain_project.output.video_path = "out/video.cvbs";
     plain_project.output.metadata_path = "out/video.meta";
     plain_project.sections.push_back(
         MakeProgressiveSectionTemplate(1, standard));

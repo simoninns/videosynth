@@ -25,7 +25,7 @@ cvbs_presets:
   signal_state_preset: STANDARD_TBC_LOCKED
 
 output:
-  video_path: "{project}/../stacking-yc-output/videosynth_pal_m_stacking_3003.y"
+  video_path: "{project}/../stacking-yc-output/videosynth_pal_m_stacking_3003.cvbsy"
   signal_type: yc
 
 line_injections:

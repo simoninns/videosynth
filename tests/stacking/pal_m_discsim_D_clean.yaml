@@ -29,7 +29,7 @@ cvbs_presets:
   signal_state_preset: STANDARD_TBC_LOCKED
 
 output:
-  video_path: "{project}/../stacking-output/videosynth_pal_m_discsim_D_clean.composite"
+  video_path: "{project}/../stacking-output/videosynth_pal_m_discsim_D_clean.cvbs"
 
 line_injections:
   disc_type: CAV

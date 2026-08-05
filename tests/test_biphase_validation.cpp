@@ -26,7 +26,7 @@ Project MakeBasePalProject() {
   p.cvbs_presets.video_standard_preset = Standard::kPal;
   p.cvbs_presets.sample_encoding_preset = "CVBS_U10_4FSC";
   p.cvbs_presets.signal_state_preset = "STANDARD_TBC_LOCKED";
-  p.output.video_path = "/tmp/bv_test.composite";
+  p.output.video_path = "/tmp/bv_test.cvbs";
   p.output.metadata_path = "/tmp/bv_test.meta";
   return p;
 }
