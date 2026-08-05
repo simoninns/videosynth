@@ -14,7 +14,9 @@
 #include <cctype>
 #include <cmath>
 #include <memory>
+#include <mutex>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -35,26 +37,10 @@
 
 namespace videosynth {
 
-namespace {
-
-constexpr double kPi = 3.14159265358979323846;
-constexpr double kQuarterWaveRad = kPi / 2.0;
-
-// IEC 60856 §9.1.2: pilot burst frequency is 240 × fH = 3.75 MHz and
-// amplitude is 6/7 of (white - blanking) = 6/7 × 700 mV = 600 mV p-p,
-// centred on sync tip (−300 mV), giving ±300 mV swing.
-constexpr double kPilotBurstFreqHz = 3.75e6;
-constexpr double kPilotBurstAmplitudeMv = 300.0;
-
-// ITU-R BT.1700 Annex 1 Part B Figure 8 with Table 1 item 10f: the 8-field
-// PAL sequence pairs each burst-blanking meander position with a specific
-// subcarrier-to-frame phase. Rotating the subcarrier lattice by 270° anchors
-// disc frame 0 (meander parity 0, fields I/II) to the subcarrier phase that
-// decoders identify as colour fields 1/2. Validated against the
-// ld-decode/decode-orc field-phase detection: without this anchor the two
-// fields of a frame decode as non-consecutive field IDs. The anchor applies
-// to 625-line PAL only; PAL-M keeps a zero anchor.
-constexpr double kPalSubcarrierAnchorRad = 3.0 * kPi / 2.0;
+// Sampled-domain synthesis detail types. They live in a named namespace rather
+// than the file's anonymous namespace so that GenerationStage::
+// SynthesisResources — a member of an externally-linked class — can hold them.
+namespace generation_detail {
 
 struct ActiveRasterGeometry {
   int first_active_line_field1 = 0;
@@ -84,6 +70,33 @@ struct SampledSynthesisContext {
   int burst_rise_samples = 0;
   ActiveRasterGeometry active;
 };
+
+}  // namespace generation_detail
+
+namespace {
+
+using generation_detail::ActiveRasterGeometry;
+using generation_detail::LinePulseSegment;
+using generation_detail::SampledSynthesisContext;
+
+constexpr double kPi = 3.14159265358979323846;
+constexpr double kQuarterWaveRad = kPi / 2.0;
+
+// IEC 60856 §9.1.2: pilot burst frequency is 240 × fH = 3.75 MHz and
+// amplitude is 6/7 of (white - blanking) = 6/7 × 700 mV = 600 mV p-p,
+// centred on sync tip (−300 mV), giving ±300 mV swing.
+constexpr double kPilotBurstFreqHz = 3.75e6;
+constexpr double kPilotBurstAmplitudeMv = 300.0;
+
+// ITU-R BT.1700 Annex 1 Part B Figure 8 with Table 1 item 10f: the 8-field
+// PAL sequence pairs each burst-blanking meander position with a specific
+// subcarrier-to-frame phase. Rotating the subcarrier lattice by 270° anchors
+// disc frame 0 (meander parity 0, fields I/II) to the subcarrier phase that
+// decoders identify as colour fields 1/2. Validated against the
+// ld-decode/decode-orc field-phase detection: without this anchor the two
+// fields of a frame decode as non-consecutive field IDs. The anchor applies
+// to 625-line PAL only; PAL-M keeps a zero anchor.
+constexpr double kPalSubcarrierAnchorRad = 3.0 * kPi / 2.0;
 
 int BurstStartSamples(Standard standard, double sample_rate_hz);
 int BurstEndSamples(Standard standard, double sample_rate_hz);
@@ -533,31 +546,39 @@ bool PalInvertVAxisForLine(std::size_t frame_index,
   return PalBurstPhaseRadForLine(frame_index, line) < 0.0;
 }
 
-using SectionVitsPlanMap = std::unordered_map<std::string, VitsSynthesisPlan>;
-using SectionVitsLineMap = std::unordered_map<int, const VitsInjection*>;
+using RenderedVitsLineMap =
+    std::unordered_map<int, std::shared_ptr<const VitsRenderedLine>>;
 
-// Builds the project-wide VITS render state: a plan per distinct vits_type and
-// a target-line -> VITS map. VITS are a project-level setting, so the same set
-// is applied to every frame regardless of section.
-bool BuildProjectVitsState(
+// Builds the project-wide VITS render state: every targeted frame line is
+// mapped to its rendered sample buffer. VITS are a project-level setting, so
+// the same set is applied to every frame regardless of section. A rendered
+// line is a pure function of (vits_type, line_samples, standard), so lines
+// sharing both share a single rendering and the whole map is frame-invariant.
+bool BuildRenderedVitsLines(
     const std::vector<VitsInjection>& vits_set, Standard standard,
+    double sample_rate_hz, const std::vector<int>& line_sample_counts,
     const IVitsDefinitionProvider& vits_definition_provider,
-    const IVitsGenerator& vits_generator, SectionVitsLineMap* out_line_map,
-    SectionVitsPlanMap* out_plan_map, std::string* error) {
-  if (out_line_map == nullptr || out_plan_map == nullptr) {
+    const IVitsGenerator& vits_generator, RenderedVitsLineMap* out_lines,
+    std::string* error) {
+  if (out_lines == nullptr) {
     if (error != nullptr) {
       *error = "Internal generation error: null VITS state output.";
     }
     return false;
   }
 
-  out_line_map->clear();
-  out_plan_map->clear();
+  out_lines->clear();
+
+  std::unordered_map<std::string, VitsSynthesisPlan> plans;
+  // Keyed by "<vits_type>@<line_samples>" so a rendering is reused by every
+  // targeted line of the same length.
+  std::unordered_map<std::string, std::shared_ptr<const VitsRenderedLine>>
+      renderings;
 
   for (const VitsInjection& injection : vits_set) {
     VitsSynthesisPlan* cached_plan = nullptr;
-    const auto existing_plan = out_plan_map->find(injection.vits_type);
-    if (existing_plan == out_plan_map->end()) {
+    const auto existing_plan = plans.find(injection.vits_type);
+    if (existing_plan == plans.end()) {
       VitsDefinition definition;
       std::string definition_error;
       if (!vits_definition_provider.TryGetDefinition(
@@ -588,15 +609,40 @@ bool BuildProjectVitsState(
         return false;
       }
 
-      cached_plan = &out_plan_map->emplace(injection.vits_type, std::move(plan))
-                         .first->second;
+      cached_plan =
+          &plans.emplace(injection.vits_type, std::move(plan)).first->second;
     } else {
       cached_plan = &existing_plan->second;
     }
 
-    (void)cached_plan;
     for (int target_line : injection.target_lines) {
-      (*out_line_map)[target_line] = &injection;
+      const auto line_index = static_cast<std::size_t>(target_line - 1);
+      if (target_line < 1 || line_index >= line_sample_counts.size()) {
+        continue;
+      }
+
+      const int line_samples = line_sample_counts[line_index];
+      const std::string rendering_key =
+          injection.vits_type + "@" + std::to_string(line_samples);
+      auto rendering = renderings.find(rendering_key);
+      if (rendering == renderings.end()) {
+        auto rendered_line = std::make_shared<VitsRenderedLine>();
+        std::string render_error;
+        if (!vits_generator.RenderLine(*cached_plan, sample_rate_hz,
+                                       line_samples, rendered_line.get(),
+                                       &render_error)) {
+          if (error != nullptr) {
+            *error = render_error.empty()
+                         ? "Failed to render VITS line injection."
+                         : render_error;
+          }
+          return false;
+        }
+        rendering =
+            renderings.emplace(rendering_key, std::move(rendered_line)).first;
+      }
+
+      (*out_lines)[target_line] = rendering->second;
     }
   }
 
@@ -605,15 +651,193 @@ bool BuildProjectVitsState(
 
 }  // namespace
 
+// Frame-invariant synthesis resources for a single worker thread.
+//
+// Everything here is a pure function of the project's CVBS presets and VITS
+// set: the sampled timing context, the chroma encoder (which owns mutable
+// per-line workspaces and therefore cannot be shared between threads), the
+// rendered VITS lines, and the VBI waveform renderer. A worker builds the set
+// once and reuses it for every frame it synthesises.
+struct GenerationStage::SynthesisResources {
+  // Configuration the resources were built from; used to detect a project
+  // change and rebuild.
+  CvbsPresets presets;
+  std::vector<VitsInjection> vits;
+
+  TimingConstants timing;
+  SignalLevels levels;
+  generation_detail::SampledSynthesisContext synth;
+
+  int active_window_start = 0;
+  int active_window_end = 0;
+  int active_window_samples = 0;
+  SampleFixed blanking_fixed = 0;
+  double burst_amplitude_mv = 0.0;
+
+  bool pal_pilot_burst = false;
+  double pilot_omega = 0.0;
+  int pilot_q_samples = 0;
+  int pilot_r_samples = 0;
+
+  std::unique_ptr<IChromaEncoder> chroma_encoder;
+  RenderedVitsLineMap vits_lines;
+  std::unique_ptr<VbiWaveformRenderer> vbi_renderer;
+};
+
+// Per-worker cache of the frame-invariant synthesis resources.
+//
+// Thread-safety: Acquire() may be called concurrently. Each calling thread
+// receives its own SynthesisResources instance, so only the lookup table is
+// mutex-guarded; the returned resources are never touched by another thread
+// and entries are never erased, so the returned pointer stays valid for the
+// lifetime of the cache.
+class GenerationStage::SynthesisResourceCache {
+ public:
+  // Returns the calling thread's resources, building them on first use and
+  // rebuilding them if the project's synthesis configuration has changed.
+  // Returns nullptr and appends to errors when the VITS set cannot be built.
+  SynthesisResources* Acquire(
+      const Project& project,
+      const IVitsDefinitionProvider& vits_definition_provider,
+      const IVitsGenerator& vits_generator, std::vector<std::string>* errors);
+
+ private:
+  static bool Build(const Project& project,
+                    const IVitsDefinitionProvider& vits_definition_provider,
+                    const IVitsGenerator& vits_generator,
+                    SynthesisResources* out, std::vector<std::string>* errors);
+
+  std::mutex mutex_;
+  std::unordered_map<std::thread::id, std::unique_ptr<SynthesisResources>>
+      per_thread_;
+};
+
+GenerationStage::SynthesisResources*
+GenerationStage::SynthesisResourceCache::Acquire(
+    const Project& project,
+    const IVitsDefinitionProvider& vits_definition_provider,
+    const IVitsGenerator& vits_generator, std::vector<std::string>* errors) {
+  SynthesisResources* resources = nullptr;
+  {
+    const std::lock_guard<std::mutex> lock(mutex_);
+    std::unique_ptr<SynthesisResources>& slot =
+        per_thread_[std::this_thread::get_id()];
+    if (slot == nullptr) {
+      slot = std::make_unique<SynthesisResources>();
+    }
+    resources = slot.get();
+  }
+
+  if (resources->chroma_encoder != nullptr &&
+      resources->presets == project.cvbs_presets &&
+      resources->vits == project.line_injections.vits) {
+    return resources;
+  }
+
+  if (!Build(project, vits_definition_provider, vits_generator, resources,
+             errors)) {
+    return nullptr;
+  }
+  return resources;
+}
+
+bool GenerationStage::SynthesisResourceCache::Build(
+    const Project& project,
+    const IVitsDefinitionProvider& vits_definition_provider,
+    const IVitsGenerator& vits_generator, SynthesisResources* out,
+    std::vector<std::string>* errors) {
+  const Standard standard = project.cvbs_presets.video_standard_preset;
+
+  // Leave the cache invalid until the build completes, so a failed build is
+  // never mistaken for a usable set on the next call.
+  out->chroma_encoder.reset();
+  out->timing = GetTimingConstants(standard);
+  out->levels = GetSignalLevels(project.cvbs_presets);
+  out->synth = BuildSampledSynthesisContext(standard);
+
+  out->active_window_start =
+      std::max(0, std::min(out->synth.active.active_window_start_samples,
+                           out->synth.max_line_samples - 1));
+  out->active_window_end =
+      std::max(out->active_window_start + 1,
+               std::min(out->synth.active.active_window_end_samples,
+                        out->synth.max_line_samples));
+  out->active_window_samples =
+      out->active_window_end - out->active_window_start;
+  out->blanking_fixed = MillivoltsToSampleFixed(out->levels.blanking_mv);
+
+  // SMPTE 170M-2004 Table 1: NTSC burst amplitude = 40 IRE p-p = 20 IRE peak.
+  // ITU-R BT.1700 Part B Table 2 item 5: PAL burst amplitude = 300 mV p-p.
+  // ITU-R BT.470-6 Table 2 item 2.15: M/PAL burst = 3/7 × (white−blanking).
+  //   PAL: 3/7 × 700 mV = 300 mV p-p → 150.0 mV peak.
+  //   M/PAL: 3/7 × 714.3 mV = 306.1 mV p-p → 153.05 mV peak.
+  out->burst_amplitude_mv = 150.0;
+  if (standard == Standard::kNtsc) {
+    out->burst_amplitude_mv = 20.0 * 1000.0 / 140.0;
+  } else if (standard == Standard::kPalM) {
+    out->burst_amplitude_mv = (3.0 / 7.0) * 714.3 / 2.0;
+  }
+
+  out->pal_pilot_burst = project.cvbs_presets.pal_laserdisc_pilot_burst &&
+                         standard == Standard::kPal;
+  out->pilot_omega =
+      out->pal_pilot_burst
+          ? (2.0 * kPi * kPilotBurstFreqHz / out->timing.sample_rate_4fsc_hz)
+          : 0.0;
+  // IEC 60856 §9.1.2 fig 6: q = 13.5 periods for line/field sync pulses,
+  // r = 6 periods for equalizing pulses. Broad field-sync pulses use q here
+  // (not the optional 100-period extension); the rest stays at sync tip.
+  out->pilot_q_samples =
+      out->pal_pilot_burst
+          ? static_cast<int>(std::lround(
+                13.5 * out->timing.sample_rate_4fsc_hz / kPilotBurstFreqHz))
+          : 0;
+  out->pilot_r_samples =
+      out->pal_pilot_burst
+          ? static_cast<int>(std::lround(6.0 * out->timing.sample_rate_4fsc_hz /
+                                         kPilotBurstFreqHz))
+          : 0;
+
+  std::string vits_error;
+  if (!BuildRenderedVitsLines(project.line_injections.vits, standard,
+                              out->timing.sample_rate_4fsc_hz,
+                              out->synth.line_sample_counts,
+                              vits_definition_provider, vits_generator,
+                              &out->vits_lines, &vits_error)) {
+    errors->push_back(vits_error.empty()
+                          ? "Unable to prepare section VITS state."
+                          : vits_error);
+    return false;
+  }
+
+  out->vbi_renderer = std::make_unique<VbiWaveformRenderer>(
+      standard, out->timing.sample_rate_4fsc_hz);
+
+  std::unique_ptr<IChromaEncoder> chroma_encoder =
+      CreateChromaEncoder(standard, out->timing.sample_rate_4fsc_hz);
+  if (chroma_encoder == nullptr) {
+    errors->push_back("Unsupported video standard for chroma encoding.");
+    return false;
+  }
+
+  out->presets = project.cvbs_presets;
+  out->vits = project.line_injections.vits;
+  out->chroma_encoder = std::move(chroma_encoder);
+  return true;
+}
+
 GenerationStage::GenerationStage(
     ILogger* logger, const IVitsDefinitionProvider* vits_definition_provider,
     const IVitsGenerator* vits_generator)
     : logger_(logger),
+      resource_cache_(std::make_unique<SynthesisResourceCache>()),
       vits_definition_provider_(vits_definition_provider != nullptr
                                     ? vits_definition_provider
                                     : &default_vits_definition_provider_),
       vits_generator_(vits_generator != nullptr ? vits_generator
                                                 : &default_vits_generator_) {}
+
+GenerationStage::~GenerationStage() = default;
 
 bool GenerationStage::BuildFrameSchedule(
     const Project& project, std::vector<FrameScheduleItem>* out_schedule,
@@ -778,68 +1002,36 @@ bool GenerationStage::GenerateFrameBatch(
     return true;
   }
 
-  const TimingConstants timing =
-      GetTimingConstants(project.cvbs_presets.video_standard_preset);
-  const SignalLevels levels = GetSignalLevels(project.cvbs_presets);
-  const SampledSynthesisContext synth =
-      BuildSampledSynthesisContext(project.cvbs_presets.video_standard_preset);
-  const int frame_samples = synth.frame_samples;
-  // SMPTE 170M-2004 Table 1: NTSC burst amplitude = 40 IRE p-p = 20 IRE peak.
-  // ITU-R BT.1700 Part B Table 2 item 5: PAL burst amplitude = 300 mV p-p.
-  // ITU-R BT.470-6 Table 2 item 2.15: M/PAL burst = 3/7 × (white−blanking).
-  //   PAL: 3/7 × 700 mV = 300 mV p-p → 150.0 mV peak.
-  //   M/PAL: 3/7 × 714.3 mV = 306.1 mV p-p → 153.05 mV peak.
-  const Standard video_standard = project.cvbs_presets.video_standard_preset;
-  double burst_amplitude_mv = 150.0;
-  if (video_standard == Standard::kNtsc) {
-    burst_amplitude_mv = 20.0 * 1000.0 / 140.0;
-  } else if (video_standard == Standard::kPalM) {
-    burst_amplitude_mv = (3.0 / 7.0) * 714.3 / 2.0;
-  }
-  std::unique_ptr<IChromaEncoder> chroma_encoder = CreateChromaEncoder(
-      project.cvbs_presets.video_standard_preset, timing.sample_rate_4fsc_hz);
-
-  if (chroma_encoder == nullptr) {
-    errors->push_back("Unsupported video standard for chroma encoding.");
+  // Frame-invariant setup (sampled timing context, chroma encoder, rendered
+  // VITS lines, VBI encoders) is built once per worker thread and reused for
+  // every frame that worker synthesises.
+  const SynthesisResources* resources = resource_cache_->Acquire(
+      project, *vits_definition_provider_, *vits_generator_, errors);
+  if (resources == nullptr) {
     return false;
   }
+
+  const TimingConstants& timing = resources->timing;
+  const SignalLevels& levels = resources->levels;
+  const generation_detail::SampledSynthesisContext& synth = resources->synth;
+  const int frame_samples = synth.frame_samples;
+  const Standard video_standard = project.cvbs_presets.video_standard_preset;
+  const double burst_amplitude_mv = resources->burst_amplitude_mv;
+  const IChromaEncoder* chroma_encoder = resources->chroma_encoder.get();
 
   const std::size_t sample_count =
       frame_count * static_cast<std::size_t>(frame_samples);
 
-  const int active_window_start =
-      std::max(0, std::min(synth.active.active_window_start_samples,
-                           synth.max_line_samples - 1));
-  const int active_window_end = std::max(
-      active_window_start + 1,
-      std::min(synth.active.active_window_end_samples, synth.max_line_samples));
-  const int active_window_samples = active_window_end - active_window_start;
+  const int active_window_start = resources->active_window_start;
+  const int active_window_end = resources->active_window_end;
+  const int active_window_samples = resources->active_window_samples;
 
-  const bool pal_pilot_burst =
-      project.cvbs_presets.pal_laserdisc_pilot_burst &&
-      project.cvbs_presets.video_standard_preset == Standard::kPal;
-  const double pilot_omega =
-      pal_pilot_burst
-          ? (2.0 * kPi * kPilotBurstFreqHz / timing.sample_rate_4fsc_hz)
-          : 0.0;
-  const double pilot_cos_delta = pal_pilot_burst ? std::cos(pilot_omega) : 1.0;
-  const double pilot_sin_delta = pal_pilot_burst ? std::sin(pilot_omega) : 0.0;
-  // IEC 60856 §9.1.2 fig 6: q = 13.5 periods for line/field sync pulses,
-  // r = 6 periods for equalizing pulses. Broad field-sync pulses use q here
-  // (not the optional 100-period extension); the rest stays at sync tip.
-  const int pilot_q_samples =
-      pal_pilot_burst
-          ? static_cast<int>(std::lround(13.5 * timing.sample_rate_4fsc_hz /
-                                         kPilotBurstFreqHz))
-          : 0;
-  const int pilot_r_samples =
-      pal_pilot_burst
-          ? static_cast<int>(std::lround(6.0 * timing.sample_rate_4fsc_hz /
-                                         kPilotBurstFreqHz))
-          : 0;
+  const bool pal_pilot_burst = resources->pal_pilot_burst;
+  const double pilot_omega = resources->pilot_omega;
+  const int pilot_q_samples = resources->pilot_q_samples;
+  const int pilot_r_samples = resources->pilot_r_samples;
 
-  const SampleFixed blanking_fixed =
-      MillivoltsToSampleFixed(levels.blanking_mv);
+  const SampleFixed blanking_fixed = resources->blanking_fixed;
 
   out_y_mv->assign(sample_count, blanking_fixed);
   out_c_mv->assign(sample_count, 0);
@@ -937,19 +1129,6 @@ bool GenerationStage::GenerateFrameBatch(
                                        : global_frame_index);
     const int absolute_frame_base = static_cast<int>(
         disc_frame_index * static_cast<std::size_t>(frame_samples));
-    SectionVitsLineMap section_vits_lines;
-    SectionVitsPlanMap section_vits_plans;
-    std::string vits_state_error;
-    if (!BuildProjectVitsState(project.line_injections.vits,
-                               project.cvbs_presets.video_standard_preset,
-                               *vits_definition_provider_, *vits_generator_,
-                               &section_vits_lines, &section_vits_plans,
-                               &vits_state_error)) {
-      errors->push_back(vits_state_error.empty()
-                            ? "Unable to prepare section VITS state."
-                            : vits_state_error);
-      return false;
-    }
 
     for (const LineTimingPrimitive& line : synth.frame_lines) {
       const int line_index = line.line_number_1based - 1;
@@ -1165,28 +1344,10 @@ bool GenerationStage::GenerateFrameBatch(
         }
       }
 
-      const auto vits_line = section_vits_lines.find(line.line_number_1based);
-      if (vits_line != section_vits_lines.end()) {
-        const auto vits_plan =
-            section_vits_plans.find(vits_line->second->vits_type);
-        if (vits_plan == section_vits_plans.end()) {
-          errors->push_back(
-              "Internal generation error: missing VITS plan for targeted line "
-              "injection.");
-          return false;
-        }
-
-        VitsRenderedLine rendered_line;
-        std::string render_error;
-        if (!vits_generator_->RenderLine(
-                vits_plan->second, timing.sample_rate_4fsc_hz, line_samples,
-                &rendered_line, &render_error)) {
-          errors->push_back(render_error.empty()
-                                ? "Failed to render VITS line injection."
-                                : render_error);
-          return false;
-        }
-
+      const auto vits_line =
+          resources->vits_lines.find(line.line_number_1based);
+      if (vits_line != resources->vits_lines.end()) {
+        const VitsRenderedLine& rendered_line = *vits_line->second;
         for (int sample_offset = 0; sample_offset < line_samples;
              ++sample_offset) {
           const std::size_t frame_sample_index =
@@ -1203,10 +1364,9 @@ bool GenerationStage::GenerateFrameBatch(
     }
 
     if (enrichment != nullptr) {
-      InjectResolvedVbiLines(
+      resources->vbi_renderer->Render(
           *enrichment, out_y_mv, local_frame_base, synth.line_sample_offsets,
-          synth.line_sample_counts, project.cvbs_presets.video_standard_preset,
-          timing.sample_rate_4fsc_hz, active_window_end);
+          synth.line_sample_counts, active_window_end);
     }
 
     if (!section->osd.overlays.empty()) {

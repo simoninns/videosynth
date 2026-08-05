@@ -209,6 +209,38 @@ should a later phase change the balance.
 Pure hoisting: every task here produces bit-identical output and is
 verifiable with the Phase 1 hash tool. Findings reference the current code.
 
+*Measured, phase-wide* (16-core machine, Release `-O3`). All 271 `general` and
+`stacking` artefacts reproduce byte for byte, and a PAL project with the six
+project-wide VITS plus one with CAV laserdisc codes are byte-identical between
+`--threads 1` and `--threads 16`.
+
+Heap traffic per PAL frame (valgrind memcheck, 4- and 8-frame runs of a
+250-frame PAL still project with six VITS, difference divided by frames):
+
+| | allocations/frame | bytes allocated/frame |
+| --- | --- | --- |
+| before Phase 2 | 4,918 | 41.5 MB |
+| after Phase 2 | 635 | 19.5 MB |
+
+Wall-clock, however, is **unchanged within run-to-run noise** (≤0.5 % on every
+benchmark project at 1 and auto threads; `perf` cycle counts 32.01 G → 31.89 G
+on the VITS project). The hoisted work was real but small next to the
+per-sample loops: the `perf` profile after Phase 2 is still
+
+| Cost centre | Share |
+| --- | --- |
+| `ApplyFirFilterFixed` | 34.1 % |
+| `GenerateFrameBatch` per-sample loops | 12.6 % |
+| iostream output (`ostream::write` + `xsputn` + sentry + codecvt) | 21.6 % |
+| `__llround` | 7.6 % |
+| `QuadratureChromaEncoder::EncodeLineFromPhaseStart` (incl. inlined modulation) | 7.2 % |
+
+so the throughput wins remain with Phase 3 (output I/O, source delivery) and
+Phase 4 (FIR, per-sample invariants). The residual 635 allocations per frame
+are the one `std::vector<LinePulseSegment>` that `BuildLinePulseSchedule`
+returns per line; that schedule is a pure function of `(standard, line)` and is
+removed by Task 4.3.
+
 ### Task 2.1 — Quantise chroma filter kernels once
 
 `QuantizeKernelToFixed` re-quantises the constant filter taps on **every
@@ -221,6 +253,12 @@ the U and V kernels are designed identically — design once, share.
 - No kernel quantisation inside `EncodeLineFromPhaseStart`.
 - Output hashes unchanged; unit tests pass.
 
+*Measured*: the three encoders now share a `QuadratureChromaEncoder` base that
+designs and quantises one kernel in its constructor (both colour-difference
+axes use an identically designed kernel, so one is designed and shared) and
+stores it as a Q30 member. `EncodeLineFromPhaseStart` performs no kernel work.
+Output hashes unchanged across `general` and `stacking`; unit tests pass.
+
 ### Task 2.2 — Reuse per-line workspace buffers in the chroma encoders
 
 `EncodeLineFromPhaseStart` allocates five `std::vector<int64_t>` per line
@@ -232,6 +270,15 @@ Document the resulting thread-safety guarantee (one encoder per worker).
 - No per-line heap allocation in the encode path (verified by review and a
   heap profile of the benchmark run).
 - Output hashes unchanged.
+
+*Measured*: all five per-line vectors are now mutable members of
+`QuadratureChromaEncoder`, sized on the first line and reused thereafter
+(`resize`/`assign` to the same length does not reallocate). The heap profile
+above confirms it: the remaining 635 allocations per PAL frame are all
+`BuildLinePulseSchedule`, none from the encode path. Because the workspaces
+are mutable, the encoder is not thread-safe — the header states the one
+encoder per worker thread guarantee, and the generation stage's resource cache
+(Task 2.3) is what provides it.
 
 ### Task 2.3 — Hoist per-frame setup out of the frame and batch loops
 
@@ -252,6 +299,32 @@ so all "per batch" setup is per frame:
 - The listed functions run O(1) times per run (or per worker), not per frame.
 - Output hashes unchanged across `projects/general` and `projects/stacking`.
 
+*Measured*: `GenerationStage` gained a `SynthesisResourceCache` — a per-thread
+table of frame-invariant resources (sampled synthesis context, signal levels
+and timing, burst/pilot constants, active window, chroma encoder, rendered
+VITS lines, VBI waveform renderer). A worker builds its set on its first frame
+and reuses it; the set is rebuilt only if the project's `cvbs_presets` or VITS
+list changes, so `GenerateFrameBatch` remains usable standalone with a
+hand-built schedule. Only the lookup table is mutex-guarded (one lock per
+frame, not per sample); the resources themselves are touched by one thread
+alone, which is what lets the chroma encoder keep mutable workspaces.
+
+`BuildProjectVitsState` no longer exists; its successor runs once per worker.
+`FindSectionIndex` in `NoiseInjectionStage` and `DropoutInjectionStage` is now
+O(1) pointer arithmetic into the project's contiguous section vector rather
+than a linear scan per frame. `BiphaseInjectionManager` resolves its 0.160 H /
+0.172 H / 0.215 H / 0.790 H line offsets once per section in
+`InitializeSection` instead of once per frame.
+
+Two listed items were left as they are, with numbers rather than a change:
+`GetTimingConstants` and `GetSignalLevels` are inline functions returning a
+four-`double` aggregate with no allocation, so hoisting them further is
+unmeasurable; and `DeriveNoiseCoefficients` (two `pow`, one `sqrt` per frame)
+is ~100 ns against ~35 ms of per-sample noise work in the same frame. Not
+listed but worth recording for Phase 4: `DropoutInjectionStage::
+ComputeScratchEvents` re-seeds up to 40 `mt19937_64` engines per frame
+(~100 µs, ~0.3 % of a frame) to stay order-independent.
+
 ### Task 2.4 — Cache rendered VITS lines
 
 A rendered VITS line is a pure function of `(vits_type, line_samples,
@@ -264,6 +337,22 @@ sample buffer.
 - Per-frame cost of VITS injection reduces to buffer copies.
 - Output hashes unchanged.
 
+*Measured*: `BuildRenderedVitsLines` renders each configured VITS line once
+per worker into a `target line -> shared_ptr<const VitsRenderedLine>` map held
+by the resource cache; lines sharing a `(vits_type, line_samples)` pair share
+one rendering, and PAL's two long lines (313, 625) key separately by
+construction. The per-frame path is now a map lookup plus an add of the cached
+Y/C buffers — no plan building, no `RenderLine`, no per-sample `std::sin`.
+Output hashes unchanged.
+
+Throughput: none measurable. A 250-frame PAL still project carrying the six
+project-wide VITS of [pal_vits.yaml](../../projects/general/pal_vits.yaml) ran
+at 30.28 f/s (1 thread) / 85.18 f/s (auto) before and 30.27 / 83.47 after,
+i.e. identical to the same project with no VITS at all — the per-frame VITS
+work was already below the noise floor of a 33 ms frame. The gain is in
+allocation traffic and in removing a per-frame dependency on the VITS catalog,
+not in wall-clock.
+
 ### Task 2.5 — Cache frame-invariant biphase artefacts
 
 The white flag waveform and the constant portions of biphase/FM encoding
@@ -274,6 +363,20 @@ and cache the white flag waveform per standard.
 *Acceptance criteria*
 - Encoders constructed once per run; white flag rendered once.
 - Output hashes unchanged; laserdisc stacking projects verified.
+
+*Measured*: a `VbiWaveformRenderer` now owns the biphase encoder, the
+(lazily built, NTSC-only) FM encoder and the shaped white flag pulse, and the
+resource cache holds one per worker. The free `InjectResolvedVbiLines` remains
+as a thin wrapper for `BiphaseInjectionManager::ProcessFrame` and the
+two-pass enrichment test, so the sequential and pooled paths still render
+identical waveforms. Both S-curve inversion searches and the white flag render
+now happen once per worker instead of once per frame.
+
+All 228 `stacking` artefacts — every CAV/CLV, skip and disc-simulation
+project — reproduce byte for byte, and a 250-frame PAL CAV project is
+byte-identical between `--threads 1` and `--threads 16`. Throughput on that
+project: 30.38 f/s (1 thread) / 83.47 f/s (auto) before, 29.92 / 84.43 after —
+unchanged within noise, for the same reason as Task 2.4.
 
 ---
 
@@ -378,11 +481,17 @@ though pulses are pure functions of `(standard, pulse kind)`;
 `floor`-based triangle phase per sample although its waveform is identical
 every frame (17,734,475 = 25 × 709,379). Precompute per-standard pulse
 tables, the burst envelope table, and the per-line pilot burst segments once
-per run, then copy/add. Remove the dead `pilot_cos_delta`/`pilot_sin_delta`
-locals.
+per run, then copy/add.
+
+`BuildLinePulseSchedule` also returns a fresh `std::vector<LinePulseSegment>`
+per line — the 635 allocations per PAL frame that survive Phase 2 — and the
+schedule is a pure function of `(standard, line)`, so the same per-standard
+table removes them. The dead `pilot_cos_delta`/`pilot_sin_delta` locals were
+already removed with the Task 2.3 hoist.
 
 *Acceptance criteria*
 - Sync/burst/pilot inner loops reduce to table reads.
+- No per-line allocation for the pulse schedule.
 - Output hashes unchanged.
 
 ### Task 4.4 — Exact subcarrier phase reduction (output re-baseline)

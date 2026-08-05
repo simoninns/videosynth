@@ -66,12 +66,12 @@ std::string Lowercase(std::string value) {
 void WriteBiphaseWaveform(std::vector<SampleFixed>* out_y_mv, int line_base,
                           int active_end, uint32_t code_value,
                           Standard standard, const SignalLevels& levels,
-                          int start_sample, BiphaseEncoder* encoder) {
+                          int start_sample, const BiphaseEncoder& encoder) {
   const double baseline_mv = BiphaseBaselineMv(standard);
   const double peak_mv = levels.white_mv;
 
   const auto waveform =
-      encoder->Generate24BitCode(code_value, baseline_mv, peak_mv);
+      encoder.Generate24BitCode(code_value, baseline_mv, peak_mv);
   const int waveform_count = static_cast<int>(waveform.size());
 
   const SampleFixed baseline_fixed = MillivoltsToSampleFixed(baseline_mv);
@@ -95,13 +95,13 @@ void WriteBiphaseWaveform(std::vector<SampleFixed>* out_y_mv, int line_base,
 void WriteFmWaveform(std::vector<SampleFixed>* out_y_mv, int line_base,
                      int active_end, const FmData& fm_data,
                      const SignalLevels& levels, int start_sample,
-                     FmEncoder* encoder) {
+                     const FmEncoder& encoder) {
   // 40-bit FM uses 0 IRE baseline regardless of standard (NTSC only).
   const double baseline_mv = kNtscBiphaseBaselineMv;
   const double peak_mv = levels.white_mv;
 
   const auto waveform =
-      encoder->Generate40BitWaveform(fm_data, baseline_mv, peak_mv);
+      encoder.Generate40BitWaveform(fm_data, baseline_mv, peak_mv);
   const int waveform_count = static_cast<int>(waveform.size());
 
   const SampleFixed baseline_fixed = MillivoltsToSampleFixed(baseline_mv);
@@ -118,17 +118,15 @@ void WriteFmWaveform(std::vector<SampleFixed>* out_y_mv, int line_base,
   }
 }
 
-// Writes the white flag pulse into a VBI line (NTSC only).
-// Fills blanking from start_sample to active_end, then overlays a shaped
-// 100 IRE pulse of flag_length_samples with 135 ns rise/fall transitions
-// per IEC 60857 Figure 12.
+// Writes a pre-rendered white flag pulse into a VBI line (NTSC only).
+// Fills blanking from start_sample to active_end, then overlays the shaped
+// 100 IRE pulse (135 ns rise/fall per IEC 60857 Figure 12).
 void WriteWhiteFlagPulse(std::vector<SampleFixed>* out_y_mv, int line_base,
                          int active_end, const SignalLevels& levels,
-                         int start_sample, int flag_length_samples,
-                         int ramp_samples) {
-  const double baseline_mv = levels.blanking_mv;
-  const double peak_mv = levels.white_mv;
-  const SampleFixed baseline_fixed = MillivoltsToSampleFixed(baseline_mv);
+                         int start_sample,
+                         const std::vector<SampleFixed>& flag_pulse) {
+  const SampleFixed baseline_fixed =
+      MillivoltsToSampleFixed(levels.blanking_mv);
 
   // Clear the region from start_sample to active_end with blanking.
   for (int i = start_sample; i < active_end; ++i) {
@@ -136,41 +134,60 @@ void WriteWhiteFlagPulse(std::vector<SampleFixed>* out_y_mv, int line_base,
                 static_cast<std::size_t>(i)] = baseline_fixed;
   }
 
-  // Apply shaped white flag pulse (135 ns rise/fall per IEC 60857 Figure 12).
-  const int flag_end = std::min(start_sample + flag_length_samples, active_end);
+  const int pulse_count = static_cast<int>(flag_pulse.size());
+  const int flag_end = std::min(start_sample + pulse_count, active_end);
   for (int i = start_sample; i < flag_end; ++i) {
-    const int rel = i - start_sample;
-    const double level = ShapedPulseLevel(rel, flag_length_samples,
-                                          ramp_samples, baseline_mv, peak_mv);
     (*out_y_mv)[static_cast<std::size_t>(line_base) +
-                static_cast<std::size_t>(i)] = MillivoltsToSampleFixed(level);
+                static_cast<std::size_t>(i)] =
+        flag_pulse[static_cast<std::size_t>(i - start_sample)];
   }
 }
 
 }  // namespace
 
-void InjectResolvedVbiLines(const FrameEnrichment& enrichment,
-                            std::vector<SampleFixed>* out_y_mv,
-                            int frame_sample_base,
-                            const std::vector<int>& line_sample_offsets,
-                            const std::vector<int>& line_sample_counts,
-                            Standard standard, double sample_rate_hz,
-                            int active_window_end_samples) {
+VbiWaveformRenderer::VbiWaveformRenderer(Standard standard,
+                                         double sample_rate_hz)
+    : standard_(standard),
+      sample_rate_hz_(sample_rate_hz),
+      levels_(GetSignalLevels(standard)),
+      biphase_encoder_(sample_rate_hz) {}
+
+const FmEncoder& VbiWaveformRenderer::GetFmEncoder() const {
+  if (fm_encoder_ == nullptr) {
+    fm_encoder_ = std::make_unique<FmEncoder>(sample_rate_hz_);
+  }
+  return *fm_encoder_;
+}
+
+const std::vector<SampleFixed>& VbiWaveformRenderer::GetWhiteFlagPulse(
+    int flag_length_samples) const {
+  if (white_flag_pulse_length_ == flag_length_samples) {
+    return white_flag_pulse_;
+  }
+
+  const int ramp_samples = GetFmEncoder().ramp_samples();
+  white_flag_pulse_.assign(
+      static_cast<std::size_t>(std::max(0, flag_length_samples)), 0);
+  for (int i = 0; i < flag_length_samples; ++i) {
+    const double level =
+        ShapedPulseLevel(i, flag_length_samples, ramp_samples,
+                         levels_.blanking_mv, levels_.white_mv);
+    white_flag_pulse_[static_cast<std::size_t>(i)] =
+        MillivoltsToSampleFixed(level);
+  }
+  white_flag_pulse_length_ = flag_length_samples;
+  return white_flag_pulse_;
+}
+
+void VbiWaveformRenderer::Render(const FrameEnrichment& enrichment,
+                                 std::vector<SampleFixed>* out_y_mv,
+                                 int frame_sample_base,
+                                 const std::vector<int>& line_sample_offsets,
+                                 const std::vector<int>& line_sample_counts,
+                                 int active_window_end_samples) const {
   if (out_y_mv == nullptr || enrichment.vbi_lines.empty()) {
     return;
   }
-
-  const SignalLevels levels = GetSignalLevels(standard);
-  BiphaseEncoder biphase_encoder(sample_rate_hz);
-  // The FM encoder is only needed for NTSC FM codes and the white flag ramp
-  // width; constructed lazily on first use.
-  std::unique_ptr<FmEncoder> fm_encoder;
-  auto GetFmEncoder = [&]() -> FmEncoder* {
-    if (fm_encoder == nullptr) {
-      fm_encoder = std::make_unique<FmEncoder>(sample_rate_hz);
-    }
-    return fm_encoder.get();
-  };
 
   for (const VbiLineInjection& injection : enrichment.vbi_lines) {
     const auto line_index =
@@ -189,20 +206,36 @@ void InjectResolvedVbiLines(const FrameEnrichment& enrichment,
     switch (injection.kind) {
       case VbiLineInjection::Kind::kBiphase24:
         WriteBiphaseWaveform(out_y_mv, line_base, active_end,
-                             injection.biphase_code, standard, levels,
-                             injection.start_sample, &biphase_encoder);
+                             injection.biphase_code, standard_, levels_,
+                             injection.start_sample, biphase_encoder_);
         break;
       case VbiLineInjection::Kind::kFm40:
         WriteFmWaveform(out_y_mv, line_base, active_end, injection.fm_data,
-                        levels, injection.start_sample, GetFmEncoder());
+                        levels_, injection.start_sample, GetFmEncoder());
         break;
       case VbiLineInjection::Kind::kWhiteFlag:
-        WriteWhiteFlagPulse(
-            out_y_mv, line_base, active_end, levels, injection.start_sample,
-            injection.flag_length_samples, GetFmEncoder()->ramp_samples());
+        WriteWhiteFlagPulse(out_y_mv, line_base, active_end, levels_,
+                            injection.start_sample,
+                            GetWhiteFlagPulse(injection.flag_length_samples));
         break;
     }
   }
+}
+
+void InjectResolvedVbiLines(const FrameEnrichment& enrichment,
+                            std::vector<SampleFixed>* out_y_mv,
+                            int frame_sample_base,
+                            const std::vector<int>& line_sample_offsets,
+                            const std::vector<int>& line_sample_counts,
+                            Standard standard, double sample_rate_hz,
+                            int active_window_end_samples) {
+  if (out_y_mv == nullptr || enrichment.vbi_lines.empty()) {
+    return;
+  }
+
+  const VbiWaveformRenderer renderer(standard, sample_rate_hz);
+  renderer.Render(enrichment, out_y_mv, frame_sample_base, line_sample_offsets,
+                  line_sample_counts, active_window_end_samples);
 }
 
 void BiphaseInjectionManager::Reset() {
@@ -214,6 +247,7 @@ void BiphaseInjectionManager::Reset() {
   placement_engine_.reset();
   biphase_encoder_.reset();
   fm_encoder_.reset();
+  line_offsets_ = {};
   has_laserdisc_ = false;
   project_disc_type_ = DiscType::kUnknown;
   disc_type_ = DiscType::kUnknown;
@@ -290,26 +324,15 @@ bool BiphaseInjectionManager::ResolveFrame(const Section& section,
     return true;
   }
 
-  const TimingConstants timing = GetTimingConstants(standard);
+  // Horizontal offsets are pure functions of the standard's line length and
+  // are resolved once per section in InitializeSection.
+  const int offset_160h_samples = line_offsets_.white_flag_start_samples;
+  const int offset_172h_samples = line_offsets_.offset_172h_samples;
+  const int offset_215h_samples = line_offsets_.fm_start_samples;
+  const int flag_length_samples = line_offsets_.white_flag_length_samples;
 
-  // Per IEC 60857 Figure 12: NTSC white flag starts at 0.160 H.
-  const int offset_160h_samples = static_cast<int>(
-      std::round(k160hFraction * timing.samples_per_line_4fsc));
-
-  // Per IEC 60856 Figure 14 / IEC 60857 Figure 11: programme_status and NTSC
-  // clv_code start at 0.172 H from the start of the line.
-  const int offset_172h_samples = static_cast<int>(
-      std::round(k172hFraction * timing.samples_per_line_4fsc));
-
-  // Per IEC 60857 Figure 13: NTSC 40-bit FM codes start at 0.215 H.
-  const int offset_215h_samples = static_cast<int>(
-      std::round(k215hFraction * timing.samples_per_line_4fsc));
-
-  // Per IEC 60857 Figure 12: NTSC white flag pulse length = 0.790 H.
-  const int flag_length_samples = static_cast<int>(
-      std::round(k790hFraction * timing.samples_per_line_4fsc));
-
-  for (int line_num = 1; line_num <= timing.lines_per_frame; ++line_num) {
+  for (int line_num = 1; line_num <= line_offsets_.lines_per_frame;
+       ++line_num) {
     if (!LinePlacementEngine::IsInBiphaseReservedRange(standard, line_num)) {
       continue;
     }
@@ -452,6 +475,7 @@ bool BiphaseInjectionManager::InitializeSection(
   placement_engine_.reset();
   biphase_encoder_.reset();
   fm_encoder_.reset();
+  line_offsets_ = {};
   has_laserdisc_ = false;
   disc_type_ = DiscType::kUnknown;
   section_type_ = section.section_type;
@@ -495,6 +519,24 @@ bool BiphaseInjectionManager::InitializeSection(
   if (standard == Standard::kNtsc) {
     fm_encoder_ = std::make_unique<FmEncoder>(sample_rate_hz);
   }
+
+  // Horizontal placement is frame-invariant: resolve it once here rather than
+  // recomputing it for every frame of the section.
+  const TimingConstants timing = GetTimingConstants(standard);
+  line_offsets_.lines_per_frame = timing.lines_per_frame;
+  // Per IEC 60857 Figure 12: NTSC white flag starts at 0.160 H and runs for
+  // 0.790 H.
+  line_offsets_.white_flag_start_samples = static_cast<int>(
+      std::round(k160hFraction * timing.samples_per_line_4fsc));
+  line_offsets_.white_flag_length_samples = static_cast<int>(
+      std::round(k790hFraction * timing.samples_per_line_4fsc));
+  // Per IEC 60856 Figure 14 / IEC 60857 Figure 11: programme_status and NTSC
+  // clv_code start at 0.172 H from the start of the line.
+  line_offsets_.offset_172h_samples = static_cast<int>(
+      std::round(k172hFraction * timing.samples_per_line_4fsc));
+  // Per IEC 60857 Figure 13: NTSC 40-bit FM codes start at 0.215 H.
+  line_offsets_.fm_start_samples = static_cast<int>(
+      std::round(k215hFraction * timing.samples_per_line_4fsc));
 
   std::vector<std::string> codes_present;
 

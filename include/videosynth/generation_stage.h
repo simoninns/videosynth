@@ -10,6 +10,8 @@
 
 #pragma once
 
+#include <memory>
+
 #include "videosynth/biphase_injection_manager.h"
 #include "videosynth/interfaces.h"
 #include "videosynth/osd_renderer.h"
@@ -26,13 +28,17 @@ namespace videosynth {
 // GenerateFrameBatch is safe to call concurrently from multiple threads for
 // disjoint frame ranges with distinct output buffers: it reads only the
 // immutable per-item FrameEnrichment payload, the internally-synchronised
-// progressive frame source cache, and const collaborators.
+// progressive frame source cache and synthesis resource cache, and const
+// collaborators. The resource cache hands each worker its own set of
+// frame-invariant resources, so no synthesis state is shared between threads.
 class GenerationStage final : public IGenerationStage {
  public:
   explicit GenerationStage(
       ILogger* logger = nullptr,
       const IVitsDefinitionProvider* vits_definition_provider = nullptr,
       const IVitsGenerator* vits_generator = nullptr);
+
+  ~GenerationStage() override;
 
   // Builds a schedule mapping project sections to output frames, then runs
   // the sequential enrichment pass: every FrameScheduleItem receives a
@@ -91,7 +97,15 @@ class GenerationStage final : public IGenerationStage {
                 std::vector<std::string>* errors) override;
 
  private:
+  // Frame-invariant synthesis resources (sampled timing context, chroma
+  // encoder, rendered VITS lines, VBI waveform renderer) and the per-worker
+  // cache that owns them. Both are defined in generation_stage.cpp; a worker
+  // builds its set once and reuses it for every frame it synthesises.
+  struct SynthesisResources;
+  class SynthesisResourceCache;
+
   ILogger* logger_;
+  std::unique_ptr<SynthesisResourceCache> resource_cache_;
   ProgressiveFrameSource progressive_source_;
   VitsDefinitionProvider default_vits_definition_provider_;
   VitsGenerator default_vits_generator_;

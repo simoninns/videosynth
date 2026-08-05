@@ -60,6 +60,52 @@ void InjectResolvedVbiLines(const FrameEnrichment& enrichment,
                             Standard standard, double sample_rate_hz,
                             int active_window_end_samples);
 
+// Writes resolved VBI waveforms into the luma buffer, reusing the
+// frame-invariant encoder state across frames.
+//
+// The biphase and FM encoders and the white flag pulse shape are pure
+// functions of (standard, sample rate): building them costs two S-curve
+// inversion searches plus a shaped-pulse render, none of which varies per
+// frame. A renderer therefore builds them once and reuses them for every frame
+// it writes, producing waveforms identical to the free InjectResolvedVbiLines
+// function above.
+//
+// Thread-safety: NOT thread-safe — the FM encoder and white flag waveform are
+// filled in on first use. Construct one renderer per worker thread.
+class VbiWaveformRenderer {
+ public:
+  // Args:
+  //   standard:       PAL, NTSC or PAL-M (selects signal levels and timing).
+  //   sample_rate_hz: 4fsc sample rate in Hz.
+  VbiWaveformRenderer(Standard standard, double sample_rate_hz);
+
+  // Renders every entry of enrichment.vbi_lines. Arguments carry the same
+  // meaning as the free InjectResolvedVbiLines function above.
+  void Render(const FrameEnrichment& enrichment,
+              std::vector<SampleFixed>* out_y_mv, int frame_sample_base,
+              const std::vector<int>& line_sample_offsets,
+              const std::vector<int>& line_sample_counts,
+              int active_window_end_samples) const;
+
+ private:
+  // Returns the FM encoder, constructing it on first use. The encoder is only
+  // needed for NTSC FM codes and for the white flag ramp width.
+  const FmEncoder& GetFmEncoder() const;
+
+  // Returns the shaped white flag pulse for flag_length_samples, rendering it
+  // on first use (and again only if a caller asks for a different length).
+  const std::vector<SampleFixed>& GetWhiteFlagPulse(
+      int flag_length_samples) const;
+
+  Standard standard_;
+  double sample_rate_hz_;
+  SignalLevels levels_;
+  BiphaseEncoder biphase_encoder_;
+  mutable std::unique_ptr<FmEncoder> fm_encoder_;
+  mutable std::vector<SampleFixed> white_flag_pulse_;
+  mutable int white_flag_pulse_length_ = -1;
+};
+
 // Orchestrates biphase and 40-bit FM VBI injection for LaserDisc authoring.
 //
 // The manager maintains stateful code generators across frames and sections.
@@ -216,6 +262,17 @@ class BiphaseInjectionManager {
   std::unique_ptr<LinePlacementEngine> placement_engine_;
   std::unique_ptr<BiphaseEncoder> biphase_encoder_;
   std::unique_ptr<FmEncoder> fm_encoder_;
+
+  // Frame-invariant horizontal placement derived from the standard's line
+  // length; resolved once per section in InitializeSection.
+  struct LineOffsets {
+    int lines_per_frame = 0;
+    int white_flag_start_samples = 0;
+    int white_flag_length_samples = 0;
+    int offset_172h_samples = 0;
+    int fm_start_samples = 0;
+  };
+  LineOffsets line_offsets_;
 
   // Project-wide disc format, set once per generation pass via
   // SetProjectDiscType. disc_type_ mirrors it for the active section.

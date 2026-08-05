@@ -64,15 +64,20 @@ NoiseCoefficients DeriveNoiseCoefficients(const NoiseParameters& noise,
   return NoiseCoefficients{sigma_f_mv, k};
 }
 
-// Returns the section index for the given section pointer, or 0 if not found.
+// Returns the section index for the given section pointer, or 0 if the pointer
+// does not address an element of project.sections.
+//
+// Schedule items point into the project's contiguous section vector, so the
+// index is recoverable by pointer arithmetic in O(1) — a linear scan here runs
+// once per frame on every noise-enabled project.
 std::size_t FindSectionIndex(const Project& project,
                              const Section* target_section) {
-  for (std::size_t idx = 0; idx < project.sections.size(); ++idx) {
-    if (&project.sections[idx] == target_section) {
-      return idx;
-    }
+  const Section* first = project.sections.data();
+  if (first == nullptr || target_section < first ||
+      target_section >= (first + project.sections.size())) {
+    return 0;
   }
-  return 0;
+  return static_cast<std::size_t>(target_section - first);
 }
 
 }  // namespace

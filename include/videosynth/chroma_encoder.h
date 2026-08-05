@@ -10,6 +10,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include <memory>
 #include <vector>
 
@@ -36,23 +37,27 @@ class IChromaEncoder {
       std::vector<SampleFixed>* out_chroma_mv) const = 0;
 };
 
-// Thread-safety: PalChromaEncoder is NOT thread-safe due to mutable
-// workspace buffers (filtered_u_workspace_, filtered_v_workspace_).
-// Callers must serialize access or create one encoder per thread.
-class PalChromaEncoder final : public IChromaEncoder {
+// Shared implementation of the quadrature-modulated chroma encoders.
+//
+// PAL, NTSC and PAL-M differ only in the low-pass cutoff, the tap count and
+// the per-axis millivolt scales; the filtering and modulation arithmetic is
+// identical. The FIR taps are designed and quantised once in the constructor
+// (both colour-difference axes share one kernel because they are designed
+// identically), and every per-line buffer is a reusable member so the encode
+// path performs no heap allocation in steady state.
+//
+// Complexity: EncodeLineFromPhaseStart is O(samples × taps).
+//
+// Thread-safety: NOT thread-safe — the per-line workspaces are mutable
+// members. Serialise access or construct one encoder per worker thread.
+class QuadratureChromaEncoder : public IChromaEncoder {
  public:
-  // Constructs a PAL chroma encoder with the given sample rate.
-  //
-  // Args:
-  //   sample_rate_hz: The output sample rate, used to compute filter tap
-  //   counts.
-  explicit PalChromaEncoder(double sample_rate_hz);
-
-  // Encodes a line of source pixels into chroma samples with color subcarrier.
+  // Encodes a line of source pixels into chroma samples with colour
+  // subcarrier.
   //
   // Args:
   //   source_samples: Input pixels in YCbCr 4:4:4 format.
-  //   carrier_phase_start_rad: Phase of the color subcarrier at the start
+  //   carrier_phase_start_rad: Phase of the colour subcarrier at the start
   //     of the line in radians.
   //   out_chroma_mv: Output vector for chroma samples (C channel).
   void EncodeLineFromPhaseStart(
@@ -60,66 +65,66 @@ class PalChromaEncoder final : public IChromaEncoder {
       double carrier_phase_start_rad,
       std::vector<SampleFixed>* out_chroma_mv) const override;
 
+ protected:
+  // Args:
+  //   sample_rate_hz: The output sample rate, used to design the filter.
+  //   cutoff_hz:      Colour-difference low-pass cutoff.
+  //   taps:           Odd FIR tap count.
+  //   sin_scale_mv:   Peak millivolts per unit of the sin-axis component.
+  //   cos_scale_mv:   Peak millivolts per unit of the cos-axis component.
+  QuadratureChromaEncoder(double sample_rate_hz, double cutoff_hz, int taps,
+                          double sin_scale_mv, double cos_scale_mv);
+
  private:
-  std::vector<double> u_filter_taps_;
-  std::vector<double> v_filter_taps_;
-  mutable std::vector<double> filtered_u_workspace_;
-  mutable std::vector<double> filtered_v_workspace_;
+  // Q30 filter taps, quantised once at construction and shared by both axes.
+  std::vector<std::int64_t> filter_taps_fixed_;
+  double sin_scale_mv_;
+  double cos_scale_mv_;
+
+  // Per-line scratch buffers, reused across calls (see thread-safety note).
+  mutable std::vector<std::int64_t> sin_axis_fixed_;
+  mutable std::vector<std::int64_t> cos_axis_fixed_;
+  mutable std::vector<std::int64_t> filtered_sin_fixed_;
+  mutable std::vector<std::int64_t> filtered_cos_fixed_;
+  mutable std::vector<std::int64_t> fir_pad_fixed_;
+  mutable std::vector<double> filtered_sin_workspace_;
+  mutable std::vector<double> filtered_cos_workspace_;
 };
 
-// Thread-safety: NtscChromaEncoder is NOT thread-safe due to mutable
-// workspace buffers (filtered_cb_workspace_, filtered_cr_workspace_).
-// Callers must serialize access or create one encoder per thread.
-class NtscChromaEncoder final : public IChromaEncoder {
+// 625-line PAL chroma encoder.
+//
+// ITU-R BT.1700 Annex 1 Part B Table 1 item 10d: U is modulated onto the sin
+// axis and V onto the cos axis, scaled to the 700 mV PAL white level.
+//
+// Thread-safety: NOT thread-safe; see QuadratureChromaEncoder.
+class PalChromaEncoder final : public QuadratureChromaEncoder {
+ public:
+  // Constructs a PAL chroma encoder with the given sample rate.
+  explicit PalChromaEncoder(double sample_rate_hz);
+};
+
+// 525-line NTSC chroma encoder.
+//
+// SMPTE 170M-2004 §A.5 eq (10): b-y is modulated onto the sin axis and r-y
+// onto the cos axis, scaled per §A.3 with the 0.925 reduction factor.
+//
+// Thread-safety: NOT thread-safe; see QuadratureChromaEncoder.
+class NtscChromaEncoder final : public QuadratureChromaEncoder {
  public:
   // Constructs an NTSC chroma encoder with the given sample rate.
-  //
-  // Args:
-  //   sample_rate_hz: The output sample rate, used to compute filter tap
-  //   counts.
   explicit NtscChromaEncoder(double sample_rate_hz);
-
-  // Encodes a line of source pixels into chroma samples with color subcarrier.
-  //
-  // Args:
-  //   source_samples: Input pixels in YCbCr 4:4:4 format.
-  //   carrier_phase_start_rad: Phase of the color subcarrier at the start
-  //     of the line in radians.
-  //   out_chroma_mv: Output vector for chroma samples (C channel).
-  void EncodeLineFromPhaseStart(
-      const std::vector<YCbCr444Pixel>& source_samples,
-      double carrier_phase_start_rad,
-      std::vector<SampleFixed>* out_chroma_mv) const override;
-
- private:
-  std::vector<double> cb_filter_taps_;
-  std::vector<double> cr_filter_taps_;
-  mutable std::vector<double> filtered_cb_workspace_;
-  mutable std::vector<double> filtered_cr_workspace_;
 };
 
 // PAL-M chroma encoder: PAL UV quadrature encoding with System M signal levels.
 //
-// ITU-R BT.470-6 Table 2 (M/PAL): PAL-M uses the same PAL encoding algorithm
-// (U on sin, V on cos, phase-alternating V) as 625-line PAL, but with System M
-// white level (714.3 mV) instead of 625-line PAL white level (700 mV).
+// ITU-R BT.470-6 Table 2 (M/PAL): PAL-M uses the same PAL colour-difference
+// equations (U on sin, V on cos, phase-alternating V) as 625-line PAL, but with
+// System M white level (714.3 mV) instead of 625-line PAL white level (700 mV).
 //
-// Thread-safety: NOT thread-safe due to mutable workspace buffers.
-// Callers must serialize access or create one encoder per thread.
-class PalMChromaEncoder final : public IChromaEncoder {
+// Thread-safety: NOT thread-safe; see QuadratureChromaEncoder.
+class PalMChromaEncoder final : public QuadratureChromaEncoder {
  public:
   explicit PalMChromaEncoder(double sample_rate_hz);
-
-  void EncodeLineFromPhaseStart(
-      const std::vector<YCbCr444Pixel>& source_samples,
-      double carrier_phase_start_rad,
-      std::vector<SampleFixed>* out_chroma_mv) const override;
-
- private:
-  std::vector<double> u_filter_taps_;
-  std::vector<double> v_filter_taps_;
-  mutable std::vector<double> filtered_u_workspace_;
-  mutable std::vector<double> filtered_v_workspace_;
 };
 
 // Thread-safety: CreateChromaEncoder returns a new encoder instance. The

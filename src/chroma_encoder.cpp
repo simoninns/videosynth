@@ -106,11 +106,6 @@ std::vector<std::int64_t> QuantizeKernelToFixed(
 
 void ExtractCbAxisFixed(const std::vector<YCbCr444Pixel>& source_samples,
                         std::vector<std::int64_t>* axis_fixed) {
-  if (axis_fixed == nullptr) {
-    throw std::invalid_argument(
-        "Cb axis fixed output pointer must not be null");
-  }
-
   axis_fixed->resize(source_samples.size());
   for (std::size_t index = 0; index < source_samples.size(); ++index) {
     const int cb = ClampCode(source_samples[index].cb, 64, 960);
@@ -121,11 +116,6 @@ void ExtractCbAxisFixed(const std::vector<YCbCr444Pixel>& source_samples,
 
 void ExtractCrAxisFixed(const std::vector<YCbCr444Pixel>& source_samples,
                         std::vector<std::int64_t>* axis_fixed) {
-  if (axis_fixed == nullptr) {
-    throw std::invalid_argument(
-        "Cr axis fixed output pointer must not be null");
-  }
-
   axis_fixed->resize(source_samples.size());
   for (std::size_t index = 0; index < source_samples.size(); ++index) {
     const int cr = ClampCode(source_samples[index].cr, 64, 960);
@@ -138,11 +128,6 @@ void ApplyFirFilterFixed(const std::vector<std::int64_t>& input,
                          const std::vector<std::int64_t>& kernel,
                          std::vector<std::int64_t>* output,
                          std::vector<std::int64_t>* padded_workspace) {
-  if (output == nullptr || padded_workspace == nullptr) {
-    throw std::invalid_argument(
-        "Fixed FIR output/workspace pointer must not be null");
-  }
-
   if (input.empty()) {
     output->clear();
     padded_workspace->clear();
@@ -200,13 +185,18 @@ void ModulateQuadratureFromPhaseStart(const std::vector<double>& axis_sin,
 
 }  // namespace
 
-PalChromaEncoder::PalChromaEncoder(double sample_rate_hz)
-    : u_filter_taps_(
-          DesignLowPassKernel(kPalUvCutoffHz, sample_rate_hz, kPalFilterTaps)),
-      v_filter_taps_(DesignLowPassKernel(kPalUvCutoffHz, sample_rate_hz,
-                                         kPalFilterTaps)) {}
+QuadratureChromaEncoder::QuadratureChromaEncoder(double sample_rate_hz,
+                                                 double cutoff_hz, int taps,
+                                                 double sin_scale_mv,
+                                                 double cos_scale_mv)
+    // Both colour-difference axes are filtered by an identically designed
+    // low-pass kernel, so it is designed and quantised once and shared.
+    : filter_taps_fixed_(QuantizeKernelToFixed(
+          DesignLowPassKernel(cutoff_hz, sample_rate_hz, taps))),
+      sin_scale_mv_(sin_scale_mv),
+      cos_scale_mv_(cos_scale_mv) {}
 
-void PalChromaEncoder::EncodeLineFromPhaseStart(
+void QuadratureChromaEncoder::EncodeLineFromPhaseStart(
     const std::vector<YCbCr444Pixel>& source_samples,
     double carrier_phase_start_rad,
     std::vector<SampleFixed>* out_chroma_mv) const {
@@ -214,130 +204,43 @@ void PalChromaEncoder::EncodeLineFromPhaseStart(
     throw std::invalid_argument("Output chroma line pointer must not be null");
   }
 
-  std::vector<std::int64_t> cb_axis_fixed;
-  std::vector<std::int64_t> cr_axis_fixed;
-  std::vector<std::int64_t> filtered_u_fixed;
-  std::vector<std::int64_t> filtered_v_fixed;
-  std::vector<std::int64_t> fir_pad_fixed;
-  const std::vector<std::int64_t> u_taps_fixed =
-      QuantizeKernelToFixed(u_filter_taps_);
-  const std::vector<std::int64_t> v_taps_fixed =
-      QuantizeKernelToFixed(v_filter_taps_);
+  ExtractCbAxisFixed(source_samples, &sin_axis_fixed_);
+  ExtractCrAxisFixed(source_samples, &cos_axis_fixed_);
+  ApplyFirFilterFixed(sin_axis_fixed_, filter_taps_fixed_, &filtered_sin_fixed_,
+                      &fir_pad_fixed_);
+  ApplyFirFilterFixed(cos_axis_fixed_, filter_taps_fixed_, &filtered_cos_fixed_,
+                      &fir_pad_fixed_);
 
-  ExtractCbAxisFixed(source_samples, &cb_axis_fixed);
-  ExtractCrAxisFixed(source_samples, &cr_axis_fixed);
-  ApplyFirFilterFixed(cb_axis_fixed, u_taps_fixed, &filtered_u_fixed,
-                      &fir_pad_fixed);
-  ApplyFirFilterFixed(cr_axis_fixed, v_taps_fixed, &filtered_v_fixed,
-                      &fir_pad_fixed);
-
-  filtered_u_workspace_.resize(filtered_u_fixed.size());
-  filtered_v_workspace_.resize(filtered_v_fixed.size());
-  for (std::size_t i = 0; i < filtered_u_fixed.size(); ++i) {
-    filtered_u_workspace_[i] = static_cast<double>(filtered_u_fixed[i]) /
-                               static_cast<double>(kChromaAxisScale);
-    filtered_v_workspace_[i] = static_cast<double>(filtered_v_fixed[i]) /
-                               static_cast<double>(kChromaAxisScale);
+  filtered_sin_workspace_.resize(filtered_sin_fixed_.size());
+  filtered_cos_workspace_.resize(filtered_cos_fixed_.size());
+  for (std::size_t i = 0; i < filtered_sin_fixed_.size(); ++i) {
+    filtered_sin_workspace_[i] = static_cast<double>(filtered_sin_fixed_[i]) /
+                                 static_cast<double>(kChromaAxisScale);
+    filtered_cos_workspace_[i] = static_cast<double>(filtered_cos_fixed_[i]) /
+                                 static_cast<double>(kChromaAxisScale);
   }
 
-  // ITU-R BT.1700 Part B Table 1 item 10d: PAL U on sin, V on cos.
-  ModulateQuadratureFromPhaseStart(filtered_u_workspace_, filtered_v_workspace_,
-                                   kPalUScaleMv, kPalVScaleMv,
-                                   carrier_phase_start_rad, out_chroma_mv);
-}
-
-NtscChromaEncoder::NtscChromaEncoder(double sample_rate_hz)
-    : cb_filter_taps_(DesignLowPassKernel(kNtscCbCrCutoffHz, sample_rate_hz,
-                                          kNtscFilterTaps)),
-      cr_filter_taps_(DesignLowPassKernel(kNtscCbCrCutoffHz, sample_rate_hz,
-                                          kNtscFilterTaps)) {}
-
-void NtscChromaEncoder::EncodeLineFromPhaseStart(
-    const std::vector<YCbCr444Pixel>& source_samples,
-    double carrier_phase_start_rad,
-    std::vector<SampleFixed>* out_chroma_mv) const {
-  if (out_chroma_mv == nullptr) {
-    throw std::invalid_argument("Output chroma line pointer must not be null");
-  }
-
-  std::vector<std::int64_t> cb_axis_fixed;
-  std::vector<std::int64_t> cr_axis_fixed;
-  std::vector<std::int64_t> filtered_cb_fixed;
-  std::vector<std::int64_t> filtered_cr_fixed;
-  std::vector<std::int64_t> fir_pad_fixed;
-  const std::vector<std::int64_t> cb_taps_fixed =
-      QuantizeKernelToFixed(cb_filter_taps_);
-  const std::vector<std::int64_t> cr_taps_fixed =
-      QuantizeKernelToFixed(cr_filter_taps_);
-
-  ExtractCbAxisFixed(source_samples, &cb_axis_fixed);
-  ExtractCrAxisFixed(source_samples, &cr_axis_fixed);
-  ApplyFirFilterFixed(cb_axis_fixed, cb_taps_fixed, &filtered_cb_fixed,
-                      &fir_pad_fixed);
-  ApplyFirFilterFixed(cr_axis_fixed, cr_taps_fixed, &filtered_cr_fixed,
-                      &fir_pad_fixed);
-
-  filtered_cb_workspace_.resize(filtered_cb_fixed.size());
-  filtered_cr_workspace_.resize(filtered_cr_fixed.size());
-  for (std::size_t i = 0; i < filtered_cb_fixed.size(); ++i) {
-    filtered_cb_workspace_[i] = static_cast<double>(filtered_cb_fixed[i]) /
-                                static_cast<double>(kChromaAxisScale);
-    filtered_cr_workspace_[i] = static_cast<double>(filtered_cr_fixed[i]) /
-                                static_cast<double>(kChromaAxisScale);
-  }
-
-  // SMPTE 170M-2004 §A.5 eq (10): NTSC b-y on sin axis, r-y on cos axis.
   ModulateQuadratureFromPhaseStart(
-      filtered_cb_workspace_, filtered_cr_workspace_, kNtscCbScaleMv,
-      kNtscCrScaleMv, carrier_phase_start_rad, out_chroma_mv);
+      filtered_sin_workspace_, filtered_cos_workspace_, sin_scale_mv_,
+      cos_scale_mv_, carrier_phase_start_rad, out_chroma_mv);
 }
 
+// ITU-R BT.1700 Part B Table 1 item 10d: PAL U on sin, V on cos.
+PalChromaEncoder::PalChromaEncoder(double sample_rate_hz)
+    : QuadratureChromaEncoder(sample_rate_hz, kPalUvCutoffHz, kPalFilterTaps,
+                              kPalUScaleMv, kPalVScaleMv) {}
+
+// SMPTE 170M-2004 §A.5 eq (10): NTSC b-y on sin axis, r-y on cos axis.
+NtscChromaEncoder::NtscChromaEncoder(double sample_rate_hz)
+    : QuadratureChromaEncoder(sample_rate_hz, kNtscCbCrCutoffHz,
+                              kNtscFilterTaps, kNtscCbScaleMv, kNtscCrScaleMv) {
+}
+
+// ITU-R BT.470-6 Table 2 (M/PAL): same as 625-line PAL — U on sin, V on cos —
+// but scaled to System M white level (714.3 mV) per kPalMUScaleMv.
 PalMChromaEncoder::PalMChromaEncoder(double sample_rate_hz)
-    : u_filter_taps_(
-          DesignLowPassKernel(kPalUvCutoffHz, sample_rate_hz, kPalFilterTaps)),
-      v_filter_taps_(DesignLowPassKernel(kPalUvCutoffHz, sample_rate_hz,
-                                         kPalFilterTaps)) {}
-
-void PalMChromaEncoder::EncodeLineFromPhaseStart(
-    const std::vector<YCbCr444Pixel>& source_samples,
-    double carrier_phase_start_rad,
-    std::vector<SampleFixed>* out_chroma_mv) const {
-  if (out_chroma_mv == nullptr) {
-    throw std::invalid_argument("Output chroma line pointer must not be null");
-  }
-
-  std::vector<std::int64_t> cb_axis_fixed;
-  std::vector<std::int64_t> cr_axis_fixed;
-  std::vector<std::int64_t> filtered_u_fixed;
-  std::vector<std::int64_t> filtered_v_fixed;
-  std::vector<std::int64_t> fir_pad_fixed;
-  const std::vector<std::int64_t> u_taps_fixed =
-      QuantizeKernelToFixed(u_filter_taps_);
-  const std::vector<std::int64_t> v_taps_fixed =
-      QuantizeKernelToFixed(v_filter_taps_);
-
-  ExtractCbAxisFixed(source_samples, &cb_axis_fixed);
-  ExtractCrAxisFixed(source_samples, &cr_axis_fixed);
-  ApplyFirFilterFixed(cb_axis_fixed, u_taps_fixed, &filtered_u_fixed,
-                      &fir_pad_fixed);
-  ApplyFirFilterFixed(cr_axis_fixed, v_taps_fixed, &filtered_v_fixed,
-                      &fir_pad_fixed);
-
-  filtered_u_workspace_.resize(filtered_u_fixed.size());
-  filtered_v_workspace_.resize(filtered_v_fixed.size());
-  for (std::size_t i = 0; i < filtered_u_fixed.size(); ++i) {
-    filtered_u_workspace_[i] = static_cast<double>(filtered_u_fixed[i]) /
-                               static_cast<double>(kChromaAxisScale);
-    filtered_v_workspace_[i] = static_cast<double>(filtered_v_fixed[i]) /
-                               static_cast<double>(kChromaAxisScale);
-  }
-
-  // ITU-R BT.470-6 Table 2 (M/PAL): same as 625-line PAL — U on sin, V on
-  // cos — but scaled to System M white level (714.3 mV) per kPalMUScaleMv.
-  ModulateQuadratureFromPhaseStart(filtered_u_workspace_, filtered_v_workspace_,
-                                   kPalMUScaleMv, kPalMVScaleMv,
-                                   carrier_phase_start_rad, out_chroma_mv);
-}
+    : QuadratureChromaEncoder(sample_rate_hz, kPalUvCutoffHz, kPalFilterTaps,
+                              kPalMUScaleMv, kPalMVScaleMv) {}
 
 std::unique_ptr<IChromaEncoder> CreateChromaEncoder(Standard standard,
                                                     double sample_rate_hz) {

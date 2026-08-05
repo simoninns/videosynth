@@ -194,15 +194,18 @@ DropoutInjectionStage::~DropoutInjectionStage() {
   }
 }
 
+// Schedule items point into the project's contiguous section vector, so the
+// index is recoverable by pointer arithmetic in O(1) — a linear scan here runs
+// once per frame on every dropout-enabled project.
 // static
 std::size_t DropoutInjectionStage::FindSectionIndex(const Project& project,
                                                     const Section* section) {
-  for (std::size_t i = 0; i < project.sections.size(); ++i) {
-    if (&project.sections[i] == section) {
-      return i;
-    }
+  const Section* first = project.sections.data();
+  if (first == nullptr || section < first ||
+      section >= (first + project.sections.size())) {
+    return 0;
   }
-  return 0;
+  return static_cast<std::size_t>(section - first);
 }
 
 // static
