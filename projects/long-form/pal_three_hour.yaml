@@ -1,0 +1,309 @@
+# PAL three-hour long-form example
+#
+# A full-length capture-sized project for exercising producers and consumers
+# against realistic file sizes rather than short synthetic samples, as
+# recommended by the CVBS file format specification "Recommended Testing
+# Limits" section (docs/cvbs-file-format-specification/docs/index.md).
+#
+#   Frames    : 270,000 (10,800 s x 25 fps = exactly 3 hours)
+#   Composite : ~383 GB (709,379 samples/frame, 16-bit words)
+#   Audio     : ~3.1 GB (one analogue stereo pair, 48 kHz / 24-bit)
+#
+# This sits between the "VHS SP (E-180)" and "LaserDisc CLV, one side" rows of
+# the specification's expected-size table, and comfortably exceeds any 32-bit
+# file offset limit.
+#
+# Content: every bundled 720x576 asset except 100_BARS (100% colour bars are
+# deliberately excluded). The two moving MKV clips are replayed with
+# duration_repeat and are placed at the start and the middle so motion content
+# appears in both halves of the file. Each still runs 10,000 frames (6 min
+# 40 s); the final section carries the remainder so the total lands exactly on
+# three hours.
+#
+# Project-wide VITS are inserted on every frame, and each section carries an
+# analogue stereo pair: the left channel steps up 100 Hz per section so a
+# seek anywhere in the file can be located by ear, the right channel holds a
+# constant 1 kHz reference.
+#
+# This project writes hundreds of gigabytes and is intentionally excluded from
+# scripts/run-projects.sh; run it by hand with --output-root pointing at
+# storage that can hold it.
+
+project:
+  name: PalThreeHour
+  version: "1.0"
+  description: PAL three-hour long-form example — all 720x576 assets, VITS, analogue stereo audio
+
+cvbs_presets:
+  video_standard_preset: PAL
+  sample_encoding_preset: CVBS_U10_4FSC
+  signal_state_preset: STANDARD_TBC_LOCKED
+
+output:
+  video_path: "{output}/videosynth_pal_three_hour.cvbs"
+
+line_injections:
+  vits:
+    - vits_type: vits17
+      target_lines: [17]
+    - vits_type: itu-multiburst
+      target_lines: [18]
+    - vits_type: uk-national
+      target_lines: [19]
+    - vits_type: vits20
+      target_lines: [20]
+    - vits_type: itu-composite
+      target_lines: [330]
+    - vits_type: itu-combination
+      target_lines: [331]
+
+sections:
+
+  # ---------------------------------------------------------------------------
+  # Opening motion content: 127-frame clip replayed 400 times = 50,800 frames.
+  # ---------------------------------------------------------------------------
+  - name: PalMovingZone
+    type: progressive
+    source: "{bundled}/mkv/720x576/MOVING_ZONE_2H.mkv"
+    duration_frames: all
+    duration_repeat: 400
+    audio:
+      channel_pairs:
+        - pair: 0
+          description: Analogue stereo
+          left:  { waveform: sine, frequency: 400.0, amplitude: 0.5 }
+          right: { waveform: sine, frequency: 1000.0, amplitude: 0.5 }
+
+  # ---------------------------------------------------------------------------
+  # First still block: 9 sections x 10,000 frames = 90,000 frames.
+  # ---------------------------------------------------------------------------
+  - name: Pal75Bars
+    type: progressive
+    source: "{bundled}/exr/720x576/75_BARS.exr"
+    duration_frames: 10000
+    audio:
+      channel_pairs:
+        - pair: 0
+          description: Analogue stereo
+          left:  { waveform: sine, frequency: 500.0, amplitude: 0.5 }
+          right: { waveform: sine, frequency: 1000.0, amplitude: 0.5 }
+
+  - name: Pal75BarsRed
+    type: progressive
+    source: "{bundled}/exr/720x576/75_BARS_RED.exr"
+    duration_frames: 10000
+    audio:
+      channel_pairs:
+        - pair: 0
+          description: Analogue stereo
+          left:  { waveform: sine, frequency: 600.0, amplitude: 0.5 }
+          right: { waveform: sine, frequency: 1000.0, amplitude: 0.5 }
+
+  - name: PalChromaRamp
+    type: progressive
+    source: "{bundled}/exr/720x576/CHROMA_RAMP.exr"
+    duration_frames: 10000
+    audio:
+      channel_pairs:
+        - pair: 0
+          description: Analogue stereo
+          left:  { waveform: sine, frequency: 700.0, amplitude: 0.5 }
+          right: { waveform: sine, frequency: 1000.0, amplitude: 0.5 }
+
+  - name: PalFullRamp
+    type: progressive
+    source: "{bundled}/exr/720x576/FULL_RAMP.exr"
+    duration_frames: 10000
+    audio:
+      channel_pairs:
+        - pair: 0
+          description: Analogue stereo
+          left:  { waveform: sine, frequency: 800.0, amplitude: 0.5 }
+          right: { waveform: sine, frequency: 1000.0, amplitude: 0.5 }
+
+  - name: PalGrey10HStep
+    type: progressive
+    source: "{bundled}/exr/720x576/GREY_10H_STEP.exr"
+    duration_frames: 10000
+    audio:
+      channel_pairs:
+        - pair: 0
+          description: Analogue stereo
+          left:  { waveform: sine, frequency: 900.0, amplitude: 0.5 }
+          right: { waveform: sine, frequency: 1000.0, amplitude: 0.5 }
+
+  - name: PalGrey10VStep
+    type: progressive
+    source: "{bundled}/exr/720x576/GREY_10V_STEP.exr"
+    duration_frames: 10000
+    audio:
+      channel_pairs:
+        - pair: 0
+          description: Analogue stereo
+          left:  { waveform: sine, frequency: 1000.0, amplitude: 0.5 }
+          right: { waveform: sine, frequency: 1000.0, amplitude: 0.5 }
+
+  - name: PalGrey5HStep
+    type: progressive
+    source: "{bundled}/exr/720x576/GREY_5H_STEP.exr"
+    duration_frames: 10000
+    audio:
+      channel_pairs:
+        - pair: 0
+          description: Analogue stereo
+          left:  { waveform: sine, frequency: 1100.0, amplitude: 0.5 }
+          right: { waveform: sine, frequency: 1000.0, amplitude: 0.5 }
+
+  - name: PalGrey5VStep
+    type: progressive
+    source: "{bundled}/exr/720x576/GREY_5V_STEP.exr"
+    duration_frames: 10000
+    audio:
+      channel_pairs:
+        - pair: 0
+          description: Analogue stereo
+          left:  { waveform: sine, frequency: 1200.0, amplitude: 0.5 }
+          right: { waveform: sine, frequency: 1000.0, amplitude: 0.5 }
+
+  - name: PalLegalRamp
+    type: progressive
+    source: "{bundled}/exr/720x576/LEGAL_RAMP.exr"
+    duration_frames: 10000
+    audio:
+      channel_pairs:
+        - pair: 0
+          description: Analogue stereo
+          left:  { waveform: sine, frequency: 1300.0, amplitude: 0.5 }
+          right: { waveform: sine, frequency: 1000.0, amplitude: 0.5 }
+
+  # ---------------------------------------------------------------------------
+  # Mid-file motion content: 47-frame clip replayed 600 times = 28,200 frames.
+  # ---------------------------------------------------------------------------
+  - name: PalMkvSmpteBars
+    type: progressive
+    source: "{bundled}/mkv/720x576/SMPTE_BARS.mkv"
+    duration_frames: all
+    duration_repeat: 600
+    audio:
+      channel_pairs:
+        - pair: 0
+          description: Analogue stereo
+          left:  { waveform: sine, frequency: 1400.0, amplitude: 0.5 }
+          right: { waveform: sine, frequency: 1000.0, amplitude: 0.5 }
+
+  # ---------------------------------------------------------------------------
+  # Second still block: 9 sections x 10,000 frames = 90,000 frames.
+  # ---------------------------------------------------------------------------
+  - name: PalLumaRamp
+    type: progressive
+    source: "{bundled}/exr/720x576/LUMA_RAMP.exr"
+    duration_frames: 10000
+    audio:
+      channel_pairs:
+        - pair: 0
+          description: Analogue stereo
+          left:  { waveform: sine, frequency: 1500.0, amplitude: 0.5 }
+          right: { waveform: sine, frequency: 1000.0, amplitude: 0.5 }
+
+  - name: PalLumaRampDown
+    type: progressive
+    source: "{bundled}/exr/720x576/LUMA_RAMP_DOWN.exr"
+    duration_frames: 10000
+    audio:
+      channel_pairs:
+        - pair: 0
+          description: Analogue stereo
+          left:  { waveform: sine, frequency: 1600.0, amplitude: 0.5 }
+          right: { waveform: sine, frequency: 1000.0, amplitude: 0.5 }
+
+  - name: PalMultiburst
+    type: progressive
+    source: "{bundled}/exr/720x576/MULTIBURST.exr"
+    duration_frames: 10000
+    audio:
+      channel_pairs:
+        - pair: 0
+          description: Analogue stereo
+          left:  { waveform: sine, frequency: 1700.0, amplitude: 0.5 }
+          right: { waveform: sine, frequency: 1000.0, amplitude: 0.5 }
+
+  - name: PalPluge
+    type: progressive
+    source: "{bundled}/exr/720x576/PLUGE.exr"
+    duration_frames: 10000
+    audio:
+      channel_pairs:
+        - pair: 0
+          description: Analogue stereo
+          left:  { waveform: sine, frequency: 1800.0, amplitude: 0.5 }
+          right: { waveform: sine, frequency: 1000.0, amplitude: 0.5 }
+
+  - name: PalSmpteBars
+    type: progressive
+    source: "{bundled}/exr/720x576/SMPTE_BARS.exr"
+    duration_frames: 10000
+    audio:
+      channel_pairs:
+        - pair: 0
+          description: Analogue stereo
+          left:  { waveform: sine, frequency: 1900.0, amplitude: 0.5 }
+          right: { waveform: sine, frequency: 1000.0, amplitude: 0.5 }
+
+  - name: PalTartan
+    type: progressive
+    source: "{bundled}/exr/720x576/TARTAN.exr"
+    duration_frames: 10000
+    audio:
+      channel_pairs:
+        - pair: 0
+          description: Analogue stereo
+          left:  { waveform: sine, frequency: 2000.0, amplitude: 0.5 }
+          right: { waveform: sine, frequency: 1000.0, amplitude: 0.5 }
+
+  - name: PalTestcardF
+    type: progressive
+    source: "{bundled}/exr/720x576/TESTCARD-F.exr"
+    duration_frames: 10000
+    audio:
+      channel_pairs:
+        - pair: 0
+          description: Analogue stereo
+          left:  { waveform: sine, frequency: 2100.0, amplitude: 0.5 }
+          right: { waveform: sine, frequency: 1000.0, amplitude: 0.5 }
+
+  - name: PalValidRamps
+    type: progressive
+    source: "{bundled}/exr/720x576/VALID_RAMPS.exr"
+    duration_frames: 10000
+    audio:
+      channel_pairs:
+        - pair: 0
+          description: Analogue stereo
+          left:  { waveform: sine, frequency: 2200.0, amplitude: 0.5 }
+          right: { waveform: sine, frequency: 1000.0, amplitude: 0.5 }
+
+  - name: PalVertLumaRamp
+    type: progressive
+    source: "{bundled}/exr/720x576/VERT_LUMA_RAMP.exr"
+    duration_frames: 10000
+    audio:
+      channel_pairs:
+        - pair: 0
+          description: Analogue stereo
+          left:  { waveform: sine, frequency: 2300.0, amplitude: 0.5 }
+          right: { waveform: sine, frequency: 1000.0, amplitude: 0.5 }
+
+  # ---------------------------------------------------------------------------
+  # Tail section: carries the balance so the project totals exactly 270,000
+  # frames (50,800 + 90,000 + 28,200 + 90,000 + 11,000).
+  # ---------------------------------------------------------------------------
+  - name: PalYCbCrRamps
+    type: progressive
+    source: "{bundled}/exr/720x576/Y_CB_CR_RAMPS.exr"
+    duration_frames: 11000
+    audio:
+      channel_pairs:
+        - pair: 0
+          description: Analogue stereo
+          left:  { waveform: sine, frequency: 2400.0, amplitude: 0.5 }
+          right: { waveform: sine, frequency: 1000.0, amplitude: 0.5 }

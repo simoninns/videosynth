@@ -1,0 +1,295 @@
+# NTSC three-hour long-form example
+#
+# A full-length capture-sized project for exercising producers and consumers
+# against realistic file sizes rather than short synthetic samples, as
+# recommended by the CVBS file format specification "Recommended Testing
+# Limits" section (docs/cvbs-file-format-specification/docs/index.md).
+#
+#   Frames    : 323,676 (10,800 s x 30000/1001 fps, rounded down = 3 hours)
+#   Composite : ~309 GB (477,750 samples/frame, 16-bit words)
+#   Audio     : ~3.1 GB (one analogue stereo pair, 48 kHz / 24-bit)
+#
+# This exceeds the specification's "VHS SP (T-120)" row (2 h / ~215,800 frames)
+# and comfortably exceeds any 32-bit file offset limit.
+#
+# Content: every bundled 720x486 asset except 100_BARS (100% colour bars are
+# deliberately excluded). The two moving MKV clips are replayed with
+# duration_repeat and are placed at the start and the middle so motion content
+# appears in both halves of the file. Each still runs 13,000 frames (7 min
+# 14 s); the final section carries the remainder so the total lands on three
+# hours.
+#
+# Project-wide VITS are inserted on every frame, and each section carries an
+# analogue stereo pair: the left channel steps up 100 Hz per section so a
+# seek anywhere in the file can be located by ear, the right channel holds a
+# constant 1 kHz reference.
+#
+# This project writes hundreds of gigabytes and is intentionally excluded from
+# scripts/run-projects.sh; run it by hand with --output-root pointing at
+# storage that can hold it.
+
+project:
+  name: NtscThreeHour
+  version: "1.0"
+  description: NTSC three-hour long-form example — all 720x486 assets, VITS, analogue stereo audio
+
+cvbs_presets:
+  video_standard_preset: NTSC
+  sample_encoding_preset: CVBS_U10_4FSC
+  signal_state_preset: STANDARD_TBC_LOCKED
+
+output:
+  video_path: "{output}/videosynth_ntsc_three_hour.cvbs"
+
+line_injections:
+  vits:
+    - vits_type: ntc7-composite
+      target_lines: [17]
+    - vits_type: fcc-multiburst
+      target_lines: [18]
+    - vits_type: virs
+      target_lines: [21]
+    - vits_type: ntc7-combination
+      target_lines: [280]
+    - vits_type: fcc-composite
+      target_lines: [281]
+
+sections:
+
+  # ---------------------------------------------------------------------------
+  # Opening motion content: 128-frame clip replayed 400 times = 51,200 frames.
+  # ---------------------------------------------------------------------------
+  - name: NtscMovingZone
+    type: progressive
+    source: "{bundled}/mkv/720x486/MOVING_ZONE_2H.mkv"
+    duration_frames: all
+    duration_repeat: 400
+    audio:
+      channel_pairs:
+        - pair: 0
+          description: Analogue stereo
+          left:  { waveform: sine, frequency: 400.0, amplitude: 0.5 }
+          right: { waveform: sine, frequency: 1000.0, amplitude: 0.5 }
+
+  # ---------------------------------------------------------------------------
+  # First still block: 9 sections x 13,000 frames = 117,000 frames.
+  # ---------------------------------------------------------------------------
+  - name: Ntsc75Bars
+    type: progressive
+    source: "{bundled}/exr/720x486/75_BARS.exr"
+    duration_frames: 13000
+    audio:
+      channel_pairs:
+        - pair: 0
+          description: Analogue stereo
+          left:  { waveform: sine, frequency: 500.0, amplitude: 0.5 }
+          right: { waveform: sine, frequency: 1000.0, amplitude: 0.5 }
+
+  - name: Ntsc75BarsRed
+    type: progressive
+    source: "{bundled}/exr/720x486/75_BARS_RED.exr"
+    duration_frames: 13000
+    audio:
+      channel_pairs:
+        - pair: 0
+          description: Analogue stereo
+          left:  { waveform: sine, frequency: 600.0, amplitude: 0.5 }
+          right: { waveform: sine, frequency: 1000.0, amplitude: 0.5 }
+
+  - name: NtscChromaRamp
+    type: progressive
+    source: "{bundled}/exr/720x486/CHROMA_RAMP.exr"
+    duration_frames: 13000
+    audio:
+      channel_pairs:
+        - pair: 0
+          description: Analogue stereo
+          left:  { waveform: sine, frequency: 700.0, amplitude: 0.5 }
+          right: { waveform: sine, frequency: 1000.0, amplitude: 0.5 }
+
+  - name: NtscFullRamp
+    type: progressive
+    source: "{bundled}/exr/720x486/FULL_RAMP.exr"
+    duration_frames: 13000
+    audio:
+      channel_pairs:
+        - pair: 0
+          description: Analogue stereo
+          left:  { waveform: sine, frequency: 800.0, amplitude: 0.5 }
+          right: { waveform: sine, frequency: 1000.0, amplitude: 0.5 }
+
+  - name: NtscGrey10HStep
+    type: progressive
+    source: "{bundled}/exr/720x486/GREY_10H_STEP.exr"
+    duration_frames: 13000
+    audio:
+      channel_pairs:
+        - pair: 0
+          description: Analogue stereo
+          left:  { waveform: sine, frequency: 900.0, amplitude: 0.5 }
+          right: { waveform: sine, frequency: 1000.0, amplitude: 0.5 }
+
+  - name: NtscGrey10VStep
+    type: progressive
+    source: "{bundled}/exr/720x486/GREY_10V_STEP.exr"
+    duration_frames: 13000
+    audio:
+      channel_pairs:
+        - pair: 0
+          description: Analogue stereo
+          left:  { waveform: sine, frequency: 1000.0, amplitude: 0.5 }
+          right: { waveform: sine, frequency: 1000.0, amplitude: 0.5 }
+
+  - name: NtscGrey5HStep
+    type: progressive
+    source: "{bundled}/exr/720x486/GREY_5H_STEP.exr"
+    duration_frames: 13000
+    audio:
+      channel_pairs:
+        - pair: 0
+          description: Analogue stereo
+          left:  { waveform: sine, frequency: 1100.0, amplitude: 0.5 }
+          right: { waveform: sine, frequency: 1000.0, amplitude: 0.5 }
+
+  - name: NtscGrey5VStep
+    type: progressive
+    source: "{bundled}/exr/720x486/GREY_5V_STEP.exr"
+    duration_frames: 13000
+    audio:
+      channel_pairs:
+        - pair: 0
+          description: Analogue stereo
+          left:  { waveform: sine, frequency: 1200.0, amplitude: 0.5 }
+          right: { waveform: sine, frequency: 1000.0, amplitude: 0.5 }
+
+  - name: NtscLegalRamp
+    type: progressive
+    source: "{bundled}/exr/720x486/LEGAL_RAMP.exr"
+    duration_frames: 13000
+    audio:
+      channel_pairs:
+        - pair: 0
+          description: Analogue stereo
+          left:  { waveform: sine, frequency: 1300.0, amplitude: 0.5 }
+          right: { waveform: sine, frequency: 1000.0, amplitude: 0.5 }
+
+  # ---------------------------------------------------------------------------
+  # Mid-file motion content: 93-frame clip replayed 400 times = 37,200 frames.
+  # ---------------------------------------------------------------------------
+  - name: NtscMkvSmpteBars
+    type: progressive
+    source: "{bundled}/mkv/720x486/SMPTE_BARS_001.mkv"
+    duration_frames: all
+    duration_repeat: 400
+    audio:
+      channel_pairs:
+        - pair: 0
+          description: Analogue stereo
+          left:  { waveform: sine, frequency: 1400.0, amplitude: 0.5 }
+          right: { waveform: sine, frequency: 1000.0, amplitude: 0.5 }
+
+  # ---------------------------------------------------------------------------
+  # Second still block: 8 sections x 13,000 frames = 104,000 frames.
+  # ---------------------------------------------------------------------------
+  - name: NtscLumaRamp
+    type: progressive
+    source: "{bundled}/exr/720x486/LUMA_RAMP.exr"
+    duration_frames: 13000
+    audio:
+      channel_pairs:
+        - pair: 0
+          description: Analogue stereo
+          left:  { waveform: sine, frequency: 1500.0, amplitude: 0.5 }
+          right: { waveform: sine, frequency: 1000.0, amplitude: 0.5 }
+
+  - name: NtscLumaRampDown
+    type: progressive
+    source: "{bundled}/exr/720x486/LUMA_RAMP_DOWN.exr"
+    duration_frames: 13000
+    audio:
+      channel_pairs:
+        - pair: 0
+          description: Analogue stereo
+          left:  { waveform: sine, frequency: 1600.0, amplitude: 0.5 }
+          right: { waveform: sine, frequency: 1000.0, amplitude: 0.5 }
+
+  - name: NtscMultiburst
+    type: progressive
+    source: "{bundled}/exr/720x486/MULTIBURST.exr"
+    duration_frames: 13000
+    audio:
+      channel_pairs:
+        - pair: 0
+          description: Analogue stereo
+          left:  { waveform: sine, frequency: 1700.0, amplitude: 0.5 }
+          right: { waveform: sine, frequency: 1000.0, amplitude: 0.5 }
+
+  - name: NtscPluge
+    type: progressive
+    source: "{bundled}/exr/720x486/PLUGE.exr"
+    duration_frames: 13000
+    audio:
+      channel_pairs:
+        - pair: 0
+          description: Analogue stereo
+          left:  { waveform: sine, frequency: 1800.0, amplitude: 0.5 }
+          right: { waveform: sine, frequency: 1000.0, amplitude: 0.5 }
+
+  - name: NtscSmpteBars
+    type: progressive
+    source: "{bundled}/exr/720x486/SMPTE_BARS_001.exr"
+    duration_frames: 13000
+    audio:
+      channel_pairs:
+        - pair: 0
+          description: Analogue stereo
+          left:  { waveform: sine, frequency: 1900.0, amplitude: 0.5 }
+          right: { waveform: sine, frequency: 1000.0, amplitude: 0.5 }
+
+  - name: NtscTartan
+    type: progressive
+    source: "{bundled}/exr/720x486/TARTAN.exr"
+    duration_frames: 13000
+    audio:
+      channel_pairs:
+        - pair: 0
+          description: Analogue stereo
+          left:  { waveform: sine, frequency: 2000.0, amplitude: 0.5 }
+          right: { waveform: sine, frequency: 1000.0, amplitude: 0.5 }
+
+  - name: NtscValidRamps
+    type: progressive
+    source: "{bundled}/exr/720x486/VALID_RAMPS.exr"
+    duration_frames: 13000
+    audio:
+      channel_pairs:
+        - pair: 0
+          description: Analogue stereo
+          left:  { waveform: sine, frequency: 2100.0, amplitude: 0.5 }
+          right: { waveform: sine, frequency: 1000.0, amplitude: 0.5 }
+
+  - name: NtscVertLumaRamp
+    type: progressive
+    source: "{bundled}/exr/720x486/VERT_LUMA_RAMP.exr"
+    duration_frames: 13000
+    audio:
+      channel_pairs:
+        - pair: 0
+          description: Analogue stereo
+          left:  { waveform: sine, frequency: 2200.0, amplitude: 0.5 }
+          right: { waveform: sine, frequency: 1000.0, amplitude: 0.5 }
+
+  # ---------------------------------------------------------------------------
+  # Tail section: carries the balance so the project totals 323,676 frames
+  # (51,200 + 117,000 + 37,200 + 104,000 + 14,276).
+  # ---------------------------------------------------------------------------
+  - name: NtscYCbCrRamps
+    type: progressive
+    source: "{bundled}/exr/720x486/Y_CB_CR_RAMPS.exr"
+    duration_frames: 14276
+    audio:
+      channel_pairs:
+        - pair: 0
+          description: Analogue stereo
+          left:  { waveform: sine, frequency: 2300.0, amplitude: 0.5 }
+          right: { waveform: sine, frequency: 1000.0, amplitude: 0.5 }

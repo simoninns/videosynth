@@ -225,7 +225,13 @@ Hand-authored projects live in [projects/](projects/):
 | [projects/general/](projects/general/) | Feature examples — audio, EFM audio, VITS, progressive EXR/MKV sources, PAL pilot burst (composite) |
 | [projects/general-yc/](projects/general-yc/) | Feature examples with Y/C output |
 | [projects/stacking/](projects/stacking/) | Laserdisc disc simulation, skip and multi-source stacking sets for PAL, PAL-M and NTSC |
+| [projects/long-form/](projects/long-form/) | Three-hour capture-sized PAL and NTSC examples (VITS, analogue stereo audio) for testing against realistic file sizes |
 | [projects/variants.json](projects/variants.json) | Rules for mechanically derived variants |
+
+The `long-form` projects write hundreds of gigabytes each (~383 GB PAL,
+~309 GB NTSC of composite samples, plus ~3.1 GB of audio) and are deliberately
+excluded from the suites below; run them by hand with `--output-root` pointing
+at storage that can hold the result.
 
 Derived variants (the impairment-free `stacking-clean` set and the Y/C
 `stacking-yc` set) are generated into `build/generated-projects/` at build time
