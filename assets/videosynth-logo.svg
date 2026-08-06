@@ -1,13 +1,19 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!--
-  File:        videosynth-logo.svg
-  Purpose:     Placeholder VideoSynth logotype and application icon
-               (colour-bar raster over a composite line waveform)
-
-  SPDX-License-Identifier: GPL-3.0-or-later
-  SPDX-FileCopyrightText: 2026 Simon Inns
--->
 <svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <!--
+    File:        videosynth-logo.svg
+    Purpose:     Placeholder VideoSynth logotype and application icon
+                 (colour-bar raster over a composite line waveform)
+
+    SPDX-License-Identifier: GPL-3.0-or-later
+    SPDX-FileCopyrightText: 2026 Simon Inns
+
+    The header sits inside the root element, not above it: gdk-pixbuf's SVG
+    loader only sniffs the opening bytes of a file for "<svg", and a header
+    long enough to push the element past that window makes the icon
+    unreadable. AppStream 1.0 (Ubuntu 24.04) treats an unreadable icon as a
+    fatal error, which fails the Flatpak build during appstreamcli compose.
+  -->
   <!-- Background tile -->
   <rect x="0" y="0" width="256" height="256" rx="44" fill="#181c26"/>
   <rect x="8" y="8" width="240" height="240" rx="38" fill="#202634"/>

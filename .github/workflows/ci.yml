@@ -191,6 +191,25 @@ jobs:
               > "/tmp/${APP_ID}.metainfo.xml"
           appstreamcli validate --no-net --explain "/tmp/${APP_ID}.metainfo.xml"
 
+      # gdk-pixbuf identifies an SVG by sniffing the opening bytes of the file
+      # for its root element. An icon whose header comment pushes "<svg" past
+      # that window is unreadable, and appstreamcli compose treats an
+      # unreadable icon as fatal — half an hour into the build. Check it here.
+      - name: Check the scalable icon stays loadable
+        run: |
+          python3 - <<'PY'
+          import sys
+
+          path = "assets/videosynth-logo.svg"
+          offset = open(path, "rb").read().find(b"<svg")
+          if not 0 <= offset <= 128:
+              sys.exit(f"::error file={path}::<svg> starts at byte {offset}; "
+                       "keep it within the first 128 bytes so gdk-pixbuf can "
+                       "identify the file (put header comments inside the "
+                       "root element)")
+          print(f"{path}: <svg> at byte {offset}")
+          PY
+
       # A tag build reports the tag; every other build reports the short commit
       # so the version string always identifies what was built. The AppStream
       # release date comes from the commit rather than the wall clock, keeping
@@ -232,6 +251,23 @@ jobs:
             --install-deps-from=flathub \
             --repo=flatpak-repo \
             flatpak-build/build "flatpak-build/${APP_ID}.yml"
+
+      # flatpak-builder forwards only the issue tags from appstreamcli compose,
+      # never the file or the reason. Re-running it over the tree it left
+      # behind prints the full report, so a compose failure explains itself
+      # instead of costing a round trip.
+      - name: Explain an appstream compose failure
+        if: failure()
+        run: |
+          tree="flatpak-build/build/files"
+          [ -d "${tree}" ] || exit 0
+          appstreamcli compose \
+            --origin="${APP_ID}" \
+            --components="${APP_ID},${APP_ID}.desktop" \
+            --result-root="${tree}" \
+            --data-dir="${tree}/share/app-info/xmls" \
+            --icons-dir="${tree}/share/app-info/icons/flatpak" \
+            --prefix=/ --print-report=full "${tree}" || true
 
       - name: Create bundle
         id: bundle
