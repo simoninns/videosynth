@@ -645,7 +645,13 @@ NTSC discs carry **two parallel encoding systems**:
 1. **24-bit biphase** on lines 16–18 / 279–281 — the primary system shared with PAL
 2. **40-bit FM** on lines 10–11 / 273–274 — NTSC-only supplementary system
 
-Both systems must be configured simultaneously on NTSC discs. They use the same bit-cell duration (2.0 µs) but different transition times: 225 ns for biphase, 135 ns for FM.
+Both systems must be configured simultaneously on NTSC discs. They differ in both bit-cell duration and transition time:
+
+| Property | 24-bit biphase | 40-bit FM |
+|----------|---------------|-----------|
+| Bit cell duration | 2.0 µs ± 0.01 µs | 1.0 µs ± 0.01 µs (IEC 60857 §10.2 — half the biphase cell) |
+| Transition time (10 %–90 %) | 225 ns ± 25 ns | 135 ns ± 15 ns |
+| Modulation | Biphase mark (transition at cell centre) | Pulse-spacing FM (see below) |
 
 ### 40-bit FM Bit Layout
 
@@ -656,9 +662,20 @@ The 40-bit code is structured as follows (MSB = bit 1):
 | 1–4 | Clock sync (`0011`) |
 | 5 | Field indicator (1 = field 1, 0 = field 2) |
 | 6–12 | Leading recognition bits (`1110010`) |
-| 13–32 | Data bits: X₅, X₄, X₃, X₂, X₁ (4 bits each) |
-| 33 | Odd parity over bits 1–32 |
+| 13–32 | Data bits: X₅, X₄, X₃, X₂, X₁ (4 bits each, transmitted LSB first) |
+| 33 | Odd parity over the **data bits only** (bits 13–32) |
 | 34–40 | Trailing recognition bits (`0001101`) |
+
+The parity bit covers the data field alone; the clock sync, field indicator and recognition patterns are excluded from the calculation.
+
+### FM Modulation
+
+The 40-bit signal is **pulse-spacing FM**, not Manchester/biphase. The signal starts HIGH, and a decoder anchors itself on the first HIGH sample:
+
+- **`0`** — hold the current level for the full bit cell (T₀ ≈ 1.0 µs), then flip. The decoder sees a long inter-transition interval (≥ 0.75 µs).
+- **`1`** — hold for T₁ = T₀/2 ≈ 0.5 µs, flip briefly (the "pip"), then return at T₀. The net level is unchanged across the cell. The decoder sees a short interval (< 0.75 µs), then scans past the pip end to re-anchor.
+
+All transitions are S-curve shaped with a 135 ns ± 15 ns 10 %–90 % time.
 
 ### White Flag
 

@@ -497,7 +497,7 @@ For Y/C output, `output.video_path` must end in `.cvbsy`; the chroma path is der
 
 ### **LaserDisc Digital Audio (EFM) Output**
 
-A project may additionally emit the LaserDisc digital audio channel of one audio channel pair. The full design, including the specification mapping and the phased task breakdown, is in the [EFM Digital Audio Implementation Plan](efm-implementation-plan.md).
+A project may additionally emit the LaserDisc digital audio channel of one audio channel pair. The stage-by-stage design and its specification mapping are given below.
 
 **Module boundary** — all EFM signal processing lives in a standalone static library `videosynth_efm` (`src/efm/`, `include/videosynth/efm/`, namespace `videosynth::efm`) that has **no dependency on `videosynth_core`**: its API takes 16-bit stereo PCM plus a track table and emits an EFM channel stream. `videosynth_core` links the module, not the reverse, so a decoder, data modes, or RF modulation can be added later without touching the audio subsystem. Its stages are:
 
@@ -784,7 +784,7 @@ The current parser, validator, and runtime implement only a subset of the YAML s
 - VITS line injections have a generation-stage orchestration path and are applied only on their targeted frame lines within the owning section span.
 - Built-in VITS catalog entries now carry full waveform-definition primitive/composite trees for every supported `vits_type`, so the default runtime path can render all supported PAL and NTSC VITS patterns.
 - `pal_laserdisc_pilot_burst` is parsed, validated, and fully implemented: a 3.75 MHz (240 × f_H) sinusoidal burst at ±300 mV is superimposed on every sync pulse in the Y channel when enabled.
-- `ntsc_laserdisc_vbi_burst` is parsed and validated for standard compatibility, but its runtime signal behavior remains deferred.
+- `ntsc_laserdisc_vbi_burst` is parsed and validated for standard compatibility, but its runtime signal behavior remains deferred. Because a silent no-op would produce a file that looks compliant and is not, enabling it is a **validation error** ("ntsc_laserdisc_vbi_burst is parsed but not implemented in the current runtime") rather than being ignored.
 
 The remainder of Section 7 should therefore be read as the intended project-file design rather than the currently implemented parser surface.
 
@@ -1156,7 +1156,7 @@ video_path: "out/pal_test_video.cvbs" # project-relative output file path
 - **Implemented**: `progressive` frame-based sections in Section 8.1.
 - **Implemented**: Section 8.2 parser/validator constraints for VITS line-injection schema, VITS/line-allocation compatibility checks, and generation-stage VITS line application for all supported built-in PAL and NTSC VITS patterns.
 - **Implemented**: Full laserdisc biphase injection for PAL and NTSC (CAV and CLV), including 24-bit biphase signal generation, 40-bit FM signal generation (NTSC), all code types (lead_in, lead_out, picture_number, picture_stop, chapter_number, programme_status, users_code, programme_time_code, clv_code, clv_picture_number, fm_picture_number, fm_programme_time, fm_white_flag), field-aware line placement, timecode continuity, chapter stop-bit logic, NTSC frozen values, NTSC CLV colour time error correction, and biphase/VITS line-conflict validation.
-- **Not yet implemented**: runtime synthesis/application for VITC and custom per-line content.
+- **Not yet implemented**: runtime synthesis/application for VITC and custom per-line content. A section-level injection whose `type` is neither `laserdisc` nor `vits` is a **validation error** ("line injection type '<type>' is not implemented in the current runtime"), so a project cannot silently generate a file that lacks the content it declares.
 
 For VITC and custom per-line content paths, Section 8.2 remains the intended design contract for later implementation work.
 
@@ -1421,12 +1421,12 @@ This signal co-exists with the 24-bit biphase system and occupies separate lines
 | **Field**           | **Type**   | **Required**           | **Description**                                                                                 | **Example**    |
 | ------------------- | ---------- | ---------------------- | ----------------------------------------------------------------------------------------------- | -------------- |
 | `code_type`         | string     | Yes                    | Type of biphase code (see tables above for valid values per disc format).                       | `"picture_number"` |
-| `start_value`       | integer    | For incrementing codes | Starting value for codes that auto-increment per frame (e.g. `picture_number`, `clv_picture_number`). | `1`        |
-| `chapter`           | integer    | For chapter codes      | Chapter number (0–79).                                                                          | `1`            |
-| `time_hours`        | integer    | CLV time code          | Hours component of programme time code starting value.                                          | `0`            |
-| `time_minutes`      | integer    | CLV time code          | Minutes component of programme time code starting value.                                        | `30`           |
-| `programme_status`  | hex string | Status code            | 24-bit programme status value per IEC 60856/60857 Appendix C (audio/video channel use).         | `"0x8F0000"`   |
-| `user_data`         | hex string | Users code             | 24-bit users code value; first nibble must be 8; `X₁` = 0–7; see IEC 60856/60857 §10.1.9.      | `"0x810123"`   |
+| `start_value`       | integer    | Optional               | Anchors the count for `picture_number`/`fm_picture_number` at this section. Omit to continue the running count from the previous section (see [Timecode Continuity](../user/biphase-design.md#5-timecode-continuity)). | `1`        |
+| `chapter`           | integer    | Optional               | Chapter number (0–79) for `chapter_number`. Omit to continue the previous section's chapter.     | `1`            |
+| `programme_status`  | hex string | For `programme_status` | 24-bit programme status value per IEC 60856/60857 Appendix C (audio/video channel use).         | `"0x8F0000"`   |
+| `users_code`        | hex string | For `users_code`       | 24-bit users code value; first nibble must be 8; `X₁` = 0–7; see IEC 60856/60857 §10.1.9.      | `"0x810123"`   |
+
+These five keys are the complete accepted set; any other key in a `codes[]` entry is a parse error. The CLV clocks (`programme_time_code`, `clv_picture_number`) take **no** parameters — they are anchored at `0:00` at the start of the programme area and advance automatically, as IEC 60856/60857 §10.1.5 requires.
 
 ##### **Valid `code_type` Values — CAV**
 
@@ -1434,12 +1434,12 @@ This signal co-exists with the 24-bit biphase system and occupies separate lines
 | ------------------ | ---------------- | ------------------------------------------------------------------------------------------------------ |
 | `lead_in`          | `88FFFF`         | Lead-in marker; inserted for ≥ 1.5 mm of tracks before programme start.                               |
 | `lead_out`         | `80EEEE`         | Lead-out marker; inserted for ≥ 2 mm of tracks after programme end.                                   |
-| `picture_number`   | `FX₁X₂X₃X₄X₅`   | Frame address; max 99 999 (PAL) / 79 999 (NTSC); auto-increments from `start_value` each frame.       |
+| `picture_number`   | `FX₁X₂X₃X₄X₅`   | Frame address; max 99 999 (PAL) / 79 999 (NTSC); auto-increments each frame, anchored by `start_value` where present. |
 | `picture_stop`     | `82CFFF`         | Inserted in the field following the picture-number field to trigger player still-frame mode.           |
-| `chapter_number`   | `8X₁X₂DDD`       | Chapter identifier (0–79); requires `chapter` field.                                                  |
+| `chapter_number`   | `8X₁X₂DDD`       | Chapter identifier (0–79); uses the optional `chapter` field.                                          |
 | `programme_status` | `8DC/BAX₃X₄X₅`   | Audio/video channel use identification per Appendix C; requires `programme_status` field.             |
-| `users_code`       | `8X₁DX₃X₄X₅`    | Optional user identification; lead-in/lead-out only; requires `user_data` field.                      |
-| `fm_picture_number`| (40-bit FM)      | **NTSC only.** 40-bit FM coded picture number on lines 10/273; auto-increments from `start_value`.    |
+| `users_code`       | `8X₁DX₃X₄X₅`    | Optional user identification; lead-in/lead-out only; requires `users_code` field.                     |
+| `fm_picture_number`| (40-bit FM)      | **NTSC only.** 40-bit FM coded picture number on lines 10/273; auto-increments alongside `picture_number`. |
 | `fm_white_flag`    | (100 IRE white)  | **NTSC only.** First-field white flag on line 11 or 274.                                               |
 
 ##### **Valid `code_type` Values — CLV**
@@ -1448,13 +1448,13 @@ This signal co-exists with the 24-bit biphase system and occupies separate lines
 | ----------------------- | --------------- | ------------------------------------------------------------------------------------------------------- |
 | `lead_in`               | `88FFFF`        | Lead-in marker; inserted for ≥ 1.5 mm of tracks before programme start.                                |
 | `lead_out`              | `80EEEE`        | Lead-out marker; inserted for ≥ 2 mm of tracks after programme end.                                    |
-| `programme_time_code`   | `FX₁DDX₂X₃`    | Running time (hours + minutes); auto-updates from `time_hours`/`time_minutes` each frame.              |
+| `programme_time_code`   | `FX₁DDX₂X₃`    | Running time (hours + minutes); starts at `0:00` and auto-updates each frame. Takes no parameters.      |
 | `clv_code`              | `87FFFF`        | CLV format indicator; on fields without programme time code or CLV picture number.                      |
-| `clv_picture_number`    | `8X₁EX₃X₄X₅`   | Frame identifier within second (seconds + picture count); auto-updates from `start_value` each frame.  |
-| `chapter_number`        | `8X₁X₂DDD`      | Chapter identifier (0–79); requires `chapter` field.                                                   |
+| `clv_picture_number`    | `8X₁EX₃X₄X₅`   | Frame identifier within second (seconds + picture count); auto-updates each frame. Takes no parameters. |
+| `chapter_number`        | `8X₁X₂DDD`      | Chapter identifier (0–79); uses the optional `chapter` field.                                          |
 | `programme_status`      | `8DC/BAX₃X₄X₅`  | Audio/video channel use identification per Appendix C; requires `programme_status` field.              |
-| `users_code`            | `8X₁DX₃X₄X₅`   | Optional user identification; lead-in/lead-out only; requires `user_data` field.                       |
-| `fm_programme_time_code`| (40-bit FM)     | **NTSC only.** 40-bit FM coded programme time (minutes + seconds) on lines 10/273; auto-updates.       |
+| `users_code`            | `8X₁DX₃X₄X₅`   | Optional user identification; lead-in/lead-out only; requires `users_code` field.                      |
+| `fm_programme_time`     | (40-bit FM)     | **NTSC only.** 40-bit FM coded programme time (minutes + seconds) on lines 10/273; auto-updates.       |
 | `fm_white_flag`         | (100 IRE white) | **NTSC only.** First-field white flag on line 11 or 274.                                               |
 
 ##### **Example (PAL CAV)**
@@ -1486,17 +1486,14 @@ line_injections:
     # No disc_type or target_lines — disc_type is project-wide; line placement
     # is fixed by IEC 60857 §10
     codes:
-      - code_type: programme_time_code
-        time_hours: 0
-        time_minutes: 30        # Auto-updates each frame
+      - code_type: programme_time_code  # Starts at 0:00; no parameters
       - code_type: clv_code
-      - code_type: clv_picture_number
-        start_value: 0          # Auto-updates each frame
+      - code_type: clv_picture_number   # Auto-updates each frame; no parameters
       - code_type: chapter_number
         chapter: 1
       - code_type: programme_status
         programme_status: "0x8F0000"
-      - code_type: fm_programme_time_code  # 40-bit FM signal (NTSC mandatory)
+      - code_type: fm_programme_time    # 40-bit FM signal (NTSC mandatory)
       - code_type: fm_white_flag
 ```
 
@@ -2332,15 +2329,21 @@ videosynth/
 │   │   ├── efm_modulator.cpp
 │   │   └── efm_stream_encoder.cpp
 │   └── ...
-├── docs/
+├── docs/                                # MkDocs sources for the published site
+│   ├── .nav.yml
+│   ├── index.md
+│   ├── getting-started/
+│   ├── user-manual/
+│   ├── reference/
+│   └── misc/
+├── docs-tech/
 │   ├── analogue-video-specifications/  (submodule)
 │   ├── cvbs-file-format-specification/ (submodule)
 │   ├── design/
 │   │   ├── high-level-design.md
 │   │   └── ...
 │   └── user/
-│       ├── getting_started.md
-│       ├── yaml_reference.md
+│       ├── biphase-design.md
 │       └── ...
 ├── resources/
 │   └── doc-diagrams/

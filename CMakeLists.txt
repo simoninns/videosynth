@@ -97,7 +97,7 @@ endif()
 
 # EFM digital audio module. Self-contained: it accepts PCM samples and emits an
 # EFM channel stream, and must not depend on videosynth_core (see
-# docs/design/efm-implementation-plan.md).
+# docs-tech/design/high-level-design.md, "LaserDisc Digital Audio (EFM) Output").
 set(videosynth_efm_sources
     src/efm/audio_frame_assembler.cpp
     src/efm/circ_encoder.cpp

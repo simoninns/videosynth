@@ -169,8 +169,8 @@ constexpr double kQuarterWaveRad = kPi / 2.0;
 
 // Samples per subcarrier cycle at 4fsc. The carrier advances exactly π/2 per
 // sample, so its phase is a pure function of the sample index modulo this
-// value; see docs/design/performance-optimisation-plan.md "Exploitable
-// structure".
+// value; see docs-tech/design/high-level-design.md, "Subcarrier Lock
+// Implementation".
 constexpr std::size_t kSubcarrierLatticeSamples = 4U;
 
 // Number of frames after which a clean synthesised frame repeats exactly for

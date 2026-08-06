@@ -34,8 +34,8 @@ Have you considered other approaches? Why was this one chosen?
 
 <!--
 Link to authoritative specifications if applicable:
-- docs/analogue-video-specifications/XXXX
-- docs/cvbs-file-format-specification/XXXX
+- docs-tech/analogue-video-specifications/XXXX
+- docs-tech/cvbs-file-format-specification/XXXX
 - External: SMPTE XXX, ITU-R BT.XXX, EBU Tech. XXX
 -->
 
@@ -43,8 +43,8 @@ Link to authoritative specifications if applicable:
 
 <!--
 Does this require updates to:
-- docs/design/high-level-design.md
-- Any sub-specifications in docs/design/
+- docs-tech/design/high-level-design.md
+- Any sub-specifications in docs-tech/design/
 -->
 
 ## Testing Considerations

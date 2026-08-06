@@ -85,10 +85,10 @@ git clone --recurse-submodules https://github.com/simoninns/videosynth
 cd videosynth
 ```
 
-Submodules provide the specification documents under [docs/](docs/). The media
-assets in [videosynth-assets/](videosynth-assets/) are vendored directly into
-this repository and need no extra checkout step. If you already cloned without
-the specification submodules:
+Submodules provide the specification documents under [docs-tech/](docs-tech/).
+The media assets in [videosynth-assets/](videosynth-assets/) are vendored
+directly into this repository and need no extra checkout step. If you already
+cloned without the specification submodules:
 
 ```bash
 git submodule update --init --recursive
@@ -231,9 +231,9 @@ sections:
 ```
 
 The full schema is documented in
-[docs/design/high-level-design.md](docs/design/high-level-design.md) §7–§11;
+[docs-tech/design/high-level-design.md](docs-tech/design/high-level-design.md) §7–§11;
 laserdisc biphase authoring is covered in
-[docs/user/biphase-design.md](docs/user/biphase-design.md).
+[docs-tech/user/biphase-design.md](docs-tech/user/biphase-design.md).
 
 ### Logical asset roots
 
@@ -259,8 +259,10 @@ All artefacts are colocated with `output.video_path`:
 |------|----------|
 | `<name>.cvbs` | Composite samples |
 | `<name>.cvbsy` / `<name>.cvbsc` | Y/C luma and chroma samples |
-| `<name>.meta` | SQLite metadata sidecar, including dropouts (schema v5) |
+| `<name>.meta` | SQLite metadata sidecar |
+| `<name>.dropouts.meta` | SQLite dropout sidecar (schema v5), when any section injects dropouts |
 | `<name>_audio_<pair>.wav` | 48 kHz/24-bit stereo audio per channel pair |
+| `<name>.efm` / `<name>.efm.meta` | LaserDisc digital audio channel stream and its frame index, when `output.efm_audio` is set |
 
 ---
 
@@ -402,22 +404,34 @@ scripts/              Project runners and maintenance utilities
 packaging/            Desktop entry, AppStream metadata and Flatpak manifest
 assets/               Application logo and icons
 videosynth-assets/    Bundled media assets (source stills and video)
-docs/design/          High-level design specification
-docs/user/            User-facing feature documentation
-docs/*-specification/ Specification submodules (CVBS format, analogue video)
+docs/                 MkDocs sources for the published documentation site
+docs-tech/design/     High-level design specification
+docs-tech/user/       In-repository feature documentation
+docs-tech/*-specification*/  Specification submodules (CVBS format, analogue video)
 ```
 
 ---
 
 ## Documentation
 
-- [docs/design/high-level-design.md](docs/design/high-level-design.md) — design
+The user manual and project-file reference are published at
+**[simoninns.github.io/videosynth](https://simoninns.github.io/videosynth)** and
+are built with MkDocs from [docs/](docs/). To build and preview them locally:
+
+```bash
+nix develop "path:$PWD" --command mkdocs serve   # http://127.0.0.1:8000
+nix build .#docs                                 # static site in ./result
+```
+
+In-repository documents:
+
+- [docs-tech/design/high-level-design.md](docs-tech/design/high-level-design.md) — design
   specification and YAML project reference.
-- [docs/user/biphase-design.md](docs/user/biphase-design.md) — laserdisc
+- [docs-tech/user/biphase-design.md](docs-tech/user/biphase-design.md) — laserdisc
   biphase/FM code authoring.
-- [docs/cvbs-file-format-specification/](docs/cvbs-file-format-specification/) —
+- [docs-tech/cvbs-file-format-specification/](docs-tech/cvbs-file-format-specification/) —
   CVBS file format and its extensions.
-- [docs/analogue-video-specifications/](docs/analogue-video-specifications/) —
+- [docs-tech/analogue-video-specifications/](docs-tech/analogue-video-specifications/) —
   the analogue video and laserdisc standards the implementation cites.
 - [TESTING.md](TESTING.md) — testing vision, strategy and repository rules.
 - [AGENTS.md](AGENTS.md) — contribution and coding standards.

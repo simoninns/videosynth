@@ -18,9 +18,9 @@ title: "[Docs] "
 
 <!--
 Where is the documentation issue?
-- docs/design/high-level-design.md
-- docs/analogue-video-specifications/
-- docs/cvbs-file-format-specification/
+- docs-tech/design/high-level-design.md
+- docs-tech/analogue-video-specifications/
+- docs-tech/cvbs-file-format-specification/
 - Other: __________
 -->
 

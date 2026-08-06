@@ -13,6 +13,37 @@
         # Git metadata is unavailable inside the Nix build sandbox, so the
         # commit hash is passed in as a version override instead.
         versionString = self.shortRev or self.dirtyShortRev or "0.1.0";
+
+        # Python environment for the MkDocs documentation site.
+        mkdocsPythonEnv = pkgs.python312.withPackages (ps: [
+          ps.mkdocs
+          ps.mkdocs-material
+          ps.mkdocs-awesome-nav
+        ]);
+
+        videosynth-docs = pkgs.stdenv.mkDerivation {
+          pname = "videosynth-docs";
+          version = versionString;
+          src = self;
+
+          nativeBuildInputs = [ mkdocsPythonEnv ];
+
+          buildPhase = ''
+            mkdocs build
+          '';
+
+          installPhase = ''
+            mkdir -p $out
+            cp -r site/* $out/
+          '';
+
+          meta = with pkgs.lib; {
+            description = "videosynth documentation site";
+            homepage = "https://github.com/simoninns/videosynth";
+            license = licenses.gpl3Plus;
+            platforms = platforms.all;
+          };
+        };
       in {
         packages.default = pkgs.stdenv.mkDerivation {
           pname = "videosynth";
@@ -61,6 +92,8 @@
           '';
         };
 
+        packages.docs = videosynth-docs;
+
         checks.default = self.packages.${system}.default;
 
         devShells.default = pkgs.mkShell {
@@ -82,6 +115,7 @@
             qt6.qtsvg
             clang-tools
             ccache
+            mkdocsPythonEnv
           ];
 
           # Qt needs its platform plugins on the path when the GUI is run

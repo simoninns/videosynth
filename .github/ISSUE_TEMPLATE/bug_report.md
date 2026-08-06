@@ -40,8 +40,8 @@ A clear and concise description of what the bug is.
 
 <!--
 If this relates to a specific standard (PAL, NTSC, CVBS format), reference it:
-- docs/analogue-video-specifications/XXXX
-- docs/cvbs-file-format-specification/XXXX
+- docs-tech/analogue-video-specifications/XXXX
+- docs-tech/cvbs-file-format-specification/XXXX
 - Standard: SMPTE XXX, ITU-R BT.XXX, EBU Tech. XXX
 -->
 

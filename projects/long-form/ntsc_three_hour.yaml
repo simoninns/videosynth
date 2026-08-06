@@ -3,7 +3,7 @@
 # A full-length capture-sized project for exercising producers and consumers
 # against realistic file sizes rather than short synthetic samples, as
 # recommended by the CVBS file format specification "Recommended Testing
-# Limits" section (docs/cvbs-file-format-specification/docs/index.md).
+# Limits" section (docs-tech/cvbs-file-format-specification/docs/index.md).
 #
 #   Frames    : 323,676 (10,800 s x 30000/1001 fps, rounded down = 3 hours)
 #   Composite : ~309 GB (477,750 samples/frame, 16-bit words)

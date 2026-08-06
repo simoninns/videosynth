@@ -18,8 +18,8 @@ Example: "Implements SMPTE 170M-2004 Section 11.3 sync timing for NTSC."
 <!--
 Link to any relevant issues, discussions, or specification sections.
 - Fixes #XXXX
-- Implements docs/design/XXXX.md §Y.Y
-- Aligns with docs/analogue-video-specifications/XXXX
+- Implements docs-tech/design/XXXX.md §Y.Y
+- Aligns with docs-tech/analogue-video-specifications/XXXX
 -->
 
 ## Testing

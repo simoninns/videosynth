@@ -172,17 +172,30 @@ After completing a development session or task, perform the following steps to c
 
 ## 9. Documentation & Specifications
 
+### 9.0 Documentation Layout
+- `docs/` is **exclusively** the MkDocs source for the published site
+  (<https://simoninns.github.io/videosynth>). Its contents are the user manual
+  and the project-file reference; `mkdocs.yml` builds it and every page is
+  reachable from a `.nav.yml`. Do not add design documents, plans, or
+  submodules here.
+- `docs-tech/` holds everything else: the design specification (`design/`),
+  in-repository feature documentation (`user/`), and the specification
+  submodules.
+- When a change alters user-visible behaviour, update the affected page under
+  `docs/` in the same task, alongside the HLD update required by §9.2.
+- Verify the site still builds: `nix develop "path:$PWD" --command mkdocs build --strict`.
+
 ### 9.1 Authoritative Sources
 - **CVBS file format**:
-  - Start: `docs/cvbs-file-format-specification/README.md`
-  - Full: `docs/cvbs-file-format-specification/docs/index.md`
+  - Start: `docs-tech/cvbs-file-format-specification/README.md`
+  - Full: `docs-tech/cvbs-file-format-specification/docs/index.md`
 - **Analogue video standards** (PAL, NTSC, SMPTE/ITU/EBU):
-  - Start: `docs/analogue-video-specifications/README.md`
-  - Full: `docs/analogue-video-specifications/docs/index.md`
+  - Start: `docs-tech/analogue-video-specifications/README.md`
+  - Full: `docs-tech/analogue-video-specifications/docs/index.md`
 - **Rule**: if code conflicts with assumptions, align code **and** tests to the spec first.
 
 ### 9.2 High-Level Design (HLD) Consistency
-- `docs/design/high-level-design.md` is a **living document** and must stay aligned with implemented behaviour.
+- `docs-tech/design/high-level-design.md` is a **living document** and must stay aligned with implemented behaviour.
 - The same requirement applies to all design sub-specifications linked from the HLD.
 - When changing code that affects HLD-described behaviour, **update the HLD in the same task** whenever practical.
 - If you detect a code/documentation mismatch:
