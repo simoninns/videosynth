@@ -2,6 +2,9 @@
 
 A video signal synthesizer for PAL, PAL-M and NTSC.
 
+📖 **[Read the documentation at simoninns.github.io/videosynth](https://simoninns.github.io/videosynth)** —
+installation, user manual and the complete project-file reference.
+
 **videosynth** generates analogue composite (CVBS) and Y/C video signals as
 sample files, closely following the published analogue video standards
 (ITU-R BT.470/BT.1700, SMPTE 170M/244M, IEC 60856/60857, IEC 60461). It is
