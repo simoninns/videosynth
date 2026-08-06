@@ -52,6 +52,10 @@ modules:
     buildsystem: cmake-ninja
     config-opts:
       - -DCMAKE_BUILD_TYPE=Release
+      # Pin the library directory: GNUInstallDirs otherwise picks lib or
+      # lib64 depending on the SDK build, which moves the dependencies out
+      # from under both the link line and the cleanup rules below.
+      - -DCMAKE_INSTALL_LIBDIR=lib
       # yaml-cpp 0.8.0 declares cmake_minimum_required(VERSION 3.4), below the
       # compatibility floor the SDK's CMake 4 enforces.
       - -DCMAKE_POLICY_VERSION_MINIMUM=3.5
@@ -72,6 +76,10 @@ modules:
     buildsystem: cmake-ninja
     config-opts:
       - -DCMAKE_BUILD_TYPE=Release
+      # Pin the library directory: GNUInstallDirs otherwise picks lib or
+      # lib64 depending on the SDK build, which moves the dependencies out
+      # from under both the link line and the cleanup rules below.
+      - -DCMAKE_INSTALL_LIBDIR=lib
       - -DSPDLOG_BUILD_SHARED=ON
       - -DSPDLOG_BUILD_EXAMPLE=OFF
       - -DSPDLOG_BUILD_TESTS=OFF
@@ -87,6 +95,10 @@ modules:
     buildsystem: cmake-ninja
     config-opts:
       - -DCMAKE_BUILD_TYPE=Release
+      # Pin the library directory: GNUInstallDirs otherwise picks lib or
+      # lib64 depending on the SDK build, which moves the dependencies out
+      # from under both the link line and the cleanup rules below.
+      - -DCMAKE_INSTALL_LIBDIR=lib
       - -DBUILD_TESTING=OFF
       - -DIMATH_INSTALL_PKG_CONFIG=ON
     sources:
@@ -98,6 +110,10 @@ modules:
     buildsystem: cmake-ninja
     config-opts:
       - -DCMAKE_BUILD_TYPE=Release
+      # Pin the library directory: GNUInstallDirs otherwise picks lib or
+      # lib64 depending on the SDK build, which moves the dependencies out
+      # from under both the link line and the cleanup rules below.
+      - -DCMAKE_INSTALL_LIBDIR=lib
       - -DLIBDEFLATE_BUILD_STATIC_LIB=OFF
       - -DLIBDEFLATE_BUILD_GZIP=OFF
     sources:
@@ -109,6 +125,10 @@ modules:
     buildsystem: cmake-ninja
     config-opts:
       - -DCMAKE_BUILD_TYPE=Release
+      # Pin the library directory: GNUInstallDirs otherwise picks lib or
+      # lib64 depending on the SDK build, which moves the dependencies out
+      # from under both the link line and the cleanup rules below.
+      - -DCMAKE_INSTALL_LIBDIR=lib
       - -DBUILD_TESTING=OFF
       - -DOPENEXR_BUILD_TOOLS=OFF
       - -DOPENEXR_INSTALL_EXAMPLES=OFF

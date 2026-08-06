@@ -91,6 +91,17 @@ find_package(spdlog REQUIRED)
 find_package(SQLite3 REQUIRED)
 find_package(OpenEXR REQUIRED)
 
+# yaml-cpp 0.8 exports the namespaced target; older packages define only the
+# bare name. Link the imported target where it exists: the bare name reaches
+# the linker as "-lyaml-cpp", which resolves only if the library happens to sit
+# in a directory already being searched. It does not when a distribution or SDK
+# installs into lib64 while the link line searches lib.
+if(TARGET yaml-cpp::yaml-cpp)
+    set(VIDEOSYNTH_YAML_CPP_TARGET yaml-cpp::yaml-cpp)
+else()
+    set(VIDEOSYNTH_YAML_CPP_TARGET yaml-cpp)
+endif()
+
 if(VIDEOSYNTH_BUILD_TESTS)
     find_package(GTest REQUIRED)
 endif()
@@ -190,7 +201,7 @@ target_compile_definitions(videosynth_core
 target_link_libraries(videosynth_core
     PUBLIC
         videosynth_efm
-        yaml-cpp
+        ${VIDEOSYNTH_YAML_CPP_TARGET}
         spdlog::spdlog
         SQLite::SQLite3
         OpenEXR::OpenEXR
