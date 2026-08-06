@@ -13,7 +13,6 @@
 #include <algorithm>
 #include <utility>
 
-#include "videosynth/pipeline.h"
 #include "videosynth/project_validator.h"
 #include "videosynth/results.h"
 
@@ -180,16 +179,13 @@ void PreviewFrameService::StartWorker() {
       }
 
       PreviewScheduleInfo info;
-      info.disc_frame_for_output = ComputeDiscOutputFrameOrder(
-          fresh->project.disc_skips, fresh->schedule.size());
-      info.output_frame_count = info.disc_frame_for_output.size();
+      info.output_frame_count = fresh->schedule.size();
       info.section_first_output_frame.assign(fresh->project.sections.size(),
                                              -1);
-      for (std::size_t output_frame = 0;
-           output_frame < info.disc_frame_for_output.size(); ++output_frame) {
-        const std::size_t disc_frame = info.disc_frame_for_output[output_frame];
-        const int section_index =
-            SectionIndexOf(fresh->project, fresh->schedule[disc_frame].section);
+      for (std::size_t output_frame = 0; output_frame < fresh->schedule.size();
+           ++output_frame) {
+        const int section_index = SectionIndexOf(
+            fresh->project, fresh->schedule[output_frame].section);
         if (section_index >= 0 &&
             info.section_first_output_frame[static_cast<std::size_t>(
                 section_index)] < 0) {
@@ -216,12 +212,10 @@ void PreviewFrameService::StartWorker() {
       return;
     }
 
-    const std::size_t disc_frame =
-        context->info.disc_frame_for_output[request.output_frame_index];
+    const std::size_t disc_frame = request.output_frame_index;
     auto frame = std::make_shared<PreviewFrameData>();
     frame->revision = revision;
     frame->output_frame_index = request.output_frame_index;
-    frame->disc_frame_index = disc_frame;
     frame->options = request.options;
     const Section* section = context->schedule[disc_frame].section;
     frame->section_index = SectionIndexOf(context->project, section);

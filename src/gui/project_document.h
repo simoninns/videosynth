@@ -29,7 +29,6 @@ struct DocumentChange {
     kSectionRemoved,
     kSectionMoved,
     kSectionEdited,
-    kDiscSkips,
   };
 
   Kind kind = Kind::kProjectSettings;
@@ -112,7 +111,6 @@ class ProjectDocument : public QObject {
   bool SetCvbsPresets(const CvbsPresets& presets);
   bool SetProjectLineInjections(ProjectLineInjections line_injections);
   bool SetOutputTargets(const OutputTargets& output);
-  bool SetDiscSkips(std::vector<DiscSkip> disc_skips);
 
   // Inserts at `index`, or appends when index == -1 or index == count.
   bool InsertSection(int index, Section section);
@@ -157,7 +155,6 @@ class ProjectDocument : public QObject {
   void SectionRemoved(int index);
   void SectionMoved(int from, int to);
   void SectionEdited(int index);
-  void DiscSkipsChanged();
 
   // Fires after every granular signal above (any document mutation).
   void DocumentChanged();

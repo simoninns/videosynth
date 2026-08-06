@@ -45,15 +45,12 @@ inline bool operator==(const PreviewOptions& a, const PreviewOptions& b) {
 
 // Immutable description of the current project's output frame space,
 // published after each successful schedule build. Output frame indices
-// address the frames the pipeline would write: forward-skipped disc frames
-// are omitted and backward-skip replays appear as extra output frames, per
-// ComputeDiscOutputFrameOrder.
+// address the frames the pipeline would write, which is the project's frame
+// schedule in order.
 struct PreviewScheduleInfo {
   std::size_t output_frame_count = 0;
-  // Disc-frame (schedule) index emitted for each output frame.
-  std::vector<std::size_t> disc_frame_for_output;
   // First output frame showing each project section; -1 when the section
-  // contributes no output frames (for example fully forward-skipped).
+  // contributes no output frames.
   std::vector<qint64> section_first_output_frame;
   Standard standard = Standard::kUnknown;
   int samples_per_line = 0;
@@ -72,7 +69,6 @@ struct PreviewScheduleInfo {
 struct PreviewFrameData {
   quint64 revision = 0;
   std::size_t output_frame_index = 0;
-  std::size_t disc_frame_index = 0;
   int section_index = -1;
   QString section_name;
   PreviewOptions options;

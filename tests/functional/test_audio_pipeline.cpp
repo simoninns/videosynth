@@ -1,9 +1,9 @@
 /*
  * File:        test_audio_pipeline.cpp
  * Module:      audio_pipeline_tests
- * Purpose:     Verifies frame-locked multi-pair audio generation and disc-skip
- *              routing of the WAV tracks through the pipeline using
- *              deterministic mocks.
+ * Purpose:     Verifies frame-locked multi-pair audio generation and routing
+ *              of the WAV tracks through the pipeline using deterministic
+ *              mocks.
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Simon Inns
@@ -248,60 +248,6 @@ TEST(AudioPipelineTest, FrameLockedSampleCountMatchesFrameCount) {
   ASSERT_GE(bytes.size(), 44U);
   EXPECT_EQ(ReadLe32(bytes, 40), kFrames * kPalFrameBytes);
   EXPECT_EQ(bytes.size(), 44U + kFrames * kPalFrameBytes);
-
-  std::filesystem::remove(audio_path);
-}
-
-TEST(AudioPipelineTest, ForwardSkipWithholdsAudioFrames) {
-  const std::filesystem::path video_path =
-      TempPath("videosynth_audio_pipeline_fwd.cvbs");
-  const std::filesystem::path audio_path =
-      TempPath("videosynth_audio_pipeline_fwd_audio_0.wav");
-  std::filesystem::remove(audio_path);
-
-  // 6 disc frames, forward skip of 2 at frame 3 (1-based) → 4 output frames.
-  Project project = MakeProject(Standard::kPal, 6, SinglePair(), video_path);
-  DiscSkip fwd;
-  fwd.at_frame = 3;
-  fwd.direction = DiscSkipDirection::kForward;
-  fwd.count = 2;
-  project.disc_skips.push_back(fwd);
-
-  AudioTrackGenerator generator;
-  ASSERT_TRUE(RunPipeline(std::move(project), &generator));
-
-  ASSERT_TRUE(std::filesystem::exists(audio_path));
-  const std::vector<char> bytes = ReadFileBytes(audio_path);
-  ASSERT_GE(bytes.size(), 44U);
-  EXPECT_EQ(ReadLe32(bytes, 40), 4U * kPalFrameBytes);
-
-  std::filesystem::remove(audio_path);
-}
-
-TEST(AudioPipelineTest, BackwardSkipExtendsOutputSampleCount) {
-  const std::filesystem::path video_path =
-      TempPath("videosynth_audio_pipeline_bwd.cvbs");
-  const std::filesystem::path audio_path =
-      TempPath("videosynth_audio_pipeline_bwd_audio_0.wav");
-  std::filesystem::remove(audio_path);
-
-  // 5 disc frames, backward skip of 2 at frame 3 (1-based). Output order:
-  // 0,1,2, copy(1), copy(2), 3,4 → 7 output frames. Audio follows the output
-  // stream: a continuous tone sample-locked to all 7 stored frames.
-  Project project = MakeProject(Standard::kPal, 5, SinglePair(), video_path);
-  DiscSkip bwd;
-  bwd.at_frame = 3;
-  bwd.direction = DiscSkipDirection::kBackward;
-  bwd.count = 2;
-  project.disc_skips.push_back(bwd);
-
-  AudioTrackGenerator generator;
-  ASSERT_TRUE(RunPipeline(std::move(project), &generator));
-
-  ASSERT_TRUE(std::filesystem::exists(audio_path));
-  const std::vector<char> bytes = ReadFileBytes(audio_path);
-  ASSERT_EQ(bytes.size(), 44U + 7U * kPalFrameBytes);
-  EXPECT_EQ(ReadLe32(bytes, 40), 7U * kPalFrameBytes);
 
   std::filesystem::remove(audio_path);
 }

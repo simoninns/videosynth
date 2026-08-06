@@ -17,9 +17,9 @@
 
 namespace videosynth::gui {
 
-// Edit Project dialog. Presents the project-settings form plus the
-// project-level disc-skips table for an already-created project. The video
-// standard is shown read-only (it is fixed at creation). Edits are staged into
+// Edit Project dialog. Presents the project-settings form for an
+// already-created project. The video standard is shown read-only (it is fixed
+// at creation). Edits are staged into
 // a private scratch ProjectDocument seeded with a copy of the current project;
 // on OK the caller reads project() and applies the changed settings to the
 // real document, and on Cancel they are discarded.
@@ -32,7 +32,7 @@ class EditProjectDialog : public QDialog {
   // Copies `project` into the dialog's scratch document.
   explicit EditProjectDialog(const Project& project, QWidget* parent = nullptr);
 
-  // The edited project (settings + disc skips); only meaningful after accept.
+  // The edited project settings; only meaningful after accept.
   Project project() const { return scratch_->project(); }
 
  private:

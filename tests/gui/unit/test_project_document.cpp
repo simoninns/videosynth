@@ -72,8 +72,6 @@ class SignalCounter {
                        ++section_edited;
                        last_index = index;
                      });
-    QObject::connect(document, &ProjectDocument::DiscSkipsChanged,
-                     [this] { ++disc_skips_changed; });
     QObject::connect(document, &ProjectDocument::DocumentChanged,
                      [this] { ++document_changed; });
     QObject::connect(document, &ProjectDocument::DocumentReset,
@@ -92,7 +90,6 @@ class SignalCounter {
   int section_removed = 0;
   int section_moved = 0;
   int section_edited = 0;
-  int disc_skips_changed = 0;
   int document_changed = 0;
   int document_reset = 0;
   int modified_state_changed = 0;
@@ -153,7 +150,6 @@ TEST_F(ProjectDocumentTest, NoOpMutationsEmitNothingAndStayClean) {
                                         project.description));
   EXPECT_FALSE(document_.SetCvbsPresets(project.cvbs_presets));
   EXPECT_FALSE(document_.SetOutputTargets(project.output));
-  EXPECT_FALSE(document_.SetDiscSkips(project.disc_skips));
   EXPECT_FALSE(document_.SetSection(0, project.sections[0]));
 
   EXPECT_EQ(counter_->document_changed, 0);
@@ -181,20 +177,6 @@ TEST_F(ProjectDocumentTest, SetOutputTargetsEmitsProjectSettingsChanged) {
   EXPECT_TRUE(document_.SetOutputTargets(output));
   EXPECT_TRUE(document_.project().output == output);
   EXPECT_EQ(counter_->project_settings_changed, 1);
-}
-
-TEST_F(ProjectDocumentTest, SetDiscSkipsEmitsDiscSkipsChanged) {
-  std::vector<DiscSkip> skips;
-  DiscSkip skip;
-  skip.at_frame = 5;
-  skip.direction = DiscSkipDirection::kForward;
-  skip.count = 2;
-  skips.push_back(skip);
-
-  EXPECT_TRUE(document_.SetDiscSkips(skips));
-  EXPECT_TRUE(document_.project().disc_skips == skips);
-  EXPECT_EQ(counter_->disc_skips_changed, 1);
-  EXPECT_EQ(counter_->document_changed, 1);
 }
 
 TEST_F(ProjectDocumentTest, InsertSectionAppendsWithMinusOneIndex) {

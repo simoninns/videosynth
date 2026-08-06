@@ -346,24 +346,6 @@ void EmitSection(YAML::Emitter& out, const Section& section) {
   out << YAML::EndMap;
 }
 
-void EmitDiscSkips(YAML::Emitter& out, const std::vector<DiscSkip>& skips) {
-  if (skips.empty()) {
-    return;
-  }
-
-  out << YAML::Key << "disc_skips" << YAML::Value << YAML::BeginSeq;
-  for (const DiscSkip& skip : skips) {
-    out << YAML::BeginMap;
-    out << YAML::Key << "at_frame" << YAML::Value << skip.at_frame;
-    out << YAML::Key << "direction" << YAML::Value
-        << (skip.direction == DiscSkipDirection::kForward ? "forward"
-                                                          : "backward");
-    out << YAML::Key << "count" << YAML::Value << skip.count;
-    out << YAML::EndMap;
-  }
-  out << YAML::EndSeq;
-}
-
 }  // namespace
 
 YamlProjectEmitter::YamlProjectEmitter(ILogger* logger) : logger_(logger) {}
@@ -385,8 +367,6 @@ std::string YamlProjectEmitter::EmitString(const Project& project) const {
     EmitSection(out, section);
   }
   out << YAML::EndSeq;
-
-  EmitDiscSkips(out, project.disc_skips);
   out << YAML::EndMap;
 
   return std::string(out.c_str()) + "\n";

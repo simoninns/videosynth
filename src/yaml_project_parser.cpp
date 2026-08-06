@@ -381,9 +381,8 @@ ParseResult ParseYamlNode(const YAML::Node& root, ILogger* logger) {
       return result;
     }
 
-    const std::set<std::string> root_keys = {"project",  "cvbs_presets",
-                                             "output",   "line_injections",
-                                             "sections", "disc_skips"};
+    const std::set<std::string> root_keys = {
+        "project", "cvbs_presets", "output", "line_injections", "sections"};
     ValidateAllowedKeys(root, root_keys, "Top-level YAML", &result.errors);
     if (!result.errors.empty()) {
       return result;
@@ -739,44 +738,6 @@ ParseResult ParseYamlNode(const YAML::Node& root, ILogger* logger) {
       }
 
       result.project.sections.push_back(section);
-    }
-
-    if (root["disc_skips"] && root["disc_skips"].IsSequence()) {
-      for (const YAML::Node& skip_node : root["disc_skips"]) {
-        if (!skip_node.IsMap()) {
-          result.errors.push_back(
-              "Each disc_skips entry must be a map with at_frame, direction, "
-              "and count.");
-          return result;
-        }
-        const std::set<std::string> skip_keys = {"at_frame", "direction",
-                                                 "count"};
-        ValidateAllowedKeys(skip_node, skip_keys, "disc_skips entry",
-                            &result.errors);
-        if (!result.errors.empty()) {
-          return result;
-        }
-
-        DiscSkip skip;
-        skip.at_frame = skip_node["at_frame"].as<int>(0);
-
-        const std::string dir = skip_node["direction"].as<std::string>("");
-        if (dir == "forward") {
-          skip.direction = DiscSkipDirection::kForward;
-        } else if (dir == "backward") {
-          skip.direction = DiscSkipDirection::kBackward;
-        } else {
-          result.errors.push_back(
-              "disc_skips entry 'direction' must be 'forward' or 'backward'.");
-          return result;
-        }
-
-        skip.count = skip_node["count"].as<int>(0);
-        result.project.disc_skips.push_back(skip);
-      }
-    } else if (root["disc_skips"]) {
-      result.errors.push_back("'disc_skips' must be a sequence.");
-      return result;
     }
 
     result.ok = true;

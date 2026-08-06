@@ -688,11 +688,7 @@ TEST(YamlProjectParserTest, OsdOverlaysNotAListReturnsError) {
   EXPECT_NE(result.errors[0].find("overlays"), std::string::npos);
 }
 
-// ---------------------------------------------------------------------------
-// disc_skips parsing tests
-// ---------------------------------------------------------------------------
-
-TEST(YamlProjectParserTest, ParsesForwardDiscSkip) {
+TEST(YamlProjectParserTest, RejectsRemovedDiscSkipsTopLevelKey) {
   const std::string yaml =
       "cvbs_presets:\n"
       "  video_standard_preset: PAL\n"
@@ -711,131 +707,9 @@ TEST(YamlProjectParserTest, ParsesForwardDiscSkip) {
   YamlProjectParser parser;
   const ParseResult result = parser.ParseString(yaml);
 
-  ASSERT_TRUE(result.ok);
-  ASSERT_EQ(result.project.disc_skips.size(), 1U);
-  EXPECT_EQ(result.project.disc_skips[0].at_frame, 3);
-  EXPECT_EQ(result.project.disc_skips[0].direction,
-            DiscSkipDirection::kForward);
-  EXPECT_EQ(result.project.disc_skips[0].count, 2);
-}
-
-TEST(YamlProjectParserTest, ParsesBackwardDiscSkip) {
-  const std::string yaml =
-      "cvbs_presets:\n"
-      "  video_standard_preset: NTSC\n"
-      "output:\n"
-      "  video_path: out.cvbs\n"
-      "sections:\n"
-      "  - name: S\n"
-      "    type: progressive\n"
-      "    source: fixture.exr\n"
-      "    duration_frames: 20\n"
-      "disc_skips:\n"
-      "  - at_frame: 15\n"
-      "    direction: backward\n"
-      "    count: 4\n";
-
-  YamlProjectParser parser;
-  const ParseResult result = parser.ParseString(yaml);
-
-  ASSERT_TRUE(result.ok);
-  ASSERT_EQ(result.project.disc_skips.size(), 1U);
-  EXPECT_EQ(result.project.disc_skips[0].at_frame, 15);
-  EXPECT_EQ(result.project.disc_skips[0].direction,
-            DiscSkipDirection::kBackward);
-  EXPECT_EQ(result.project.disc_skips[0].count, 4);
-}
-
-TEST(YamlProjectParserTest, ParsesMultipleDiscSkips) {
-  const std::string yaml =
-      "cvbs_presets:\n"
-      "  video_standard_preset: PAL\n"
-      "output:\n"
-      "  video_path: out.cvbs\n"
-      "sections:\n"
-      "  - name: S\n"
-      "    type: progressive\n"
-      "    source: fixture.exr\n"
-      "    duration_frames: 40\n"
-      "disc_skips:\n"
-      "  - at_frame: 5\n"
-      "    direction: forward\n"
-      "    count: 3\n"
-      "  - at_frame: 20\n"
-      "    direction: backward\n"
-      "    count: 4\n";
-
-  YamlProjectParser parser;
-  const ParseResult result = parser.ParseString(yaml);
-
-  ASSERT_TRUE(result.ok);
-  ASSERT_EQ(result.project.disc_skips.size(), 2U);
-  EXPECT_EQ(result.project.disc_skips[0].direction,
-            DiscSkipDirection::kForward);
-  EXPECT_EQ(result.project.disc_skips[1].direction,
-            DiscSkipDirection::kBackward);
-}
-
-TEST(YamlProjectParserTest, RejectsDiscSkipWithInvalidDirection) {
-  const std::string yaml =
-      "cvbs_presets:\n"
-      "  video_standard_preset: PAL\n"
-      "output:\n"
-      "  video_path: out.cvbs\n"
-      "sections:\n"
-      "  - name: S\n"
-      "    type: progressive\n"
-      "    source: fixture.exr\n"
-      "    duration_frames: 10\n"
-      "disc_skips:\n"
-      "  - at_frame: 5\n"
-      "    direction: sideways\n"
-      "    count: 2\n";
-
-  YamlProjectParser parser;
-  const ParseResult result = parser.ParseString(yaml);
-
   EXPECT_FALSE(result.ok);
   ASSERT_FALSE(result.errors.empty());
-}
-
-TEST(YamlProjectParserTest, RejectsDiscSkipsNotASequence) {
-  const std::string yaml =
-      "cvbs_presets:\n"
-      "  video_standard_preset: PAL\n"
-      "output:\n"
-      "  video_path: out.cvbs\n"
-      "sections:\n"
-      "  - name: S\n"
-      "    type: progressive\n"
-      "    source: fixture.exr\n"
-      "    duration_frames: 10\n"
-      "disc_skips: scalar_value\n";
-
-  YamlProjectParser parser;
-  const ParseResult result = parser.ParseString(yaml);
-
-  EXPECT_FALSE(result.ok);
-  ASSERT_FALSE(result.errors.empty());
-}
-
-TEST(YamlProjectParserTest, NoDiscSkipsFieldLeavesListEmpty) {
-  const std::string yaml =
-      "cvbs_presets:\n"
-      "  video_standard_preset: PAL\n"
-      "output:\n"
-      "  video_path: out.cvbs\n"
-      "sections:\n"
-      "  - name: S\n"
-      "    type: progressive\n"
-      "    source: fixture.exr\n"
-      "    duration_frames: 10\n";
-
-  YamlProjectParser parser;
-  const ParseResult result = parser.ParseString(yaml);
-
-  ASSERT_TRUE(result.ok);
-  EXPECT_TRUE(result.project.disc_skips.empty());
+  EXPECT_NE(result.errors[0].find("disc_skips"), std::string::npos);
 }
 
 TEST(YamlProjectParserTest, ParsesFixedFrequencyChannelPair) {

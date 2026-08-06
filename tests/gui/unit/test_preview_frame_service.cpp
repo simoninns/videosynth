@@ -313,43 +313,6 @@ TEST(PreviewFrameServiceTest, FrameIndexingMatchesBuildFrameSchedule) {
   EXPECT_EQ(source_frame_indices[0], reference_schedule[3].source_frame_index);
 }
 
-TEST(PreviewFrameServiceTest, DiscSkipsRemapOutputFrameIndices) {
-  std::vector<std::size_t> disc_frames;
-  PreviewFrameService service(RecordingSynthesizer{nullptr, &disc_frames});
-
-  Project project = MakeValidProject({3, 2});
-  DiscSkip skip;
-  skip.at_frame = 2;  // 1-based: withholds disc frames 1 and 2 (0-based).
-  skip.direction = DiscSkipDirection::kForward;
-  skip.count = 2;
-  project.disc_skips.push_back(skip);
-  service.SetProject(project);
-
-  int frames_delivered = 0;
-  QObject::connect(
-      &service, &PreviewFrameService::FrameReady,
-      [&frames_delivered](std::shared_ptr<const PreviewFrameData>) {
-        ++frames_delivered;
-      });
-
-  service.RequestFrame(1, {});
-  ASSERT_TRUE(PumpUntil([&] { return frames_delivered == 1; }, 5000));
-
-  const PreviewScheduleInfo info =
-      service.schedule_info().value_or(PreviewScheduleInfo{});
-  ASSERT_GT(info.output_frame_count, 0U);
-  // 5 disc frames minus 2 withheld = 3 output frames.
-  EXPECT_EQ(info.output_frame_count, 3U);
-  EXPECT_EQ(info.disc_frame_for_output, (std::vector<std::size_t>{0U, 3U, 4U}));
-  // Section 1's frames 1-2 are withheld, so its first visible output frame
-  // maps to disc frame 3 at output index 1.
-  EXPECT_EQ(info.section_first_output_frame[0], 0);
-  EXPECT_EQ(info.section_first_output_frame[1], 1);
-
-  ASSERT_EQ(disc_frames.size(), 1U);
-  EXPECT_EQ(disc_frames[0], 3U);
-}
-
 TEST(PreviewFrameServiceTest, InvalidProjectReportsFailureWithoutSynthesis) {
   std::atomic<int> calls{0};
   PreviewFrameService service(RecordingSynthesizer{&calls});

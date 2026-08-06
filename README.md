@@ -36,9 +36,6 @@ The project ships two front ends built from the same pipeline:
 - **Per-section impairments**: two-component Gaussian noise (floor plus
   proportional) and dropout injection (random surface dropouts and persistent
   scratches) with a SQLite dropout sidecar.
-- **Disc skip simulation**: frame-accurate forward and backward player tracking
-  failures, with burst phase and colour-frame index kept consistent across
-  simulated capture sources.
 - **Multi-track audio**: up to eight stereo channel pairs at 48 kHz/24-bit,
   plus EFM audio for laserdisc projects.
 - **On-screen display** text with substitution tokens (picture number, CLV
@@ -275,7 +272,7 @@ Hand-authored projects live in [projects/](projects/):
 |-----------|----------|
 | [projects/general/](projects/general/) | Feature examples — audio, EFM audio, VITS, progressive EXR/MKV sources, PAL pilot burst (composite) |
 | [projects/general-yc/](projects/general-yc/) | Feature examples with Y/C output |
-| [projects/stacking/](projects/stacking/) | Laserdisc disc simulation, skip and multi-source stacking sets for PAL, PAL-M and NTSC |
+| [projects/stacking/](projects/stacking/) | Laserdisc disc simulation and multi-source stacking sets for PAL, PAL-M and NTSC |
 | [projects/long-form/](projects/long-form/) | Three-hour capture-sized PAL and NTSC examples (VITS, analogue stereo audio) for testing against realistic file sizes |
 | [projects/benchmark/](projects/benchmark/) | Fixed-length PAL/NTSC still, moving-source and noise projects used by [scripts/benchmark.sh](scripts/benchmark.sh) |
 | [projects/variants.json](projects/variants.json) | Rules for mechanically derived variants |
@@ -329,8 +326,8 @@ To run a single project by hand, invoke the binary directly; without
 
 [scripts/benchmark.sh](scripts/benchmark.sh) times the fixed-length projects in
 [projects/benchmark/](projects/benchmark/) — PAL still, PAL still with noise,
-PAL moving source (MKV), a PAL still-then-clip section boundary, a PAL run with
-disc skips, and NTSC still — once per thread configuration, and prints a
+PAL moving source (MKV), a PAL still-then-clip section boundary, and NTSC
+still — once per thread configuration, and prints a
 frames/second table. Frame counts come from the CLI's own log, and all
 media is written under `build/project-output/benchmark/` via `{output}`.
 

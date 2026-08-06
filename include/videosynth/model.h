@@ -498,29 +498,6 @@ struct OutputTargets {
   EfmAudioOutput efm_audio = {};
 };
 
-enum class DiscSkipDirection {
-  kForward,
-  kBackward,
-};
-
-// Describes a single skip event in the disc output stream.
-//
-// Forward skip: disc frames [at_frame .. at_frame+count-1] (1-based) are
-// generated to maintain burst-phase continuity but withheld from the output.
-// The capture therefore has a gap at that position.
-//
-// Backward skip: after disc frame at_frame (1-based) has been written,
-// disc frames [at_frame-count+1 .. at_frame] are re-emitted as bit-identical
-// copies, simulating the player rewinding and replaying the same grooves.
-struct DiscSkip {
-  // 1-based disc frame number at which the skip event starts (forward) or
-  // after which replay begins (backward).
-  int at_frame = 0;
-  DiscSkipDirection direction = DiscSkipDirection::kForward;
-  // Frames to discard (forward) or replay (backward). Must be >= 1.
-  int count = 0;
-};
-
 // One project-wide VITS (vertical interval test signal) injection: a single
 // VITS type placed on one or more 1-based frame lines. The same set is applied
 // to every frame of the project regardless of section.
@@ -552,9 +529,6 @@ struct Project {
   OutputTargets output;
   ProjectLineInjections line_injections;
   std::vector<Section> sections;
-  // Optional list of disc skip events applied after generation. Empty = no
-  // skips; the pipeline uses the standard batch loop.
-  std::vector<DiscSkip> disc_skips;
 };
 
 // Equality operators for the project model. Comparison is exact (including
@@ -674,16 +648,11 @@ inline bool operator==(const OutputTargets& a, const OutputTargets& b) {
          a.signal_type == b.signal_type && a.efm_audio == b.efm_audio;
 }
 
-inline bool operator==(const DiscSkip& a, const DiscSkip& b) {
-  return a.at_frame == b.at_frame && a.direction == b.direction &&
-         a.count == b.count;
-}
-
 inline bool operator==(const Project& a, const Project& b) {
   return a.name == b.name && a.version == b.version &&
          a.description == b.description && a.cvbs_presets == b.cvbs_presets &&
          a.output == b.output && a.line_injections == b.line_injections &&
-         a.sections == b.sections && a.disc_skips == b.disc_skips;
+         a.sections == b.sections;
 }
 
 inline bool operator!=(const Project& a, const Project& b) { return !(a == b); }

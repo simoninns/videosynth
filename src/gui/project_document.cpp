@@ -16,8 +16,8 @@ namespace videosynth::gui {
 
 namespace {
 
-// Swaps a whole-value slice of the project (project info, presets, output,
-// disc skips): Apply and Revert exchange the stored value with the live one.
+// Swaps a whole-value slice of the project (project info, presets, output):
+// Apply and Revert exchange the stored value with the live one.
 template <typename Value>
 class SwapValueCommand final : public IDocumentCommand {
  public:
@@ -260,18 +260,6 @@ bool ProjectDocument::SetOutputTargets(const OutputTargets& output) {
       QStringLiteral("Edit output targets")));
 }
 
-bool ProjectDocument::SetDiscSkips(std::vector<DiscSkip> disc_skips) {
-  if (project_.disc_skips == disc_skips) {
-    return false;
-  }
-  return ApplyCommand(std::make_unique<SwapValueCommand<std::vector<DiscSkip>>>(
-      +[](Project& project) -> std::vector<DiscSkip>& {
-        return project.disc_skips;
-      },
-      std::move(disc_skips), DocumentChange::Kind::kDiscSkips,
-      QStringLiteral("Edit disc skips")));
-}
-
 bool ProjectDocument::InsertSection(int index, Section section) {
   if (index == -1) {
     index = section_count();
@@ -452,9 +440,6 @@ void ProjectDocument::AnnounceChange(const DocumentChange& change) {
       break;
     case DocumentChange::Kind::kSectionEdited:
       emit SectionEdited(change.index);
-      break;
-    case DocumentChange::Kind::kDiscSkips:
-      emit DiscSkipsChanged();
       break;
   }
   emit DocumentChanged();

@@ -34,8 +34,7 @@ struct RunOptions {
   //   0  = auto (std::thread::hardware_concurrency; the CLI default),
   //   1  = pure sequential path (the library default),
   //   N  = N worker threads.
-  // Output is byte-identical regardless of this value, including for projects
-  // with disc_skips.
+  // Output is byte-identical regardless of this value.
   int threads = 1;
   // Logical asset roots for resolving {name}/path source and output tokens.
   // The CLI populates this from DefaultAssetRoots() plus --asset-root

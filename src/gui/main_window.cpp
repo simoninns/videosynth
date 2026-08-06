@@ -700,7 +700,6 @@ void MainWindow::OnEditProject() {
   document_->SetCvbsPresets(edited.cvbs_presets);
   document_->SetProjectLineInjections(edited.line_injections);
   document_->SetOutputTargets(edited.output);
-  document_->SetDiscSkips(edited.disc_skips);
   statusBar()->showMessage(tr("Project settings updated"), 3000);
 }
 

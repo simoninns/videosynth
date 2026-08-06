@@ -321,120 +321,6 @@ TEST(PipelineTest, ValidationFailureStopsPipeline) {
 }
 
 // ---------------------------------------------------------------------------
-// Disc skip pipeline tests
-// ---------------------------------------------------------------------------
-
-TEST(PipelineTest, ForwardSkipReducesOutputFrameCount) {
-  // 6 disc frames; at_frame=3 (1-based), count=2 → 0-based indices [2,3] are
-  // withheld → 4 output frames: disc frames 0,1,4,5.
-  MockParser parser;
-  parser.result.ok = true;
-  parser.result.project = MakeProject(6);
-  DiscSkip fwd;
-  fwd.at_frame = 3;
-  fwd.direction = DiscSkipDirection::kForward;
-  fwd.count = 2;
-  parser.result.project.disc_skips.push_back(fwd);
-
-  MockValidator validator;
-  validator.result.is_valid = true;
-
-  MockGeneration generation;
-  generation.embed_frame_id = true;
-
-  MockOutput output;
-  MockLogger logger;
-
-  VideoSynthPipeline pipeline(&parser, &validator, &generation, nullptr,
-                              nullptr, &output, &logger);
-  RunOptions options;
-  options.project_path = "project.yaml";
-
-  EXPECT_TRUE(pipeline.Run(options));
-  EXPECT_EQ(output.begin_write_frame_count, 4U);
-  ASSERT_EQ(output.appended_first_samples.size(), 4U);
-  EXPECT_EQ(output.appended_first_samples[0], 0);
-  EXPECT_EQ(output.appended_first_samples[1], 1);
-  // Disc frames at 0-based indices 2 and 3 are withheld; next is index 4.
-  EXPECT_EQ(output.appended_first_samples[2], 4);
-  EXPECT_EQ(output.appended_first_samples[3], 5);
-}
-
-TEST(PipelineTest, BackwardSkipIncreasesOutputFrameCount) {
-  // 5 disc frames; at_frame=3 (1-based), count=2 → at=2 (0-based).
-  // first_src = 2-2+1 = 1; replay_disc_frames at index 2 = [1,2].
-  // Output: 0,1,2, copies[1,2], 3,4 → 7 frames.
-  MockParser parser;
-  parser.result.ok = true;
-  parser.result.project = MakeProject(5);
-  DiscSkip bwd;
-  bwd.at_frame = 3;
-  bwd.direction = DiscSkipDirection::kBackward;
-  bwd.count = 2;
-  parser.result.project.disc_skips.push_back(bwd);
-
-  MockValidator validator;
-  validator.result.is_valid = true;
-
-  MockGeneration generation;
-  generation.embed_frame_id = true;
-
-  MockOutput output;
-  MockLogger logger;
-
-  VideoSynthPipeline pipeline(&parser, &validator, &generation, nullptr,
-                              nullptr, &output, &logger);
-  RunOptions options;
-  options.project_path = "project.yaml";
-
-  EXPECT_TRUE(pipeline.Run(options));
-  EXPECT_EQ(output.begin_write_frame_count, 7U);
-  ASSERT_EQ(output.appended_first_samples.size(), 7U);
-  EXPECT_EQ(output.appended_first_samples[0], 0);
-  EXPECT_EQ(output.appended_first_samples[1], 1);
-  EXPECT_EQ(output.appended_first_samples[2], 2);
-  // Copies of disc frames 1 and 2 (0-based) follow disc frame 2 in output.
-  EXPECT_EQ(output.appended_first_samples[3], output.appended_first_samples[1]);
-  EXPECT_EQ(output.appended_first_samples[4], output.appended_first_samples[2]);
-  EXPECT_EQ(output.appended_first_samples[5], 3);
-  EXPECT_EQ(output.appended_first_samples[6], 4);
-}
-
-TEST(PipelineTest, ForwardSkipAtStartReducesOutputAndMaintainsOrder) {
-  // Skip first 2 disc frames → output starts at disc frame 2.
-  MockParser parser;
-  parser.result.ok = true;
-  parser.result.project = MakeProject(5);
-  DiscSkip fwd;
-  fwd.at_frame = 1;
-  fwd.direction = DiscSkipDirection::kForward;
-  fwd.count = 2;
-  parser.result.project.disc_skips.push_back(fwd);
-
-  MockValidator validator;
-  validator.result.is_valid = true;
-
-  MockGeneration generation;
-  generation.embed_frame_id = true;
-
-  MockOutput output;
-  MockLogger logger;
-
-  VideoSynthPipeline pipeline(&parser, &validator, &generation, nullptr,
-                              nullptr, &output, &logger);
-  RunOptions options;
-  options.project_path = "project.yaml";
-
-  EXPECT_TRUE(pipeline.Run(options));
-  EXPECT_EQ(output.begin_write_frame_count, 3U);
-  ASSERT_EQ(output.appended_first_samples.size(), 3U);
-  // First output frame is disc frame 2 (0-based).
-  EXPECT_EQ(output.appended_first_samples[0], 2);
-  EXPECT_EQ(output.appended_first_samples[1], 3);
-  EXPECT_EQ(output.appended_first_samples[2], 4);
-}
-
-// ---------------------------------------------------------------------------
 // In-memory execution path (RunProject), observer, and cancellation tests
 // ---------------------------------------------------------------------------
 
@@ -620,50 +506,6 @@ TEST(PipelineTest, ObserverReportsFailedStatusOnValidationError) {
 // Worker-pool synthesis path (RunOptions::threads > 1)
 // ---------------------------------------------------------------------------
 
-TEST(PipelineTest, ParallelDiscSkipEmissionMatchesSequentialOrder) {
-  // 12 disc frames; forward skip withholds 0-based [3,4]; backward skip at
-  // 0-based 8 replays [7,8]. Expected output order: 0,1,2,5,6,7,8,7,8,9,10,11.
-  Project project = MakeProject(12);
-  DiscSkip forward;
-  forward.at_frame = 4;
-  forward.direction = DiscSkipDirection::kForward;
-  forward.count = 2;
-  project.disc_skips.push_back(forward);
-  DiscSkip backward;
-  backward.at_frame = 9;
-  backward.direction = DiscSkipDirection::kBackward;
-  backward.count = 2;
-  project.disc_skips.push_back(backward);
-
-  auto RunWithThreads = [&project](int threads,
-                                   std::vector<SampleFixed>* out_samples) {
-    MockParser parser;
-    MockValidator validator;
-    validator.result.is_valid = true;
-    MockGeneration generation;
-    generation.embed_frame_id = true;
-    MockOutput output;
-    MockLogger logger;
-    VideoSynthPipeline pipeline(&parser, &validator, &generation, nullptr,
-                                nullptr, &output, &logger);
-    RunOptions options;
-    options.threads = threads;
-    const bool ok = pipeline.RunProject(project, options);
-    *out_samples = output.appended_first_samples;
-    return ok;
-  };
-
-  std::vector<SampleFixed> sequential_samples;
-  std::vector<SampleFixed> parallel_samples;
-  ASSERT_TRUE(RunWithThreads(1, &sequential_samples));
-  ASSERT_TRUE(RunWithThreads(4, &parallel_samples));
-
-  const std::vector<SampleFixed> expected = {0, 1, 2, 5, 6,  7,
-                                             8, 7, 8, 9, 10, 11};
-  EXPECT_EQ(sequential_samples, expected);
-  EXPECT_EQ(parallel_samples, expected);
-}
-
 TEST(PipelineTest,
      ParallelSynthesisProducesOrderedFramesIdenticalToSequential) {
   const Project project = MakeProject(30);
@@ -817,33 +659,6 @@ TEST(PipelineTest, SequentialRunsFromWorkerThreadProduceIdenticalResults) {
   EXPECT_TRUE(worker_second_ok);
   EXPECT_EQ(worker_first, worker_second);
   EXPECT_EQ(worker_first, main_thread_samples);
-}
-
-TEST(PipelineTest, DiscOutputFrameOrderWithoutSkipsIsIdentity) {
-  const std::vector<std::size_t> order = ComputeDiscOutputFrameOrder({}, 4U);
-  EXPECT_EQ(order, (std::vector<std::size_t>{0U, 1U, 2U, 3U}));
-}
-
-TEST(PipelineTest, DiscOutputFrameOrderForwardSkipWithholdsFrames) {
-  DiscSkip skip;
-  skip.at_frame = 2;  // 1-based: withholds disc frames 1 and 2 (0-based).
-  skip.direction = DiscSkipDirection::kForward;
-  skip.count = 2;
-
-  const std::vector<std::size_t> order =
-      ComputeDiscOutputFrameOrder({skip}, 5U);
-  EXPECT_EQ(order, (std::vector<std::size_t>{0U, 3U, 4U}));
-}
-
-TEST(PipelineTest, DiscOutputFrameOrderBackwardSkipReplaysFrames) {
-  DiscSkip skip;
-  skip.at_frame = 3;  // 1-based: after disc frame 2 (0-based), replay 1..2.
-  skip.direction = DiscSkipDirection::kBackward;
-  skip.count = 2;
-
-  const std::vector<std::size_t> order =
-      ComputeDiscOutputFrameOrder({skip}, 5U);
-  EXPECT_EQ(order, (std::vector<std::size_t>{0U, 1U, 2U, 1U, 2U, 3U, 4U}));
 }
 
 }  // namespace

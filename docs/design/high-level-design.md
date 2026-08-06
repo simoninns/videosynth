@@ -60,7 +60,6 @@
   - **VITC** (Vertical Interval Timecode, SMPTE 12M).
 - **Per-section noise injection**: two-component Gaussian noise model (floor + proportional) targeting orc-gui Black PSNR and White SNR metrics.
 - **Per-section dropout injection**: physical-tape and optical-disc dropout simulation (random surface dropouts and persistent scratch dropouts) with automatic sidecar generation conformant to the [Dropout Extension Format](../cvbs-file-format-specification/docs/extensions/dropout-extension-format.md) (schema version 5).
-- **Disc skip simulation**: Frame-accurate simulation of laserdisc player tracking failures. Forward skips discard disc frames from output; backward skips repeat frames as bit-identical copies (noise and dropout included), ensuring burst phase and colour-frame index remain consistent across all capture sources regardless of skip pattern.
 
 ### **Target Users**
 
@@ -168,7 +167,7 @@ VideoSynth currently follows a **four-stage sampled-domain architecture**:
 3. **Dropout Injection Stage** (`DropoutInjectionStage`): Applies optional per-section random and scratch dropout events to the fixed-point mV Y/C buffers after noise, and writes a conformant SQLite dropout sidecar (`<basename>.dropouts.meta`).
 4. **[Output Stage](#output-stage)**: Validates frame-span alignment, combines Y and C, quantises to the active digital interface code space, and formats the final CVBS output files.
 
-Alongside these four stages, an optional **Audio Track Generator** (`AudioTrackGenerator`) runs when at least one section declares an `audio:` channel pair. It synthesises per-channel test-tone waveforms (`AudioSynthesizer`) frame-locked to the video and streams one stereo 24-bit PCM RIFF/WAVE track per declared channel pair (0–7) to `<basename>_audio_<pair>.wav` (each via an `AudioWavWriter`). Audio is a pure function of output position, so the generator is driven with the output-order section sequence and stays sample-accurately aligned to the stored video frames under disc-skip withhold/replay. See [Section 7 `audio:`](#audio-sub-key-optional-per-section).
+Alongside these four stages, an optional **Audio Track Generator** (`AudioTrackGenerator`) runs when at least one section declares an `audio:` channel pair. It synthesises per-channel test-tone waveforms (`AudioSynthesizer`) frame-locked to the video and streams one stereo 24-bit PCM RIFF/WAVE track per declared channel pair (0–7) to `<basename>_audio_<pair>.wav` (each via an `AudioWavWriter`). Audio is a pure function of output position, so the generator is driven with the output-order section sequence and stays sample-accurately aligned to the stored video frames. See [Section 7 `audio:`](#audio-sub-key-optional-per-section).
 
 When `output.efm_audio` selects one of those channel pairs, the same generator additionally synthesises that pair at 44 100 Hz and streams it through the `videosynth_efm` module (`AudioEfmWriter`) as a LaserDisc digital audio EFM channel stream written to `<basename>.efm` with its own `<basename>.efm.meta` sidecar. The pair's 48 kHz WAV track is unaffected. See [LaserDisc Digital Audio (EFM) Output](#laserdisc-digital-audio-efm-output).
 
@@ -371,7 +370,7 @@ Hence **P = 4 frames for PAL and PAL-M, and P = 2 frames for NTSC**; a still sec
 **Cache.** `GenerationStage` shares clean templates between worker threads through a bounded `TemplateCache`:
 
 - **Key**: `(source path, section type, source frame identity, sequence_phase)`. Sections sharing a source share templates, and a still (`.exr`) source collapses every schedule position onto one identity because its decoder returns the same image for every frame index. Everything else the template depends on — the CVBS presets and the project VITS set — is held as the cache configuration, and a lookup against a different configuration clears the cache. `BuildFrameSchedule` also clears it, alongside the decoded-source cache.
-- **Admission on second request**: a key's first request returns "synthesise directly" and only a repeated request builds and stores the template. A clip source played once produces every key exactly once and therefore bypasses the cache entirely, instead of filling it with templates nothing will ever read; still frames, `duration_repeat` passes, and disc-skip replays revisit their keys and are admitted from the second request on.
+- **Admission on second request**: a key's first request returns "synthesise directly" and only a repeated request builds and stores the template. A clip source played once produces every key exactly once and therefore bypasses the cache entirely, instead of filling it with templates nothing will ever read; still frames and `duration_repeat` passes revisit their keys and are admitted from the second request on.
 - **Concurrency**: the lookup table is mutex-guarded and each entry is built exactly once under a per-key `std::once_flag` (single-flight); concurrent requests for the same key wait for that one build while other keys proceed. Published templates are immutable `shared_ptr`-to-const data.
 - **Sizing**: entries are admitted until a configurable byte capacity (default 512 MiB, ~45 PAL templates; CLI `--template-cache-mb`, 0 disables) and never evicted; once the cache is full, further misses synthesise directly into the output buffer. Sources with more distinct frames than the cache can hold therefore degrade to the uncached path instead of thrashing.
 - **Determinism**: output is byte-identical with the cache enabled, disabled, or capped at any size, and across thread counts — a cache hit is a copy of data produced by the same `SynthesiseTemplate` function the direct path runs.
@@ -779,7 +778,7 @@ The current parser, validator, and runtime implement only a subset of the YAML s
 - Implemented top-level presets: `video_standard_preset`, `sample_encoding_preset`, `signal_state_preset`, `ntsc_black_setup_ire`, `output.video_path`, and `output.signal_type` (`"composite"` or `"yc"`; defaults to `"composite"`). The metadata sidecar is not configured in YAML: it is always colocated with the video output and its path is derived from `output.video_path` (`.cvbs`/`.cvbsy` → `.meta`).
 - `output.efm_audio` is parsed, emitted, and validated: its presence enables LaserDisc digital audio (EFM) output for the single channel pair named by `pair`. See [`efm_audio:`](#efm_audio-sub-key-optional-project-level).
 - The `project:` block fields `name`, `version`, and `description` are parsed and retained on the in-memory `Project` model, so they survive load/save round-trips.
-- A YAML project **emitter** (`YamlProjectEmitter` in `videosynth_core`) serialises an in-memory `Project` back to this schema. It writes fields in the canonical order shown below and emits only explicitly-set optional blocks (the project-level `line_injections:` and `disc_skips:`, and the per-section `noise:`, `dropouts:`, `osd:`, `audio:`, `line_injections:`), so emitted files stay minimal and diffable. Emit → parse is lossless: a saved file parses back to an equal `Project`, which is the contract that keeps GUI-saved projects loadable by the CLI and vice versa.
+- A YAML project **emitter** (`YamlProjectEmitter` in `videosynth_core`) serialises an in-memory `Project` back to this schema. It writes fields in the canonical order shown below and emits only explicitly-set optional blocks (the project-level `line_injections:`, and the per-section `noise:`, `dropouts:`, `osd:`, `audio:`, `line_injections:`), so emitted files stay minimal and diffable. Emit → parse is lossless: a saved file parses back to an equal `Project`, which is the contract that keeps GUI-saved projects loadable by the CLI and vice versa.
 - Implemented section fields: `name`, `type`, `source`, `start_frame`, `duration_frames`, and the optional per-section `noise:`, `dropouts:`, `osd:`, and `audio:` blocks.
 - The `line_injections` schema is split across two levels of the data model. A **project-level** `line_injections:` block (a sibling of `output:` and `sections:`) is parsed into a `ProjectLineInjections` value on `Project` holding the project-wide `disc_type` (`CAV`/`CLV`), the optional `placement` policy (`standard` default / `laserdisc` / `custom`, governing how VITS `target_lines` are constrained — see [VITS](#vits-vertical-interval-test-signals)), and the `vits` set (each entry a `vits_type` plus `target_lines`) applied to every frame of every section. Each **section-level** `line_injections:` list holds only `Section::LineInjection` entries (`type` plus, per type, `target_lines`/`codes`) — the per-section biphase `codes` (picture_number, chapter_number, lead_in/out, etc.) that legitimately differ between lead-in, programme, and lead-out. Both levels receive validator-level schema/compatibility checks for injection type, `target_lines`, and standard-dependent VITS constraints.
 - VITS line injections have a generation-stage orchestration path and are applied only on their targeted frame lines within the owning section span.
@@ -848,14 +847,6 @@ sections:
             chapter: 5
           - code_type: programme_status
             programme_status: "0x8F0000"
-
-disc_skips:                       # Optional; simulates disc player tracking failures
-  - at_frame: 5                   # 1-based disc frame; forward skip withholds frames 5–6
-    direction: forward
-    count: 2
-  - at_frame: 20                  # backward skip replays frames 17–20 after frame 20
-    direction: backward
-    count: 4
 ```
 
 #### **Asset Roots & Path Resolution**
@@ -970,7 +961,7 @@ The `audio:` block declares a list of **audio channel pairs** for a section, eac
 Design decisions:
 - **One WAV file per channel pair** — the set of emitted pairs is the union of the pair numbers declared across all sections. Every pair file spans the whole output; a section that omits a pair emits silence for its frames, and an omitted `left`/`right` channel is stored as all-zero silence (SMPTE 272M §6.4).
 - **Independent left/right channels** — each pair has separate `left:` and `right:` tone descriptors, so the two interleaved channels (odd = left, even = right) can differ or one can be silent.
-- **Phase reset per section run** — each contiguous run of output frames sharing one section restarts the oscillators at phase 0; audio is a pure function of output position, so no per-frame caching is needed and the tracks stay correct under disc-skip replay.
+- **Phase reset per section run** — each contiguous run of output frames sharing one section restarts the oscillators at phase 0; audio is a pure function of output position, so no per-frame caching is needed.
 
 **Frame lock** — every track is stereo, 24-bit signed little-endian PCM (RIFF/WAVE, format tag `0x0001`) at 48000 Hz, synchronous with video (SMPTE 272M §1.2). The per-frame sample count follows output position:
 
@@ -1017,7 +1008,7 @@ Design decisions:
 
 Frequency semantics: instantaneous frequency drives a phase accumulator (`phase += 2π·f(t)/fs`) so swept tones stay continuous within a section run. All frequencies (fixed and ramp `start`/`end`) must lie in `[0, 22000]` Hz — safely below the 24 kHz Nyquist limit of the 48 kHz sampling rate.
 
-**Skip interaction**: audio follows the **output** frame stream, not the raw disc/section stream. The generator is driven with the output-order section sequence, so forward skips withhold the matching frames and backward-skip replays continue the tone at the replayed output position, preserving each track's sample-count alignment. Sections with no `audio:` block emit silence for their frame span across every pair. When at least one pair is declared, one `audio_channel_pair` row per pair (with its optional `description`) is written to the `.meta` database.
+**Output-stream alignment**: audio follows the **output** frame stream. The generator is driven with the output-order section sequence, preserving each track's sample-count alignment. Sections with no `audio:` block emit silence for their frame span across every pair. When at least one pair is declared, one `audio_channel_pair` row per pair (with its optional `description`) is written to the `.meta` database.
 
 Example YAML:
 
@@ -1077,38 +1068,6 @@ output:
   video_path: "out/pal_disc.cvbs"
   efm_audio:
     pair: 0
-```
-
----
-
-#### **`disc_skips:` Top-Level Key (Optional)**
-
-The `disc_skips:` block simulates laserdisc player tracking failures in the generated output. Each entry describes a single skip event in terms of a disc frame position, direction, and frame count.
-
-`disc_skips` operates on the ordered sequence of all disc frames across all sections. The pipeline processes every disc frame in sequence — including forward-skipped ones — so that `BiphaseInjectionManager.frame_count_` advances identically in all sources and `colour_frame_index`/burst phase remain consistent for a given picture number regardless of which capture sources are stacked.
-
-| Key | Type | Required | Range | Description |
-|-----|------|----------|-------|-------------|
-| `at_frame` | int | Yes | [1, total_disc_frames] | 1-based disc frame number at which the skip occurs. |
-| `direction` | string | Yes | `"forward"` or `"backward"` | Skip direction. |
-| `count` | int | Yes | ≥ 1 | Number of frames to skip (forward) or replay (backward). |
-
-**Forward skip** (`direction: forward`): Disc frames at 1-based positions `[at_frame, at_frame + count − 1]` are generated (advancing burst-phase state) but withheld from the output stream. The total output frame count is reduced by `count`.
-
-**Backward skip** (`direction: backward`): After disc frame `at_frame` is written to output, the `count` frames ending at `at_frame` (i.e. 1-based `[at_frame − count + 1, at_frame]`) are re-emitted as bit-identical copies in the same order. Copies are regenerated rather than cached: synthesis (through the frame template cache), noise and dropout application are all deterministic per `(project, schedule, frame)`, so the replayed frame's noise pattern, dropout events and signal content are identical to the original. The total output frame count is increased by `count`.
-
-**Phase-correctness invariant**: any two projects that share the same disc master will produce frames with identical burst phase and colour-frame index for a given picture number, even if each project has a different `disc_skips` pattern. This is the requirement for correct multi-source disc stacking in `decode-orc`.
-
-Example:
-
-```yaml
-disc_skips:
-  - at_frame: 5        # 1-based disc frame
-    direction: forward
-    count: 2           # frames 5 and 6 withheld from output (output starts at frame 7)
-  - at_frame: 20
-    direction: backward
-    count: 4           # replay frames 17–20 as bit-identical copies after frame 20
 ```
 
 ---
@@ -1834,7 +1793,7 @@ The runtime uses a **central pipeline module** to process sections and combine t
 
 - `VideoSynthPipeline::Run(options, observer, cancellation)` parses the YAML project file and delegates to `RunProject`. `VideoSynthPipeline::RunProject(project, options, observer, cancellation)` runs the pipeline for an already-parsed in-memory `Project` (validate → generate → noise → dropout → output); relative paths in the project are used as-is and must be resolved by the caller. The CLI uses `Run`; front-ends that hold an in-memory project (e.g. a GUI) use `RunProject`.
 - `observer` (optional, nullable) is an `IPipelineObserver` receiving stage transitions (`validate`, `generate`, `finalize`), per-batch frame progress (`frames_completed / frames_total`), validation warnings, and a terminal `PipelineRunStatus` (`kSucceeded` / `kCancelled` / `kFailed`) reported exactly once. Callbacks run synchronously on the pipeline's executing thread.
-- `cancellation` (optional, nullable) is a thread-safe one-shot `CancellationToken` polled between frame batches (and per disc frame in the skip-aware loop). On cancellation the pipeline aborts all in-progress artefacts — video/chroma/metadata via `IOutputStage::AbortWrite`, the WAV tracks via `AudioTrackGenerator::Abort`, and the dropout sidecar via `DropoutInjectionStage::Abort` — so a cancelled run leaves no partially-written output files, reports `kCancelled` (not an error), and returns `false`.
+- `cancellation` (optional, nullable) is a thread-safe one-shot `CancellationToken` polled between frame batches. On cancellation the pipeline aborts all in-progress artefacts — video/chroma/metadata via `IOutputStage::AbortWrite`, the WAV tracks via `AudioTrackGenerator::Abort`, and the dropout sidecar via `DropoutInjectionStage::Abort` — so a cancelled run leaves no partially-written output files, reports `kCancelled` (not an error), and returns `false`.
 - A whole pipeline run executes on a single thread, which may be a worker thread; there is no main-thread affinity. `ILogger`, `IProjectParser`, and `IProjectValidator` implementations are thread-safe; the stage collaborators are single-owner and NOT thread-safe, so a pipeline instance must not run concurrently with itself.
 
 ---
@@ -1867,8 +1826,6 @@ Current implementation note:
 - VITS line injections are applied in the generation-stage runtime path on validated target lines.
 - Laserdisc biphase injection is applied in the generation-stage runtime path via BiphaseInjectionManager (24-bit biphase and 40-bit FM for NTSC).
 - Runtime synthesis/application for VITC and custom per-line content remains deferred.
-- When `disc_skips` is non-empty the pipeline switches to a **skip-aware work item path** instead of the normal batched loop. A `ComputeDiscSkipPlan` pre-pass builds one `DiscFrameAction` per disc frame from the skip declarations — whether the frame is written to output, and the disc frames to re-emit after it — and `BuildDiscWorkItems` expands that plan into the item sequence a run processes: every disc frame in order, each followed by its backward-skip replays. Each item records the disc frame to synthesise, whether it is emitted, and whether it commits the frame's dropout sidecar rows. Forward-skipped frames are still synthesised (so disc state advances) but not written. Backward-skip copies are **regenerated** through the generation stage — whose frame template cache makes the clean-frame portion a copy — rather than replayed from a second whole-frame cache in the pipeline: synthesis, noise, and dropout application are all deterministic per `(project, schedule, frame)`, so a regenerated frame is byte-identical to its first emission. A replayed frame's dropout sidecar rows were committed when it was first processed, so the recomputed rows are discarded (only the signal push is applied again). `BeginWrite` receives the actual output frame count (which may differ from `total_disc_frames`).
-- Because items are independent, a skip project uses the **same worker pool** as any other project when `--threads` is greater than 1: items are synthesised out of order and consumed in item order, which is what keeps the emitted samples, the sidecar row order and the frame-locked audio identical to a single-threaded run.
 
 #### **3. Noise Injection Stage**
 
@@ -2009,13 +1966,7 @@ The rule set below remains the intended validation contract for VITC and custom 
   - `scratch.scale` must be in **[0, 20]** (error if outside this range; `0` means disabled).
   - A `dropouts:` block where both `random.scale` and `scratch.scale` are `0` (or both sub-blocks are absent) is a **validation error** — omit the `dropouts:` key entirely to disable.
   - If `scratch.scale > 0` and the derived maximum scratch lifespan (from `DeriveScratchDropoutParams(scale).max_dur_frames`) exceeds `section.duration_frames`, a **warning** is emitted indicating the scratch event will not complete its full triangle envelope within the section.
-6. **Disc Skip Parameters** (`disc_skips:` top-level list):
-  - Each entry's `at_frame` must be in **[1, total_disc_frames]** where `total_disc_frames` = sum of all section `duration_frames`.
-  - Each entry's `count` must be **≥ 1**.
-  - For `direction: forward`: `at_frame + count − 1` must be **≤ total_disc_frames** (the skip range must not extend beyond the last disc frame).
-  - For `direction: backward`: `at_frame − count + 1` must be **≥ 1** (the replay range must not extend before the first disc frame).
-  - `direction` must be one of `"forward"` or `"backward"`; any other value is a validation error.
-7. **EFM Digital Audio** (`output.efm_audio:` block):
+6. **EFM Digital Audio** (`output.efm_audio:` block):
   - `pair` must be in **[0, 7]** (error if outside this range).
   - `video_standard_preset` must be `PAL` or `NTSC` — no other standard has a LaserDisc digital audio specification (error otherwise).
   - If no section declares the selected `pair`, a **warning** is emitted: no `.efm` file is written.
@@ -2079,7 +2030,7 @@ videosynth --project project.yaml [options]
 | `--project`  | Path to the YAML project file (required).         | -           |
 | `--validate` | Validate the YAML file without generating output. | `false`     |
 | `--version`  | Print the build version (short git commit hash, `-dirty` suffix for modified trees, or the release override string) and exit. | -           |
-| `--threads <n>` | Frame synthesis worker threads: `auto` (one per hardware thread) or a positive integer. `1` selects the pure sequential path. Output is byte-identical regardless of the thread count, including for projects with `disc_skips`. | `auto` |
+| `--threads <n>` | Frame synthesis worker threads: `auto` (one per hardware thread) or a positive integer. `1` selects the pure sequential path. Output is byte-identical regardless of the thread count. | `auto` |
 | `--template-cache-mb <n>` | Frame template cache capacity in MiB; `0` disables the cache (see [Section 4](#4-generation-stage), Frame Template Cache). Output is byte-identical regardless of the capacity. | `512` |
 | `--log-level <level>` | Set the log level to `info`, `debug`, or `trace`. | `info` |
 | `--log-file <filename>` | Write log output to the specified file in addition to the console. | none |
@@ -2404,7 +2355,7 @@ videosynth/
 ├── projects/                            # Hand-authored project fixtures (inputs only)
 │   ├── general/                         # Feature fixtures — composite
 │   ├── general-yc/                      # Feature fixtures — Y/C
-│   ├── stacking/                        # Disc-simulation / skip / stacking fixtures
+│   ├── stacking/                        # Disc-simulation / stacking fixtures
 │   └── variants.json                    # Rules for the build-time derived variants
 ├── scripts/
 │   ├── generate_test_projects.py        # Derives the Y/C and clean variants

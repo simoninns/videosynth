@@ -73,7 +73,6 @@ TEST(YamlProjectEmitterTest, MinimalProjectOmitsUnsetOptionalBlocks) {
   EXPECT_EQ(emitted.find("osd"), std::string::npos);
   EXPECT_EQ(emitted.find("audio"), std::string::npos);
   EXPECT_EQ(emitted.find("line_injections"), std::string::npos);
-  EXPECT_EQ(emitted.find("disc_skips"), std::string::npos);
   EXPECT_EQ(emitted.find("signal_type"), std::string::npos);
   EXPECT_EQ(emitted.find("start_frame"), std::string::npos);
   EXPECT_EQ(emitted.find("ntsc_black_setup_ire"), std::string::npos);
@@ -517,27 +516,6 @@ sections:
           left:
             waveform: square
             frequency: 440.0
-)");
-}
-
-TEST(YamlProjectEmitterTest, DiscSkipsRoundTripBothDirections) {
-  ExpectRoundTrip(R"(
-cvbs_presets:
-  video_standard_preset: PAL
-output:
-  video_path: out/video.cvbs
-sections:
-  - name: Bars
-    type: progressive
-    source: assets/bars.exr
-    duration_frames: 100
-disc_skips:
-  - at_frame: 5
-    direction: forward
-    count: 2
-  - at_frame: 20
-    direction: backward
-    count: 4
 )");
 }
 

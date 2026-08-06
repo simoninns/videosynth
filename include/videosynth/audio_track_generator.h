@@ -43,9 +43,8 @@ namespace videosynth {
 // Audio is a pure function of output position: frame k carries
 // AudioSamplesForFrame(standard, k) samples per channel (SMPTE 272M §14.3), and
 // each contiguous run of output frames sharing one section resets oscillator
-// phase at the run start. This keeps the track correct under disc-skip
-// withhold/replay without caching: the caller emits output frames strictly in
-// output order.
+// phase at the run start. This keeps the track correct without caching: the
+// caller emits output frames strictly in output order.
 //
 // Usage: Begin(project, output_frame_sections) opens the writers and computes
 // the per-frame plan; EmitFrame(k) must then be called for k = 0, 1, ... in

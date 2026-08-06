@@ -222,10 +222,6 @@ if(VIDEOSYNTH_BUILD_GUI)
     add_library(videosynth_gui_lib STATIC
         src/gui/asset_roots.cpp
         src/gui/asset_roots.h
-        src/gui/disc_skips_editor.cpp
-        src/gui/disc_skips_editor.h
-        src/gui/disc_skips_model.cpp
-        src/gui/disc_skips_model.h
         src/gui/edit_project_dialog.cpp
         src/gui/edit_project_dialog.h
         src/gui/audio_channel_pairs_editor.cpp

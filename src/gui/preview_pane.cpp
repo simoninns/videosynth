@@ -483,9 +483,7 @@ void PreviewPane::UpdateFrameInfoLabel() {
     frame_info_label_->clear();
     return;
   }
-  QString text = tr("Output frame %1 · disc frame %2")
-                     .arg(current_frame_->output_frame_index)
-                     .arg(current_frame_->disc_frame_index);
+  QString text = tr("Output frame %1").arg(current_frame_->output_frame_index);
   if (!current_frame_->section_name.isEmpty()) {
     text += tr(" · section \"%1\"").arg(current_frame_->section_name);
   }

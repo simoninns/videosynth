@@ -1247,9 +1247,9 @@ class GenerationStage::TemplateCache {
         // Admission on second request: a template is only worth building and
         // storing when its key recurs. A clip source played once produces
         // every key exactly once, so it bypasses the cache entirely instead
-        // of filling it with templates nothing will ever read; still frames,
-        // duration_repeat passes, and disc-skip replays revisit their keys
-        // and are admitted from the second request on.
+        // of filling it with templates nothing will ever read; still frames
+        // and duration_repeat passes revisit their keys and are admitted from
+        // the second request on.
         if (requested_once_.insert(key).second) {
           return nullptr;
         }

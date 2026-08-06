@@ -190,26 +190,6 @@ Project MakeDeterministicProject(const std::filesystem::path& output_dir,
   return project;
 }
 
-// Adds a forward and a backward disc skip to the 16-disc-frame deterministic
-// project: disc frames 5-6 (1-based) are withheld from the output, and disc
-// frames 10-12 are re-emitted after disc frame 12. Backward-skip replays are
-// regenerated rather than cached, so they exercise the property that a frame
-// synthesised twice — possibly on different threads — is byte-identical.
-Project WithDiscSkips(Project project) {
-  DiscSkip forward;
-  forward.at_frame = 5;
-  forward.direction = DiscSkipDirection::kForward;
-  forward.count = 2;
-  project.disc_skips.push_back(forward);
-
-  DiscSkip backward;
-  backward.at_frame = 12;
-  backward.direction = DiscSkipDirection::kBackward;
-  backward.count = 3;
-  project.disc_skips.push_back(backward);
-  return project;
-}
-
 // Runs the full pipeline once with a fresh set of concrete stages, as the
 // CLI does, and returns the pipeline result. threads follows the RunOptions
 // convention (1 = sequential path, N > 1 = worker-pool synthesis).
@@ -350,70 +330,6 @@ TEST(DeterministicOutputTest, SingleAndMultiThreadRunsAreByteIdentical) {
   EXPECT_EQ(ReadFileBytes(sequential.dropout_sidecar),
             ReadFileBytes(parallel.dropout_sidecar))
       << "Dropout sidecar differs between 1-thread and 4-thread runs.";
-
-  std::error_code ec;
-  std::filesystem::remove_all(output_dir, ec);
-}
-
-TEST(DeterministicOutputTest, DiscSkipRunsAreByteIdenticalAcrossThreadCounts) {
-  const std::filesystem::path output_dir =
-      std::filesystem::temp_directory_path() / "videosynth_skip_determinism";
-  std::filesystem::create_directories(output_dir);
-
-  const Project sequential_project =
-      WithDiscSkips(MakeDeterministicProject(output_dir, "skip_threads1"));
-  const Project parallel_project =
-      WithDiscSkips(MakeDeterministicProject(output_dir, "skip_threads4"));
-
-  {
-    NullLogger logger;
-    ProgressiveFrameSourceProbe probe;
-    ProjectValidator validator(&probe, &logger);
-    const ValidationResult validation = validator.Validate(sequential_project);
-    for (const std::string& error : validation.errors) {
-      ADD_FAILURE() << "Validation error: " << error;
-    }
-    ASSERT_TRUE(validation.is_valid);
-  }
-
-  ASSERT_TRUE(RunPipelineOnce(sequential_project, 1));
-  ASSERT_TRUE(RunPipelineOnce(parallel_project, 4));
-
-  const RunArtefacts sequential = ArtefactPaths(sequential_project);
-  const RunArtefacts parallel = ArtefactPaths(parallel_project);
-
-  const std::vector<char> sequential_composite =
-      ReadFileBytes(sequential.composite);
-  ASSERT_FALSE(sequential_composite.empty());
-
-  // 16 disc frames, less 2 withheld by the forward skip, plus 3 replayed by
-  // the backward skip.
-  const std::size_t frame_bytes =
-      static_cast<std::size_t>(SamplesPerFrame4fsc(Standard::kPal)) *
-      sizeof(std::int16_t);
-  EXPECT_EQ(sequential_composite.size(), 17U * frame_bytes)
-      << "Disc-skip plan did not produce the expected output frame count.";
-
-  EXPECT_EQ(sequential_composite, ReadFileBytes(parallel.composite))
-      << "CVBS sample stream differs between 1- and 4-thread disc-skip runs.";
-
-  EXPECT_EQ(ReadFileBytes(sequential.metadata),
-            ReadFileBytes(parallel.metadata))
-      << "Metadata database differs between 1- and 4-thread disc-skip runs.";
-
-  ASSERT_EQ(sequential.audio_pairs.size(), parallel.audio_pairs.size());
-  for (std::size_t i = 0; i < sequential.audio_pairs.size(); ++i) {
-    const std::vector<char> sequential_audio =
-        ReadFileBytes(sequential.audio_pairs[i]);
-    ASSERT_FALSE(sequential_audio.empty());
-    EXPECT_EQ(sequential_audio, ReadFileBytes(parallel.audio_pairs[i]))
-        << "Audio track " << i
-        << " differs between 1- and 4-thread disc-skip runs.";
-  }
-
-  EXPECT_EQ(ReadFileBytes(sequential.dropout_sidecar),
-            ReadFileBytes(parallel.dropout_sidecar))
-      << "Dropout sidecar differs between 1- and 4-thread disc-skip runs.";
 
   std::error_code ec;
   std::filesystem::remove_all(output_dir, ec);

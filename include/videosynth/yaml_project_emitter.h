@@ -17,7 +17,7 @@ namespace videosynth {
 
 // Serialises a videosynth::Project to the YAML project-file schema described
 // in docs/design/high-level-design.md §7. Only explicitly-set optional blocks
-// (noise, dropouts, audio, osd, line_injections, disc_skips) are emitted so
+// (noise, dropouts, audio, osd, line_injections) are emitted so
 // saved files stay minimal, and field ordering is stable/canonical so diffs
 // of saved files remain readable. A file emitted by this class parses back
 // (via YamlProjectParser) to a Project equal to the input.

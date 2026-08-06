@@ -1,8 +1,8 @@
 /*
  * File:        line_injection_presenter.cpp
  * Module:      gui
- * Purpose:     Widget-free catalogues and helpers for the line-injection and
- *              disc-skip editors
+ * Purpose:     Widget-free catalogues and helpers for the line-injection
+ *              editors
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  * SPDX-FileCopyrightText: 2026 Simon Inns

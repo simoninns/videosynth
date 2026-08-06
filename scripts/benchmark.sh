@@ -20,7 +20,7 @@ binary="${VIDEOSYNTH_BINARY:-$build_dir/videosynth}"
 project_dir="$repo_root/projects/benchmark"
 output_root="${VIDEOSYNTH_BENCHMARK_OUTPUT:-$build_dir/project-output/benchmark}"
 
-all_projects=(pal_still pal_still_noise pal_mkv pal_sections pal_skip ntsc_still)
+all_projects=(pal_still pal_still_noise pal_mkv pal_sections ntsc_still)
 thread_configs=(1 auto)
 repeat=1
 csv_path=""
@@ -151,15 +151,10 @@ time_run() {
   end="$(date +%s.%N)"
 
   local frames threads_used
-  # Plain runs log "Generating and writing N frame(s)"; disc-skip runs log
-  # "Generating N disc frame(s) with skip plan", where the disc frame count is
-  # the work the run actually did.
+  # Runs log "Generating and writing N frame(s)", which is the work the run
+  # actually did.
   frames="$(grep -oE 'Generating and writing [0-9]+ frame' "$log_file" |
     grep -oE '[0-9]+' | head -n 1 || true)"
-  if [[ -z "$frames" ]]; then
-    frames="$(grep -oE 'Generating [0-9]+ disc frame' "$log_file" |
-      grep -oE '[0-9]+' | head -n 1 || true)"
-  fi
   threads_used="$(grep -oE 'using [0-9]+ synthesis threads' "$log_file" |
     grep -oE '[0-9]+' | head -n 1 || true)"
   [[ -n "$frames" ]] || frames=0
