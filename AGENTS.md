@@ -110,7 +110,7 @@
 
 #### 4.3.5 Constants & Clarity
 - Avoid magic numbers; define named constants with descriptive comments.
-- Reference authoritative specs when implementing standards (see §5.1).
+- Reference authoritative specs when implementing standards (see §9.4).
 
 #### 4.3.6 Specification References
 - Format: `// <Organization> <Document>-<Section>: <description>`
@@ -172,20 +172,82 @@ After completing a development session or task, perform the following steps to c
 
 ## 9. Documentation & Specifications
 
-### 9.0 Documentation Layout
-- `docs/` is **exclusively** the MkDocs source for the published site
-  (<https://simoninns.github.io/videosynth>). Its contents are the user manual
-  and the project-file reference; `mkdocs.yml` builds it and every page is
-  reachable from a `.nav.yml`. Do not add design documents, plans, or
-  submodules here.
-- `docs-tech/` holds everything else: the design specification (`design/`),
-  in-repository feature documentation (`user/`), and the specification
-  submodules.
-- When a change alters user-visible behaviour, update the affected page under
-  `docs/` in the same task, alongside the HLD update required by §9.2.
-- Verify the site still builds: `nix develop "path:$PWD" --command mkdocs build --strict`.
+Documentation is **part of the deliverable**, not a follow-up task. A change
+that alters behaviour, options, file formats, or the build is incomplete until
+the affected documents (§9.3) have been updated in the **same task**.
 
-### 9.1 Authoritative Sources
+### 9.1 Documentation Layout
+
+| Location | Contents | Audience |
+|----------|----------|----------|
+| `docs/` | MkDocs source for the published site (<https://simoninns.github.io/videosynth>): user manual and project-file reference | End users |
+| `docs-tech/design/` | `high-level-design.md` — the living design specification | Developers |
+| `docs-tech/user/` | In-repository feature/design notes (e.g. `biphase-design.md`) | Developers |
+| `docs-tech/*-specification*/` | Specification submodules (CVBS format, analogue video) — **read-only**, never edit | Reference |
+| `README.md` | Repository overview, build instructions, directory map | Everyone |
+| `TESTING.md` | Testing vision, strategy and repository rules | Developers |
+| `AGENTS.md` | Contribution and coding standards (this file) | Agents |
+
+Rules:
+- `docs/` is **exclusively** the published site. Do not add design documents,
+  implementation plans, notes, or submodules there.
+- Anything developer-facing that is not the published site belongs under
+  `docs-tech/`.
+- Never edit the specification submodules; they are upstream sources.
+
+### 9.2 Published Site Structure (`docs/`)
+- Top-level sections, in navigation order:
+  - `getting-started/` — installation and the quick-start walkthrough.
+  - `user-manual/` — one page per subsystem; explains *what a feature does and
+    how to use it*.
+  - `reference/` — one page per project-file block; the exact meaning, type,
+    default and valid range of every YAML key.
+  - `misc/` — troubleshooting, example projects, issue reporting.
+  - `assets/` — logo, icons and `custom.css` only.
+- Navigation is assembled by `awesome-nav` from `.nav.yml`. **Every new page
+  must be added to its directory's `.nav.yml`**, or it will not appear in the
+  site navigation.
+- Page conventions:
+  - Start with a single `#` H1 title matching the navigation entry.
+  - Link between pages with relative `.md` paths (e.g.
+    `../reference/sections.md`), never site URLs.
+  - Use tables for key/option reference material, and `!!! note` / `!!! warning`
+    admonitions for caveats.
+  - Cite the governing standard inline where behaviour is spec-driven
+    (e.g. `IEC 60857 §9.1.3`), matching the format in §4.3.6.
+- New user-facing feature ⇒ a `user-manual/` page (or section) **and** the
+  corresponding `reference/` entries for any new YAML keys.
+- Verify the site still builds before finishing:
+  `nix develop "path:$PWD" --command mkdocs build --strict`.
+  Preview with `nix develop "path:$PWD" --command mkdocs serve`.
+
+### 9.3 Keeping Documentation Current
+
+When a change touches any of the following, update the listed documents in the
+same task:
+
+| Change | Update |
+|--------|--------|
+| New/renamed/removed YAML key, or changed default or valid range | `docs/reference/` page for that block; `docs/user-manual/` page if user-visible; HLD (§9.5) |
+| New or changed CLI option | `docs/reference/cli-options.md`, `docs/user-manual/cli.md` |
+| New or changed GUI workflow | `docs/user-manual/gui.md` (and `getting-started/quick-start.md` if the walkthrough steps change) |
+| New validation rule or error message | `docs/user-manual/validation.md`, `docs/misc/troubleshooting.md` |
+| New subsystem or pipeline stage | HLD (§9.5); a `docs/user-manual/` page if user-visible |
+| New directory, build dependency or build step | `README.md` |
+| Changed testing rules or layout | `TESTING.md` and §3 of this file |
+
+Additional rules:
+- Documentation must describe **implemented** behaviour. Where something is
+  designed but not yet implemented, say so explicitly on the page rather than
+  documenting it as available.
+- Do not include change history, release notes, or "recently added" wording in
+  documentation — that belongs in git.
+- Update existing pages in place rather than adding parallel pages that
+  duplicate them; remove documentation for removed features in the same task.
+- If you detect a code/documentation mismatch, follow §9.5: warn the user and
+  offer to resolve it. **Never** silently leave a mismatch.
+
+### 9.4 Authoritative Sources
 - **CVBS file format**:
   - Start: `docs-tech/cvbs-file-format-specification/README.md`
   - Full: `docs-tech/cvbs-file-format-specification/docs/index.md`
@@ -194,7 +256,7 @@ After completing a development session or task, perform the following steps to c
   - Full: `docs-tech/analogue-video-specifications/docs/index.md`
 - **Rule**: if code conflicts with assumptions, align code **and** tests to the spec first.
 
-### 9.2 High-Level Design (HLD) Consistency
+### 9.5 High-Level Design (HLD) Consistency
 - `docs-tech/design/high-level-design.md` is a **living document** and must stay aligned with implemented behaviour.
 - The same requirement applies to all design sub-specifications linked from the HLD.
 - When changing code that affects HLD-described behaviour, **update the HLD in the same task** whenever practical.
