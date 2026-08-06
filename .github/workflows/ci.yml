@@ -38,6 +38,11 @@ jobs:
 
       - name: Setup Nix cache
         uses: DeterminateSystems/magic-nix-cache-action@v7
+        with:
+          # The GitHub Actions cache is enough here and needs no account.
+          # Leaving FlakeHub enabled makes every job emit an authentication
+          # error annotation before falling back to it.
+          use-flakehub: false
 
       - name: Check formatting
         run: |
@@ -71,6 +76,11 @@ jobs:
 
       - name: Setup Nix cache
         uses: DeterminateSystems/magic-nix-cache-action@v7
+        with:
+          # The GitHub Actions cache is enough here and needs no account.
+          # Leaving FlakeHub enabled makes every job emit an authentication
+          # error annotation before falling back to it.
+          use-flakehub: false
 
       - name: Configure
         run: nix develop "path:$PWD" --command cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
@@ -91,6 +101,11 @@ jobs:
 
       - name: Setup Nix cache
         uses: DeterminateSystems/magic-nix-cache-action@v7
+        with:
+          # The GitHub Actions cache is enough here and needs no account.
+          # Leaving FlakeHub enabled makes every job emit an authentication
+          # error annotation before falling back to it.
+          use-flakehub: false
 
       - name: Configure
         run: nix develop "path:$PWD" --command cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
@@ -116,6 +131,11 @@ jobs:
 
       - name: Setup Nix cache
         uses: DeterminateSystems/magic-nix-cache-action@v7
+        with:
+          # The GitHub Actions cache is enough here and needs no account.
+          # Leaving FlakeHub enabled makes every job emit an authentication
+          # error annotation before falling back to it.
+          use-flakehub: false
 
       - name: Configure
         run: nix develop "path:$PWD" --command cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release

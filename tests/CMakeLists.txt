@@ -100,6 +100,20 @@ if(VIDEOSYNTH_BUILD_GUI)
         PRIVATE videosynth_gui_lib GTest::gtest)
 endif()
 
+# Aggregate: one stable name that builds every test binary, whatever the GUI
+# option is set to. CI and README.md build this rather than naming each binary,
+# so splitting or adding a suite does not break them.
+add_custom_target(videosynth_tests)
+add_dependencies(videosynth_tests
+    videosynth_unit_tests
+    videosynth_functional_tests)
+
+if(VIDEOSYNTH_BUILD_GUI)
+    add_dependencies(videosynth_tests
+        videosynth_gui_unit_tests
+        videosynth_gui_functional_tests)
+endif()
+
 set(videosynth_test_targets
     videosynth_unit_tests
     videosynth_functional_tests

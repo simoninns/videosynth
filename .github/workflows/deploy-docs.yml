@@ -32,6 +32,11 @@ jobs:
 
       - name: Setup Nix cache
         uses: DeterminateSystems/magic-nix-cache-action@v7
+        with:
+          # The GitHub Actions cache is enough here and needs no account.
+          # Leaving FlakeHub enabled makes every job emit an authentication
+          # error annotation before falling back to it.
+          use-flakehub: false
 
       - name: Build site with Nix
         run: nix build "path:$PWD#docs" --print-build-logs
