@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  File:        io.github.simoninns.VideoSynth.metainfo.xml.in
+  Purpose:     AppStream metadata for the VideoSynth GUI. Configured by CMake;
+               @VIDEOSYNTH_RELEASE_VERSION@ and @VIDEOSYNTH_RELEASE_DATE@ are
+               substituted at configure time.
+
+  SPDX-License-Identifier: GPL-3.0-or-later
+  SPDX-FileCopyrightText: 2026 Simon Inns
+-->
+<component type="desktop-application">
+  <id>io.github.simoninns.VideoSynth</id>
+
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+
+  <name>VideoSynth</name>
+  <summary>Generate analogue PAL, PAL-M and NTSC video test signals</summary>
+
+  <developer id="io.github.simoninns">
+    <name>Simon Inns</name>
+  </developer>
+
+  <description>
+    <p>
+      VideoSynth generates analogue composite (CVBS) and Y/C video signals as
+      sample files, closely following the published analogue video standards
+      (ITU-R BT.470/BT.1700, SMPTE 170M/244M, IEC 60856/60857, IEC 60461). It is
+      aimed at video engineers and media-preservation developers who need
+      known-good, reproducible test signals to exercise decoders, time base
+      correctors and restoration tools.
+    </p>
+    <p>Features:</p>
+    <ul>
+      <li>Standards-based signal generation for PAL, PAL-M and NTSC</li>
+      <li>4fsc and raw high-rate sample encodings, composite or Y/C output</li>
+      <li>Frame content from EXR stills and MKV video sources</li>
+      <li>VITS test signals, laserdisc biphase and FM codes, and VITC timecode</li>
+      <li>Laserdisc disc simulation with CAV/CLV codes, chapters and lead-in/out</li>
+      <li>Per-section Gaussian noise, dropout and scratch injection</li>
+      <li>Multi-track audio at 48 kHz/24-bit, plus EFM audio for laserdisc projects</li>
+      <li>On-screen display text with substitution tokens</li>
+      <li>Deterministic multi-threaded generation</li>
+    </ul>
+    <p>
+      A command-line generator is included alongside the desktop application and
+      can be run with: flatpak run --command=videosynth io.github.simoninns.VideoSynth
+    </p>
+  </description>
+
+  <launchable type="desktop-id">io.github.simoninns.VideoSynth.desktop</launchable>
+
+  <provides>
+    <binary>videosynth</binary>
+    <binary>videosynth-gui</binary>
+  </provides>
+
+  <categories>
+    <category>AudioVideo</category>
+    <category>Video</category>
+    <category>AudioVideoEditing</category>
+  </categories>
+
+  <keywords>
+    <keyword>PAL</keyword>
+    <keyword>NTSC</keyword>
+    <keyword>CVBS</keyword>
+    <keyword>composite</keyword>
+    <keyword>laserdisc</keyword>
+    <keyword>VBI</keyword>
+    <keyword>test signal</keyword>
+  </keywords>
+
+  <url type="homepage">https://github.com/simoninns/videosynth</url>
+  <url type="bugtracker">https://github.com/simoninns/videosynth/issues</url>
+  <url type="vcs-browser">https://github.com/simoninns/videosynth</url>
+
+  <content_rating type="oars-1.1"/>
+
+  <releases>
+    <release version="@VIDEOSYNTH_RELEASE_VERSION@" date="@VIDEOSYNTH_RELEASE_DATE@"/>
+  </releases>
+</component>

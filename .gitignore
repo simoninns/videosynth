@@ -37,10 +37,11 @@ build.ninja
 *.exe
 *.out
 *.app
-*.i*
+# Preprocessor output only. Do not broaden this to "*.i*" — that also swallows
+# every "*.in" template (the version header, the AppStream metainfo), which
+# then silently never reaches a CI checkout.
+*.i
 *.ii
-# Version header template is a source file, not a compiler intermediate
-!src/videosynth_version.h.in
 
 # Debug and profiler output
 *.dSYM/
