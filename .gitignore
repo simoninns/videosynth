@@ -120,6 +120,12 @@ Thumbs.db
 result
 result-*
 
+# Flatpak build tree, module cache, exported repo and bundles
+.flatpak-builder/
+flatpak-build/
+flatpak-repo/
+*.flatpak
+
 # Ignore any CVBS video output files and associated metadata
 *.cvbs
 *.cvbsy

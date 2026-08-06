@@ -48,6 +48,35 @@ The project ships two front ends built from the same pipeline:
 
 ---
 
+## Install
+
+Tagged releases publish a Linux Flatpak bundle. Download
+`videosynth-<version>-x86_64.flatpak` from the
+[releases page](https://github.com/simoninns/videosynth/releases) and install it
+for the current user:
+
+```bash
+flatpak install --user videosynth-<version>-x86_64.flatpak
+```
+
+The GUI is the default entry point and appears in the GNOME (and other XDG)
+application menus as **VideoSynth**. The CLI ships in the same bundle:
+
+```bash
+flatpak run io.github.simoninns.VideoSynth                     # GUI
+flatpak run --command=videosynth io.github.simoninns.VideoSynth --help
+```
+
+The bundle carries the media assets from
+[videosynth-assets/](videosynth-assets/), so `{bundled}` sources resolve without
+a checkout, and it is granted read/write access to the host filesystem for
+reading source media and writing generated output. See
+[packaging/README.md](packaging/README.md) for the manifest and its permissions.
+
+Building from source is covered below.
+
+---
+
 ## Requirements
 
 The Nix flake is the authoritative environment; the development shell supplies
@@ -98,9 +127,17 @@ Useful CMake options:
 |--------|---------|--------|
 | `-DCMAKE_BUILD_TYPE=<type>` | `Release` | `Debug`, `Release`, `RelWithDebInfo` or `MinSizeRel` |
 | `-DVIDEOSYNTH_BUILD_GUI=OFF` | `ON` | Skip the Qt 6 GUI target |
+| `-DVIDEOSYNTH_BUILD_TESTS=OFF` | `ON` | Skip the test targets and the Google Test dependency |
+| `-DVIDEOSYNTH_ENABLE_CLANG_FORMAT=OFF` | `ON` | Skip the clang-format check during the build |
 | `-DVIDEOSYNTH_ENABLE_CLANG_TIDY=OFF` | `ON` | Skip clang-tidy static analysis during the build |
 | `-DVIDEOSYNTH_BUNDLED_ASSET_DIR=<dir>` | dev tree | Where `{bundled}` resolves for installed builds |
-| `-DBUILD_TESTING=OFF` | `ON` | Skip test targets |
+| `-DVIDEOSYNTH_RELEASE_VERSION=<v>` | build version | Version written into the installed AppStream metadata |
+| `-DVIDEOSYNTH_RELEASE_DATE=<date>` | today, UTC | Date written into the installed AppStream metadata |
+
+`cmake --install` places the binaries, the bundled assets and — when the GUI is
+built — the desktop entry, AppStream metadata and icon theme entries that make
+the application appear in the GNOME (and other XDG) menus. See
+[packaging/README.md](packaging/README.md).
 
 To build and run the packaged derivation instead of the dev shell:
 
@@ -365,6 +402,7 @@ src/gui/              Qt 6 GUI application
 tests/                Unit and functional test suites
 projects/             Hand-authored example/fixture projects
 scripts/              Project runners and maintenance utilities
+packaging/            Desktop entry, AppStream metadata and Flatpak manifest
 assets/               Application logo and icons
 videosynth-assets/    Bundled media assets (source stills and video)
 docs/design/          High-level design specification

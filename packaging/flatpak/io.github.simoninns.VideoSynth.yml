@@ -1,0 +1,167 @@
+# File:        io.github.simoninns.VideoSynth.yml
+# Purpose:     Flatpak manifest for the VideoSynth desktop application
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 Simon Inns
+#
+# The GUI is the default entry point; the CLI ships alongside it and is reached
+# with:  flatpak run --command=videosynth io.github.simoninns.VideoSynth
+#
+# @VIDEOSYNTH_RELEASE_VERSION@ and @VIDEOSYNTH_RELEASE_DATE@ are placeholders
+# substituted by scripts/prepare-flatpak-manifest.py before the release build.
+# Building this manifest as-is leaves them literal, which only affects the
+# reported version string.
+
+id: io.github.simoninns.VideoSynth
+# The KDE runtime is used for Qt 6; the freedesktop base beneath it supplies
+# sqlite3 and zlib, which the application also links against.
+runtime: org.kde.Platform
+runtime-version: '6.11'
+sdk: org.kde.Sdk
+command: videosynth-gui
+
+finish-args:
+  # Windowing and rendering.
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+
+  # Generation reads source media and writes multi-gigabyte sample files, so
+  # the application needs unrestricted read/write access to the user's own
+  # filesystem. /media and /run/media are listed explicitly so removable
+  # volumes are reachable as well.
+  - --filesystem=host
+  - --filesystem=/media
+  - --filesystem=/run/media
+
+cleanup:
+  - /include
+  - /lib/cmake
+  - /lib/pkgconfig
+  - /share/aclocal
+  - /share/man
+  - '*.a'
+  - '*.la'
+
+# Module versions track the Nix development shell (flake.nix), so the packaged
+# build links the same library versions the project is developed and tested
+# against. sqlite3 and zlib come from the runtime.
+modules:
+  - name: yaml-cpp
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      # yaml-cpp 0.8.0 declares cmake_minimum_required(VERSION 3.4), below the
+      # compatibility floor the SDK's CMake 4 enforces.
+      - -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+      # 0.8.0 predates the GCC 13 header cleanup and uses uint16_t/uint32_t in
+      # src/emitterutils.cpp without including <cstdint>. Force-including it is
+      # version-agnostic and avoids carrying a patch against a pinned tag.
+      - -DCMAKE_CXX_FLAGS=-include cstdint
+      - -DYAML_BUILD_SHARED_LIBS=ON
+      - -DYAML_CPP_BUILD_TESTS=OFF
+      - -DYAML_CPP_BUILD_TOOLS=OFF
+      - -DYAML_CPP_BUILD_CONTRIB=OFF
+    sources:
+      - type: git
+        url: https://github.com/jbeder/yaml-cpp.git
+        tag: 0.8.0
+
+  - name: spdlog
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DSPDLOG_BUILD_SHARED=ON
+      - -DSPDLOG_BUILD_EXAMPLE=OFF
+      - -DSPDLOG_BUILD_TESTS=OFF
+    sources:
+      - type: git
+        url: https://github.com/gabime/spdlog.git
+        tag: v1.17.0
+
+  # Imath and libdeflate are OpenEXR's dependencies and must precede it.
+  # OpenEXR would otherwise try to fetch them with FetchContent, which fails:
+  # the build sandbox has no network access.
+  - name: imath
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBUILD_TESTING=OFF
+      - -DIMATH_INSTALL_PKG_CONFIG=ON
+    sources:
+      - type: git
+        url: https://github.com/AcademySoftwareFoundation/Imath.git
+        tag: v3.2.2
+
+  - name: libdeflate
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DLIBDEFLATE_BUILD_STATIC_LIB=OFF
+      - -DLIBDEFLATE_BUILD_GZIP=OFF
+    sources:
+      - type: git
+        url: https://github.com/ebiggers/libdeflate.git
+        tag: v1.25
+
+  - name: openexr
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBUILD_TESTING=OFF
+      - -DOPENEXR_BUILD_TOOLS=OFF
+      - -DOPENEXR_INSTALL_EXAMPLES=OFF
+      - -DOPENEXR_INSTALL_TOOLS=OFF
+      - -DOPENEXR_FORCE_INTERNAL_IMATH=OFF
+      - -DOPENEXR_FORCE_INTERNAL_DEFLATE=OFF
+    sources:
+      - type: git
+        url: https://github.com/AcademySoftwareFoundation/openexr.git
+        tag: v3.4.11
+
+  # Progressive MKV sources are decoded by shelling out to ffmpeg, and probed
+  # with ffprobe, so both programs must exist inside the sandbox. Built with
+  # `simple` rather than `autotools` because ffmpeg's configure is hand-written
+  # and rejects the extra arguments the autotools buildsystem would add.
+  - name: ffmpeg
+    buildsystem: simple
+    build-commands:
+      - ./configure --prefix=/app --libdir=/app/lib --disable-static
+        --enable-shared --disable-debug --disable-doc --disable-ffplay
+        --enable-gpl --enable-version3
+      - make -j${FLATPAK_BUILDER_N_JOBS:-4}
+      - make install
+    sources:
+      - type: git
+        url: https://github.com/FFmpeg/FFmpeg.git
+        tag: n8.1.2
+
+  - name: videosynth
+    buildsystem: cmake-ninja
+    builddir: true
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DVIDEOSYNTH_BUILD_GUI=ON
+      # The test suites, clang-format gate and clang-tidy gate are development
+      # and CI concerns; the packaging build only produces the shipped binaries.
+      - -DVIDEOSYNTH_BUILD_TESTS=OFF
+      - -DVIDEOSYNTH_ENABLE_CLANG_FORMAT=OFF
+      - -DVIDEOSYNTH_ENABLE_CLANG_TIDY=OFF
+      # Git metadata is unavailable inside the build sandbox, so the release
+      # version and date are substituted into this manifest instead.
+      - -DPROJECT_VERSION_OVERRIDE=@VIDEOSYNTH_RELEASE_VERSION@
+      - -DVIDEOSYNTH_RELEASE_VERSION=@VIDEOSYNTH_RELEASE_VERSION@
+      - -DVIDEOSYNTH_RELEASE_DATE=@VIDEOSYNTH_RELEASE_DATE@
+      # Resolve the "{bundled}" asset root to the installed asset library.
+      - -DVIDEOSYNTH_BUNDLED_ASSET_DIR=/app/share/videosynth/assets
+    sources:
+      - type: dir
+        path: ../..
+        skip:
+          - .git
+          - build
+          - build-gprof
+          - .flatpak-builder
+          - flatpak-build
+          - flatpak-repo

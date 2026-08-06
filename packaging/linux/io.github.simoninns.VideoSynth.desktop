@@ -1,0 +1,18 @@
+# File:        io.github.simoninns.VideoSynth.desktop
+# Purpose:     Freedesktop menu entry for the VideoSynth GUI
+#
+# SPDX-License-Identifier: GPL-3.0-or-later
+# SPDX-FileCopyrightText: 2026 Simon Inns
+
+[Desktop Entry]
+Type=Application
+Name=VideoSynth
+GenericName=Video Signal Synthesizer
+Comment=Generate PAL, PAL-M and NTSC composite and Y/C test signals
+Exec=videosynth-gui
+Icon=io.github.simoninns.VideoSynth
+Terminal=false
+Categories=AudioVideo;Video;AudioVideoEditing;
+Keywords=PAL;PAL-M;NTSC;CVBS;composite;laserdisc;VBI;test signal;video;
+StartupNotify=true
+StartupWMClass=videosynth-gui

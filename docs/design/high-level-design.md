@@ -2298,6 +2298,44 @@ install(TARGETS videosynth DESTINATION bin)
 
 ---
 
+### **Desktop Integration**
+
+The GUI is a desktop application and installs the Freedesktop metadata that makes it appear in the GNOME (and other XDG) application menus. The reverse-DNS application ID `io.github.simoninns.VideoSynth` is the single identity used by all of them, and is also passed to `QApplication::setDesktopFileName()` so a desktop shell can associate a running window with its menu entry.
+
+`cmake --install` places, when `VIDEOSYNTH_BUILD_GUI` is on:
+
+| Installed path | Source |
+| --- | --- |
+| `share/applications/io.github.simoninns.VideoSynth.desktop` | `packaging/linux/` |
+| `share/metainfo/io.github.simoninns.VideoSynth.metainfo.xml` | `packaging/linux/*.metainfo.xml.in`, configured by CMake |
+| `share/icons/hicolor/<size>/apps/io.github.simoninns.VideoSynth.png` | `assets/videosynth-icon-<size>.png` |
+| `share/icons/hicolor/scalable/apps/io.github.simoninns.VideoSynth.svg` | `assets/videosynth-logo.svg` |
+
+The AppStream release entry is filled from the `VIDEOSYNTH_RELEASE_VERSION` and `VIDEOSYNTH_RELEASE_DATE` cache variables, which default to the build version and the current UTC date; packaged builds pass the release tag and its date.
+
+### **Packaging Build Options**
+
+Three CMake options separate the shipped artefacts from the development gates, so a packaging build never fails on tooling that only the dev shell pins:
+
+| Option | Default | Packaging value |
+| --- | --- | --- |
+| `VIDEOSYNTH_BUILD_TESTS` | `ON` | `OFF` — skips the test suites and the Google Test dependency |
+| `VIDEOSYNTH_ENABLE_CLANG_FORMAT` | `ON` | `OFF` — the formatter version differs between environments |
+| `VIDEOSYNTH_ENABLE_CLANG_TIDY` | `ON` | `OFF` — see the note in Section 15 above |
+
+### **Flatpak**
+
+`packaging/flatpak/io.github.simoninns.VideoSynth.yml` builds the Linux desktop package on the `org.kde.Platform` runtime (Qt 6). The GUI is the manifest's `command`; the CLI ships in the same bundle and is reached with `flatpak run --command=videosynth`.
+
+- **Filesystem access**: `--filesystem=host`, plus `/media` and `/run/media`. Generation reads source media and writes multi-gigabyte sample files at user-chosen paths, so the sandbox is given unrestricted read/write access to the user's own filesystem rather than a portal-mediated subset.
+- **Bundled modules**: yaml-cpp, spdlog, Imath and OpenEXR are built into `/app` (the runtime carries neither), as is FFmpeg — Section 8.1's progressive MKV sources shell out to the `ffmpeg` and `ffprobe` programs, which no runtime provides. sqlite3 and zlib come from the runtime.
+- **Asset root**: `VIDEOSYNTH_BUNDLED_ASSET_DIR` is set to `/app/share/videosynth/assets`, so `{bundled}` (Section 9.1) resolves inside the sandbox.
+- **Version metadata**: the build sandbox has no git metadata, so `scripts/prepare-flatpak-manifest.py` substitutes the release version and date into a generated copy of the manifest before the build.
+
+`.github/workflows/flatpak.yml` builds the bundle on every push and pull request and publishes it as a release asset only for `v*` tags. See `packaging/README.md` for the full packaging reference.
+
+---
+
 ---
 
 ## **16. Directory Structure**

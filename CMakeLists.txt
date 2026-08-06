@@ -69,13 +69,31 @@ configure_file(
     @ONLY
 )
 
+# AppStream release metadata for the installed desktop entry. Packaged builds
+# pass the release tag and its date; a plain local install falls back to the
+# build version and the current UTC date.
+if(NOT VIDEOSYNTH_RELEASE_VERSION)
+    set(VIDEOSYNTH_RELEASE_VERSION "${VIDEOSYNTH_VERSION}")
+endif()
+if(NOT VIDEOSYNTH_RELEASE_DATE)
+    string(TIMESTAMP VIDEOSYNTH_RELEASE_DATE "%Y-%m-%d" UTC)
+endif()
+
 option(VIDEOSYNTH_BUILD_GUI "Build the Qt6 GUI application" ON)
+
+# The test suites are a development and CI concern. Packaging builds turn them
+# off so neither Google Test nor the test sources are needed to produce the
+# shipped binaries.
+option(VIDEOSYNTH_BUILD_TESTS "Build the unit and functional test suites" ON)
 
 find_package(yaml-cpp REQUIRED)
 find_package(spdlog REQUIRED)
-find_package(GTest REQUIRED)
 find_package(SQLite3 REQUIRED)
 find_package(OpenEXR REQUIRED)
+
+if(VIDEOSYNTH_BUILD_TESTS)
+    find_package(GTest REQUIRED)
+endif()
 
 # EFM digital audio module. Self-contained: it accepts PCM samples and emits an
 # EFM channel stream, and must not depend on videosynth_core (see
@@ -330,8 +348,40 @@ include(GNUInstallDirs)
 
 install(TARGETS videosynth RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 
+# Reverse-DNS application ID. It names the desktop entry, the AppStream
+# metadata and the installed icons, and must match the Flatpak manifest and
+# QApplication::setDesktopFileName() so desktop shells associate the running
+# window with its menu entry.
+set(VIDEOSYNTH_APP_ID "io.github.simoninns.VideoSynth")
+
 if(VIDEOSYNTH_BUILD_GUI)
     install(TARGETS videosynth-gui RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+
+    # Desktop entry: makes the GUI appear in the GNOME (and other XDG) menus.
+    install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/packaging/linux/${VIDEOSYNTH_APP_ID}.desktop"
+        DESTINATION "${CMAKE_INSTALL_DATADIR}/applications")
+
+    configure_file(
+        "${CMAKE_CURRENT_SOURCE_DIR}/packaging/linux/${VIDEOSYNTH_APP_ID}.metainfo.xml.in"
+        "${CMAKE_CURRENT_BINARY_DIR}/generated/${VIDEOSYNTH_APP_ID}.metainfo.xml"
+        @ONLY
+    )
+    install(FILES "${CMAKE_CURRENT_BINARY_DIR}/generated/${VIDEOSYNTH_APP_ID}.metainfo.xml"
+        DESTINATION "${CMAKE_INSTALL_DATADIR}/metainfo")
+
+    # Icon theme entries, named after the application ID so the desktop entry's
+    # Icon= key resolves. Sizes match scripts/render-icons.sh.
+    foreach(icon_size IN ITEMS 16 32 48 64 128 256)
+        install(FILES
+            "${CMAKE_CURRENT_SOURCE_DIR}/assets/videosynth-icon-${icon_size}.png"
+            DESTINATION
+                "${CMAKE_INSTALL_DATADIR}/icons/hicolor/${icon_size}x${icon_size}/apps"
+            RENAME "${VIDEOSYNTH_APP_ID}.png")
+    endforeach()
+
+    install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/assets/videosynth-logo.svg"
+        DESTINATION "${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps"
+        RENAME "${VIDEOSYNTH_APP_ID}.svg")
 endif()
 
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/videosynth-assets/assets")
@@ -339,11 +389,24 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/videosynth-assets/assets")
         DESTINATION "${CMAKE_INSTALL_DATADIR}/videosynth/assets")
 endif()
 
-enable_testing()
+if(VIDEOSYNTH_BUILD_TESTS)
+    enable_testing()
 
-add_subdirectory(tests)
+    add_subdirectory(tests)
+endif()
 
-find_program(CLANG_FORMAT_EXE NAMES clang-format)
+# The clang-format gate is a dev/CI check. Packaging builds turn it off: the
+# formatter available there is an unrelated version whose output differs, and a
+# style difference must not fail a release build.
+option(VIDEOSYNTH_ENABLE_CLANG_FORMAT
+    "Run clang-format checks as part of the build" ON)
+
+if(VIDEOSYNTH_ENABLE_CLANG_FORMAT)
+    find_program(CLANG_FORMAT_EXE NAMES clang-format)
+else()
+    set(CLANG_FORMAT_EXE "")
+    message(STATUS "clang-format disabled (VIDEOSYNTH_ENABLE_CLANG_FORMAT=OFF)")
+endif()
 
 if(CLANG_FORMAT_EXE)
     file(GLOB_RECURSE ALL_FORMAT_SOURCES
@@ -384,7 +447,7 @@ if(CLANG_FORMAT_EXE)
             add_dependencies(${test_target} clang_format_check)
         endforeach()
     endif()
-else()
+elseif(VIDEOSYNTH_ENABLE_CLANG_FORMAT)
     message(STATUS "clang-format not found — format checks disabled")
 endif()
 

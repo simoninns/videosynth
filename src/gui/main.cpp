@@ -67,7 +67,11 @@ int main(int argc, char* argv[]) {
   QApplication::setOrganizationName(QStringLiteral("videosynth"));
   QApplication::setApplicationName(QStringLiteral("videosynth-gui"));
   QApplication::setApplicationVersion(QStringLiteral(VIDEOSYNTH_VERSION));
-  QApplication::setDesktopFileName(QStringLiteral("videosynth-gui"));
+  // Must match the installed desktop entry's basename (see
+  // packaging/linux/) so desktop shells associate the running window with its
+  // menu entry and show the application icon and name.
+  QApplication::setDesktopFileName(
+      QStringLiteral("io.github.simoninns.VideoSynth"));
   QApplication::setWindowIcon(
       QIcon(QStringLiteral(":/videosynth-gui/icon.png")));
 
