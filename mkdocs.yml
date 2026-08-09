@@ -1,7 +1,7 @@
 site_name: videosynth Documentation
-site_url: https://simoninns.github.io/videosynth
-repo_url: https://github.com/simoninns/videosynth
-repo_name: simoninns/videosynth
+site_url: https://decode-orc.github.io/videosynth
+repo_url: https://github.com/decode-orc/videosynth
+repo_name: decode-orc/videosynth
 
 theme:
   name: material

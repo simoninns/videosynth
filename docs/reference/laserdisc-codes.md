@@ -311,4 +311,4 @@ Where two code types would occupy the same line, the standard fixes the order:
 
 ## Further reading
 
-The repository carries the full bit layouts, encoding rules and worked examples in [`docs-tech/user/biphase-design.md`](https://github.com/simoninns/videosynth/blob/main/docs-tech/user/biphase-design.md){target="_blank"}.
+The repository carries the full bit layouts, encoding rules and worked examples in [`docs-tech/user/biphase-design.md`](https://github.com/decode-orc/videosynth/blob/main/docs-tech/user/biphase-design.md){target="_blank"}.

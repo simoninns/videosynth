@@ -2248,16 +2248,16 @@ install(TARGETS videosynth DESTINATION bin)
 
 ### **Desktop Integration**
 
-The GUI is a desktop application and installs the Freedesktop metadata that makes it appear in the GNOME (and other XDG) application menus. The reverse-DNS application ID `io.github.simoninns.VideoSynth` is the single identity used by all of them, and is also passed to `QApplication::setDesktopFileName()` so a desktop shell can associate a running window with its menu entry.
+The GUI is a desktop application and installs the Freedesktop metadata that makes it appear in the GNOME (and other XDG) application menus. The reverse-DNS application ID `io.github.decode_orc.VideoSynth` is the single identity used by all of them, and is also passed to `QApplication::setDesktopFileName()` so a desktop shell can associate a running window with its menu entry.
 
 `cmake --install` places, when `VIDEOSYNTH_BUILD_GUI` is on:
 
 | Installed path | Source |
 | --- | --- |
-| `share/applications/io.github.simoninns.VideoSynth.desktop` | `packaging/linux/` |
-| `share/metainfo/io.github.simoninns.VideoSynth.metainfo.xml` | `packaging/linux/*.metainfo.xml.in`, configured by CMake |
-| `share/icons/hicolor/<size>/apps/io.github.simoninns.VideoSynth.png` | `assets/videosynth-icon-<size>.png` |
-| `share/icons/hicolor/scalable/apps/io.github.simoninns.VideoSynth.svg` | `assets/videosynth-logo.svg` |
+| `share/applications/io.github.decode_orc.VideoSynth.desktop` | `packaging/linux/` |
+| `share/metainfo/io.github.decode_orc.VideoSynth.metainfo.xml` | `packaging/linux/*.metainfo.xml.in`, configured by CMake |
+| `share/icons/hicolor/<size>/apps/io.github.decode_orc.VideoSynth.png` | `assets/videosynth-icon-<size>.png` |
+| `share/icons/hicolor/scalable/apps/io.github.decode_orc.VideoSynth.svg` | `assets/videosynth-logo.svg` |
 
 The AppStream release entry is filled from the `VIDEOSYNTH_RELEASE_VERSION` and `VIDEOSYNTH_RELEASE_DATE` cache variables, which default to the build version and the current UTC date; packaged builds pass the release tag and its date.
 
@@ -2273,7 +2273,7 @@ Three CMake options separate the shipped artefacts from the development gates, s
 
 ### **Flatpak**
 
-`packaging/flatpak/io.github.simoninns.VideoSynth.yml` builds the Linux desktop package on the `org.kde.Platform` runtime (Qt 6). The GUI is the manifest's `command`; the CLI ships in the same bundle and is reached with `flatpak run --command=videosynth`.
+`packaging/flatpak/io.github.decode_orc.VideoSynth.yml` builds the Linux desktop package on the `org.kde.Platform` runtime (Qt 6). The GUI is the manifest's `command`; the CLI ships in the same bundle and is reached with `flatpak run --command=videosynth`.
 
 - **Filesystem access**: `--filesystem=host`, plus `/media` and `/run/media`. Generation reads source media and writes multi-gigabyte sample files at user-chosen paths, so the sandbox is given unrestricted read/write access to the user's own filesystem rather than a portal-mediated subset.
 - **Bundled modules**: yaml-cpp, spdlog, Imath and OpenEXR are built into `/app` (the runtime carries neither), as is FFmpeg — Section 8.1's progressive MKV sources shell out to the `ffmpeg` and `ffprobe` programs, which no runtime provides. sqlite3 and zlib come from the runtime.

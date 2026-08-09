@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  File:        io.github.simoninns.VideoSynth.metainfo.xml.in
+  File:        io.github.decode_orc.VideoSynth.metainfo.xml.in
   Purpose:     AppStream metadata for the VideoSynth GUI. Configured by CMake;
                @VIDEOSYNTH_RELEASE_VERSION@ and @VIDEOSYNTH_RELEASE_DATE@ are
                substituted at configure time.
@@ -9,7 +9,7 @@
   SPDX-FileCopyrightText: 2026 Simon Inns
 -->
 <component type="desktop-application">
-  <id>io.github.simoninns.VideoSynth</id>
+  <id>io.github.decode_orc.VideoSynth</id>
 
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>GPL-3.0-or-later</project_license>
@@ -17,7 +17,7 @@
   <name>VideoSynth</name>
   <summary>Generate analogue PAL, PAL-M and NTSC video test signals</summary>
 
-  <developer id="io.github.simoninns">
+  <developer id="io.github.decode_orc">
     <name>Simon Inns</name>
   </developer>
 
@@ -44,11 +44,11 @@
     </ul>
     <p>
       A command-line generator is included alongside the desktop application and
-      can be run with: flatpak run --command=videosynth io.github.simoninns.VideoSynth
+      can be run with: flatpak run --command=videosynth io.github.decode_orc.VideoSynth
     </p>
   </description>
 
-  <launchable type="desktop-id">io.github.simoninns.VideoSynth.desktop</launchable>
+  <launchable type="desktop-id">io.github.decode_orc.VideoSynth.desktop</launchable>
 
   <provides>
     <binary>videosynth</binary>
@@ -71,9 +71,9 @@
     <keyword>test signal</keyword>
   </keywords>
 
-  <url type="homepage">https://github.com/simoninns/videosynth</url>
-  <url type="bugtracker">https://github.com/simoninns/videosynth/issues</url>
-  <url type="vcs-browser">https://github.com/simoninns/videosynth</url>
+  <url type="homepage">https://github.com/decode-orc/videosynth</url>
+  <url type="bugtracker">https://github.com/decode-orc/videosynth/issues</url>
+  <url type="vcs-browser">https://github.com/decode-orc/videosynth</url>
 
   <content_rating type="oars-1.1"/>
 

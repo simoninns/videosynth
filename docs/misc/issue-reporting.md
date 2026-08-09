@@ -2,7 +2,7 @@
 
 Issues, feature requests and documentation corrections all go to the main repository:
 
-[videosynth GitHub repository](https://github.com/simoninns/videosynth/issues){target="_blank"}
+[videosynth GitHub repository](https://github.com/decode-orc/videosynth/issues){target="_blank"}
 
 ## What to include
 

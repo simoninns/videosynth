@@ -39,7 +39,7 @@
 
           meta = with pkgs.lib; {
             description = "videosynth documentation site";
-            homepage = "https://github.com/simoninns/videosynth";
+            homepage = "https://github.com/decode-orc/videosynth";
             license = licenses.gpl3Plus;
             platforms = platforms.all;
           };

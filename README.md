@@ -2,7 +2,7 @@
 
 A video signal synthesizer for PAL, PAL-M and NTSC.
 
-📖 **[Read the documentation at simoninns.github.io/videosynth](https://simoninns.github.io/videosynth)** —
+📖 **[Read the documentation at decode-orc.github.io/videosynth](https://decode-orc.github.io/videosynth)** —
 installation, user manual and the complete project-file reference.
 
 **videosynth** generates analogue composite (CVBS) and Y/C video signals as
@@ -52,7 +52,7 @@ The project ships two front ends built from the same pipeline:
 
 Tagged releases publish a Linux Flatpak bundle. Download
 `videosynth-<version>-x86_64.flatpak` from the
-[releases page](https://github.com/simoninns/videosynth/releases) and install it
+[releases page](https://github.com/decode-orc/videosynth/releases) and install it
 for the current user:
 
 ```bash
@@ -63,8 +63,8 @@ The GUI is the default entry point and appears in the GNOME (and other XDG)
 application menus as **VideoSynth**. The CLI ships in the same bundle:
 
 ```bash
-flatpak run io.github.simoninns.VideoSynth                     # GUI
-flatpak run --command=videosynth io.github.simoninns.VideoSynth --help
+flatpak run io.github.decode_orc.VideoSynth                     # GUI
+flatpak run --command=videosynth io.github.decode_orc.VideoSynth --help
 ```
 
 The bundle carries the media assets from
@@ -84,7 +84,7 @@ CMake, Ninja, a C++17 toolchain, yaml-cpp, spdlog, Google Test, SQLite,
 OpenEXR, zlib, FFmpeg, Qt 6 and Python 3 (with NumPy).
 
 ```bash
-git clone --recurse-submodules https://github.com/simoninns/videosynth
+git clone --recurse-submodules https://github.com/decode-orc/videosynth
 cd videosynth
 ```
 
@@ -418,7 +418,7 @@ docs-tech/*-specification*/  Specification submodules (CVBS format, analogue vid
 ## Documentation
 
 The user manual and project-file reference are published at
-**[simoninns.github.io/videosynth](https://simoninns.github.io/videosynth)** and
+**[decode-orc.github.io/videosynth](https://decode-orc.github.io/videosynth)** and
 are built with MkDocs from [docs/](docs/). To build and preview them locally:
 
 ```bash

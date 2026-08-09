@@ -1,7 +1,7 @@
 # Packaging
 
 Desktop-integration and distribution files for videosynth. The application ID
-used throughout is `io.github.simoninns.VideoSynth`; it names the desktop
+used throughout is `io.github.decode_orc.VideoSynth`; it names the desktop
 entry, the AppStream metadata, the installed icons and the Flatpak, and is also
 passed to `QApplication::setDesktopFileName()` in [../src/gui/main.cpp](../src/gui/main.cpp)
 so desktop shells associate a running window with its menu entry.
@@ -10,9 +10,9 @@ so desktop shells associate a running window with its menu entry.
 
 | Path | Purpose |
 | --- | --- |
-| `linux/io.github.simoninns.VideoSynth.desktop` | Freedesktop menu entry for the GUI |
-| `linux/io.github.simoninns.VideoSynth.metainfo.xml.in` | AppStream metadata; CMake substitutes the release version and date |
-| `flatpak/io.github.simoninns.VideoSynth.yml` | Flatpak manifest |
+| `linux/io.github.decode_orc.VideoSynth.desktop` | Freedesktop menu entry for the GUI |
+| `linux/io.github.decode_orc.VideoSynth.metainfo.xml.in` | AppStream metadata; CMake substitutes the release version and date |
+| `flatpak/io.github.decode_orc.VideoSynth.yml` | Flatpak manifest |
 
 Icons are not duplicated here: the installed icon theme entries are renamed
 copies of `assets/videosynth-icon-<size>.png` and `assets/videosynth-logo.svg`,
@@ -24,10 +24,10 @@ the SVG.
 `cmake --install` places, when the GUI is built:
 
 ```
-share/applications/io.github.simoninns.VideoSynth.desktop
-share/metainfo/io.github.simoninns.VideoSynth.metainfo.xml
-share/icons/hicolor/{16x16,32x32,48x48,64x64,128x128,256x256}/apps/io.github.simoninns.VideoSynth.png
-share/icons/hicolor/scalable/apps/io.github.simoninns.VideoSynth.svg
+share/applications/io.github.decode_orc.VideoSynth.desktop
+share/metainfo/io.github.decode_orc.VideoSynth.metainfo.xml
+share/icons/hicolor/{16x16,32x32,48x48,64x64,128x128,256x256}/apps/io.github.decode_orc.VideoSynth.png
+share/icons/hicolor/scalable/apps/io.github.decode_orc.VideoSynth.svg
 share/videosynth/assets/…
 ```
 
@@ -47,8 +47,8 @@ The manifest builds both front ends and makes the GUI the default entry point.
 The CLI ships alongside it:
 
 ```bash
-flatpak run io.github.simoninns.VideoSynth                     # GUI
-flatpak run --command=videosynth io.github.simoninns.VideoSynth --help
+flatpak run io.github.decode_orc.VideoSynth                     # GUI
+flatpak run --command=videosynth io.github.decode_orc.VideoSynth --help
 ```
 
 ### Permissions
@@ -81,16 +81,16 @@ release date are substituted into a generated copy of the manifest first:
 ```bash
 scripts/prepare-flatpak-manifest.py \
     --version v1.2.0 --date 2026-08-05 \
-    --output flatpak-build/io.github.simoninns.VideoSynth.yml
+    --output flatpak-build/io.github.decode_orc.VideoSynth.yml
 
 flatpak remote-add --user --if-not-exists flathub \
     https://dl.flathub.org/repo/flathub.flatpakrepo
 
 flatpak-builder --user --force-clean --install-deps-from=flathub \
     --repo=flatpak-repo \
-    flatpak-build/build flatpak-build/io.github.simoninns.VideoSynth.yml
+    flatpak-build/build flatpak-build/io.github.decode_orc.VideoSynth.yml
 
-flatpak build-bundle flatpak-repo videosynth.flatpak io.github.simoninns.VideoSynth
+flatpak build-bundle flatpak-repo videosynth.flatpak io.github.decode_orc.VideoSynth
 flatpak install --user videosynth.flatpak
 ```
 

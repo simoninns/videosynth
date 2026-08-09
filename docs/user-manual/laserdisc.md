@@ -354,4 +354,4 @@ sections:
 
 ## Further reading
 
-The repository carries a deeper reference on biphase authoring — the full bit layouts, hex formats, encoding rules and worked examples — in [`docs-tech/user/biphase-design.md`](https://github.com/simoninns/videosynth/blob/main/docs-tech/user/biphase-design.md){target="_blank"}.
+The repository carries a deeper reference on biphase authoring — the full bit layouts, hex formats, encoding rules and worked examples — in [`docs-tech/user/biphase-design.md`](https://github.com/decode-orc/videosynth/blob/main/docs-tech/user/biphase-design.md){target="_blank"}.

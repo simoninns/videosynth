@@ -180,7 +180,7 @@ the affected documents (§9.3) have been updated in the **same task**.
 
 | Location | Contents | Audience |
 |----------|----------|----------|
-| `docs/` | MkDocs source for the published site (<https://simoninns.github.io/videosynth>): user manual and project-file reference | End users |
+| `docs/` | MkDocs source for the published site (<https://decode-orc.github.io/videosynth>): user manual and project-file reference | End users |
 | `docs-tech/design/` | `high-level-design.md` — the living design specification | Developers |
 | `docs-tech/user/` | In-repository feature/design notes (e.g. `biphase-design.md`) | Developers |
 | `docs-tech/*-specification*/` | Specification submodules (CVBS format, analogue video) — **read-only**, never edit | Reference |

@@ -359,7 +359,7 @@ install(TARGETS videosynth RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 # metadata and the installed icons, and must match the Flatpak manifest and
 # QApplication::setDesktopFileName() so desktop shells associate the running
 # window with its menu entry.
-set(VIDEOSYNTH_APP_ID "io.github.simoninns.VideoSynth")
+set(VIDEOSYNTH_APP_ID "io.github.decode_orc.VideoSynth")
 
 if(VIDEOSYNTH_BUILD_GUI)
     install(TARGETS videosynth-gui RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})

@@ -15,7 +15,7 @@ Placeholders substituted:
 Usage:
   scripts/prepare-flatpak-manifest.py \
       --version v1.2.0 --date 2026-08-05 \
-      --output flatpak-build/io.github.simoninns.VideoSynth.yml
+      --output flatpak-build/io.github.decode_orc.VideoSynth.yml
 """
 
 # SPDX-License-Identifier: GPL-3.0-or-later
@@ -28,7 +28,7 @@ import sys
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
 DEFAULT_MANIFEST = (
-    REPO_ROOT / "packaging" / "flatpak" / "io.github.simoninns.VideoSynth.yml"
+    REPO_ROOT / "packaging" / "flatpak" / "io.github.decode_orc.VideoSynth.yml"
 )
 
 VERSION_PLACEHOLDER = "@VIDEOSYNTH_RELEASE_VERSION@"

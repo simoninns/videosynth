@@ -1,4 +1,4 @@
-# File:        io.github.simoninns.VideoSynth.desktop
+# File:        io.github.decode_orc.VideoSynth.desktop
 # Purpose:     Freedesktop menu entry for the VideoSynth GUI
 #
 # SPDX-License-Identifier: GPL-3.0-or-later
@@ -10,7 +10,7 @@ Name=VideoSynth
 GenericName=Video Signal Synthesizer
 Comment=Generate PAL, PAL-M and NTSC composite and Y/C test signals
 Exec=videosynth-gui
-Icon=io.github.simoninns.VideoSynth
+Icon=io.github.decode_orc.VideoSynth
 Terminal=false
 Categories=AudioVideo;Video;AudioVideoEditing;
 Keywords=PAL;PAL-M;NTSC;CVBS;composite;laserdisc;VBI;test signal;video;

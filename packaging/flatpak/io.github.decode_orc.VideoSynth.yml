@@ -1,18 +1,18 @@
-# File:        io.github.simoninns.VideoSynth.yml
+# File:        io.github.decode_orc.VideoSynth.yml
 # Purpose:     Flatpak manifest for the VideoSynth desktop application
 #
 # SPDX-License-Identifier: GPL-3.0-or-later
 # SPDX-FileCopyrightText: 2026 Simon Inns
 #
 # The GUI is the default entry point; the CLI ships alongside it and is reached
-# with:  flatpak run --command=videosynth io.github.simoninns.VideoSynth
+# with:  flatpak run --command=videosynth io.github.decode_orc.VideoSynth
 #
 # @VIDEOSYNTH_RELEASE_VERSION@ and @VIDEOSYNTH_RELEASE_DATE@ are placeholders
 # substituted by scripts/prepare-flatpak-manifest.py before the release build.
 # Building this manifest as-is leaves them literal, which only affects the
 # reported version string.
 
-id: io.github.simoninns.VideoSynth
+id: io.github.decode_orc.VideoSynth
 # The KDE runtime is used for Qt 6; the freedesktop base beneath it supplies
 # sqlite3 and zlib, which the application also links against.
 runtime: org.kde.Platform

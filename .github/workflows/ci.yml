@@ -22,8 +22,8 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  APP_ID: io.github.simoninns.VideoSynth
-  MANIFEST: packaging/flatpak/io.github.simoninns.VideoSynth.yml
+  APP_ID: io.github.decode_orc.VideoSynth
+  MANIFEST: packaging/flatpak/io.github.decode_orc.VideoSynth.yml
 
 jobs:
   clang-format:
@@ -243,7 +243,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .flatpak-builder
-          key: flatpak-builder-${{ matrix.arch }}-${{ hashFiles('packaging/flatpak/io.github.simoninns.VideoSynth.yml') }}
+          key: flatpak-builder-${{ matrix.arch }}-${{ hashFiles('packaging/flatpak/io.github.decode_orc.VideoSynth.yml') }}
 
       - name: Build
         run: |

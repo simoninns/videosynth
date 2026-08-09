@@ -71,7 +71,7 @@ int main(int argc, char* argv[]) {
   // packaging/linux/) so desktop shells associate the running window with its
   // menu entry and show the application icon and name.
   QApplication::setDesktopFileName(
-      QStringLiteral("io.github.simoninns.VideoSynth"));
+      QStringLiteral("io.github.decode_orc.VideoSynth"));
   QApplication::setWindowIcon(
       QIcon(QStringLiteral(":/videosynth-gui/icon.png")));
 

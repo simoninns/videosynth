@@ -37,6 +37,6 @@ videosynth is under active development, and some parts of the intended design ar
 
 If you spot a mistake, or would like to report an issue or contribute, please use the main repository:
 
-[videosynth GitHub repository](https://github.com/simoninns/videosynth){target="_blank"}
+[videosynth GitHub repository](https://github.com/decode-orc/videosynth){target="_blank"}
 
-videosynth is designed to be used alongside decoding and restoration tooling such as [decode-orc](https://simoninns.github.io/decode-orc/){target="_blank"} and [ld-decode](https://happycube.github.io/ld-decode-docs/){target="_blank"}.
+videosynth is designed to be used alongside decoding and restoration tooling such as [decode-orc](https://decode-orc.github.io/decode-orc/){target="_blank"} and [ld-decode](https://happycube.github.io/ld-decode-docs/){target="_blank"}.

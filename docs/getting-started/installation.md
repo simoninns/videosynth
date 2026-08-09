@@ -4,7 +4,7 @@ videosynth is distributed as a Linux Flatpak bundle for tagged releases, and can
 
 ## Linux Flatpak
 
-Download `videosynth-<version>-x86_64.flatpak` from the [releases page](https://github.com/simoninns/videosynth/releases){target="_blank"} and install it for the current user:
+Download `videosynth-<version>-x86_64.flatpak` from the [releases page](https://github.com/decode-orc/videosynth/releases){target="_blank"} and install it for the current user:
 
 ```bash
 flatpak install --user videosynth-<version>-x86_64.flatpak
@@ -13,8 +13,8 @@ flatpak install --user videosynth-<version>-x86_64.flatpak
 The GUI is the default entry point and appears in the GNOME (and other XDG) application menus as **VideoSynth**. The command-line generator ships in the same bundle:
 
 ```bash
-flatpak run io.github.simoninns.VideoSynth                     # GUI
-flatpak run --command=videosynth io.github.simoninns.VideoSynth --help
+flatpak run io.github.decode_orc.VideoSynth                     # GUI
+flatpak run --command=videosynth io.github.decode_orc.VideoSynth --help
 ```
 
 The bundle carries the media assets, so `{bundled}` source paths resolve without a source checkout, and it is granted read/write access to the host filesystem so it can read source media and write generated output.
@@ -27,7 +27,7 @@ The bundle carries the media assets, so `{bundled}` source paths resolve without
 The Nix flake is the authoritative build environment. It supplies CMake, Ninja, a C++17 toolchain, yaml-cpp, spdlog, Google Test, SQLite, OpenEXR, zlib, FFmpeg, Qt 6 and Python 3.
 
 ```bash
-git clone --recurse-submodules https://github.com/simoninns/videosynth
+git clone --recurse-submodules https://github.com/decode-orc/videosynth
 cd videosynth
 ```
 
