@@ -38,7 +38,8 @@ At 16 bits per sample that is roughly 1.4 MB per PAL frame and 0.95 MB per NTSC 
 |--------|----------|
 | `preset` | `PAL`, `NTSC` or `PAL_M` |
 | `sample_encoding_preset` | The encoding the samples are in |
-| `signal_state_preset` | `STANDARD_TBC_LOCKED` |
+| `signal_state_preset` | `STANDARD_STABLE_LOCKED` |
+| `sequence_continuous` | Always `TRUE` — the synthesised signal is one unbroken sequence |
 | `signal_type` | `composite` or `yc` |
 | `decoder` | The producing tool |
 | `git_branch`, `git_commit` | The build the file came from |

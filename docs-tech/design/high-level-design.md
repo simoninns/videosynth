@@ -126,7 +126,7 @@ For file-based frame sources, ingestion is strict and fail-closed: only the exac
 
 Current implementation status:
 
-- **Locked**: Implemented. The runtime requires `signal_state_preset: STANDARD_TBC_LOCKED`.
+- **Locked**: Implemented. The runtime requires `signal_state_preset: STANDARD_STABLE_LOCKED`.
 - **Unlocked**: Target design only; not implemented in the current runtime.
 
 ### **Sample Rates**
@@ -448,7 +448,7 @@ The `OsdRenderer` class writes monochrome bitmap-font text overlays into the lum
 
 - Frame-based content in **10-bit 4:4:4 YCbCr BT.601 studio swing** from normalised progressive sources.
 - Line-based injections (VITS, Laserdisc biphase, VITC).
-- CVBS presets (video_standard_preset, sample_encoding_preset, signal_state_preset, mode).
+- CVBS presets (video_standard_preset, sample_encoding_preset, signal_state_preset).
 
 ### **Outputs**
 
@@ -486,12 +486,12 @@ The output stage generates files as per the [CVBS File Format Specification](../
 
 **Composite output** (`signal_type: composite`, default):
 1. **Video File** (`.cvbs`): Raw samples of the composite signal (Y + C + sync).
-2. **Metadata File** (`.meta`): Header metadata (magic number, version, video standard preset, sample encoding preset, signal state preset, resolution, etc.).
+2. **Metadata File** (`.meta`): SQLite metadata database (`user_version = 11`, CVBS File Format Specification v1.6.0) — video standard preset, sample encoding preset, signal state preset, `sequence_continuous` (always `TRUE`: synthesised output is one unbroken sequence), frame count, etc.
 
 **Dual-file Y/C output** (`signal_type: yc`):
 1. **Luma File** (`.cvbsy`): Raw luma samples (Y + sync) encoded identically to composite luma.
 2. **Chroma File** (`.cvbsc`): Raw chroma samples, centred at code 512 in the 10-bit domain as defined by the [CVBS File Format Specification — Sample Encoding Presets](../cvbs-file-format-specification/docs/sample-encoding-presets.md).
-3. **Metadata File** (`.meta`): Header metadata, identical structure to composite output with `signal_type` set to `'yc'`.
+3. **Metadata File** (`.meta`): SQLite metadata database, identical structure to composite output with `signal_type` set to `'yc'`.
 
 For Y/C output, `output.video_path` must end in `.cvbsy`; the chroma path is derived by replacing the `.cvbsy` suffix with `.cvbsc`.
 
@@ -799,16 +799,15 @@ project:
   description: "A test output with colour bars and line injections"  # Optional
 
 cvbs_presets:
-  video_standard_preset: PAL     # PAL or NTSC (only one allowed per project)
-  sample_encoding_preset: CVBS_U10_4FSC  # CVBS_U10_4FSC, CVBS_U16_4FSC, RAW_S16_28M, RAW_S16_40M, CVBS_TPG21_4FSC
-  signal_state_preset: STANDARD_TBC_LOCKED  # STANDARD_TBC_LOCKED or other spec-defined signal-state presets
-  mode: locked                   # locked or unlocked
+  video_standard_preset: PAL     # PAL, NTSC, or PAL_M (only one allowed per project)
+  sample_encoding_preset: CVBS_U10_4FSC  # CVBS_U10_4FSC, CVBS_U16_4FSC, CVBS_TPG21_4FSC, CVBS_S16_4FSC, RAW_S16_28M, RAW_S16_40M
+  signal_state_preset: STANDARD_STABLE_LOCKED  # only STANDARD_STABLE_LOCKED is accepted by the current runtime
   pal_laserdisc_pilot_burst: false  # PAL only; inject 3.75 MHz pilot burst on all sync pulses (IEC 60856 §9.1.2); default: false
   ntsc_laserdisc_vbi_burst: false   # NTSC only; insert colour burst on equalizing and broad sync pulses (IEC 60857 §9.1.2); default: false
   ntsc_black_setup_ire: 7.5     # NTSC only; allowed values: 7.5 (standard setup) or 0.0 (black = blanking); default: 7.5
-  field_order: upper_first      # upper_first or lower_first (default: upper_first)
-  field_dominance: field1       # field1 or field2 (default: field1 for PAL, field2 for NTSC)
-  endianness: little            # little or big (default: little)
+  # No other key is accepted. Field order/dominance follow the standard,
+  # sample data is little-endian, and the locked/unlocked distinction is
+  # carried by signal_state_preset itself — there is no separate mode key.
 
 output:
   video_path: "out/pal_test_video.cvbs"
@@ -1690,7 +1689,7 @@ For **testing applications**, the subcarrier locking implementation **must meet 
 ```yaml
 cvbs_presets:
   sample_encoding_preset: CVBS_U10_4FSC
-  signal_state_preset: STANDARD_TBC_LOCKED
+  signal_state_preset: STANDARD_STABLE_LOCKED
 ```
 
 ---
@@ -1987,7 +1986,7 @@ The rule set below remains the intended validation contract for VITC and custom 
 | Laserdisc reserved range conflict          | "Injection type [type] targets line [n] which is within the laserdisc reserved range for [standard]; cannot coexist with laserdisc injection." |
 | VITC with laserdisc                        | "`vitc` injection cannot be used in the same section as a `laserdisc` injection; laserdisc does not use VITC."                              |
 | Overlapping target lines                   | "Overlapping target_lines in section: [section_name]."                                                                                   |
-| Invalid signal state preset                | "signal_state_preset must indicate locked state for 4fsc generation."                                                                    |
+| Invalid signal state preset                | "signal_state_preset must indicate a time-base stable, phase-locked state."                                                              |
 | Invalid pilot burst                        | "pal_laserdisc_pilot_burst can only be enabled for PAL projects."                                                                        |
 | Invalid VBI burst                          | "ntsc_laserdisc_vbi_burst can only be enabled for NTSC projects."                                                                        |
 | Invalid NTSC black setup scope             | "ntsc_black_setup_ire can only be specified for NTSC projects."                                                                          |

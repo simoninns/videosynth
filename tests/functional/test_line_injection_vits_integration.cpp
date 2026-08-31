@@ -37,7 +37,7 @@ Project CreateProjectWithVits(Standard standard, const std::string& vits_type,
   Project project;
   project.cvbs_presets.video_standard_preset = standard;
   project.cvbs_presets.sample_encoding_preset = "CVBS_TPG21_4FSC";
-  project.cvbs_presets.signal_state_preset = "STANDARD_TBC_LOCKED";
+  project.cvbs_presets.signal_state_preset = "STANDARD_STABLE_LOCKED";
 
   project.output.video_path = "test_output.cvbs";
   project.output.metadata_path = "test_output.meta";
@@ -197,7 +197,7 @@ TEST(LineInjectionVitsIntegrationTest, MultipleVitsLinesInSameFrame) {
   Project project;
   project.cvbs_presets.video_standard_preset = Standard::kPal;
   project.cvbs_presets.sample_encoding_preset = "CVBS_TPG21_4FSC";
-  project.cvbs_presets.signal_state_preset = "STANDARD_TBC_LOCKED";
+  project.cvbs_presets.signal_state_preset = "STANDARD_STABLE_LOCKED";
 
   project.output.video_path = "test_output.cvbs";
   project.output.metadata_path = "test_output.meta";

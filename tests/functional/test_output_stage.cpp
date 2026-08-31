@@ -33,7 +33,7 @@ Project MakeProject(Standard standard) {
   Project project;
   project.cvbs_presets.video_standard_preset = standard;
   project.cvbs_presets.sample_encoding_preset = "CVBS_U10_4FSC";
-  project.cvbs_presets.signal_state_preset = "STANDARD_TBC_LOCKED";
+  project.cvbs_presets.signal_state_preset = "STANDARD_STABLE_LOCKED";
   return project;
 }
 
@@ -61,6 +61,8 @@ struct CvbsMetadata {
   std::string preset;
   std::string sample_encoding_preset;
   std::string signal_state_preset;
+  bool has_sequence_continuous = false;
+  bool sequence_continuous = false;
   std::string signal_type;
   std::string decoder;
   int64_t number_of_sequential_frames = 0;
@@ -89,7 +91,8 @@ bool ReadCvbsMetadata(const std::filesystem::path& path,
 
   const char* query_sql =
       "SELECT preset, sample_encoding_preset, signal_state_preset, "
-      "signal_type, decoder, number_of_sequential_frames, black_level, "
+      "sequence_continuous, signal_type, decoder, "
+      "number_of_sequential_frames, black_level, "
       "has_nonstandard_values FROM cvbs_file LIMIT 1;";
   sqlite3_stmt* stmt = nullptr;
 
@@ -107,16 +110,21 @@ bool ReadCvbsMetadata(const std::filesystem::path& path,
         reinterpret_cast<const char*>(sqlite3_column_text(stmt, 1)));
     metadata->signal_state_preset = std::string(
         reinterpret_cast<const char*>(sqlite3_column_text(stmt, 2)));
-    metadata->signal_type = std::string(
-        reinterpret_cast<const char*>(sqlite3_column_text(stmt, 3)));
-    metadata->decoder = std::string(
-        reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4)));
-    metadata->number_of_sequential_frames = sqlite3_column_int64(stmt, 5);
-    metadata->has_black_level = sqlite3_column_type(stmt, 6) != SQLITE_NULL;
-    if (metadata->has_black_level) {
-      metadata->black_level = sqlite3_column_int(stmt, 6);
+    metadata->has_sequence_continuous =
+        sqlite3_column_type(stmt, 3) != SQLITE_NULL;
+    if (metadata->has_sequence_continuous) {
+      metadata->sequence_continuous = sqlite3_column_int(stmt, 3) != 0;
     }
-    metadata->has_nonstandard_values = sqlite3_column_int(stmt, 7) != 0;
+    metadata->signal_type = std::string(
+        reinterpret_cast<const char*>(sqlite3_column_text(stmt, 4)));
+    metadata->decoder = std::string(
+        reinterpret_cast<const char*>(sqlite3_column_text(stmt, 5)));
+    metadata->number_of_sequential_frames = sqlite3_column_int64(stmt, 6);
+    metadata->has_black_level = sqlite3_column_type(stmt, 7) != SQLITE_NULL;
+    if (metadata->has_black_level) {
+      metadata->black_level = sqlite3_column_int(stmt, 7);
+    }
+    metadata->has_nonstandard_values = sqlite3_column_int(stmt, 8) != 0;
     result = true;
   }
 
@@ -216,7 +224,9 @@ TEST(OutputStageTest, WritesCompositeSamplesUsingPalQuantizationProfile) {
   EXPECT_EQ(metadata.preset, "PAL");
   EXPECT_EQ(metadata.signal_type, "composite");
   EXPECT_EQ(metadata.sample_encoding_preset, "CVBS_U10_4FSC");
-  EXPECT_EQ(metadata.signal_state_preset, "STANDARD_TBC_LOCKED");
+  EXPECT_EQ(metadata.signal_state_preset, "STANDARD_STABLE_LOCKED");
+  ASSERT_TRUE(metadata.has_sequence_continuous);
+  EXPECT_TRUE(metadata.sequence_continuous);
   EXPECT_EQ(metadata.decoder, "videosynth");
   EXPECT_EQ(metadata.number_of_sequential_frames, 1);
   EXPECT_FALSE(metadata.has_black_level);
@@ -701,7 +711,7 @@ TEST(OutputStageTest, ClampsOutOfRangeValuesToLegalCodeSpace) {
   std::filesystem::remove(metadata_path);
 }
 
-TEST(OutputStageTest, WritesSchemaVersion10) {
+TEST(OutputStageTest, WritesSchemaVersion11) {
   OutputStage output;
   Project project = MakeProject(Standard::kPal);
   const std::size_t frame_span =
@@ -712,10 +722,10 @@ TEST(OutputStageTest, WritesSchemaVersion10) {
 
   const std::filesystem::path video_path =
       std::filesystem::temp_directory_path() /
-      "videosynth_output_stage_schema_v10.cvbs";
+      "videosynth_output_stage_schema_v11.cvbs";
   const std::filesystem::path metadata_path =
       std::filesystem::temp_directory_path() /
-      "videosynth_output_stage_schema_v10.meta";
+      "videosynth_output_stage_schema_v11.meta";
   project.output.video_path = video_path.string();
   project.output.metadata_path = metadata_path.string();
   std::filesystem::remove(video_path);
@@ -724,7 +734,7 @@ TEST(OutputStageTest, WritesSchemaVersion10) {
   std::vector<std::string> errors;
   ASSERT_TRUE(output.Write(project, y, c, &errors));
 
-  // Verify PRAGMA user_version = 10 per the CVBS specification.
+  // Verify PRAGMA user_version = 11 per the CVBS specification (v1.6.0).
   sqlite3* db = nullptr;
   ASSERT_EQ(sqlite3_open(metadata_path.c_str(), &db), SQLITE_OK);
   int user_version = 0;
@@ -736,7 +746,7 @@ TEST(OutputStageTest, WritesSchemaVersion10) {
   }
   sqlite3_finalize(stmt);
   sqlite3_close(db);
-  EXPECT_EQ(user_version, 10);
+  EXPECT_EQ(user_version, 11);
 
   // No audio declared → no audio_channel_pair rows.
   EXPECT_TRUE(ReadAudioChannelPairs(metadata_path).empty());

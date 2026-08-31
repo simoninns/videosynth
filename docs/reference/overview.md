@@ -51,7 +51,7 @@ The smallest project that generates anything:
 cvbs_presets:
   video_standard_preset: PAL
   sample_encoding_preset: CVBS_U10_4FSC
-  signal_state_preset: STANDARD_TBC_LOCKED
+  signal_state_preset: STANDARD_STABLE_LOCKED
 
 output:
   video_path: "{output}/out.cvbs"

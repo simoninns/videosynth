@@ -77,7 +77,7 @@ Project MakeDeterministicProject(const std::filesystem::path& output_dir,
   Project project;
   project.cvbs_presets.video_standard_preset = Standard::kPal;
   project.cvbs_presets.sample_encoding_preset = "CVBS_U10_4FSC";
-  project.cvbs_presets.signal_state_preset = "STANDARD_TBC_LOCKED";
+  project.cvbs_presets.signal_state_preset = "STANDARD_STABLE_LOCKED";
   project.output.video_path =
       (output_dir / ("videosynth_determinism_" + run_tag + ".cvbs")).string();
   project.output.metadata_path =

@@ -6,7 +6,7 @@ project:
 cvbs_presets:
   video_standard_preset: PAL
   sample_encoding_preset: CVBS_S16_4FSC
-  signal_state_preset: STANDARD_TBC_LOCKED
+  signal_state_preset: STANDARD_STABLE_LOCKED
   pal_laserdisc_pilot_burst: true
 
 output:

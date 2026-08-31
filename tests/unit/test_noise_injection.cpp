@@ -37,7 +37,7 @@ const std::string kMinimalYamlPrefix =
     "cvbs_presets:\n"
     "  video_standard_preset: PAL\n"
     "  sample_encoding_preset: CVBS_U10_4FSC\n"
-    "  signal_state_preset: STANDARD_TBC_LOCKED\n"
+    "  signal_state_preset: STANDARD_STABLE_LOCKED\n"
     "output:\n"
     "  video_path: out.cvbs\n";
 
@@ -171,7 +171,7 @@ Project MakeValidNoiseProject(double noise_db, double noise_spread_db) {
   Project project;
   project.cvbs_presets.video_standard_preset = Standard::kPal;
   project.cvbs_presets.sample_encoding_preset = "CVBS_U10_4FSC";
-  project.cvbs_presets.signal_state_preset = "STANDARD_TBC_LOCKED";
+  project.cvbs_presets.signal_state_preset = "STANDARD_STABLE_LOCKED";
   project.output.video_path = "/tmp/noise_test.cvbs";
   project.output.metadata_path = "/tmp/noise_test.meta";
 
@@ -291,7 +291,7 @@ TestContext MakeTestContext(Standard standard, bool noise_enabled,
   TestContext ctx;
   ctx.project.cvbs_presets.video_standard_preset = standard;
   ctx.project.cvbs_presets.sample_encoding_preset = "CVBS_U10_4FSC";
-  ctx.project.cvbs_presets.signal_state_preset = "STANDARD_TBC_LOCKED";
+  ctx.project.cvbs_presets.signal_state_preset = "STANDARD_STABLE_LOCKED";
   ctx.project.output.video_path = "/tmp/noise_stage_test.cvbs";
   ctx.project.output.metadata_path = "/tmp/noise_stage_test.meta";
 

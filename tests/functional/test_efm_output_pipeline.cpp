@@ -203,7 +203,7 @@ Project MakeEfmProject(Standard standard, const std::vector<SectionPlan>& plans,
   Project project;
   project.cvbs_presets.video_standard_preset = standard;
   project.cvbs_presets.sample_encoding_preset = "CVBS_U10_4FSC";
-  project.cvbs_presets.signal_state_preset = "STANDARD_TBC_LOCKED";
+  project.cvbs_presets.signal_state_preset = "STANDARD_STABLE_LOCKED";
   project.output.video_path = video_path.string();
   project.output.efm_audio.enabled = true;
   project.output.efm_audio.pair = 0;

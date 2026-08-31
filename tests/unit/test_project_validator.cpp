@@ -23,7 +23,7 @@ Project MakeValidProject() {
   Project project;
   project.cvbs_presets.video_standard_preset = Standard::kPal;
   project.cvbs_presets.sample_encoding_preset = "CVBS_U10_4FSC";
-  project.cvbs_presets.signal_state_preset = "STANDARD_TBC_LOCKED";
+  project.cvbs_presets.signal_state_preset = "STANDARD_STABLE_LOCKED";
   project.output.video_path = "/tmp/videosynth_validator_test.cvbs";
   project.output.metadata_path = "/tmp/videosynth_validator_test.meta";
   project.sections.push_back(Section{.name = "Progressive",

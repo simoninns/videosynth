@@ -82,8 +82,8 @@ ProjectSettingsFormState BuildProjectSettingsFormState(const Project& project) {
   state.sample_encoding_options = {"CVBS_U10_4FSC",   "CVBS_U16_4FSC",
                                    "CVBS_TPG21_4FSC", "CVBS_S16_4FSC",
                                    "RAW_S16_28M",     "RAW_S16_40M"};
-  // ProjectValidator only accepts the locked TBC state.
-  state.signal_state_options = {"STANDARD_TBC_LOCKED"};
+  // ProjectValidator only accepts the time-base stable, phase-locked state.
+  state.signal_state_options = {"STANDARD_STABLE_LOCKED"};
   state.signal_type_options = {"composite", "yc"};
   // ProjectValidator: ntsc_black_setup_ire must be 7.5 or 0.0.
   state.ntsc_black_setup_ire_options = {7.5, 0.0};

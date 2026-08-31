@@ -22,7 +22,7 @@ project:
 cvbs_presets:
   video_standard_preset: NTSC
   sample_encoding_preset: CVBS_U10_4FSC
-  signal_state_preset: STANDARD_TBC_LOCKED
+  signal_state_preset: STANDARD_STABLE_LOCKED
 
 output:
   video_path: "{output}/videosynth_ntsc_stacking_3003.cvbs"

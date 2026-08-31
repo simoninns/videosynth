@@ -708,7 +708,7 @@ project:
 cvbs_presets:
   video_standard_preset: PAL
   sample_encoding_preset: CVBS_TPG21_4FSC
-  signal_state_preset: STANDARD_TBC_LOCKED
+  signal_state_preset: STANDARD_STABLE_LOCKED
 
 output:
   video_path: output/my_disc.cvbs
@@ -789,7 +789,7 @@ project:
 cvbs_presets:
   video_standard_preset: PAL
   sample_encoding_preset: CVBS_TPG21_4FSC
-  signal_state_preset: STANDARD_TBC_LOCKED
+  signal_state_preset: STANDARD_STABLE_LOCKED
 
 output:
   video_path: output/clv_disc.cvbs
@@ -850,7 +850,7 @@ project:
 cvbs_presets:
   video_standard_preset: NTSC
   sample_encoding_preset: CVBS_TPG21_4FSC
-  signal_state_preset: STANDARD_TBC_LOCKED
+  signal_state_preset: STANDARD_STABLE_LOCKED
 
 output:
   video_path: output/ntsc_disc.cvbs

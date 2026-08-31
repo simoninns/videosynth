@@ -27,7 +27,7 @@ Project MakeBaseProject(Standard standard) {
   Project p;
   p.cvbs_presets.video_standard_preset = standard;
   p.cvbs_presets.sample_encoding_preset = "CVBS_U10_4FSC";
-  p.cvbs_presets.signal_state_preset = "STANDARD_TBC_LOCKED";
+  p.cvbs_presets.signal_state_preset = "STANDARD_STABLE_LOCKED";
   p.output.video_path = "/tmp/bi_test.cvbs";
   p.output.metadata_path = "/tmp/bi_test.meta";
   return p;

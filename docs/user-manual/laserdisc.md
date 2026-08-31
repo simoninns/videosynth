@@ -144,6 +144,8 @@ For `picture_number`, the rule is simply: **set `start_value` on the first progr
 
 Setting `start_value` on a later section **re-anchors** the count there. That is a deliberate discontinuity — useful for modelling a player skip or a replayed passage, and wrong for ordinary chapter boundaries. Chapter changes never reset a timecode.
 
+A simulated skip lives entirely in the VBI codes: the signal itself — subcarrier phase, colour field sequence, frame boundaries — stays continuous, so the metadata sidecar still declares `sequence_continuous = TRUE`. Detecting the jump from the picture numbers is exactly the exercise such a project sets a decoder.
+
 ### NTSC frozen values
 
 On NTSC discs, timecodes are frozen outside the programme area:
@@ -294,7 +296,7 @@ project:
 cvbs_presets:
   video_standard_preset: NTSC
   sample_encoding_preset: CVBS_U10_4FSC
-  signal_state_preset: STANDARD_TBC_LOCKED
+  signal_state_preset: STANDARD_STABLE_LOCKED
 
 output:
   video_path: "{output}/ntsc_clv_disc.cvbs"

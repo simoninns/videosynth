@@ -219,7 +219,7 @@ bool WriteMetadataDatabase(const Project& project, std::size_t frame_count,
   }
 
   char* error_msg = nullptr;
-  if (sqlite3_exec(db, "PRAGMA user_version = 10;", nullptr, nullptr,
+  if (sqlite3_exec(db, "PRAGMA user_version = 11;", nullptr, nullptr,
                    &error_msg) != SQLITE_OK) {
     errors->push_back(std::string("Failed to set PRAGMA user_version: ") +
                       error_msg);
@@ -239,13 +239,14 @@ bool WriteMetadataDatabase(const Project& project, std::size_t frame_count,
       "'CVBS_S16_4FSC')),"
       "    signal_state_preset         TEXT    NOT NULL"
       "        CHECK (signal_state_preset IN ("
-      "            'STANDARD_TBC_LOCKED',"
-      "            'STANDARD_TBC_UNLOCKED',"
+      "            'STANDARD_STABLE_LOCKED',"
+      "            'STANDARD_STABLE_UNLOCKED',"
       "            'STANDARD_RAW',"
-      "            'NONSTANDARD_TBC_LOCKED',"
-      "            'NONSTANDARD_TBC_UNLOCKED',"
+      "            'NONSTANDARD_STABLE_LOCKED',"
+      "            'NONSTANDARD_STABLE_UNLOCKED',"
       "            'NONSTANDARD_RAW'"
       "        )),"
+      "    sequence_continuous         BOOLEAN,"
       "    signal_type                 TEXT    NOT NULL"
       "        CHECK (signal_type IN ('composite', 'yc')),"
       "    decoder                     TEXT    NOT NULL,"
@@ -305,6 +306,7 @@ bool WriteMetadataDatabase(const Project& project, std::size_t frame_count,
       "    preset,"
       "    sample_encoding_preset,"
       "    signal_state_preset,"
+      "    sequence_continuous,"
       "    signal_type,"
       "    decoder,"
       "    git_branch,"
@@ -313,7 +315,7 @@ bool WriteMetadataDatabase(const Project& project, std::size_t frame_count,
       "    black_level,"
       "    has_nonstandard_values,"
       "    capture_notes"
-      ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
+      ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);";
 
   if (sqlite3_prepare_v2(db, insert_sql, -1, &insert_stmt, nullptr) !=
       SQLITE_OK) {
@@ -329,12 +331,17 @@ bool WriteMetadataDatabase(const Project& project, std::size_t frame_count,
   sqlite3_bind_text(insert_stmt, 3,
                     project.cvbs_presets.signal_state_preset.c_str(), -1,
                     SQLITE_STATIC);
-  sqlite3_bind_text(insert_stmt, 4, project.output.signal_type.c_str(), -1,
+  // Synthesised output is one unbroken sequence by construction: subcarrier
+  // phase and colour field sequence advance with the output frame index, so
+  // continuity is always assertable (CVBS File Format Specification,
+  // sequence_continuous).
+  sqlite3_bind_int(insert_stmt, 4, 1);
+  sqlite3_bind_text(insert_stmt, 5, project.output.signal_type.c_str(), -1,
                     SQLITE_TRANSIENT);
-  sqlite3_bind_text(insert_stmt, 5, "videosynth", -1, SQLITE_STATIC);
-  sqlite3_bind_null(insert_stmt, 6);
+  sqlite3_bind_text(insert_stmt, 6, "videosynth", -1, SQLITE_STATIC);
   sqlite3_bind_null(insert_stmt, 7);
-  sqlite3_bind_int64(insert_stmt, 8, static_cast<sqlite3_int64>(frame_count));
+  sqlite3_bind_null(insert_stmt, 8);
+  sqlite3_bind_int64(insert_stmt, 9, static_cast<sqlite3_int64>(frame_count));
 
   const bool has_explicit_black_level_override =
       project.cvbs_presets.video_standard_preset == Standard::kNtsc &&
@@ -344,13 +351,13 @@ bool WriteMetadataDatabase(const Project& project, std::size_t frame_count,
     const SignalLevels levels = GetSignalLevels(project.cvbs_presets);
     const int black_level_code =
         MapCompositeMillivoltsToCode(levels.black_mv, quantization);
-    sqlite3_bind_int(insert_stmt, 9, black_level_code);
+    sqlite3_bind_int(insert_stmt, 10, black_level_code);
   } else {
-    sqlite3_bind_null(insert_stmt, 9);
+    sqlite3_bind_null(insert_stmt, 10);
   }
 
-  sqlite3_bind_int(insert_stmt, 10, has_nonstandard ? 1 : 0);
-  sqlite3_bind_null(insert_stmt, 11);  // capture_notes
+  sqlite3_bind_int(insert_stmt, 11, has_nonstandard ? 1 : 0);
+  sqlite3_bind_null(insert_stmt, 12);  // capture_notes
 
   if (sqlite3_step(insert_stmt) != SQLITE_DONE) {
     errors->push_back("Failed to insert metadata row");
@@ -444,7 +451,9 @@ bool OutputStage::BeginWrite(const Project& project,
     return false;
   }
   if (!IsLockedSignalStatePreset(project.cvbs_presets.signal_state_preset)) {
-    errors->push_back("Output stage requires a locked signal_state_preset.");
+    errors->push_back(
+        "Output stage requires a time-base stable, phase-locked "
+        "signal_state_preset.");
     return false;
   }
 

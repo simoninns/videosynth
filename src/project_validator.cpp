@@ -1601,18 +1601,18 @@ ValidationResult ProjectValidator::Validate(const Project& project) {
         "supported CVBS or raw presets.");
   }
 
-  if (project.cvbs_presets.signal_state_preset != "STANDARD_TBC_LOCKED") {
+  if (project.cvbs_presets.signal_state_preset != "STANDARD_STABLE_LOCKED") {
     result.is_valid = false;
     result.errors.push_back(
         "Project configuration error: signal_state_preset must be "
-        "'STANDARD_TBC_LOCKED'.");
+        "'STANDARD_STABLE_LOCKED'.");
   }
 
   if (!IsLockedSignalStatePreset(project.cvbs_presets.signal_state_preset)) {
     result.is_valid = false;
     result.errors.push_back(
-        "Project configuration error: signal_state_preset must indicate locked "
-        "state.");
+        "Project configuration error: signal_state_preset must indicate a "
+        "time-base stable, phase-locked state.");
   }
 
   ValidateDeferredLaserdiscPresetFlags(project, &result);

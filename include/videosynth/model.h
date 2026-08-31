@@ -118,7 +118,7 @@ struct BiphasePresets {};
 struct CvbsPresets {
   Standard video_standard_preset = Standard::kUnknown;
   std::string sample_encoding_preset = "CVBS_U10_4FSC";
-  std::string signal_state_preset = "STANDARD_TBC_LOCKED";
+  std::string signal_state_preset = "STANDARD_STABLE_LOCKED";
   bool pal_laserdisc_pilot_burst = false;
   bool ntsc_laserdisc_vbi_burst = false;
   double ntsc_black_setup_ire = 7.5;
@@ -164,7 +164,7 @@ inline std::string SampleRateModeFromEncodingPreset(const std::string& preset) {
 }
 
 inline bool IsLockedSignalStatePreset(const std::string& preset) {
-  return preset == "STANDARD_TBC_LOCKED";
+  return preset == "STANDARD_STABLE_LOCKED";
 }
 
 struct NoiseParameters {

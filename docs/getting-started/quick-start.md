@@ -38,7 +38,7 @@ In the **CVBS Presets** group:
 
 - **Video standard**: `PAL`.
 - **Sample encoding**: `CVBS_S16_4FSC`. This is a *signed* preset, which matters here: the laserdisc pilot burst swings to −600 mV, below the −300 mV floor the unsigned `CVBS_U10_4FSC` preset can represent. With an unsigned preset the burst trough is clipped, and videosynth warns you about it.
-- **Signal state**: `STANDARD_TBC_LOCKED`.
+- **Signal state**: `STANDARD_STABLE_LOCKED`.
 - Tick **PAL laserdisc pilot burst (IEC 60856 §9.1.2)**. The tick box is only enabled for PAL projects — the equivalent NTSC VBI burst option is enabled only for NTSC.
 
 !!! warning "The video standard is fixed at creation time"
@@ -148,7 +148,7 @@ project:
 cvbs_presets:
   video_standard_preset: PAL
   sample_encoding_preset: CVBS_S16_4FSC
-  signal_state_preset: STANDARD_TBC_LOCKED
+  signal_state_preset: STANDARD_STABLE_LOCKED
   pal_laserdisc_pilot_burst: true
 
 output:

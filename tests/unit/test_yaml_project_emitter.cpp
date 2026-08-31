@@ -207,7 +207,7 @@ TEST(YamlProjectEmitterTest, CvbsPresetsRoundTripsNtscSetupAndBurstFlags) {
 cvbs_presets:
   video_standard_preset: NTSC
   sample_encoding_preset: CVBS_U16_4FSC
-  signal_state_preset: STANDARD_TBC_LOCKED
+  signal_state_preset: STANDARD_STABLE_LOCKED
   ntsc_black_setup_ire: 0.0
 output:
   video_path: out/video.cvbs
@@ -527,7 +527,7 @@ project:
 cvbs_presets:
   video_standard_preset: PAL
   sample_encoding_preset: CVBS_U10_4FSC
-  signal_state_preset: STANDARD_TBC_LOCKED
+  signal_state_preset: STANDARD_STABLE_LOCKED
 output:
   video_path: out/video.cvbs
 sections:

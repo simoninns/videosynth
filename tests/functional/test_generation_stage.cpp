@@ -69,7 +69,7 @@ Project MakeProject(Standard standard, int duration_frames = 1) {
   Project project;
   project.cvbs_presets.video_standard_preset = standard;
   project.cvbs_presets.sample_encoding_preset = "CVBS_U10_4FSC";
-  project.cvbs_presets.signal_state_preset = "STANDARD_TBC_LOCKED";
+  project.cvbs_presets.signal_state_preset = "STANDARD_STABLE_LOCKED";
   project.sections.push_back(Section{.name = "SignalTiming",
                                      .type = "progressive",
                                      .line_injections = {},
@@ -83,7 +83,7 @@ Project MakeProgressiveSourceProject(Standard standard,
   Project project;
   project.cvbs_presets.video_standard_preset = standard;
   project.cvbs_presets.sample_encoding_preset = "CVBS_U10_4FSC";
-  project.cvbs_presets.signal_state_preset = "STANDARD_TBC_LOCKED";
+  project.cvbs_presets.signal_state_preset = "STANDARD_STABLE_LOCKED";
   project.sections.push_back(Section{.name = "ProgressiveImport",
                                      .type = "progressive",
                                      .line_injections = {},
@@ -96,7 +96,7 @@ Project MakeProjectWithSectionSpans(Standard standard) {
   Project project;
   project.cvbs_presets.video_standard_preset = standard;
   project.cvbs_presets.sample_encoding_preset = "CVBS_U10_4FSC";
-  project.cvbs_presets.signal_state_preset = "STANDARD_TBC_LOCKED";
+  project.cvbs_presets.signal_state_preset = "STANDARD_STABLE_LOCKED";
   project.sections.push_back(Section{.name = "InjectedSection",
                                      .type = "progressive",
                                      .line_injections = {},
@@ -1313,7 +1313,7 @@ Project MakePalPilotBurstProject() {
   Project project;
   project.cvbs_presets.video_standard_preset = Standard::kPal;
   project.cvbs_presets.sample_encoding_preset = "CVBS_U10_4FSC";
-  project.cvbs_presets.signal_state_preset = "STANDARD_TBC_LOCKED";
+  project.cvbs_presets.signal_state_preset = "STANDARD_STABLE_LOCKED";
   project.cvbs_presets.pal_laserdisc_pilot_burst = true;
   project.sections.push_back(
       Section{.name = "PilotBurst",
@@ -1792,7 +1792,7 @@ TEST(GenerationStageTemplateCacheTest,
   Project project;
   project.cvbs_presets.video_standard_preset = Standard::kPal;
   project.cvbs_presets.sample_encoding_preset = "CVBS_U10_4FSC";
-  project.cvbs_presets.signal_state_preset = "STANDARD_TBC_LOCKED";
+  project.cvbs_presets.signal_state_preset = "STANDARD_STABLE_LOCKED";
   Section section;
   section.name = "MovingRepeat";
   section.type = "progressive";

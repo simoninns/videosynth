@@ -47,7 +47,7 @@ Project MakeProject(Standard standard, const std::string& source = "") {
   Project project;
   project.cvbs_presets.video_standard_preset = standard;
   project.cvbs_presets.sample_encoding_preset = "CVBS_U10_4FSC";
-  project.cvbs_presets.signal_state_preset = "STANDARD_TBC_LOCKED";
+  project.cvbs_presets.signal_state_preset = "STANDARD_STABLE_LOCKED";
   project.sections.push_back(Section{.name = "Compliance",
                                      .type = "progressive",
                                      .line_injections = {},

@@ -61,7 +61,9 @@ Sub-black and over-white excursions inside the legal range are preserved rather 
 
 ## Signal state
 
-`signal_state_preset` must be `STANDARD_TBC_LOCKED`. This declares that the sample clock is locked to the subcarrier, which is what 4fsc generation requires. An unlocked, free-running mode is a design target and is not implemented; a non-locked value is rejected at validation.
+`signal_state_preset` must be `STANDARD_STABLE_LOCKED`. This declares the signal standard-rate (4×fsc), time-base stable, and phase locked — every sample sits at the standard subcarrier-reference-locked phase point for its (field, line, sample) position, which is what 4fsc generation produces by construction. The CVBS specification's unstable and unlocked presets describe imperfect captures; videosynth never emits one, so any other value is rejected at validation.
+
+The metadata sidecar additionally declares `sequence_continuous = TRUE`: the synthesised signal is one unbroken sequence, with subcarrier phase and colour field sequence advancing continuously from the first frame to the last. Simulated disc skips (re-anchored picture numbers) change the VBI content only — they never break the signal's own continuity.
 
 ## Composite or Y/C
 
