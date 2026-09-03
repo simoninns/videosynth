@@ -17,6 +17,7 @@
 
 #include "videosynth/efm/efm_stream_encoder.h"
 #include "videosynth/efm/subcode_generator.h"
+#include "videosynth/efm/t_value_byte.h"
 #include "videosynth/interfaces.h"
 #include "videosynth/model.h"
 
@@ -30,6 +31,11 @@ namespace videosynth {
 // unsigned byte per pit or land run length (T3 to T11, IEC 60908-1999, clause
 // 13), starting at the first frame sync, and this is the only core component
 // that drives the EFM module.
+//
+// Each byte packs its run length with the producer's doubt about it, per
+// efm/t_value_byte.h. The stream is synthesised, so every run length is written
+// at kSynthesisedDoubt (zero doubt, maximum confidence) and the bytes are the
+// plain run lengths; see that header before emitting anything less certain.
 //
 // The extension is self-describing: no EFM metadata is written into the core
 // `<basename>.meta` database, which has no EFM concept.
@@ -102,8 +108,8 @@ class AudioEfmWriter {
     std::uint64_t count = 0;
   };
 
-  // Writes `t_values` to the open stream. Returns false and appends a message
-  // to errors when the stream fails.
+  // Packs `t_values` into stream bytes and writes them to the open stream.
+  // Returns false and appends a message to errors when the stream fails.
   bool WriteTValues(const std::vector<std::uint8_t>& t_values,
                     std::vector<std::string>* errors);
 
@@ -119,6 +125,8 @@ class AudioEfmWriter {
   bool session_open_ = false;
   std::uint64_t t_value_count_ = 0;
   std::vector<FrameIndexRow> frame_index_;
+  // Reused across frames so packing costs no per-frame allocation.
+  std::vector<std::uint8_t> byte_buffer_;
 };
 
 }  // namespace videosynth

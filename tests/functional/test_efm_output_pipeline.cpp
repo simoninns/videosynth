@@ -25,6 +25,7 @@
 #include "videosynth/audio_sample_conversion.h"
 #include "videosynth/audio_synthesizer.h"
 #include "videosynth/audio_track_generator.h"
+#include "videosynth/efm/t_value_byte.h"
 #include "videosynth/efm_track_layout.h"
 #include "videosynth/pipeline.h"
 #include "videosynth/timing_constants.h"
@@ -169,16 +170,16 @@ std::vector<EfmFrameRow> ReadEfmFrameRows(const std::filesystem::path& path) {
   return rows;
 }
 
-std::vector<std::uint8_t> ReadTValues(const std::filesystem::path& path) {
+std::vector<std::uint8_t> ReadStreamBytes(const std::filesystem::path& path) {
   std::ifstream stream(path, std::ios::binary);
   const std::vector<char> bytes((std::istreambuf_iterator<char>(stream)),
                                 std::istreambuf_iterator<char>());
-  std::vector<std::uint8_t> t_values;
-  t_values.reserve(bytes.size());
+  std::vector<std::uint8_t> stream_bytes;
+  stream_bytes.reserve(bytes.size());
   for (const char byte : bytes) {
-    t_values.push_back(static_cast<std::uint8_t>(byte));
+    stream_bytes.push_back(static_cast<std::uint8_t>(byte));
   }
-  return t_values;
+  return stream_bytes;
 }
 
 AudioParameters Tone(double frequency_hz) {
@@ -377,11 +378,19 @@ void VerifyEfmOutput(Standard standard, const std::vector<SectionPlan>& plans,
       (total_samples + efm::kStereoSamplesPerF1Frame - 1U) /
       efm::kStereoSamplesPerF1Frame;
 
-  const std::vector<std::uint8_t> t_values = ReadTValues(efm_path);
-  ASSERT_FALSE(t_values.empty());
-  for (const std::uint8_t t_value : t_values) {
+  // efm-extension-format.md, "Binary Data File": bits 3-0 are the t-value and
+  // bits 7-4 the producer's doubt. A synthesised stream is certain throughout,
+  // so every byte reads back at zero doubt.
+  const std::vector<std::uint8_t> stream_bytes = ReadStreamBytes(efm_path);
+  ASSERT_FALSE(stream_bytes.empty());
+  std::vector<std::uint8_t> t_values;
+  t_values.reserve(stream_bytes.size());
+  for (const std::uint8_t byte : stream_bytes) {
+    ASSERT_EQ(efm::DoubtOfByte(byte), efm::kNoDoubt);
+    const std::uint8_t t_value = efm::TValueOfByte(byte);
     ASSERT_GE(t_value, efm::kMinRunLengthT);
     ASSERT_LE(t_value, efm::kMaxRunLengthT);
+    t_values.push_back(t_value);
   }
 
   // Decode: the helper asserts a sync header every 588 channel bits.

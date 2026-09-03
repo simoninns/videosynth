@@ -24,6 +24,7 @@
 #include "videosynth/audio_efm_writer.h"
 #include "videosynth/efm/efm_modulator.h"
 #include "videosynth/efm/subcode_generator.h"
+#include "videosynth/efm/t_value_byte.h"
 #include "videosynth/model.h"
 
 namespace videosynth {
@@ -153,11 +154,17 @@ TEST(AudioEfmWriterTest, WritesTValueStreamForTheSelectedPair) {
   const std::vector<std::uint8_t> bytes = ReadFileBytes(expected_audio_path);
   ASSERT_FALSE(bytes.empty());
 
-  // Every byte is a pit or land run length between T_min and T_max
-  // (IEC 60908-1999, clause 13).
+  // efm-extension-format.md, "Binary Data File": every byte carries a pit or
+  // land run length between T_min and T_max (IEC 60908-1999, clause 13) in bits
+  // 3-0, and the producer's doubt about it in bits 7-4. The stream is
+  // synthesised, so it is written at maximum confidence throughout.
   for (std::size_t index = 0; index < bytes.size(); ++index) {
-    ASSERT_GE(bytes[index], efm::kMinRunLengthT) << "T value " << index;
-    ASSERT_LE(bytes[index], efm::kMaxRunLengthT) << "T value " << index;
+    ASSERT_EQ(efm::DoubtOfByte(bytes[index]), efm::kNoDoubt)
+        << "T value " << index;
+    ASSERT_GE(efm::TValueOfByte(bytes[index]), efm::kMinRunLengthT)
+        << "T value " << index;
+    ASSERT_LE(efm::TValueOfByte(bytes[index]), efm::kMaxRunLengthT)
+        << "T value " << index;
   }
 
   // The run lengths tile the channel frames of the encoded stream, one channel
@@ -166,8 +173,8 @@ TEST(AudioEfmWriterTest, WritesTValueStreamForTheSelectedPair) {
       ((2U * kSamplesPerFrame) / efm::kStereoSamplesPerF1Frame) +
       efm::kCircDrainFrames;
   std::size_t total_bits = 0;
-  for (const std::uint8_t t_value : bytes) {
-    total_bits += t_value;
+  for (const std::uint8_t byte : bytes) {
+    total_bits += efm::TValueOfByte(byte);
   }
   EXPECT_GE(total_bits, expected_frames * efm::kChannelBitsPerFrame);
 

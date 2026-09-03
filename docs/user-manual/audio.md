@@ -112,6 +112,8 @@ The presence of the `efm_audio:` block is what enables it. That pair is synthesi
 
 Both share the CVBS basename, so the channel pair number is not part of either name. An aborted run leaves neither file behind.
 
+Each stream byte carries its run length in bits 3-0 and the producer's *doubt* about that value in bits 7-4 — 0 for fully trusted, 15 for an erasure candidate. videosynth synthesises the stream, so every run length is exact and written at zero doubt (maximum confidence); the bytes are therefore the plain run lengths. Read a t-value back as `byte & 0x0F`.
+
 ### Disc structure drives track layout
 
 EFM track layout is derived from `section_type`, not from the biphase codes:

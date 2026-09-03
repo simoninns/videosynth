@@ -15,6 +15,7 @@
 
 #include <cstdio>
 #include <filesystem>
+#include <string>
 #include <string_view>
 #include <system_error>
 
@@ -124,8 +125,29 @@ bool AudioEfmWriter::WriteTValues(const std::vector<std::uint8_t>& t_values,
   if (t_values.empty()) {
     return true;
   }
-  stream_.write(reinterpret_cast<const char*>(t_values.data()),
-                static_cast<std::streamsize>(t_values.size()));
+
+  // efm-extension-format.md, "Binary Data File": each byte pairs a t-value with
+  // the producer's doubt about it. The run lengths come from the modulator that
+  // synthesised them, so they are exact and pack at zero doubt; a producer that
+  // recovered t-values from a signal would vary the doubt per value here.
+  byte_buffer_.clear();
+  byte_buffer_.reserve(t_values.size());
+  for (const std::uint8_t t_value : t_values) {
+    // The t-value field is four bits wide. IEC 60908-1999 clause 13 bounds the
+    // modulator's run lengths at T11, so this cannot trip today; it fails the
+    // write rather than let a wider run length be silently truncated into a
+    // different value.
+    if (t_value > efm::kTValueMask) {
+      errors->push_back("EFM t-value " + std::to_string(t_value) +
+                        " exceeds the 4-bit stream field for: " + audio_path_);
+      return false;
+    }
+    byte_buffer_.push_back(
+        efm::PackTValueByte(t_value, efm::kSynthesisedDoubt));
+  }
+
+  stream_.write(reinterpret_cast<const char*>(byte_buffer_.data()),
+                static_cast<std::streamsize>(byte_buffer_.size()));
   if (!stream_) {
     errors->push_back("Failed while writing EFM audio data to: " + audio_path_);
     return false;
